@@ -693,13 +693,13 @@ export default function ToolsPage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 pt-4 md:pt-0">
+          <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
             <div className="flex flex-col space-y-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {quickTools.map((tool) => (
                   <a
                     key={tool.title}
-                    className="group flex items-center justify-between rounded-xl bg-[#FAFAFA] p-3"
+                    className="group flex items-center justify-between rounded-xl border border-gray-200 bg-[#FAFAFA] p-3"
                     href={tool.href}
                   >
                     <div className="flex items-center gap-4">
