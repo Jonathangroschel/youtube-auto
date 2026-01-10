@@ -150,7 +150,7 @@ type Feature = {
 
 const primaryFeatures: Feature[] = [
   {
-    title: "Crayo AutoClip",
+    title: "AutoClip",
     description: "Transform long videos into viral clips automatically",
   },
   {
@@ -961,7 +961,7 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold sm:text-lg">
-                  Crayo Tools
+                  Tools
                 </h2>
                 <a
                   className="flex items-center gap-1 text-sm font-medium text-[#0E121B]"
