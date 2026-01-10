@@ -699,7 +699,7 @@ export default function ToolsPage() {
                 {quickTools.map((tool) => (
                   <a
                     key={tool.title}
-                    className="group flex items-center justify-between rounded-xl border border-gray-200 bg-[#FAFAFA] p-3"
+                    className="group flex items-center justify-between rounded-xl bg-[#FAFAFA] p-3"
                     href={tool.href}
                   >
                     <div className="flex items-center gap-4">
