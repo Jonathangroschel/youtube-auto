@@ -158,7 +158,6 @@ const mobileFooterActions: MobileFooterAction[] = [
 ];
 
 const assetTabs = ["All", "Video", "Images", "Audio"];
-const activeTab = "Video";
 
 export default function AssetsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -173,6 +172,7 @@ export default function AssetsPage() {
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const [activeTab, setActiveTab] = useState("Video");
 
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -516,6 +516,8 @@ export default function AssetsPage() {
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                       type="button"
+                      aria-pressed={tab === activeTab}
+                      onClick={() => setActiveTab(tab)}
                     >
                       {tab}
                       {tab === activeTab ? (
