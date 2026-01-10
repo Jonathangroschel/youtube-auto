@@ -660,7 +660,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-20 hidden items-center justify-between border-b border-gray-200 bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
+          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
             <p className="text-lg font-semibold text-black">
               Welcome back, Jonathan 👋
             </p>
