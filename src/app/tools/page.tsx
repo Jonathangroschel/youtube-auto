@@ -1,7 +1,7 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 type NavItem = {
   label: string;
@@ -282,7 +282,38 @@ export default function ToolsPage() {
       )
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [hoveredNavIndex, setHoveredNavIndex] = useState<number | null>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{
+    top: number;
+    height: number;
+    opacity: number;
+  }>({
+    top: 0,
+    height: 0,
+    opacity: 0,
+  });
+  const navContainerRef = useRef<HTMLDivElement | null>(null);
+  const navItemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const activeNavIndex = navItems.findIndex((item) => item.active);
+  const resolvedNavIndex =
+    hoveredNavIndex ?? (activeNavIndex >= 0 ? activeNavIndex : 0);
+
+  const updateIndicator = useCallback((index: number) => {
+    const container = navContainerRef.current;
+    const item = navItemRefs.current[index];
+    if (!container || !item) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    setIndicatorStyle({
+      top: itemRect.top - containerRect.top,
+      height: itemRect.height,
+      opacity: 1,
+    });
+  }, []);
 
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -305,12 +336,41 @@ export default function ToolsPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [profileMenuOpen]);
 
+  useEffect(() => {
+    if (resolvedNavIndex == null || resolvedNavIndex < 0) {
+      return;
+    }
+    updateIndicator(resolvedNavIndex);
+  }, [resolvedNavIndex, updateIndicator]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (resolvedNavIndex == null || resolvedNavIndex < 0) {
+        return;
+      }
+      updateIndicator(resolvedNavIndex);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [resolvedNavIndex, updateIndicator]);
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
       <div className="mx-auto flex w-full md:max-w-[90rem]">
         <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
-          <div className="relative flex w-full flex-1 flex-col items-center gap-4">
-            <div className="absolute left-0 top-[264px] h-10 w-1.5 rounded-r-lg bg-[#335CFF]" />
+          <div
+            ref={navContainerRef}
+            className="relative flex w-full flex-1 flex-col items-center gap-4"
+          >
+            <div
+              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              style={{
+                transform: `translateY(${indicatorStyle.top}px)`,
+                height: `${indicatorStyle.height}px`,
+                opacity: indicatorStyle.opacity,
+              }}
+            />
             <a
               className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E7EDFF] text-lg font-semibold text-[#335CFF]"
               href="/dashboard"
@@ -318,15 +378,22 @@ export default function ToolsPage() {
               YA
             </a>
             <div className="h-px w-10 bg-gray-200" />
-            <nav className="flex flex-col gap-2">
-              {navItems.map((item) => (
+            <nav
+              className="flex flex-col gap-2"
+              onMouseLeave={() => setHoveredNavIndex(null)}
+            >
+              {navItems.map((item, index) => (
                 <a
                   key={item.label}
                   href={item.href}
+                  ref={(element) => {
+                    navItemRefs.current[index] = element;
+                  }}
                   className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
                     item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
                   }`}
                   aria-label={item.label}
+                  onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
                 </a>
