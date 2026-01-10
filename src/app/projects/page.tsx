@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type NavItem = {
   label: string;
@@ -179,16 +179,54 @@ export default function ProjectsPage() {
         ])
       )
   );
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [openProjectMenuIndex, setOpenProjectMenuIndex] = useState<
+    number | null
+  >(null);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
+  useEffect(() => {
+    if (!profileMenuOpen) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && profileMenuRef.current?.contains(target)) {
+        return;
+      }
+      setProfileMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [profileMenuOpen]);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+      if (target.closest("[data-project-menu]")) {
+        return;
+      }
+      setOpenProjectMenuIndex(null);
+    };
+
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
       <div className="mx-auto flex w-full max-w-[90rem]">
-        <aside className="sticky top-0 hidden h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
-          <div className="relative flex h-full w-full flex-col items-center gap-4">
+        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
+          <div className="relative flex w-full flex-1 flex-col items-center gap-4">
             <div className="absolute left-0 top-[160px] h-10 w-1.5 rounded-r-lg bg-[#335CFF]" />
             <a
               className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E7EDFF] text-lg font-semibold text-[#335CFF]"
@@ -408,11 +446,14 @@ export default function ProjectsPage() {
                 <h2 className="text-lg font-medium text-black">Projects</h2>
               </div>
             </div>
-            <div className="relative group">
+            <div className="relative" ref={profileMenuRef}>
               <button
                 className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
                 type="button"
                 aria-haspopup="menu"
+                aria-expanded={profileMenuOpen}
+                aria-controls="projects-profile-menu"
+                onClick={() => setProfileMenuOpen((open) => !open)}
               >
                 <img
                   src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
@@ -433,7 +474,14 @@ export default function ProjectsPage() {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
-              <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <div
+                id="projects-profile-menu"
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${
+                  profileMenuOpen
+                    ? "pointer-events-auto translate-y-0 opacity-100"
+                    : "pointer-events-none translate-y-1 opacity-0"
+                }`}
+              >
                 <div className="flex flex-row items-center space-x-2 px-3 py-2">
                   <img
                     src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
@@ -451,24 +499,28 @@ export default function ProjectsPage() {
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   Settings
                 </button>
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   Upgrade
                 </button>
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   24/7 Support
                 </button>
                 <button
                   className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   Log Out
                 </button>
@@ -527,9 +579,11 @@ export default function ProjectsPage() {
               {projects.map((project, index) => (
                 <div
                   key={`${project.title}-${index}`}
-                  className="group flex w-full cursor-pointer flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
+                  className={`relative flex w-full cursor-pointer flex-col rounded-lg border border-gray-200 bg-white ${
+                    openProjectMenuIndex === index ? "z-10" : "z-0"
+                  }`}
                 >
-                  <div className="relative w-full">
+                  <div className="relative w-full overflow-hidden rounded-t-lg">
                     <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
                   </div>
                   <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
@@ -540,11 +594,17 @@ export default function ProjectsPage() {
                           {project.type}
                         </div>
                       </div>
-                      <div className="relative">
+                      <div className="relative" data-project-menu>
                         <button
                           className="flex h-8 w-8 items-center justify-center rounded-lg text-black hover:bg-gray-100"
                           type="button"
                           aria-label="Project menu"
+                          aria-expanded={openProjectMenuIndex === index}
+                          onClick={() =>
+                            setOpenProjectMenuIndex((prev) =>
+                              prev === index ? null : index
+                            )
+                          }
                         >
                           <svg
                             aria-hidden="true"
@@ -561,16 +621,24 @@ export default function ProjectsPage() {
                             <circle cx="5" cy="12" r="1" />
                           </svg>
                         </button>
-                        <div className="pointer-events-none absolute right-0 top-9 w-48 rounded-lg border border-gray-200 bg-white p-2 text-sm opacity-0 shadow-md transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                        <div
+                          className={`absolute right-0 top-9 z-30 w-48 rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-md transition-all ${
+                            openProjectMenuIndex === index
+                              ? "pointer-events-auto translate-y-0 opacity-100"
+                              : "pointer-events-none translate-y-1 opacity-0"
+                          }`}
+                        >
                           <a
                             href="/editor/advanced"
                             className="block rounded-lg px-2 py-1.5 hover:bg-gray-100"
+                            onClick={() => setOpenProjectMenuIndex(null)}
                           >
                             Open advanced editor
                           </a>
                           <button
                             className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50"
                             type="button"
+                            onClick={() => setOpenProjectMenuIndex(null)}
                           >
                             Delete project
                           </button>

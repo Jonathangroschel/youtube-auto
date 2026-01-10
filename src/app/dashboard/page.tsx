@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type NavItem = {
   label: string;
@@ -25,8 +25,8 @@ const navItems: NavItem[] = [
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M3 10.5 12 3l9 7.5" />
-        <path d="M5 9.5V21a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" />
+        <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+        <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       </svg>
     ),
   },
@@ -44,7 +44,7 @@ const navItems: NavItem[] = [
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
       </svg>
     ),
   },
@@ -62,8 +62,9 @@ const navItems: NavItem[] = [
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="M14 3H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-        <path d="M14 3v6h6" />
+        <path d="M15 2a2 2 0 0 1 1.414.586l4 4A2 2 0 0 1 21 8v7a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
+        <path d="M15 2v4a2 2 0 0 0 2 2h4" />
+        <path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />
       </svg>
     ),
   },
@@ -81,9 +82,14 @@ const navItems: NavItem[] = [
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path d="m21 2-2 2-4 12 4 4 2-2-4-4z" />
-        <path d="m7 14-5 5" />
-        <path d="M7 9 4 6" />
+        <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
+        <path d="m14 7 3 3" />
+        <path d="M5 6v4" />
+        <path d="M19 14v4" />
+        <path d="M10 2v2" />
+        <path d="M7 8H3" />
+        <path d="M21 16h-4" />
+        <path d="M11 3H9" />
       </svg>
     ),
   },
@@ -350,16 +356,35 @@ export default function DashboardPage() {
         ])
       )
   );
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
+  useEffect(() => {
+    if (!profileMenuOpen) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && profileMenuRef.current?.contains(target)) {
+        return;
+      }
+      setProfileMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [profileMenuOpen]);
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
       <div className="mx-auto flex w-full md:max-w-[90rem]">
-        <aside className="sticky top-0 hidden h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
-          <div className="relative flex h-full w-full flex-col items-center gap-4">
+        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
+          <div className="relative flex w-full flex-1 flex-col items-center gap-4">
             <div className="absolute left-0 top-[112px] h-10 w-1.5 rounded-r-lg bg-[#335CFF]" />
             <a
               className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E7EDFF] text-lg font-semibold text-[#335CFF]"
@@ -561,13 +586,16 @@ export default function DashboardPage() {
 
           <div className="sticky top-0 z-10 hidden items-center justify-between bg-[#F6F8FC]/80 pb-6 pt-2 backdrop-blur-xl md:flex">
             <p className="text-lg font-semibold text-black">
-              Welcome back, Jonathan
+              Welcome back, Jonathan 👋
             </p>
-            <div className="relative group">
+            <div className="relative" ref={profileMenuRef}>
               <button
                 className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
                 type="button"
                 aria-haspopup="menu"
+                aria-expanded={profileMenuOpen}
+                aria-controls="dashboard-profile-menu"
+                onClick={() => setProfileMenuOpen((open) => !open)}
               >
                 <img
                   src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
@@ -588,7 +616,14 @@ export default function DashboardPage() {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
-              <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <div
+                id="dashboard-profile-menu"
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${
+                  profileMenuOpen
+                    ? "pointer-events-auto translate-y-0 opacity-100"
+                    : "pointer-events-none translate-y-1 opacity-0"
+                }`}
+              >
                 <div className="flex flex-row items-center space-x-2 px-3 py-2">
                   <img
                     src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
@@ -606,24 +641,28 @@ export default function DashboardPage() {
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   Settings
                 </button>
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   Upgrade
                 </button>
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   24/7 Support
                 </button>
                 <button
                   className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
+                  onClick={() => setProfileMenuOpen(false)}
                 >
                   Log Out
                 </button>
