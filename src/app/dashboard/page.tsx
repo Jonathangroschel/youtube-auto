@@ -323,13 +323,12 @@ const mobileSections: MobileSection[] = [
   },
   {
     label: "Tools",
-    items: [{ label: "Crayo Editor", href: "/tools" }],
+    items: [{ label: "Editor", href: "/tools" }],
   },
   {
     label: "More",
     items: [
       { label: "24/7 Support", href: "/support" },
-      { label: "Crayo Affiliate", href: "/affiliate" },
     ],
   },
 ];
