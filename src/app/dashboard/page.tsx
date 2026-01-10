@@ -356,8 +356,8 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
-      <div className="mx-auto flex w-full max-w-[90rem]">
+    <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
+      <div className="mx-auto flex w-full md:max-w-[90rem]">
         <aside className="sticky top-0 hidden h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
           <div className="relative flex h-full w-full flex-col items-center gap-4">
             <div className="absolute left-0 top-[112px] h-10 w-1.5 rounded-r-lg bg-[#335CFF]" />
@@ -408,7 +408,7 @@ export default function DashboardPage() {
           </div>
         </aside>
 
-        <main className="flex min-h-screen flex-1 flex-col px-4 pb-10 pt-4 md:px-10 md:py-6">
+        <main className="flex min-h-[100dvh] w-full flex-1 flex-col px-4 pb-16 pt-3 md:px-10 md:py-6">
           <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
             <a
               className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#E7EDFF] text-base font-semibold text-[#335CFF]"
@@ -563,20 +563,18 @@ export default function DashboardPage() {
             <p className="text-lg font-semibold text-black">
               Welcome back, Jonathan
             </p>
-            <div className="flex items-center gap-3">
+            <div className="relative group">
               <button
-                className="flex items-center justify-center rounded-full border border-[#5B7CFF] bg-[#3860FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
                 type="button"
+                aria-haspopup="menu"
               >
-                Earn $75+
-              </button>
-              <button
-                className="flex items-center gap-2 rounded-full border border-gray-200 bg-white p-1.5 pr-3 transition-colors hover:bg-gray-50"
-                type="button"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#6A8BFF] to-[#335CFF] text-sm font-semibold text-white">
-                  JG
-                </span>
+                <img
+                  src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
+                  alt="Profile"
+                  className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                  draggable="false"
+                />
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
@@ -590,6 +588,46 @@ export default function DashboardPage() {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
+              <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                <div className="flex flex-row items-center space-x-2 px-3 py-2">
+                  <img
+                    src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
+                    alt="Profile"
+                    className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                    draggable="false"
+                  />
+                  <div className="flex flex-col items-start justify-start">
+                    <p className="text-base font-medium">Jonathan Groschel</p>
+                    <p className="text-xs text-gray-500">
+                      jonathangroschel5@gmail.com
+                    </p>
+                  </div>
+                </div>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  Settings
+                </button>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  Upgrade
+                </button>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  24/7 Support
+                </button>
+                <button
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  Log Out
+                </button>
+              </div>
             </div>
           </div>
 
@@ -598,13 +636,13 @@ export default function DashboardPage() {
               {mainActions.map((action) => (
                 <div
                   key={action.title}
-                  className={`flex items-center justify-between rounded-2xl p-4 sm:p-5 ${
+                  className={`flex flex-col gap-4 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${
                     action.tone === "primary"
                       ? "bg-[#335CFF] text-white"
                       : "border border-[#E1E4EA] bg-[#F5F7FA]"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-start gap-3">
                     <div
                       className={`flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
                         action.tone === "primary"
@@ -616,7 +654,7 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <h2
-                        className={`text-base font-semibold md:text-lg lg:text-xl ${
+                        className={`text-sm font-semibold sm:text-base md:text-lg lg:text-xl ${
                           action.tone === "primary" ? "text-white" : "text-black"
                         }`}
                       >
@@ -633,7 +671,7 @@ export default function DashboardPage() {
                         )}
                       </h2>
                       <p
-                        className={`text-xs ${
+                        className={`text-[11px] sm:text-xs ${
                           action.tone === "primary"
                             ? "text-blue-100"
                             : "text-gray-600"
@@ -644,7 +682,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
+                    className={`flex h-8 w-8 items-center justify-center rounded-xl self-end sm:h-10 sm:w-10 sm:self-auto ${
                       action.tone === "primary"
                         ? "bg-[#6895FF]"
                         : "bg-white"
@@ -680,13 +718,15 @@ export default function DashboardPage() {
                   <div className="h-40 w-full rounded-xl bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold">{feature.title}</h3>
-                      <p className="text-sm text-gray-500">
+                      <h3 className="text-base font-semibold sm:text-lg">
+                        {feature.title}
+                      </h3>
+                      <p className="text-xs text-gray-500 sm:text-sm">
                         {feature.description}
                       </p>
                     </div>
                     <button
-                      className="flex items-center gap-1 rounded-lg bg-[#EBF1FF] px-4 py-2 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5]"
+                      className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#EBF1FF] px-4 py-2 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5] sm:w-auto"
                       type="button"
                     >
                       Try Now
@@ -709,12 +749,12 @@ export default function DashboardPage() {
             </div>
 
             <div className="md:hidden">
-              <div className="-mx-4 overflow-x-auto px-4">
-                <div className="flex snap-x snap-mandatory gap-3">
+              <div className="-mx-4 overflow-x-auto px-4 [-webkit-overflow-scrolling:touch]">
+                <div className="flex snap-x snap-mandatory gap-3 pb-1">
                   {secondaryFeatures.map((feature) => (
                     <div
                       key={feature.title}
-                      className="flex w-[75%] flex-none snap-center items-center gap-3 rounded-xl border border-gray-200 bg-white p-3"
+                      className="flex w-[82%] flex-none snap-center items-center gap-3 rounded-xl border border-gray-200 bg-white p-3"
                     >
                       <div className="h-24 w-20 flex-shrink-0 rounded-lg bg-gradient-to-br from-slate-200 via-slate-100 to-slate-300" />
                       <div className="flex h-full flex-1 flex-col justify-between">
@@ -804,7 +844,9 @@ export default function DashboardPage() {
 
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Crayo Tools</h2>
+                <h2 className="text-base font-semibold sm:text-lg">
+                  Crayo Tools
+                </h2>
                 <a
                   className="flex items-center gap-1 text-sm font-medium text-[#0E121B]"
                   href="/tools"
@@ -824,12 +866,12 @@ export default function DashboardPage() {
                   </svg>
                 </a>
               </div>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-6">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-6">
                 {toolCards.map((tool) => (
                   <a
                     key={tool.label}
                     href={tool.href}
-                    className="flex flex-col items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-center transition-colors hover:bg-gray-50 md:p-6"
+                    className="flex flex-col items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 text-center transition-colors hover:bg-gray-50 sm:p-4 md:p-6"
                   >
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EBF1FF]">
                       {tool.icon}

@@ -408,20 +408,18 @@ export default function ProjectsPage() {
                 <h2 className="text-lg font-medium text-black">Projects</h2>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="relative group">
               <button
-                className="flex items-center justify-center rounded-full border border-[#5B7CFF] bg-[#3860FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
                 type="button"
+                aria-haspopup="menu"
               >
-                Earn $75+
-              </button>
-              <button
-                className="flex items-center gap-2 rounded-full border border-gray-200 bg-white p-1.5 pr-3 transition-colors hover:bg-gray-50"
-                type="button"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#6A8BFF] to-[#335CFF] text-sm font-semibold text-white">
-                  JG
-                </span>
+                <img
+                  src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
+                  alt="Profile"
+                  className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                  draggable="false"
+                />
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
@@ -435,6 +433,46 @@ export default function ProjectsPage() {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
+              <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md opacity-0 transition-all duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                <div className="flex flex-row items-center space-x-2 px-3 py-2">
+                  <img
+                    src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
+                    alt="Profile"
+                    className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                    draggable="false"
+                  />
+                  <div className="flex flex-col items-start justify-start">
+                    <p className="text-base font-medium">Jonathan Groschel</p>
+                    <p className="text-xs text-gray-500">
+                      jonathangroschel5@gmail.com
+                    </p>
+                  </div>
+                </div>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  Settings
+                </button>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  Upgrade
+                </button>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  24/7 Support
+                </button>
+                <button
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  type="button"
+                >
+                  Log Out
+                </button>
+              </div>
             </div>
           </div>
 
