@@ -693,7 +693,7 @@ export default function ToolsPage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
+          <div className="flex flex-1 flex-col gap-4 pt-4 md:pt-0">
             <div className="flex flex-col space-y-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {quickTools.map((tool) => (

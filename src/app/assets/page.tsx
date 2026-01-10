@@ -580,7 +580,7 @@ export default function AssetsPage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
+          <div className="flex flex-1 flex-col gap-4 pt-4 md:pt-0">
             <div className="flex flex-col space-y-3 lg:flex-row lg:items-end lg:justify-between lg:space-y-0">
               <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
                 <div className="relative flex h-fit gap-4 overflow-x-auto [-webkit-overflow-scrolling:touch]">

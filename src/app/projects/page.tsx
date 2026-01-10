@@ -605,7 +605,7 @@ export default function ProjectsPage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
+          <div className="flex flex-1 flex-col gap-4 pt-4 md:pt-0">
             <div className="flex flex-col space-y-3 lg:flex-row lg:items-end lg:justify-between lg:space-y-0">
               <button
                 className="group w-full lg:w-64"
