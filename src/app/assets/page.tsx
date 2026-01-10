@@ -399,7 +399,7 @@ export default function AssetsPage() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-10 hidden items-center justify-between bg-[#F6F8FC]/80 pb-6 pt-2 backdrop-blur-xl md:flex">
+          <div className="sticky top-0 z-20 hidden items-center justify-between border-b border-gray-200 bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
             <div className="flex items-center gap-2">
               <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white">
                 <svg
