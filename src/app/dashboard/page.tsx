@@ -369,6 +369,7 @@ export default function DashboardPage() {
     height: 0,
     opacity: 0,
   });
+  const [indicatorReady, setIndicatorReady] = useState(false);
   const navContainerRef = useRef<HTMLDivElement | null>(null);
   const navItemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -418,7 +419,11 @@ export default function DashboardPage() {
       return;
     }
     updateIndicator(resolvedNavIndex);
-  }, [resolvedNavIndex, updateIndicator]);
+    if (!indicatorReady) {
+      const frame = requestAnimationFrame(() => setIndicatorReady(true));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [resolvedNavIndex, updateIndicator, indicatorReady]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -441,11 +446,12 @@ export default function DashboardPage() {
             className="relative flex w-full flex-1 flex-col items-center gap-4"
           >
             <div
-              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 transform: `translateY(${indicatorStyle.top}px)`,
                 height: `${indicatorStyle.height}px`,
                 opacity: indicatorStyle.opacity,
+                transition: indicatorReady ? undefined : "none",
               }}
             />
             <a
