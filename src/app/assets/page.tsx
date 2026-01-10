@@ -1,5 +1,6 @@
 "use client";
 
+import SearchOverlay from "@/components/search-overlay";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type NavItem = {
@@ -161,6 +162,7 @@ const assetTabs = ["All", "Video", "Images", "Audio"];
 
 export default function AssetsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
     () =>
       Object.fromEntries(
@@ -222,15 +224,17 @@ export default function AssetsPage() {
                 </a>
               ))}
             </nav>
-            <div className="mt-auto pb-2">
+            <div className="mt-auto pb-6">
               <button
-                className="group flex h-11 w-11 flex-col items-center justify-center rounded-lg border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100"
+                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100 xl:h-14 xl:w-14"
                 type="button"
+                aria-label="Search"
+                onClick={() => setSearchOpen(true)}
               >
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-4 w-4 text-gray-400 group-hover:text-gray-600"
+                  className="h-5 w-5 text-gray-400 group-hover:text-gray-600"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -240,7 +244,7 @@ export default function AssetsPage() {
                   <circle cx="11" cy="11" r="7" />
                   <path d="m20 20-3.5-3.5" />
                 </svg>
-                <span className="text-[9px] font-medium text-gray-400 group-hover:text-gray-600">
+                <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600">
                   Cmd+K
                 </span>
               </button>
@@ -746,6 +750,7 @@ export default function AssetsPage() {
           </div>
         </main>
       </div>
+      <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }
