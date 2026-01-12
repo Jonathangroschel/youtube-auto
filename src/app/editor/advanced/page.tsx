@@ -162,49 +162,53 @@ const transformHandles: Array<{
   className: string;
   cursor: string;
 }> = [
-  {
-    id: "nw",
-    className: "left-0 top-0 translate-x-1/2 translate-y-1/2",
-    cursor: "cursor-nwse-resize",
-  },
-  {
-    id: "n",
-    className: "left-1/2 top-0 -translate-x-1/2 translate-y-1/2",
-    cursor: "cursor-ns-resize",
-  },
-  {
-    id: "ne",
-    className: "right-0 top-0 -translate-x-1/2 translate-y-1/2",
-    cursor: "cursor-nesw-resize",
-  },
-  {
-    id: "e",
-    className: "right-0 top-1/2 -translate-x-1/2 -translate-y-1/2",
-    cursor: "cursor-ew-resize",
-  },
-  {
-    id: "se",
-    className: "right-0 bottom-0 -translate-x-1/2 -translate-y-1/2",
-    cursor: "cursor-nwse-resize",
-  },
-  {
-    id: "s",
-    className: "left-1/2 bottom-0 -translate-x-1/2 -translate-y-1/2",
-    cursor: "cursor-ns-resize",
-  },
-  {
-    id: "sw",
-    className: "left-0 bottom-0 translate-x-1/2 -translate-y-1/2",
-    cursor: "cursor-nesw-resize",
-  },
-  {
-    id: "w",
-    className: "left-0 top-1/2 translate-x-1/2 -translate-y-1/2",
-    cursor: "cursor-ew-resize",
-  },
-];
+    {
+      id: "nw",
+      className: "left-0 top-0 translate-x-1/2 translate-y-1/2",
+      cursor: "cursor-nwse-resize",
+    },
+    {
+      id: "n",
+      className: "left-1/2 top-0 -translate-x-1/2 translate-y-1/2",
+      cursor: "cursor-ns-resize",
+    },
+    {
+      id: "ne",
+      className: "right-0 top-0 -translate-x-1/2 translate-y-1/2",
+      cursor: "cursor-nesw-resize",
+    },
+    {
+      id: "e",
+      className: "right-0 top-1/2 -translate-x-1/2 -translate-y-1/2",
+      cursor: "cursor-ew-resize",
+    },
+    {
+      id: "se",
+      className: "right-0 bottom-0 -translate-x-1/2 -translate-y-1/2",
+      cursor: "cursor-nwse-resize",
+    },
+    {
+      id: "s",
+      className: "left-1/2 bottom-0 -translate-x-1/2 -translate-y-1/2",
+      cursor: "cursor-ns-resize",
+    },
+    {
+      id: "sw",
+      className: "left-0 bottom-0 translate-x-1/2 -translate-y-1/2",
+      cursor: "cursor-nesw-resize",
+    },
+    {
+      id: "w",
+      className: "left-0 top-1/2 translate-x-1/2 -translate-y-1/2",
+      cursor: "cursor-ew-resize",
+    },
+  ];
 
 const speedPresets = [0.5, 1, 1.5, 2];
+const panelCardClass =
+  "rounded-xl border border-gray-200/70 bg-white px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.06)]";
+const panelButtonClass =
+  "flex w-full items-center gap-2 rounded-xl border border-gray-200/70 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_6px_14px_rgba(15,23,42,0.05)] transition hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2";
 
 const toolbarItems = [
   {
@@ -550,26 +554,35 @@ const SliderField = ({
   onChange,
   valueLabel,
 }: SliderFieldProps) => {
+  const percentage = ((value - min) / (max - min)) * 100;
+  const normalized = Number.isFinite(percentage)
+    ? Math.min(100, Math.max(0, percentage))
+    : 0;
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-          {label}
-        </span>
-        <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-semibold text-[#335CFF]">
+        <span className="text-xs font-semibold text-gray-600">{label}</span>
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
           {valueLabel ?? value}
         </span>
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="h-1.5 w-full cursor-pointer rounded-full bg-gray-100 accent-[#335CFF]"
-        aria-label={label}
-      />
+      <div className="relative h-4">
+        <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+        <div
+          className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+          style={{ width: `${normalized}%` }}
+        />
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="refined-slider relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent"
+          aria-label={label}
+        />
+      </div>
     </div>
   );
 };
@@ -588,16 +601,12 @@ const ToggleSwitch = ({ checked, onChange, ariaLabel }: ToggleSwitchProps) => {
       aria-checked={checked}
       aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-        checked
-          ? "bg-[#335CFF] shadow-[0_6px_12px_rgba(51,92,255,0.35)]"
-          : "bg-gray-200"
-      }`}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/40 focus-visible:ring-offset-2 ${checked ? "bg-[#5B6CFF]" : "bg-gray-200"
+        }`}
     >
       <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition ${
-          checked ? "translate-x-4" : "translate-x-1"
-        }`}
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.2)] transition-transform ${checked ? "translate-x-[18px]" : "translate-x-[2px]"
+          }`}
       />
     </button>
   );
@@ -722,6 +731,8 @@ export default function AdvancedEditorPage() {
   const [timeline, setTimeline] = useState<TimelineClip[]>([]);
   const [lanes, setLanes] = useState<TimelineLane[]>([]);
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("All");
+  const [isAssetLibraryExpanded, setIsAssetLibraryExpanded] = useState(false);
+  const [assetSearch, setAssetSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const [projectName, setProjectName] = useState("Untitled Project");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -915,6 +926,16 @@ export default function AdvancedEditorPage() {
     }
     return assets.filter((asset) => asset.kind === "audio");
   }, [assets, assetFilter]);
+
+  const viewAllAssets = useMemo(() => {
+    const query = assetSearch.trim().toLowerCase();
+    if (!query) {
+      return filteredAssets;
+    }
+    return filteredAssets.filter((asset) =>
+      asset.name.toLowerCase().includes(query)
+    );
+  }, [assetSearch, filteredAssets]);
 
   const timelineClips = useMemo(() => {
     return timeline
@@ -1710,11 +1731,6 @@ export default function AdvancedEditorPage() {
       setAssets((prev) => [...newAssets, ...prev]);
       setActiveAssetId((prev) => newAssets[0]?.id ?? prev ?? null);
       setTimeline((prev) => [...prev, ...newClips]);
-      const firstNewClip = newClips[0]?.id ?? null;
-      setSelectedClipId((prev) => prev ?? firstNewClip);
-      if (firstNewClip) {
-        setSelectedClipIds([firstNewClip]);
-      }
     } finally {
       setUploading(false);
       event.target.value = "";
@@ -1746,8 +1762,6 @@ export default function AdvancedEditorPage() {
     setLanes(nextLanes);
     setTimeline((prev) => {
       const clip = createClip(assetId, laneId, 0, asset);
-      setSelectedClipId(clip.id);
-      setSelectedClipIds([clip.id]);
       return [...prev, clip];
     });
     setActiveAssetId(assetId);
@@ -1766,8 +1780,6 @@ export default function AdvancedEditorPage() {
       assetOverride
     );
     setTimeline((prev) => [...prev, clip]);
-    setSelectedClipId(clip.id);
-    setSelectedClipIds([clip.id]);
     setActiveAssetId(assetId);
   };
 
@@ -2049,18 +2061,18 @@ export default function AdvancedEditorPage() {
     const radius = settings.roundCorners
       ? settings.cornerRadiusLinked
         ? {
-            topLeft: settings.cornerRadius,
-            topRight: settings.cornerRadius,
-            bottomRight: settings.cornerRadius,
-            bottomLeft: settings.cornerRadius,
-          }
+          topLeft: settings.cornerRadius,
+          topRight: settings.cornerRadius,
+          bottomRight: settings.cornerRadius,
+          bottomLeft: settings.cornerRadius,
+        }
         : settings.cornerRadii
       : {
-          topLeft: 0,
-          topRight: 0,
-          bottomRight: 0,
-          bottomLeft: 0,
-        };
+        topLeft: 0,
+        topRight: 0,
+        bottomRight: 0,
+        bottomLeft: 0,
+      };
     const borderRadius = `${radius.topLeft}px ${radius.topRight}px ${radius.bottomRight}px ${radius.bottomLeft}px`;
     const brightnessFactor = clamp(
       (1 + settings.brightness / 100) * (1 + settings.exposure / 100),
@@ -2270,10 +2282,10 @@ export default function AdvancedEditorPage() {
       setRangeSelection((prev) =>
         prev
           ? {
-              ...prev,
-              currentX: event.clientX,
-              currentY: event.clientY,
-            }
+            ...prev,
+            currentX: event.clientX,
+            currentY: event.clientY,
+          }
           : prev
       );
     };
@@ -2401,10 +2413,10 @@ export default function AdvancedEditorPage() {
         setDragClipState((prev) =>
           prev
             ? {
-                ...prev,
-                targetLaneId,
-                createdLaneId,
-              }
+              ...prev,
+              targetLaneId,
+              createdLaneId,
+            }
             : prev
         );
       }
@@ -2412,10 +2424,10 @@ export default function AdvancedEditorPage() {
         prev.map((clip) =>
           clip.id === dragged.id
             ? {
-                ...clip,
-                startTime: targetTime,
-                laneId: targetLaneId,
-              }
+              ...clip,
+              startTime: targetTime,
+              laneId: targetLaneId,
+            }
             : clip
         )
       );
@@ -2525,7 +2537,7 @@ export default function AdvancedEditorPage() {
       const ratio =
         resizeTransformState.aspectRatio ||
         resizeTransformState.startRect.width /
-          resizeTransformState.startRect.height ||
+        resizeTransformState.startRect.height ||
         1;
       let next: ClipTransform;
 
@@ -2545,11 +2557,11 @@ export default function AdvancedEditorPage() {
           next = {
             x: handle.includes("w")
               ? resizeTransformState.startRect.x +
-                (resizeTransformState.startRect.width - width)
+              (resizeTransformState.startRect.width - width)
               : resizeTransformState.startRect.x,
             y: handle.includes("n")
               ? resizeTransformState.startRect.y +
-                (resizeTransformState.startRect.height - height)
+              (resizeTransformState.startRect.height - height)
               : resizeTransformState.startRect.y,
             width,
             height,
@@ -2566,7 +2578,7 @@ export default function AdvancedEditorPage() {
           next = {
             x: handle.includes("w")
               ? resizeTransformState.startRect.x +
-                (resizeTransformState.startRect.width - width)
+              (resizeTransformState.startRect.width - width)
               : resizeTransformState.startRect.x,
             y: centerY - height / 2,
             width,
@@ -2585,7 +2597,7 @@ export default function AdvancedEditorPage() {
             x: centerX - width / 2,
             y: handle.includes("n")
               ? resizeTransformState.startRect.y +
-                (resizeTransformState.startRect.height - height)
+              (resizeTransformState.startRect.height - height)
               : resizeTransformState.startRect.y,
             width,
             height,
@@ -2837,11 +2849,92 @@ export default function AdvancedEditorPage() {
   }, [handleTogglePlayback]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#F2F4FA] text-[#0E121B]">
-      <aside className="hidden w-20 flex-col items-center border-r border-gray-200 bg-white py-4 lg:flex">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EEF2FF] text-sm font-semibold text-[#335CFF]">
-          YA
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#F2F4FA] text-[#0E121B]">
+      <header className="min-h-16 border-b border-gray-200 bg-white px-5 py-2">
+        <div className="flex w-full items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#C7D2FE] bg-white text-[12px] font-semibold text-[#335CFF]"
+              type="button"
+              aria-label="Home"
+            >
+              YA
+            </button>
+            <div className="flex h-10 items-center gap-2 rounded-full bg-gray-100/80 px-3.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                Project
+              </span>
+              <label htmlFor="project-name-input" className="sr-only">
+                Project name
+              </label>
+              <input
+                id="project-name-input"
+                className="w-44 bg-transparent text-[15px] font-semibold text-gray-900 outline-none"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+              />
+            </div>
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+              type="button"
+              aria-label="Project options"
+            >
+              <svg viewBox="0 0 16 16" className="h-4.5 w-4.5">
+                <path
+                  d="M6.75 8a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0M12 8a1.25 1.25 0 1 1 2.5 0A1.25 1.25 0 0 1 12 8M1.5 8A1.25 1.25 0 1 1 4 8a1.25 1.25 0 0 1-2.5 0"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+            <div className="hidden h-6 w-px bg-gray-200 md:block" />
+            <div className="flex items-center gap-1">
+              <button
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition hover:bg-gray-200"
+                type="button"
+                aria-label="Undo"
+              >
+                <svg viewBox="0 0 16 16" className="h-4.5 w-4.5">
+                  <path
+                    d="M3 8h7a3 3 0 0 1 3 3M3 8l3 3M3 8l3-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition hover:bg-gray-200"
+                type="button"
+                aria-label="Redo"
+              >
+                <svg viewBox="0 0 16 16" className="h-4.5 w-4.5">
+                  <path
+                    d="M13 8H6a3 3 0 0 0-3 3m10-3-3 3m3-3-3-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-end">
+            <button
+              className="h-10 rounded-full bg-[#335CFF] px-5 text-sm font-semibold text-white shadow-[0_8px_16px_rgba(51,92,255,0.22)]"
+              type="button"
+            >
+              Export
+            </button>
+          </div>
         </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside className="hidden w-20 flex-col items-center border-r border-gray-200 bg-white py-4 lg:flex">
         <nav className="mt-6 flex flex-1 flex-col items-center gap-3">
           {toolbarItems.map((item) => {
             const isActive = item.id === activeTool;
@@ -2853,11 +2946,10 @@ export default function AdvancedEditorPage() {
                 onClick={() => setActiveTool(item.id)}
               >
                 <span
-                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-                    isActive
-                      ? "bg-[#E7EDFF] text-[#335CFF]"
-                      : "bg-transparent text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                  }`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${isActive
+                    ? "bg-[#E7EDFF] text-[#335CFF]"
+                    : "bg-transparent text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    }`}
                 >
                   {item.icon}
                 </span>
@@ -2872,229 +2964,208 @@ export default function AdvancedEditorPage() {
 
       <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
         {showVideoPanel && selectedVideoEntry && selectedVideoSettings ? (
-          <div className="flex h-full flex-col bg-[#F7F8FC]">
-            <div className="sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 px-5 py-4 backdrop-blur">
+          <div className="flex h-full flex-col">
+            {/* Minimal Header */}
+            <div className="border-b border-gray-100/80 bg-white/80 px-4 py-4 backdrop-blur">
               <div className="flex items-center gap-3">
                 <button
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-[0_6px_16px_rgba(15,23,42,0.12)] ring-1 ring-gray-100 transition hover:-translate-y-0.5 hover:shadow-[0_10px_20px_rgba(15,23,42,0.12)]"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
                   type="button"
-                  aria-label="Back to library"
+                  aria-label="Back"
                   onClick={() => {
                     setSelectedClipId(null);
                     setSelectedClipIds([]);
                     setActiveCanvasClipId(null);
                   }}
                 >
-                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                  <svg viewBox="0 0 16 16" className="h-5 w-5">
+                    <path d="M10 4 6 8l4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <div>
+                  <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                    Edit Video
+                  </h2>
+                  <p className="max-w-[200px] truncate text-[11px] font-medium text-gray-400">
+                    {selectedVideoEntry.asset.name}
+                  </p>
+                </div>
+              </div>
+
+              {/* Edit / Adjust Tabs */}
+              <div className="mt-4 flex gap-1 rounded-full bg-gray-100 p-1">
+                <button
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2 ${videoPanelView === "edit"
+                    ? "bg-white text-[#335CFF] shadow-[0_4px_12px_rgba(15,23,42,0.12)]"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  type="button"
+                  onClick={() => setVideoPanelView("edit")}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    className={`h-4 w-4 ${videoPanelView === "edit" ? "text-[#335CFF]" : "text-gray-500"}`}
+                  >
                     <path
-                      d="M10 4 6 8l4 4"
+                      d="M11.5 2.5l2 2-8 8-2.5.5.5-2.5 8-8z"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="1.4"
+                      strokeWidth="1.2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                   </svg>
-                </button>
-                <div>
-                  <h2 className="text-lg font-semibold tracking-[-0.01em] text-[#111827]">
-                    {videoPanelView === "adjust"
-                      ? "Adjust Video"
-                      : "Edit Video"}
-                  </h2>
-                </div>
-              </div>
-              <div className="mt-4 flex rounded-full bg-[#EEF2FF] p-1">
-                <button
-                  className={`flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
-                    videoPanelView === "edit"
-                      ? "bg-white text-[#111827] shadow-[0_6px_16px_rgba(51,92,255,0.18)]"
-                      : "text-[#5B6B8A] hover:bg-white/70"
-                  }`}
-                  type="button"
-                  onClick={() => setVideoPanelView("edit")}
-                >
                   Edit
                 </button>
                 <button
-                  className={`flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
-                    videoPanelView === "adjust"
-                      ? "bg-white text-[#111827] shadow-[0_6px_16px_rgba(51,92,255,0.18)]"
-                      : "text-[#5B6B8A] hover:bg-white/70"
-                  }`}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2 ${videoPanelView === "adjust"
+                    ? "bg-white text-[#335CFF] shadow-[0_4px_12px_rgba(15,23,42,0.12)]"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
                   type="button"
                   onClick={() => setVideoPanelView("adjust")}
                 >
+                  <svg
+                    viewBox="0 0 16 16"
+                    className={`h-4 w-4 ${videoPanelView === "adjust" ? "text-[#335CFF]" : "text-gray-500"}`}
+                  >
+                    <path d="M10 5.3a2 2 0 1 0 4 0 2 2 0 0 0-4 0m0 0H2.7m3.3 5.4a2 2 0 1 0-4 0 2 2 0 0 0 4 0m0 0h7.3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  </svg>
                   Adjust
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+            <div className="flex-1 space-y-4 overflow-y-auto p-4">
               {videoPanelView === "edit" ? (
                 <>
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-3">
-                    <button
-                      className="flex w-full items-center justify-between rounded-xl border border-gray-200/70 bg-[#F8FAFF] px-3 py-3 text-sm font-semibold text-[#1F2A44] shadow-[0_6px_16px_rgba(15,23,42,0.08)] transition hover:border-[#CBD5F5]"
-                      type="button"
-                      onClick={() => replaceInputRef.current?.click()}
-                    >
-                      <span className="flex items-center gap-2">
-                        <svg viewBox="0 0 16 16" className="h-4 w-4">
-                          <path
-                            d="m2 9 2.4 2.5A4.9 4.9 0 0 0 8 13a5 5 0 0 0 4-2M2 9v2.8M2 9h2.8M14 7l-2.4-2.5A4.9 4.9 0 0 0 8 3a5 5 0 0 0-4 2M14 7V4.2M14 7h-2.8"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        Replace
-                      </span>
-                      <svg viewBox="0 0 16 16" className="h-4 w-4">
-                        <path
-                          d="m4 6 4 4 4-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
+                  {/* Replace Button */}
+                  <button
+                    className={`${panelButtonClass} justify-between`}
+                    type="button"
+                    onClick={() => replaceInputRef.current?.click()}
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg viewBox="0 0 16 16" className="h-5 w-5 text-gray-500">
+                        <path d="m2 9 2.4 2.5A4.9 4.9 0 0 0 8 13a5 5 0 0 0 4-2M2 9v2.8M2 9h2.8M14 7l-2.4-2.5A4.9 4.9 0 0 0 8 3a5 5 0 0 0-4 2M14 7V4.2M14 7h-2.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
-                    </button>
-                    <input
-                      ref={replaceInputRef}
-                      type="file"
-                      accept="video/*"
-                      className="hidden"
-                      onChange={handleReplaceVideo}
-                    />
-                  </div>
+                      Replace
+                    </span>
+                    <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-400">
+                      <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <input
+                    ref={replaceInputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={handleReplaceVideo}
+                  />
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-3">
+                  {/* Speed Control */}
+                  <div className={panelCardClass}>
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                        Speed
-                      </span>
-                      <span className="text-xs font-semibold text-gray-500">
-                        {selectedVideoSettings.speed}x
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {speedPresets.map((preset) => (
+                      <span className="text-sm font-semibold text-gray-700">Speed</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {speedPresets.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${selectedVideoSettings.speed === preset
+                              ? "bg-[#EEF2FF] text-[#335CFF] shadow-[inset_0_0_0_1px_rgba(51,92,255,0.25)]"
+                              : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                              }`}
+                            onClick={() =>
+                              updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
+                                ...current,
+                                speed: preset,
+                              }))
+                            }
+                          >
+                            {preset}x
+                          </button>
+                        ))}
                         <button
-                          key={preset}
                           type="button"
-                          className={`rounded-full border border-transparent px-3 py-1.5 text-[11px] font-semibold transition ${
-                            selectedVideoSettings.speed === preset
-                              ? "bg-[#EEF2FF] text-[#335CFF] shadow-[0_6px_16px_rgba(51,92,255,0.2)]"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          }`}
+                          className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${!speedPresets.includes(selectedVideoSettings.speed)
+                            ? "bg-[#EEF2FF] text-[#335CFF] shadow-[inset_0_0_0_1px_rgba(51,92,255,0.25)]"
+                            : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                            }`}
                           onClick={() =>
-                            updateClipSettings(selectedVideoEntry.clip.id, (
-                              current
-                            ) => ({ ...current, speed: preset }))
+                            updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
+                              ...current,
+                              speed: speedPresets.includes(current.speed) ? 1.25 : current.speed,
+                            }))
                           }
                         >
-                          {preset}x
+                          Custom
                         </button>
-                      ))}
-                      <button
-                        type="button"
-                        className={`rounded-full border border-transparent px-3 py-1.5 text-[11px] font-semibold transition ${
-                          speedPresets.includes(selectedVideoSettings.speed)
-                            ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                            : "bg-[#EEF2FF] text-[#335CFF] shadow-[0_6px_16px_rgba(51,92,255,0.2)]"
-                        }`}
-                        onClick={() =>
-                          updateClipSettings(selectedVideoEntry.clip.id, (
-                            current
-                          ) => ({
-                            ...current,
-                            speed: speedPresets.includes(current.speed)
-                              ? 1.25
-                              : current.speed,
-                          }))
-                        }
-                      >
-                        Custom
-                      </button>
+                      </div>
                     </div>
                     {!speedPresets.includes(selectedVideoSettings.speed) && (
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="text-[11px] uppercase tracking-[0.12em] text-gray-400">
+                      <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200/70 bg-gray-50/70 px-3 py-2 text-xs text-gray-500">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
                           Custom
                         </span>
-                        <input
-                          type="number"
-                          min={0.1}
-                          max={4}
-                          step={0.05}
-                          value={selectedVideoSettings.speed}
-                          onChange={(event) =>
-                            updateClipSettings(
-                              selectedVideoEntry.clip.id,
-                              (current) => ({
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0.1}
+                            max={4}
+                            step={0.05}
+                            value={selectedVideoSettings.speed}
+                            onChange={(event) =>
+                              updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
                                 ...current,
-                                speed: clamp(
-                                  Number(event.target.value),
-                                  0.1,
-                                  4
-                                ),
-                              })
-                            )
-                          }
-                          className="w-20 rounded-lg border border-gray-200 bg-[#F7F9FF] px-2 py-1 text-xs font-semibold text-gray-700"
-                        />
-                        <span>x</span>
+                                speed: clamp(Number(event.target.value), 0.1, 4),
+                              }))
+                            }
+                            className="w-16 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
+                          />
+                          <span className="text-xs text-gray-400">x</span>
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-3">
+                  {/* Volume Control */}
+                  <div className={panelCardClass}>
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                        Volume
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
+                              ...current,
+                              muted: !current.muted,
+                            }))
+                          }
+                          className="rounded-full p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                          aria-label={selectedVideoSettings.muted ? "Unmute" : "Mute"}
+                        >
+                          {selectedVideoSettings.muted ? (
+                            <svg viewBox="0 0 24 24" className="h-5 w-5">
+                              <path d="M6 9h4l5-4v14l-5-4H6zM19 9l-4 4m0-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" className="h-5 w-5">
+                              <path d="M12 6.1 7.6 9H5a3 3 0 0 0-3 3v0a3 3 0 0 0 3 3h2.6l4.4 3.6V6.1zM18.1 4.9a8.8 8.8 0 0 1 0 14.2M15.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </button>
+                        <span className="text-sm font-semibold text-gray-700">Volume</span>
+                      </div>
+                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+                        {selectedVideoSettings.volume}%
                       </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateClipSettings(selectedVideoEntry.clip.id, (
-                            current
-                          ) => ({ ...current, muted: !current.muted }))
-                        }
-                        className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F8FAFF] text-gray-600 shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
-                        aria-label={
-                          selectedVideoSettings.muted ? "Unmute" : "Mute"
-                        }
-                      >
-                        {selectedVideoSettings.muted ? (
-                          <svg viewBox="0 0 24 24" className="h-4 w-4">
-                            <path
-                              d="M6 9h4l5-4v14l-5-4H6zM19 9l-4 4m0-4 4 4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" className="h-4 w-4">
-                            <path
-                              d="M12 6.1 7.6 9H5a3 3 0 0 0-3 3v0a3 3 0 0 0 3 3h2.6l4.4 3.6V6.1zM18.1 4.9a8.8 8.8 0 0 1 0 14.2M15.5 8.5a5 5 0 0 1 0 7"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        )}
-                      </button>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="relative mt-3 h-4">
+                      <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+                      <div
+                        className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                        style={{ width: `${selectedVideoSettings.volume}%` }}
+                      />
                       <input
                         type="range"
                         min={0}
@@ -3102,81 +3173,51 @@ export default function AdvancedEditorPage() {
                         step={1}
                         value={selectedVideoSettings.volume}
                         onChange={(event) =>
-                          updateClipSettings(selectedVideoEntry.clip.id, (
-                            current
-                          ) => ({
+                          updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
                             ...current,
                             volume: clamp(Number(event.target.value), 0, 100),
                           }))
                         }
-                        className="h-1.5 flex-1 rounded-full bg-gray-100 accent-[#335CFF]"
+                        className="refined-slider relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent"
                         aria-label="Volume"
                       />
-                      <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-[#F7F9FF] px-2.5 py-1 text-xs font-semibold text-gray-700">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={1}
-                          value={selectedVideoSettings.volume}
-                          onChange={(event) =>
-                            updateClipSettings(selectedVideoEntry.clip.id, (
-                              current
-                            ) => ({
-                              ...current,
-                              volume: clamp(
-                                Number(event.target.value),
-                                0,
-                                100
-                              ),
-                            }))
-                          }
-                          className="w-12 bg-transparent text-right outline-none"
-                        />
-                        <span>%</span>
-                      </div>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-3">
+                  {/* Fade Audio In/Out */}
+                  <div className={panelCardClass}>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                        <svg viewBox="0 0 16 16" className="h-4 w-4">
-                          <path
-                            d="M6.2 14V7.6M14 14V2M2 14V9"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.2"
-                            strokeLinecap="round"
-                          />
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 16 16" className="h-5 w-5 text-gray-500">
+                          <path d="M6.2 14V7.6M10 14V5M14 14V2M2 14V10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                         </svg>
-                        Fade Audio In/Out
+                        <span className="text-sm font-semibold text-gray-700">Fade Audio In/Out</span>
                       </div>
                       <ToggleSwitch
                         checked={selectedVideoSettings.fadeEnabled}
                         onChange={(next) =>
-                          updateClipSettings(selectedVideoEntry.clip.id, (
-                            current
-                          ) => ({ ...current, fadeEnabled: next }))
+                          updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
+                            ...current,
+                            fadeEnabled: next,
+                          }))
                         }
                         ariaLabel="Toggle audio fade"
                       />
                     </div>
                     {selectedVideoSettings.fadeEnabled && (
-                      <div className="space-y-3">
+                      <div className="mt-4 space-y-3">
                         <SliderField
                           label="Fade In"
                           value={selectedVideoSettings.fadeIn}
                           min={0}
                           max={5}
                           step={0.1}
-                          valueLabel={`${selectedVideoSettings.fadeIn.toFixed(
-                            1
-                          )}s`}
+                          valueLabel={`${selectedVideoSettings.fadeIn.toFixed(1)}s`}
                           onChange={(value) =>
-                            updateClipSettings(selectedVideoEntry.clip.id, (
-                              current
-                            ) => ({ ...current, fadeIn: value }))
+                            updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
+                              ...current,
+                              fadeIn: value,
+                            }))
                           }
                         />
                         <SliderField
@@ -3185,22 +3226,21 @@ export default function AdvancedEditorPage() {
                           min={0}
                           max={5}
                           step={0.1}
-                          valueLabel={`${selectedVideoSettings.fadeOut.toFixed(
-                            1
-                          )}s`}
+                          valueLabel={`${selectedVideoSettings.fadeOut.toFixed(1)}s`}
                           onChange={(value) =>
-                            updateClipSettings(selectedVideoEntry.clip.id, (
-                              current
-                            ) => ({ ...current, fadeOut: value }))
+                            updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
+                              ...current,
+                              fadeOut: value,
+                            }))
                           }
                         />
                       </div>
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-3">
+                  <div className={`${panelCardClass} space-y-3`}>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
                         <svg viewBox="0 0 16 16" className="h-4 w-4">
                           <path
                             d="M12.2 13a.8.8 0 1 0 1.6 0zM13 9h-.8zM7 3v.8zm-4-.8a.8.8 0 1 0 0 1.6zM14 13V9h-1.6v4zM7 2.2H3v1.6h4zM13.8 9A6.8 6.8 0 0 0 7 2.2v1.6c2.9 0 5.2 2.3 5.2 5.2z"
@@ -3223,11 +3263,10 @@ export default function AdvancedEditorPage() {
                       <div className="space-y-3">
                         <button
                           type="button"
-                          className={`flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
-                            selectedVideoSettings.cornerRadiusLinked
-                              ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF]"
-                              : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100"
-                          }`}
+                          className={`flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold transition ${selectedVideoSettings.cornerRadiusLinked
+                            ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF]"
+                            : "border-gray-200/70 bg-gray-50 text-gray-500 hover:bg-white"
+                            }`}
                           onClick={() =>
                             updateClipSettings(
                               selectedVideoEntry.clip.id,
@@ -3242,11 +3281,11 @@ export default function AdvancedEditorPage() {
                                   cornerRadii: nextLinked
                                     ? current.cornerRadii
                                     : {
-                                        topLeft: current.cornerRadius,
-                                        topRight: current.cornerRadius,
-                                        bottomRight: current.cornerRadius,
-                                        bottomLeft: current.cornerRadius,
-                                      },
+                                      topLeft: current.cornerRadius,
+                                      topRight: current.cornerRadius,
+                                      bottomRight: current.cornerRadius,
+                                      bottomLeft: current.cornerRadius,
+                                    },
                                 };
                               }
                             )
@@ -3267,31 +3306,33 @@ export default function AdvancedEditorPage() {
                             : "Corners unlinked"}
                         </button>
                         {selectedVideoSettings.cornerRadiusLinked ? (
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <span className="text-[11px] uppercase tracking-[0.12em] text-gray-400">
+                          <div className="flex items-center justify-between rounded-lg border border-gray-200/70 bg-gray-50/70 px-3 py-2 text-xs text-gray-500">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
                               Radius
                             </span>
-                            <input
-                              type="number"
-                              min={0}
-                              max={120}
-                              value={selectedVideoSettings.cornerRadius}
-                              onChange={(event) =>
-                                updateClipSettings(
-                                  selectedVideoEntry.clip.id,
-                                  (current) => ({
-                                    ...current,
-                                    cornerRadius: clamp(
-                                      Number(event.target.value),
-                                      0,
-                                      120
-                                    ),
-                                  })
-                                )
-                              }
-                              className="w-16 rounded-lg border border-gray-200 bg-[#F7F9FF] px-2 py-1 text-xs font-semibold text-gray-700"
-                            />
-                            <span>px</span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                max={120}
+                                value={selectedVideoSettings.cornerRadius}
+                                onChange={(event) =>
+                                  updateClipSettings(
+                                    selectedVideoEntry.clip.id,
+                                    (current) => ({
+                                      ...current,
+                                      cornerRadius: clamp(
+                                        Number(event.target.value),
+                                        0,
+                                        120
+                                      ),
+                                    })
+                                  )
+                                }
+                                className="w-16 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
+                              />
+                              <span className="text-xs text-gray-400">px</span>
+                            </div>
                           </div>
                         ) : (
                           <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
@@ -3305,9 +3346,9 @@ export default function AdvancedEditorPage() {
                             ).map(([key, label]) => (
                               <label
                                 key={key}
-                                className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-[#F7F9FF] px-2 py-1"
+                                className="flex items-center justify-between gap-2 rounded-lg border border-gray-200/70 bg-gray-50/70 px-2.5 py-1.5"
                               >
-                                <span>{label}</span>
+                                <span className="text-[11px] font-medium text-gray-500">{label}</span>
                                 <input
                                   type="number"
                                   min={0}
@@ -3329,7 +3370,7 @@ export default function AdvancedEditorPage() {
                                       })
                                     )
                                   }
-                                  className="w-12 bg-transparent text-right font-semibold text-gray-700 outline-none"
+                                  className="w-12 bg-transparent text-right text-xs font-semibold text-gray-700 outline-none"
                                 />
                               </label>
                             ))}
@@ -3339,7 +3380,7 @@ export default function AdvancedEditorPage() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                  <div className={panelCardClass}>
                     <SliderField
                       label="Opacity"
                       value={selectedVideoSettings.opacity}
@@ -3355,40 +3396,42 @@ export default function AdvancedEditorPage() {
                     />
                   </div>
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-3">
+                  <div className={`${panelCardClass} space-y-3`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
                         Rotation
                       </span>
-                      <input
-                        type="number"
-                        min={-180}
-                        max={180}
-                        step={1}
-                        value={selectedVideoSettings.rotation}
-                        onChange={(event) =>
-                          updateClipSettings(selectedVideoEntry.clip.id, (
-                            current
-                          ) => ({
-                            ...current,
-                            rotation: clamp(
-                              Number(event.target.value),
-                              -180,
-                              180
-                            ),
-                          }))
-                        }
-                        className="w-20 rounded-lg border border-gray-200 bg-[#F7F9FF] px-2 py-1 text-xs font-semibold text-gray-700"
-                      />
+                      <div className="flex items-center gap-1 rounded-lg border border-gray-200/70 bg-gray-50/70 px-2 py-1">
+                        <input
+                          type="number"
+                          min={-180}
+                          max={180}
+                          step={1}
+                          value={selectedVideoSettings.rotation}
+                          onChange={(event) =>
+                            updateClipSettings(selectedVideoEntry.clip.id, (
+                              current
+                            ) => ({
+                              ...current,
+                              rotation: clamp(
+                                Number(event.target.value),
+                                -180,
+                                180
+                              ),
+                            }))
+                          }
+                          className="w-14 bg-transparent text-right text-xs font-semibold text-gray-700 outline-none"
+                        />
+                        <span className="text-[11px] text-gray-400">deg</span>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                          selectedVideoSettings.flipH
-                            ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_6px_16px_rgba(51,92,255,0.2)]"
-                            : "border-gray-200 bg-[#F8FAFF] text-gray-600 hover:border-[#CBD5F5]"
-                        }`}
+                        className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${selectedVideoSettings.flipH
+                          ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_4px_12px_rgba(51,92,255,0.18)]"
+                          : "border-gray-200/70 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
                         onClick={() =>
                           updateClipSettings(selectedVideoEntry.clip.id, (
                             current
@@ -3399,11 +3442,10 @@ export default function AdvancedEditorPage() {
                       </button>
                       <button
                         type="button"
-                        className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                          selectedVideoSettings.flipV
-                            ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_6px_16px_rgba(51,92,255,0.2)]"
-                            : "border-gray-200 bg-[#F8FAFF] text-gray-600 hover:border-[#CBD5F5]"
-                        }`}
+                        className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${selectedVideoSettings.flipV
+                          ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_4px_12px_rgba(51,92,255,0.18)]"
+                          : "border-gray-200/70 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
                         onClick={() =>
                           updateClipSettings(selectedVideoEntry.clip.id, (
                             current
@@ -3415,14 +3457,14 @@ export default function AdvancedEditorPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-3">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                  <div className={`${panelCardClass} space-y-3`}>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
                       Timing
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F8FAFF] text-gray-600 shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
                         aria-label="Set start time to playhead"
                         onClick={() =>
                           handleSetStartAtPlayhead(selectedVideoEntry.clip)
@@ -3454,11 +3496,11 @@ export default function AdvancedEditorPage() {
                               event.target.value
                             )
                           }
-                          className="rounded-lg border border-gray-200 bg-[#F7F9FF] px-2 py-1 text-xs font-semibold text-gray-700"
+                          className="rounded-lg border border-gray-200/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
                         />
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <div className="flex flex-1 flex-col">
                         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
                           End
@@ -3467,7 +3509,7 @@ export default function AdvancedEditorPage() {
                           key={`${selectedVideoEntry.clip.id}-end-${selectedVideoEntry.clip.startTime}-${selectedVideoEntry.clip.duration}`}
                           defaultValue={formatTimeWithTenths(
                             selectedVideoEntry.clip.startTime +
-                              selectedVideoEntry.clip.duration
+                            selectedVideoEntry.clip.duration
                           )}
                           onBlur={(event) =>
                             handleEndTimeCommit(
@@ -3475,12 +3517,12 @@ export default function AdvancedEditorPage() {
                               event.target.value
                             )
                           }
-                          className="rounded-lg border border-gray-200 bg-[#F7F9FF] px-2 py-1 text-xs font-semibold text-gray-700"
+                          className="rounded-lg border border-gray-200/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
                         />
                       </div>
                       <button
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F8FAFF] text-gray-600 shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
                         aria-label="Set end time to playhead"
                         onClick={() =>
                           handleSetEndAtPlayhead(selectedVideoEntry.clip)
@@ -3501,7 +3543,7 @@ export default function AdvancedEditorPage() {
                   </div>
 
                   <button
-                    className="flex w-full items-center gap-2 rounded-2xl border border-white/60 bg-white px-4 py-3 text-sm font-semibold text-[#1F2A44] shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:border-[#CBD5F5]"
+                    className={`${panelButtonClass} justify-center`}
                     type="button"
                     onClick={handleDetachAudio}
                   >
@@ -3519,7 +3561,7 @@ export default function AdvancedEditorPage() {
                   </button>
 
                   <button
-                    className="flex w-full items-center justify-center rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 shadow-[0_8px_20px_rgba(239,68,68,0.16)] transition hover:bg-red-50"
+                    className="flex w-full items-center justify-center rounded-xl border border-red-200/80 bg-white px-4 py-3 text-sm font-semibold text-red-600 shadow-[0_6px_16px_rgba(239,68,68,0.12)] transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2"
                     type="button"
                     onClick={handleDeleteSelected}
                   >
@@ -3528,8 +3570,8 @@ export default function AdvancedEditorPage() {
                 </>
               ) : (
                 <>
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-4">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                  <div className={`${panelCardClass} space-y-3`}>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
                       Color Correction
                     </span>
                     <SliderField
@@ -3594,8 +3636,8 @@ export default function AdvancedEditorPage() {
                     />
                   </div>
 
-                  <div className="rounded-2xl border border-white/60 bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)] space-y-4">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                  <div className={`${panelCardClass} space-y-3`}>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
                       Effects
                     </span>
                     <SliderField
@@ -3649,7 +3691,7 @@ export default function AdvancedEditorPage() {
                   </div>
 
                   <button
-                    className="w-full rounded-2xl bg-[#EEF2FF] px-4 py-3 text-sm font-semibold text-[#335CFF] shadow-[0_10px_24px_rgba(51,92,255,0.2)]"
+                    className="w-full rounded-xl border border-[#D6DCFF] bg-[#EEF2FF] px-4 py-3 text-sm font-semibold text-[#335CFF] shadow-[0_6px_16px_rgba(51,92,255,0.18)] transition hover:bg-[#E4E9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
                     type="button"
                     onClick={() =>
                       updateClipSettings(selectedVideoEntry.clip.id, (
@@ -3682,21 +3724,17 @@ export default function AdvancedEditorPage() {
                   <h2 className="text-lg font-semibold tracking-[-0.01em] text-[#111827]">
                     {activeToolLabel}
                   </h2>
-                  <p className="text-xs font-medium text-gray-500">
-                    {hasSupabase
-                      ? "Cloud storage connected"
-                      : "Uploads stay in this browser session"}
-                  </p>
+                  {!hasSupabase && (
+                    <p className="text-xs font-medium text-gray-500">
+                      Uploads stay in this browser session
+                    </p>
+                  )}
                 </div>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                    uploading
-                      ? "bg-[#EEF2FF] text-[#335CFF]"
-                      : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  {uploading ? "Uploading" : "Ready"}
-                </span>
+                {uploading && (
+                  <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#335CFF]">
+                    Uploading
+                  </span>
+                )}
               </div>
               <div className="mt-5">
                 <button
@@ -3746,11 +3784,10 @@ export default function AdvancedEditorPage() {
                     <button
                       key={swatch}
                       type="button"
-                      className={`h-6 w-6 rounded-full border transition ${
-                        canvasBackground.toLowerCase() === swatch.toLowerCase()
-                          ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
-                          : "border-gray-200"
-                      }`}
+                      className={`h-6 w-6 rounded-full border transition ${canvasBackground.toLowerCase() === swatch.toLowerCase()
+                        ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
+                        : "border-gray-200"
+                        }`}
                       style={{ backgroundColor: swatch }}
                       onClick={() => setCanvasBackground(swatch)}
                       aria-label={`Set background to ${swatch}`}
@@ -3760,24 +3797,38 @@ export default function AdvancedEditorPage() {
               </div>
             </div>
 
-            <div className="flex-1 space-y-8 overflow-y-auto bg-[#F7F8FC] px-5 py-5">
-              {["video", "audio", "image"].includes(activeTool) ? (
-                <>
-                  <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          Asset Library
-                        </h3>
-                        <button
-                          type="button"
-                          className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EEF2FF] text-[#335CFF]"
-                          onClick={handleUploadClick}
-                          aria-label="Upload media"
-                        >
+            <div className="flex-1 min-h-0 overflow-y-auto bg-[#F7F8FC]">
+              {isAssetLibraryExpanded ? (
+                <div className="flex min-h-full flex-col">
+                  <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                        aria-label="Go back"
+                        onClick={() => setIsAssetLibraryExpanded(false)}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="M10 4 6 8l4 4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        Asset Library
+                      </h2>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                           <svg viewBox="0 0 16 16" className="h-4 w-4">
                             <path
-                              d="M3 8h10M8 3v10"
+                              d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
                               fill="none"
                               stroke="currentColor"
                               strokeWidth="1.5"
@@ -3785,56 +3836,68 @@ export default function AdvancedEditorPage() {
                               strokeLinejoin="round"
                             />
                           </svg>
-                        </button>
+                        </span>
+                        <input
+                          className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                          placeholder="Search..."
+                          value={assetSearch}
+                          onChange={(event) => setAssetSearch(event.target.value)}
+                        />
                       </div>
                       <button
-                        className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
                         type="button"
+                        onClick={handleUploadClick}
                       >
-                        View all
-                        <svg viewBox="0 0 16 16" className="h-3 w-3">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
                           <path
-                            d="m6 12 4-4-4-4"
+                            d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3"
                             fill="none"
                             stroke="currentColor"
-                            strokeWidth="1.4"
+                            strokeWidth="1.5"
                             strokeLinecap="round"
                             strokeLinejoin="round"
                           />
                         </svg>
+                        Upload
                       </button>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-wrap gap-2">
                       {mediaFilters.map((filter) => (
                         <button
                           key={filter}
                           type="button"
-                          className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                            assetFilter === filter
-                              ? "bg-[#EEF2FF] text-[#335CFF]"
-                              : "bg-gray-50 text-gray-500 hover:bg-gray-100"
-                          }`}
+                          className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${assetFilter === filter
+                            ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                            : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                            }`}
                           onClick={() => setAssetFilter(filter)}
                         >
                           {filter}
                         </button>
                       ))}
                     </div>
-                    {filteredAssets.length === 0 ? (
-                      <div className="mt-6 rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
-                        Upload media to build your library.
+                  </div>
+                  <div className="flex-1 px-5 py-5">
+                    {viewAllAssets.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                        {assetSearch.trim()
+                          ? "No results match your search."
+                          : "Upload media to build your library."}
                       </div>
                     ) : (
-                      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {filteredAssets.map((asset) => (
-                          <div key={asset.id} className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {viewAllAssets.map((asset) => (
+                          <div
+                            key={asset.id}
+                            className="group flex flex-col gap-2"
+                          >
                             <button
                               type="button"
-                              className={`group relative h-24 w-full overflow-hidden rounded-2xl border transition ${
-                                asset.id === activeAssetId
-                                  ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
-                                  : "border-gray-200 hover:border-gray-300"
-                              }`}
+                              className={`relative h-24 w-full overflow-hidden rounded-xl border transition ${asset.id === activeAssetId
+                                ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
+                                : "border-gray-200 hover:border-gray-300"
+                                }`}
                               onClick={() => addToTimeline(asset.id)}
                               draggable
                               onDragStart={(event) =>
@@ -3845,20 +3908,20 @@ export default function AdvancedEditorPage() {
                                 <img
                                   src={asset.url}
                                   alt={asset.name}
-                                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                  className="h-full w-full object-cover"
                                 />
                               )}
                               {asset.kind === "video" && (
                                 <video
                                   src={asset.url}
-                                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                  className="h-full w-full object-cover"
                                   muted
                                   playsInline
                                 />
                               )}
                               {asset.kind === "audio" && (
                                 <div className="flex h-full w-full items-center justify-center bg-[#EEF2FF] text-[#335CFF]">
-                                  <svg viewBox="0 0 24 24" className="h-8 w-8">
+                                  <svg viewBox="0 0 24 24" className="h-7 w-7">
                                     <path
                                       d="M12 4v10.2a3.2 3.2 0 1 1-2-3.02V7.3l8-2V12a3.2 3.2 0 1 1-2-3.02V4.5L12 4Z"
                                       fill="currentColor"
@@ -3866,70 +3929,193 @@ export default function AdvancedEditorPage() {
                                   </svg>
                                 </div>
                               )}
-                              <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                              <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
                                 {formatDuration(asset.duration)}
                               </span>
                             </button>
-                            <div className="flex items-center justify-between text-[11px] text-gray-500">
-                              <span className="truncate font-medium text-gray-700">
+                            <button type="button" className="text-left">
+                              <div className="truncate text-xs font-medium text-gray-700">
                                 {asset.name}
-                              </span>
-                              <span>{formatSize(asset.size)}</span>
-                            </div>
+                              </div>
+                            </button>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-
-                  {activeTool === "video" && (
-                    <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          Stock Videos
-                        </h3>
-                        <button
-                          className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
-                          type="button"
-                        >
-                          View all
-                          <svg viewBox="0 0 16 16" className="h-3 w-3">
-                            <path
-                              d="m6 12 4-4-4-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {stockVideos.map((stock) => (
-                          <div key={stock.id} className="space-y-2">
-                            <div className="relative h-24 overflow-hidden rounded-2xl border border-gray-200">
-                              <img
-                                src={stock.image}
-                                alt={stock.title}
-                                className="h-full w-full object-cover"
-                              />
-                              <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                {stock.duration}
-                              </span>
-                            </div>
-                            <div className="text-[11px] font-medium text-gray-700">
-                              {stock.title}
-                            </div>
+                </div>
+              ) : (
+                <div className="space-y-8 px-5 py-5">
+                  {["video", "audio", "image"].includes(activeTool) ? (
+                    <>
+                      <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-semibold text-gray-900">
+                              Asset Library
+                            </h3>
+                            <button
+                              type="button"
+                              className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EEF2FF] text-[#335CFF]"
+                              onClick={handleUploadClick}
+                              aria-label="Upload media"
+                            >
+                              <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                <path
+                                  d="M3 8h10M8 3v10"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
                           </div>
-                        ))}
+                          <button
+                            className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                            type="button"
+                            onClick={() => setIsAssetLibraryExpanded(true)}
+                          >
+                            View all
+                            <svg viewBox="0 0 16 16" className="h-3 w-3">
+                              <path
+                                d="m6 12 4-4-4-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {mediaFilters.map((filter) => (
+                            <button
+                              key={filter}
+                              type="button"
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${assetFilter === filter
+                                ? "bg-[#EEF2FF] text-[#335CFF]"
+                                : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                                }`}
+                              onClick={() => setAssetFilter(filter)}
+                            >
+                              {filter}
+                            </button>
+                          ))}
+                        </div>
+                        {filteredAssets.length === 0 ? (
+                          <div className="mt-6 rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                            Upload media to build your library.
+                          </div>
+                        ) : (
+                          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {filteredAssets.map((asset) => (
+                              <div key={asset.id} className="space-y-2">
+                                <button
+                                  type="button"
+                                  className={`group relative h-24 w-full overflow-hidden rounded-2xl border transition ${asset.id === activeAssetId
+                                    ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
+                                    : "border-gray-200 hover:border-gray-300"
+                                    }`}
+                                  onClick={() => addToTimeline(asset.id)}
+                                  draggable
+                                  onDragStart={(event) =>
+                                    handleAssetDragStart(event, asset.id)
+                                  }
+                                >
+                                  {asset.kind === "image" && (
+                                    <img
+                                      src={asset.url}
+                                      alt={asset.name}
+                                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                    />
+                                  )}
+                                  {asset.kind === "video" && (
+                                    <video
+                                      src={asset.url}
+                                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                      muted
+                                      playsInline
+                                    />
+                                  )}
+                                  {asset.kind === "audio" && (
+                                    <div className="flex h-full w-full items-center justify-center bg-[#EEF2FF] text-[#335CFF]">
+                                      <svg viewBox="0 0 24 24" className="h-8 w-8">
+                                        <path
+                                          d="M12 4v10.2a3.2 3.2 0 1 1-2-3.02V7.3l8-2V12a3.2 3.2 0 1 1-2-3.02V4.5L12 4Z"
+                                          fill="currentColor"
+                                        />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                    {formatDuration(asset.duration)}
+                                  </span>
+                                </button>
+                                <div className="flex items-center justify-between text-[11px] text-gray-500">
+                                  <span className="truncate font-medium text-gray-700">
+                                    {asset.name}
+                                  </span>
+                                  <span>{formatSize(asset.size)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
+
+                      {activeTool === "video" && (
+                        <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-gray-900">
+                              Stock Videos
+                            </h3>
+                            <button
+                              className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                              type="button"
+                            >
+                              View all
+                              <svg viewBox="0 0 16 16" className="h-3 w-3">
+                                <path
+                                  d="m6 12 4-4-4-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.4"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {stockVideos.map((stock) => (
+                              <div key={stock.id} className="space-y-2">
+                                <div className="relative h-24 overflow-hidden rounded-2xl border border-gray-200">
+                                  <img
+                                    src={stock.image}
+                                    alt={stock.title}
+                                    className="h-full w-full object-cover"
+                                  />
+                                  <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                    {stock.duration}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] font-medium text-gray-700">
+                                  {stock.title}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      {activeToolLabel} tools are coming next.
                     </div>
                   )}
-                </>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
-                  {activeToolLabel} tools are coming next.
                 </div>
               )}
             </div>
@@ -3938,76 +4124,6 @@ export default function AdvancedEditorPage() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-700"
-              type="button"
-              aria-label="Home"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                <path
-                  d="M4 11.5L12 5l8 6.5V20a2 2 0 0 1-2 2h-3v-6H9v6H6a2 2 0 0 1-2-2z"
-                  fill="currentColor"
-                />
-              </svg>
-            </button>
-            <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm">
-              <span className="text-gray-400">Project</span>
-              <input
-                className="w-36 border-none bg-transparent text-sm font-medium text-gray-900 outline-none"
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-              />
-            </div>
-            <span className="hidden text-xs text-gray-400 sm:block">
-              {hasSupabase
-                ? "Cloud storage connected"
-                : "Local-only uploads"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500"
-              type="button"
-              aria-label="Undo"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                <path
-                  d="M8 9H5l4-4 4 4H10c5 0 8 3 8 8"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            <button
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500"
-              type="button"
-              aria-label="Redo"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                <path
-                  d="M16 9h3l-4-4-4 4h3c-5 0-8 3-8 8"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            <button
-              className="rounded-lg bg-[#335CFF] px-4 py-2 text-sm font-semibold text-white"
-              type="button"
-            >
-              Export
-            </button>
-          </div>
-        </header>
-
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <main
             ref={mainRef}
@@ -4016,9 +4132,8 @@ export default function AdvancedEditorPage() {
             <div className="flex min-h-0 flex-1">
               <div
                 ref={stageRef}
-                className={`relative flex h-full w-full items-center justify-center overflow-hidden ${
-                  dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
-                }`}
+                className={`relative flex h-full w-full items-center justify-center overflow-hidden ${dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
+                  }`}
                 onPointerDown={handleStagePointerDown}
                 onDragOver={(event) => {
                   event.preventDefault();
@@ -4107,9 +4222,8 @@ export default function AdvancedEditorPage() {
                           }}
                         >
                           <div
-                            className={`relative h-full w-full ${
-                              isSelected ? "cursor-move" : "cursor-pointer"
-                            }`}
+                            className={`relative h-full w-full ${isSelected ? "cursor-move" : "cursor-pointer"
+                              }`}
                             onPointerDown={(event) =>
                               handleLayerPointerDown(event, entry)
                             }
@@ -4217,21 +4331,19 @@ export default function AdvancedEditorPage() {
               style={{ height: `${timelineHeight}px` }}
             >
               <div
-                className={`group relative flex cursor-row-resize items-center justify-center bg-white touch-none ${
-                  isResizingTimeline
-                    ? "border-b border-[#335CFF]"
-                    : "border-b border-gray-100"
-                }`}
+                className={`group relative flex cursor-row-resize items-center justify-center bg-white touch-none ${isResizingTimeline
+                  ? "border-b border-[#335CFF]"
+                  : "border-b border-gray-100"
+                  }`}
                 style={{ height: `${timelineHandleHeight}px` }}
                 onPointerDown={handleTimelineResizeStart}
                 aria-label="Resize timeline"
               >
                 <span
-                  className={`h-0.5 w-16 rounded-full transition ${
-                    isResizingTimeline
-                      ? "bg-[#335CFF] opacity-100"
-                      : "bg-gray-300 opacity-0 group-hover:opacity-100 group-hover:bg-[#94A3B8]"
-                  }`}
+                  className={`h-0.5 w-16 rounded-full transition ${isResizingTimeline
+                    ? "bg-[#335CFF] opacity-100"
+                    : "bg-gray-300 opacity-0 group-hover:opacity-100 group-hover:bg-[#94A3B8]"
+                    }`}
                 />
                 {isResizingTimeline && (
                   <span className="absolute left-0 right-0 top-0 h-0.5 bg-[#335CFF]" />
@@ -4431,9 +4543,8 @@ export default function AdvancedEditorPage() {
                   </div>
                   <div
                     ref={timelineTrackRef}
-                    className={`relative mt-2 rounded-2xl border border-gray-200 bg-[linear-gradient(90deg,_rgba(148,163,184,0.15)_1px,_transparent_1px)] p-4 transition ${
-                      dragOverTimeline ? "ring-2 ring-[#335CFF]" : ""
-                    }`}
+                    className={`relative mt-2 rounded-2xl border border-gray-200 bg-[linear-gradient(90deg,_rgba(148,163,184,0.15)_1px,_transparent_1px)] p-4 transition ${dragOverTimeline ? "ring-2 ring-[#335CFF]" : ""
+                      }`}
                     style={{
                       backgroundSize: `${timelineScale * tickStep}px 100%`,
                       minHeight: `${trackMinHeight}px`,
@@ -4460,8 +4571,8 @@ export default function AdvancedEditorPage() {
                               rangeSelection.startX,
                               rangeSelection.currentX
                             ) -
-                              rangeSelection.trackRect.left -
-                              timelinePadding,
+                            rangeSelection.trackRect.left -
+                            timelinePadding,
                             0,
                             timelineDuration * timelineScale
                           ) + timelinePadding}px`,
@@ -4470,8 +4581,8 @@ export default function AdvancedEditorPage() {
                               rangeSelection.startY,
                               rangeSelection.currentY
                             ) -
-                              rangeSelection.trackRect.top -
-                              timelinePadding,
+                            rangeSelection.trackRect.top -
+                            timelinePadding,
                             0,
                             lanesHeight
                           ) + timelinePadding}px`,
@@ -4482,21 +4593,21 @@ export default function AdvancedEditorPage() {
                                 rangeSelection.startX,
                                 rangeSelection.currentX
                               ) -
-                                rangeSelection.trackRect.left -
-                                timelinePadding,
+                              rangeSelection.trackRect.left -
+                              timelinePadding,
                               0,
                               timelineDuration * timelineScale
                             ) -
-                              clamp(
-                                Math.min(
-                                  rangeSelection.startX,
-                                  rangeSelection.currentX
-                                ) -
-                                  rangeSelection.trackRect.left -
-                                  timelinePadding,
-                                0,
-                                timelineDuration * timelineScale
-                              )
+                            clamp(
+                              Math.min(
+                                rangeSelection.startX,
+                                rangeSelection.currentX
+                              ) -
+                              rangeSelection.trackRect.left -
+                              timelinePadding,
+                              0,
+                              timelineDuration * timelineScale
+                            )
                           )}px`,
                           height: `${Math.max(
                             1,
@@ -4505,21 +4616,21 @@ export default function AdvancedEditorPage() {
                                 rangeSelection.startY,
                                 rangeSelection.currentY
                               ) -
-                                rangeSelection.trackRect.top -
-                                timelinePadding,
+                              rangeSelection.trackRect.top -
+                              timelinePadding,
                               0,
                               lanesHeight
                             ) -
-                              clamp(
-                                Math.min(
-                                  rangeSelection.startY,
-                                  rangeSelection.currentY
-                                ) -
-                                  rangeSelection.trackRect.top -
-                                  timelinePadding,
-                                0,
-                                lanesHeight
-                              )
+                            clamp(
+                              Math.min(
+                                rangeSelection.startY,
+                                rangeSelection.currentY
+                              ) -
+                              rangeSelection.trackRect.top -
+                              timelinePadding,
+                              0,
+                              lanesHeight
+                            )
                           )}px`,
                         }}
                       />
@@ -4588,11 +4699,10 @@ export default function AdvancedEditorPage() {
                                   >
                                     <button
                                       type="button"
-                                      className={`group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-xl border px-3 py-2 text-left text-xs font-semibold shadow-sm transition ${
-                                        isSelected
-                                          ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
-                                      } ${isDragging ? "opacity-70" : ""}`}
+                                      className={`group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-xl border px-3 py-2 text-left text-xs font-semibold shadow-sm transition ${isSelected
+                                        ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                        : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                                        } ${isDragging ? "opacity-70" : ""}`}
                                       onMouseDown={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
@@ -4716,5 +4826,6 @@ export default function AdvancedEditorPage() {
         </div>
       </div>
     </div>
+  </div>
   );
 }
