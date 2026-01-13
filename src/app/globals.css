@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Playfair+Display:wght@400;600;700&family=Montserrat:wght@400;500;600;700&family=Oswald:wght@400;600&family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Merriweather:wght@400;700&family=Lora:wght@400;600;700&family=Pacifico&display=swap");
 
 :root {
   --background: #ffffff;
@@ -9,6 +9,21 @@
   --border: #E5E7EB;
   --text-secondary: #6B7280;
   --text-muted: #9CA3AF;
+}
+
+@layer utilities {
+  .text-xxs {
+    font-size: 0.625rem;
+    line-height: 0.75rem;
+  }
+
+  .bg-light-blue {
+    background-color: var(--primary-light);
+  }
+
+  .text-primary {
+    color: var(--primary);
+  }
 }
 
 @theme inline {
@@ -97,7 +112,7 @@ input[type="range"].refined-slider::-webkit-slider-thumb {
   border-radius: 999px;
   background: #ffffff;
   border: 2px solid var(--primary);
-  margin-top: -6px;
+  margin-top: -5px;
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
 }
 
