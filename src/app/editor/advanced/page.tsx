@@ -14,1724 +14,344 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
-type MediaKind = "video" | "audio" | "image" | "text";
+import type {
+  AssetFilter,
+  ClipboardData,
+  ClipDragState,
+  ClipTransform,
+  EditorSnapshot,
+  FloatingMenuState,
+  KeyboardShortcutState,
+  LaneType,
+  MediaAsset,
+  MediaKind,
+  RangeSelectionState,
+  SnapGuides,
+  TextAlign,
+  TextBackgroundStyle,
+  TextClipSettings,
+  TextPanelView,
+  TextPreset,
+  TextPresetGroup,
+  TextPresetTag,
+  TextPreviewLine,
+  TextStylePreset,
+  TimelineClip,
+  TimelineLane,
+  TimelineLayoutEntry,
+  TransformDragState,
+  TransformHandle,
+  TransformResizeState,
+  TrimState,
+  VideoClipSettings,
+} from "./types";
 
-type MediaAsset = {
-  id: string;
-  name: string;
-  kind: MediaKind;
-  url: string;
-  size: number;
-  duration?: number;
-  width?: number;
-  height?: number;
-  aspectRatio?: number;
-  createdAt: number;
-};
+import {
+  defaultFloatingMenuState,
+  defaultTextDuration,
+  defaultTimelineHeight,
+  floaterButtonClass,
+  floaterMenuItemClass,
+  floaterMenuWidth,
+  floaterPanelWidth,
+  floaterPillClass,
+  floaterSubmenuWidth,
+  floaterSurfaceClass,
+  frameStepSeconds,
+  laneGap,
+  laneHeights,
+  maxHistoryEntries,
+  minCanvasHeight,
+  minClipDuration,
+  minLayerSize,
+  panelButtonClass,
+  panelCardClass,
+  snapInterval,
+  snapThresholdPx,
+  speedPresets,
+  timelineHandleHeight,
+  timelinePadding,
+  timelineScaleMax,
+  timelineScaleMin,
+  transformHandles,
+} from "./constants";
 
-type AssetFilter = "All" | "Video" | "Images" | "Audio";
+import {
+  clamp,
+  clampTransformToStage,
+  cloneTextSettings,
+  cloneVideoSettings,
+  closeFloatingMenuState,
+  createDefaultTextSettings,
+  createDefaultTextTransform,
+  createDefaultTransform,
+  createDefaultVideoSettings,
+  createFloatingMenuState,
+  formatDuration,
+  formatSize,
+  formatSpeedLabel,
+  formatTimelineLabel,
+  formatTimeWithTenths,
+  getAssetDurationSeconds,
+  getAssetMaxDurationSeconds,
+  getLaneEndTime,
+  getLaneType,
+  getWaveformBars,
+  inferMediaKind,
+  parseTimeInput,
+} from "./utils";
 
-type TimelineClip = {
-  id: string;
-  assetId: string;
-  duration: number;
-  startOffset: number;
-  startTime: number;
-  laneId: string;
-};
+import { getMediaMeta } from "./utils/media";
 
-type LaneType = "video" | "audio" | "text";
+import {
+  backgroundSwatches,
+  mediaFilters,
+  noiseDataUrl,
+  stockVideos,
+  textFontFamilies,
+  textFontSizes,
+  textLetterSpacingOptions,
+  textLineHeightOptions,
+  textPresetGroups,
+  textPresetTags,
+  textStylePresets,
+  toolbarItems,
+} from "./data";
 
-type TimelineLane = {
-  id: string;
-  type: LaneType;
-};
+import { SliderField } from "./components/slider-field";
+import { ToggleSwitch } from "./components/toggle-switch";
 
-type TimelineLayoutEntry = {
-  clip: TimelineClip;
-  asset: MediaAsset;
-  left: number;
-};
-
-type ClipDragState = {
-  clipId: string;
-  startX: number;
-  startLeft: number;
-  startLaneId: string;
-  targetLaneId?: string;
-  createdLaneId?: string;
-};
-
-type TrimEdge = "start" | "end";
-
-type TrimState = {
-  clipId: string;
-  edge: TrimEdge;
-  startX: number;
-  startDuration: number;
-  startOffset: number;
-  startTime: number;
-};
-
-type ClipTransform = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-type CornerRadii = {
-  topLeft: number;
-  topRight: number;
-  bottomRight: number;
-  bottomLeft: number;
-};
-
-type VideoClipSettings = {
-  speed: number;
-  volume: number;
-  muted: boolean;
-  fadeEnabled: boolean;
-  fadeIn: number;
-  fadeOut: number;
-  roundCorners: boolean;
-  cornerRadiusLinked: boolean;
-  cornerRadius: number;
-  cornerRadii: CornerRadii;
-  opacity: number;
-  rotation: number;
-  flipH: boolean;
-  flipV: boolean;
-  brightness: number;
-  contrast: number;
-  exposure: number;
-  hue: number;
-  saturation: number;
-  sharpen: number;
-  noise: number;
-  blur: number;
-  vignette: number;
-};
-
-type TextClipSettings = {
-  text: string;
-  fontFamily: string;
-  fontSize: number;
-  color: string;
-  bold: boolean;
-  italic: boolean;
-  align: TextAlign;
-  letterSpacing: number;
-  lineHeight: number;
-};
-
-type TransformHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
-
-type TransformDragState = {
-  clipId: string;
-  startX: number;
-  startY: number;
-  startRect: ClipTransform;
-};
-
-type TransformResizeState = {
-  clipId: string;
-  handle: TransformHandle;
-  startX: number;
-  startY: number;
-  startRect: ClipTransform;
-  aspectRatio: number;
-};
-
-type RangeSelectionState = {
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-  trackRect: DOMRect;
-  additive: boolean;
-  originSelection: string[];
-};
-
-type FloatingMenuState = {
-  open: boolean;
-  x: number;
-  y: number;
-  clipId: string | null;
-  showMore: boolean;
-  showOrder: boolean;
-  showVolume: boolean;
-  showSpeed: boolean;
-  showOpacity: boolean;
-  showCorners: boolean;
-  showTiming: boolean;
-};
-
-type SnapGuides = {
-  x: number[];
-  y: number[];
-};
-
-type EditorSnapshot = {
-  assets: MediaAsset[];
-  timeline: TimelineClip[];
-  lanes: TimelineLane[];
-  clipTransforms: Record<string, ClipTransform>;
-  backgroundTransforms: Record<string, ClipTransform>;
-  clipSettings: Record<string, VideoClipSettings>;
-  textSettings: Record<string, TextClipSettings>;
-  clipOrder: Record<string, number>;
-  canvasBackground: string;
-  currentTime: number;
-  selectedClipId: string | null;
-  selectedClipIds: string[];
-  activeAssetId: string | null;
-  activeCanvasClipId: string | null;
-};
-
-type ClipboardData = {
-  clips: TimelineClip[];
-  clipSettings: Record<string, VideoClipSettings>;
-  textSettings: Record<string, TextClipSettings>;
-  clipTransforms: Record<string, ClipTransform>;
-};
-
-type KeyboardShortcutState = {
-  currentTime: number;
-  timelineDuration: number;
-  handleCopySelection: () => boolean;
-  handleDeleteSelected: () => void;
-  handleDuplicateClip: () => void;
-  handlePasteSelection: (offsetSeconds?: number) => void;
-  handleRedo: () => void;
-  handleSelectAll: () => void;
-  handleSplitClip: () => void;
-  handleTogglePlayback: () => void;
-  handleUndo: () => void;
-  isEditableTarget: (target: EventTarget | null) => boolean;
-};
-
-type TextPresetTag = "All" | "Simple" | "Title";
-type TextPresetCategory = Exclude<TextPresetTag, "All">;
-type TextPanelView = "library" | "edit";
-type TextAlign = "left" | "center" | "right";
-
-type TextPreviewLine = {
-  text: string;
-  size: number;
-  weight?: number;
-  fontFamily?: string;
-  className?: string;
-};
-
-type TextPreset = {
-  id: string;
-  name: string;
-  category: TextPresetCategory;
-  preview: TextPreviewLine[];
-  editText: string;
-  editFontSize: number;
-  editFontFamily?: string;
-};
-
-type TextPresetGroup = {
-  id: string;
-  label: string;
-  category: TextPresetCategory;
-  presets: TextPreset[];
-};
-
-const fallbackDuration = 8;
-const minClipDuration = 1;
-const timelineScaleMin = 0.02;
-const timelineScaleMax = 24;
-const snapInterval = 0.5;
-const laneGap = 10;
-const timelinePadding = 16;
-const defaultTimelineHeight = 260;
-const minCanvasHeight = 80;
-const timelineHandleHeight = 16;
-const frameStepSeconds = 1 / 30;
-const laneHeights: Record<LaneType, number> = {
-  video: 56,
-  audio: 40,
-  text: 32,
-};
-const minLayerSize = 80;
-const snapThresholdPx = 8;
-const maxHistoryEntries = 100;
-
-const transformHandles: Array<{
-  id: TransformHandle;
-  className: string;
-  cursor: string;
-}> = [
-    {
-      id: "nw",
-      className: "left-0 top-0 translate-x-1/2 translate-y-1/2",
-      cursor: "cursor-nwse-resize",
-    },
-    {
-      id: "n",
-      className: "left-1/2 top-0 -translate-x-1/2 translate-y-1/2",
-      cursor: "cursor-ns-resize",
-    },
-    {
-      id: "ne",
-      className: "right-0 top-0 -translate-x-1/2 translate-y-1/2",
-      cursor: "cursor-nesw-resize",
-    },
-    {
-      id: "e",
-      className: "right-0 top-1/2 -translate-x-1/2 -translate-y-1/2",
-      cursor: "cursor-ew-resize",
-    },
-    {
-      id: "se",
-      className: "right-0 bottom-0 -translate-x-1/2 -translate-y-1/2",
-      cursor: "cursor-nwse-resize",
-    },
-    {
-      id: "s",
-      className: "left-1/2 bottom-0 -translate-x-1/2 -translate-y-1/2",
-      cursor: "cursor-ns-resize",
-    },
-    {
-      id: "sw",
-      className: "left-0 bottom-0 translate-x-1/2 -translate-y-1/2",
-      cursor: "cursor-nesw-resize",
-    },
-    {
-      id: "w",
-      className: "left-0 top-1/2 translate-x-1/2 -translate-y-1/2",
-      cursor: "cursor-ew-resize",
-    },
-  ];
-
-const speedPresets = [0.5, 1, 1.5, 2];
-const panelCardClass =
-  "rounded-xl border border-gray-200/70 bg-white px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.06)]";
-const panelButtonClass =
-  "flex w-full items-center gap-2 rounded-xl border border-gray-200/70 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_6px_14px_rgba(15,23,42,0.05)] transition hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2";
-const floaterSurfaceClass =
-  "rounded-2xl border border-white/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.18)] backdrop-blur";
-const floaterButtonClass =
-  "flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30";
-const floaterPillClass =
-  "flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30";
-const floaterMenuItemClass =
-  "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30";
-const floaterMenuWidth = 180;
-const floaterSubmenuWidth = 200;
-const floaterPanelWidth = 240;
-const defaultFloatingMenuState: FloatingMenuState = {
-  open: false,
-  x: 0,
-  y: 0,
-  clipId: null,
-  showMore: false,
-  showOrder: false,
-  showVolume: false,
-  showSpeed: false,
-  showOpacity: false,
-  showCorners: false,
-  showTiming: false,
-};
-
-const closeFloatingMenuState = (
-  menu: FloatingMenuState
-): FloatingMenuState =>
-  menu.open
-    ? {
-        ...menu,
-        open: false,
-        showMore: false,
-        showOrder: false,
-        showVolume: false,
-        showSpeed: false,
-        showOpacity: false,
-        showCorners: false,
-        showTiming: false,
-        clipId: null,
-      }
-    : menu;
-
-const createFloatingMenuState = (
-  clipId: string,
-  x: number,
-  y: number
-): FloatingMenuState => ({
-  ...defaultFloatingMenuState,
-  open: true,
-  x,
-  y,
-  clipId,
-});
-
-const toolbarItems = [
-  {
-    id: "ai",
-    label: "AI Tools",
-    testId: "@editor/ai-tools",
-    icon: (className: string) => (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className={className}
-        aria-hidden="true"
-      >
-        <g filter="url(#filter0_i_9578_4468)">
-          <path
-            d="M8 17.6C8 14.2397 8 12.5595 8.65396 11.2761C9.2292 10.1471 10.1471 9.2292 11.2761 8.65396C12.5595 8 14.2397 8 17.6 8H22.4C25.7603 8 27.4405 8 28.7239 8.65396C29.8529 9.2292 30.7708 10.1471 31.346 11.2761C32 12.5595 32 14.2397 32 17.6V22.4C32 25.7603 32 27.4405 31.346 28.7239C30.7708 29.8529 29.8529 30.7708 28.7239 31.346C27.4405 32 25.7603 32 22.4 32H17.6C14.2397 32 12.5595 32 11.2761 31.346C10.1471 30.7708 9.2292 29.8529 8.65396 28.7239C8 27.4405 8 25.7603 8 22.4V17.6Z"
-            fill="currentColor"
-          />
-          <path
-            d="M8 17.6C8 14.2397 8 12.5595 8.65396 11.2761C9.2292 10.1471 10.1471 9.2292 11.2761 8.65396C12.5595 8 14.2397 8 17.6 8H22.4C25.7603 8 27.4405 8 28.7239 8.65396C29.8529 9.2292 30.7708 10.1471 31.346 11.2761C32 12.5595 32 14.2397 32 17.6V22.4C32 25.7603 32 27.4405 31.346 28.7239C30.7708 29.8529 29.8529 30.7708 28.7239 31.346C27.4405 32 25.7603 32 22.4 32H17.6C14.2397 32 12.5595 32 11.2761 31.346C10.1471 30.7708 9.2292 29.8529 8.65396 28.7239C8 27.4405 8 25.7603 8 22.4V17.6Z"
-            fill="currentColor"
-          />
-        </g>
-        <path
-          d="M27 19.9993C27.0016 20.2045 26.9392 20.405 26.8216 20.5731C26.8075 20.5932 26.7927 20.6127 26.7773 20.6315C26.5516 20.9079 26.1646 20.953 25.8125 21.0106C24.9426 21.153 23.2261 21.5305 22.3773 22.3794C21.5389 23.218 21.1606 24.9034 21.0143 25.7825C20.9524 26.1546 20.902 26.5673 20.6011 26.7948C20.5906 26.8028 20.5799 26.8105 20.569 26.8181C20.4014 26.9347 20.2021 26.9972 19.9979 26.9972C19.7937 26.9972 19.5944 26.9347 19.4267 26.8181C19.4159 26.8106 19.4053 26.8029 19.3948 26.795C19.0937 26.5675 19.0433 26.1545 18.9814 25.7822C18.8352 24.903 18.457 23.2174 17.6184 22.3788C16.7798 21.5402 15.0942 21.162 14.215 21.0158C13.8427 20.9539 13.4297 20.9035 13.2022 20.6024C13.1943 20.5919 13.1866 20.5813 13.1791 20.5705C13.0625 20.4028 13 20.2035 13 19.9993C13 19.7951 13.0625 19.5958 13.1791 19.4282C13.1866 19.4174 13.1943 19.4067 13.2022 19.3963C13.4297 19.0952 13.8427 19.0448 14.215 18.9829C15.0942 18.8367 16.7798 18.4585 17.6184 17.6199C18.457 16.7813 18.8352 15.0957 18.9814 14.2164C19.0433 13.8442 19.0937 13.4312 19.3948 13.2037C19.4053 13.1958 19.4159 13.1881 19.4267 13.1805C19.5944 13.064 19.7937 13.0015 19.9979 13.0015C20.2021 13.0015 20.4014 13.064 20.569 13.1805C20.5799 13.1881 20.5907 13.1959 20.6012 13.2039C20.902 13.4314 20.9525 13.844 21.0143 14.216C21.1606 15.0952 21.5391 16.7812 22.378 17.6199C23.2267 18.4684 24.9426 18.8457 25.8124 18.988C26.1646 19.0457 26.5516 19.0908 26.7774 19.3672C26.7928 19.3861 26.8075 19.4055 26.8216 19.4256C26.9392 19.5936 27.0016 19.7942 27 19.9993Z"
-          fill="white"
-        />
-        <defs>
-          <filter
-            id="filter0_i_9578_4468"
-            x="8"
-            y="8"
-            width="24"
-            height="24"
-            filterUnits="userSpaceOnUse"
-            colorInterpolationFilters="sRGB"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend
-              mode="normal"
-              in="SourceGraphic"
-              in2="BackgroundImageFix"
-              result="shape"
-            />
-            <feColorMatrix
-              in="SourceAlpha"
-              type="matrix"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-              result="hardAlpha"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix
-              type="matrix"
-              values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0"
-            />
-            <feBlend mode="normal" in2="shape" result="effect1_innerShadow_9578_4468" />
-          </filter>
-          <linearGradient
-            id="paint0_linear_9578_4468"
-            x1="32"
-            y1="6.84337"
-            x2="-22.8133"
-            y2="30.5853"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop offset="0.339453" stopColor="#001BFF" />
-            <stop offset="0.704477" stopColor="#9779FF" />
-            <stop offset="1" stopColor="#E3CEFF" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-  {
-    id: "video",
-    label: "Video",
-    testId: "@editor/media",
-    icon: (className: string) => (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        fill="none"
-        viewBox="0 0 24 24"
-        className={className}
-        aria-hidden="true"
-      >
-        <g fillRule="evenodd" clipRule="evenodd" filter="url(#video_svg__a)">
-          <path
-            fill="currentColor"
-            d="M9.601 0c-3.36 0-5.04 0-6.324.654A6 6 0 0 0 .654 3.276C0 4.56.001 6.24.001 9.601v4.8c0 3.36.001 5.04.655 6.323a6 6 0 0 0 2.622 2.622C4.562 24 6.242 24 9.602 24H14.4c3.36 0 5.04 0 6.324-.654a6 6 0 0 0 2.622-2.622C24 19.44 24 17.76 24 14.4V9.6c0-3.36 0-5.04-.654-6.324A6 6 0 0 0 20.725.654C19.44 0 17.76 0 14.4 0z"
-          />
-          <path
-            fill="url(#video_svg__b)"
-            fillOpacity="0.2"
-            d="M9.601 0c-3.36 0-5.04 0-6.324.654A6 6 0 0 0 .654 3.276C0 4.56.001 6.24.001 9.601v4.8c0 3.36.001 5.04.655 6.323a6 6 0 0 0 2.622 2.622C4.562 24 6.242 24 9.602 24H14.4c3.36 0 5.04 0 6.324-.654a6 6 0 0 0 2.622-2.622C24 19.44 24 17.76 24 14.4V9.6c0-3.36 0-5.04-.654-6.324A6 6 0 0 0 20.725.654C19.44 0 17.76 0 14.4 0z"
-          />
-        </g>
-        <g filter="url(#video_svg__c)">
-          <path
-            fill="#fff"
-            d="M16 12.8c0 .44 0 .66.058.862.05.179.135.347.247.495.127.167.303.299.655.563l.48.36c.824.618 1.236.927 1.58.92a1 1 0 0 0 .767-.383C20 15.345 20 14.83 20 13.8v-3.6c0-1.03 0-1.545-.213-1.816A1 1 0 0 0 19.021 8c-.345-.007-.757.302-1.581.92l-.48.36c-.352.264-.528.396-.655.563a1.5 1.5 0 0 0-.247.495C16 10.54 16 10.76 16 11.2z"
-          />
-        </g>
-        <g filter="url(#video_svg__d)">
-          <path
-            fill="#fff"
-            d="M5 10.2c0-1.12 0-1.68.218-2.108a2 2 0 0 1 .874-.874C6.52 7 7.08 7 8.2 7h3.6c1.12 0 1.68 0 2.108.218a2 2 0 0 1 .874.874C15 8.52 15 9.08 15 10.2v3.6c0 1.12 0 1.68-.218 2.108a2 2 0 0 1-.874.874C13.48 17 12.92 17 11.8 17H8.2c-1.12 0-1.68 0-2.108-.218a2 2 0 0 1-.874-.874C5 15.48 5 14.92 5 13.8z"
-          />
-        </g>
-        <defs>
-          <filter
-            id="video_svg__a"
-            width="24"
-            height="24"
-            x="0.001"
-            y="0"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-            <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-            <feBlend in2="shape" result="effect1_innerShadow_22531_1628" />
-          </filter>
-          <filter
-            id="video_svg__c"
-            width="8"
-            height="12"
-            x="14"
-            y="7"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend
-              in2="BackgroundImageFix"
-              mode="multiply"
-              result="effect1_dropShadow_22531_1628"
-            />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_1628" result="shape" />
-          </filter>
-          <filter
-            id="video_svg__d"
-            width="14"
-            height="14"
-            x="3"
-            y="6"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend
-              in2="BackgroundImageFix"
-              mode="multiply"
-              result="effect1_dropShadow_22531_1628"
-            />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_1628" result="shape" />
-          </filter>
-          <linearGradient
-            id="video_svg__b"
-            x1="12"
-            x2="12"
-            y1="0"
-            y2="24"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="#fff" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-  {
-    id: "audio",
-    label: "Audio",
-    testId: "@editor/audio",
-    icon: (className: string) => (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        fill="none"
-        viewBox="0 0 24 24"
-        className={className}
-        aria-hidden="true"
-      >
-        <g filter="url(#audio_svg__a)">
-          <path
-            fill="currentColor"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-          <path
-            fill="url(#audio_svg__b)"
-            fillOpacity="0.2"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-        </g>
-        <g filter="url(#audio_svg__c)">
-          <path
-            fill="#fff"
-            d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
-          />
-        </g>
-        <defs>
-          <filter
-            id="audio_svg__a"
-            width="24"
-            height="24"
-            x="0"
-            y="0"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-            <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-            <feBlend in2="shape" result="effect1_innerShadow_22531_1167" />
-          </filter>
-          <filter
-            id="audio_svg__c"
-            width="14"
-            height="19.411"
-            x="5"
-            y="3.1"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feComposite in2="hardAlpha" operator="out" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_22531_1167" />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_1167" result="shape" />
-          </filter>
-          <linearGradient
-            id="audio_svg__b"
-            x1="12"
-            x2="12"
-            y1="0"
-            y2="24"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="#fff" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-  {
-    id: "image",
-    label: "Image",
-    testId: "@editor/image",
-    icon: (className: string) => (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        fill="none"
-        viewBox="0 0 24 24"
-        className={className}
-        aria-hidden="true"
-      >
-        <g filter="url(#images_svg__a)">
-          <path
-            fill="currentColor"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-          <path
-            fill="url(#images_svg__b)"
-            fillOpacity="0.2"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-        </g>
-        <g filter="url(#images_svg__c)">
-          <path fill="#fff" d="M16.5 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5" />
-        </g>
-        <g filter="url(#images_svg__d)">
-          <path
-            fill="#fff"
-            d="M8.543 19c-2.1 0-3.15 0-3.695-.432a2 2 0 0 1-.759-1.551c-.006-.696.639-1.524 1.928-3.182l1.089-1.4c.645-.83.968-1.244 1.36-1.393a1.5 1.5 0 0 1 1.068 0c.392.149.715.564 1.36 1.394l1.745 2.243c.26.334.39.5.52.607a1.5 1.5 0 0 0 1.861.031c.134-.102.27-.264.54-.589.262-.314.393-.472.524-.573a1.5 1.5 0 0 1 1.832 0c.13.101.266.264.537.588.682.819 1.023 1.228 1.142 1.534a2 2 0 0 1-1.227 2.619c-.31.104-.828.104-1.862.104z"
-          />
-        </g>
-        <defs>
-          <filter
-            id="images_svg__a"
-            width="24"
-            height="24"
-            x="0"
-            y="0"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-            <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-            <feBlend in2="shape" result="effect1_innerShadow_22531_760" />
-          </filter>
-          <filter
-            id="images_svg__c"
-            width="9"
-            height="9"
-            x="12"
-            y="4"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend in2="BackgroundImageFix" mode="multiply" result="effect1_dropShadow_22531_760" />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_760" result="shape" />
-          </filter>
-          <filter
-            id="images_svg__d"
-            width="19.641"
-            height="12.057"
-            x="2.089"
-            y="9.943"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend in2="BackgroundImageFix" mode="multiply" result="effect1_dropShadow_22531_760" />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_760" result="shape" />
-          </filter>
-          <linearGradient
-            id="images_svg__b"
-            x1="12"
-            x2="12"
-            y1="0"
-            y2="24"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="#fff" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-  {
-    id: "subtitles",
-    label: "Subtitles",
-    testId: "@editor/subtitles",
-    icon: (className: string) => (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        fill="none"
-        viewBox="0 0 24 24"
-        className={className}
-        aria-hidden="true"
-      >
-        <g filter="url(#subtitles_svg__a)">
-          <path
-            fill="currentColor"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-          <path
-            fill="url(#subtitles_svg__b)"
-            fillOpacity="0.2"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-        </g>
-        <g filter="url(#subtitles_svg__c)">
-          <rect width="16" height="3" x="4" y="17" fill="#fff" rx="1.5" />
-        </g>
-        <defs>
-          <filter
-            id="subtitles_svg__a"
-            width="24"
-            height="24"
-            x="0"
-            y="0"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-            <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-            <feBlend in2="shape" result="effect1_innerShadow_22531_369" />
-          </filter>
-          <filter
-            id="subtitles_svg__c"
-            width="20"
-            height="7"
-            x="2"
-            y="16"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend in2="BackgroundImageFix" mode="multiply" result="effect1_dropShadow_22531_369" />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_369" result="shape" />
-          </filter>
-          <linearGradient
-            id="subtitles_svg__b"
-            x1="12"
-            x2="12"
-            y1="0"
-            y2="24"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="#fff" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-  {
-    id: "text",
-    label: "Text",
-    testId: "@editor/text",
-    icon: (className: string) => (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        fill="none"
-        viewBox="0 0 24 24"
-        className={className}
-        aria-hidden="true"
-      >
-        <g filter="url(#text_svg__a)">
-          <path
-            fill="currentColor"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-          <path
-            fill="url(#text_svg__b)"
-            fillOpacity="0.2"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-        </g>
-        <g filter="url(#text_svg__c)">
-          <path
-            fill="#fff"
-            d="M6 7.5A1.5 1.5 0 0 0 7.5 9h3v7.5a1.5 1.5 0 0 0 3 0V9h3a1.5 1.5 0 0 0 0-3h-9A1.5 1.5 0 0 0 6 7.5"
-          />
-        </g>
-        <defs>
-          <filter
-            id="text_svg__a"
-            width="24"
-            height="24"
-            x="0"
-            y="0"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-            <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-            <feBlend in2="shape" result="effect1_innerShadow_22531_113" />
-          </filter>
-          <filter
-            id="text_svg__c"
-            width="16"
-            height="16"
-            x="4"
-            y="5"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend in2="BackgroundImageFix" mode="multiply" result="effect1_dropShadow_22531_113" />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_113" result="shape" />
-          </filter>
-          <linearGradient
-            id="text_svg__b"
-            x1="12"
-            x2="12"
-            y1="0"
-            y2="24"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="#fff" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-  {
-    id: "elements",
-    label: "Elements",
-    testId: "@editor/elements",
-    icon: (className: string) => (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="25"
-        fill="none"
-        viewBox="0 0 24 25"
-        className={className}
-        aria-hidden="true"
-      >
-        <g filter="url(#elements_svg__a)">
-          <path
-            fill="currentColor"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v3.424c0 1.467 0 2.2-.166 2.891a6 6 0 0 1-.718 1.735c-.371.605-.89 1.124-1.928 2.162l-1.376 1.376c-1.038 1.038-1.557 1.557-2.162 1.928a6 6 0 0 1-1.735.718c-.69.166-1.424.166-2.891.166H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-          <path
-            fill="url(#elements_svg__b)"
-            fillOpacity="0.2"
-            d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v3.424c0 1.467 0 2.2-.166 2.891a6 6 0 0 1-.718 1.735c-.371.605-.89 1.124-1.928 2.162l-1.376 1.376c-1.038 1.038-1.557 1.557-2.162 1.928a6 6 0 0 1-1.735.718c-.69.166-1.424.166-2.891.166H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-          />
-        </g>
-        <g filter="url(#elements_svg__c)">
-          <path
-            fill="#fff"
-            d="M18.365 14H15.92c-.672 0-1.008 0-1.265.13a1.2 1.2 0 0 0-.524.525C14 14.912 14 15.248 14 15.92v2.445c0 1.454 0 2.18.288 2.517a1.2 1.2 0 0 0 1.006.417c.441-.035.955-.549 1.984-1.577l2.444-2.444c1.028-1.028 1.542-1.542 1.577-1.984a1.2 1.2 0 0 0-.417-1.007C20.546 14 19.82 14 18.365 14"
-          />
-        </g>
-        <defs>
-          <filter
-            id="elements_svg__a"
-            width="24"
-            height="24"
-            x="0"
-            y="0"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-            <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-            <feBlend in2="shape" result="effect1_innerShadow_22531_673" />
-          </filter>
-          <filter
-            id="elements_svg__c"
-            width="11.303"
-            height="11.303"
-            x="12"
-            y="13"
-            colorInterpolationFilters="sRGB"
-            filterUnits="userSpaceOnUse"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              result="hardAlpha"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend in2="BackgroundImageFix" mode="multiply" result="effect1_dropShadow_22531_673" />
-            <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_673" result="shape" />
-          </filter>
-          <linearGradient
-            id="elements_svg__b"
-            x1="12"
-            x2="12"
-            y1="0"
-            y2="24"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="#fff" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    testId: "@editor/settings",
-    icon: (className: string) => (
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className={className}
-        aria-hidden="true"
-      >
-        <g filter="url(#filter0_i_23453_9291)">
-          <path
-            d="M0 9.6C0 6.23969 0 4.55953 0.653961 3.27606C1.2292 2.14708 2.14708 1.2292 3.27606 0.653961C4.55953 0 6.23969 0 9.6 0H14.4C17.7603 0 19.4405 0 20.7239 0.653961C21.8529 1.2292 22.7708 2.14708 23.346 3.27606C24 4.55953 24 6.23969 24 9.6V14.4C24 17.7603 24 19.4405 23.346 20.7239C22.7708 21.8529 21.8529 22.7708 20.7239 23.346C19.4405 24 17.7603 24 14.4 24H9.6C6.23969 24 4.55953 24 3.27606 23.346C2.14708 22.7708 1.2292 21.8529 0.653961 20.7239C0 19.4405 0 17.7603 0 14.4V9.6Z"
-            fill="currentColor"
-          />
-          <path
-            d="M0 9.6C0 6.23969 0 4.55953 0.653961 3.27606C1.2292 2.14708 2.14708 1.2292 3.27606 0.653961C4.55953 0 6.23969 0 9.6 0H14.4C17.7603 0 19.4405 0 20.7239 0.653961C21.8529 1.2292 22.7708 2.14708 23.346 3.27606C24 4.55953 24 6.23969 24 9.6V14.4C24 17.7603 24 19.4405 23.346 20.7239C22.7708 21.8529 21.8529 22.7708 20.7239 23.346C19.4405 24 17.7603 24 14.4 24H9.6C6.23969 24 4.55953 24 3.27606 23.346C2.14708 22.7708 1.2292 21.8529 0.653961 20.7239C0 19.4405 0 17.7603 0 14.4V9.6Z"
-            fill="url(#paint0_linear_23453_9291)"
-            fillOpacity="0.2"
-          />
-        </g>
-        <g filter="url(#filter1_d_23453_9291)">
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M8.76684 6.16526C9.94469 5.52696 10.5336 5.20781 11.1597 5.0829C11.7137 4.97237 12.2863 4.97237 12.8403 5.0829C13.4664 5.20781 14.0553 5.52696 15.2332 6.16526L15.2332 6.16526L15.7668 6.45447C16.9447 7.09277 17.5336 7.41192 17.9619 7.85842C18.3409 8.25348 18.6272 8.71889 18.8022 9.22448C19 9.79589 19 10.4342 19 11.7108V12.2892C19 13.5658 19 14.2041 18.8022 14.7755C18.6272 15.2811 18.3409 15.7465 17.9619 16.1416C17.5336 16.5881 16.9447 16.9072 15.7668 17.5455L15.2332 17.8347L15.2331 17.8348C14.0553 18.473 13.4664 18.7922 12.8403 18.9171C12.2863 19.0276 11.7137 19.0276 11.1597 18.9171C10.5336 18.7922 9.9447 18.473 8.76686 17.8348L8.76684 17.8347L8.23316 17.5455C7.05531 16.9072 6.46638 16.5881 6.03807 16.1416C5.6591 15.7465 5.37282 15.2811 5.1978 14.7755C5 14.2041 5 13.5658 5 12.2892V11.7108C5 10.4342 5 9.79589 5.1978 9.22448C5.37282 8.71889 5.6591 8.25348 6.03807 7.85842C6.46638 7.41192 7.05531 7.09277 8.23316 6.45447L8.76684 6.16526ZM12 14C13.1046 14 14 13.1046 14 12C14 10.8954 13.1046 10 12 10C10.8954 10 10 10.8954 10 12C10 13.1046 10.8954 14 12 14Z"
-            fill="white"
-          />
-        </g>
-        <defs>
-          <filter
-            id="filter0_i_23453_9291"
-            x="0"
-            y="0"
-            width="24"
-            height="24"
-            filterUnits="userSpaceOnUse"
-            colorInterpolationFilters="sRGB"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-            <feColorMatrix
-              in="SourceAlpha"
-              type="matrix"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-              result="hardAlpha"
-            />
-            <feOffset dy="0.5" />
-            <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-            <feBlend mode="normal" in2="shape" result="effect1_innerShadow_23453_9291" />
-          </filter>
-          <filter
-            id="filter1_d_23453_9291"
-            x="3"
-            y="4"
-            width="18"
-            height="18"
-            filterUnits="userSpaceOnUse"
-            colorInterpolationFilters="sRGB"
-          >
-            <feFlood floodOpacity="0" result="BackgroundImageFix" />
-            <feColorMatrix
-              in="SourceAlpha"
-              type="matrix"
-              values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-              result="hardAlpha"
-            />
-            <feOffset dy="1" />
-            <feGaussianBlur stdDeviation="1" />
-            <feComposite in2="hardAlpha" operator="out" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-            <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_23453_9291" />
-            <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_23453_9291" result="shape" />
-          </filter>
-          <linearGradient
-            id="paint0_linear_23453_9291"
-            x1="12"
-            y1="0"
-            x2="12"
-            y2="24"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="white" />
-            <stop offset="1" stopColor="white" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    ),
-  },
-];
-
-const mediaFilters: AssetFilter[] = ["All", "Video", "Images", "Audio"];
-
-const stockVideos = [
-  {
-    id: "stock-1",
-    title: "Morning skyline",
-    duration: "0:08",
-    image:
-      "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=400&q=80",
-  },
-  {
-    id: "stock-2",
-    title: "City rush",
-    duration: "0:12",
-    image:
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=400&q=80",
-  },
-  {
-    id: "stock-3",
-    title: "Studio light",
-    duration: "0:10",
-    image:
-      "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=400&q=80",
-  },
-  {
-    id: "stock-4",
-    title: "Abstract loop",
-    duration: "0:07",
-    image:
-      "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=400&q=80",
-  },
-];
-
-const textPresetTags: TextPresetTag[] = ["All", "Simple", "Title"];
-
-const textPresetGroups: TextPresetGroup[] = [
-  {
-    id: "simple",
-    label: "Simple",
-    category: "Simple",
-    presets: [
-      {
-        id: "simple-title",
-        name: "Title",
-        category: "Simple",
-        preview: [{ text: "Title", size: 22, weight: 600, fontFamily: "Space Grotesk" }],
-        editText: "Title",
-        editFontSize: 48,
-        editFontFamily: "Space Grotesk",
-      },
-      {
-        id: "simple-basic",
-        name: "Simple",
-        category: "Simple",
-        preview: [{ text: "Simple", size: 16, fontFamily: "Montserrat" }],
-        editText: "Simple",
-        editFontSize: 32,
-        editFontFamily: "Montserrat",
-      },
-      {
-        id: "simple-cursive",
-        name: "Cursive",
-        category: "Simple",
-        preview: [{ text: "Cursive", size: 24, fontFamily: "Pacifico" }],
-        editText: "Cursive",
-        editFontSize: 40,
-        editFontFamily: "Pacifico",
-      },
-      {
-        id: "simple-serif",
-        name: "Serif",
-        category: "Simple",
-        preview: [{ text: "Serif", size: 20, fontFamily: "Playfair Display" }],
-        editText: "Serif",
-        editFontSize: 36,
-        editFontFamily: "Playfair Display",
-      },
-      {
-        id: "simple-typewriter",
-        name: "Typewriter",
-        category: "Simple",
-        preview: [
-          {
-            text: "Typewriter",
-            size: 13,
-            fontFamily: "Space Mono",
-          },
-        ],
-        editText: "Typewriter",
-        editFontSize: 28,
-        editFontFamily: "Space Mono",
-      },
-      {
-        id: "simple-bold",
-        name: "Bold",
-        category: "Simple",
-        preview: [
-          { text: "bold", size: 24, weight: 700, fontFamily: "Bebas Neue" },
-        ],
-        editText: "bold",
-        editFontSize: 44,
-        editFontFamily: "Bebas Neue",
-      },
-    ],
-  },
-  {
-    id: "title",
-    label: "Title",
-    category: "Title",
-    presets: [
-      {
-        id: "title-traditional",
-        name: "Traditional",
-        category: "Title",
-        preview: [
-          { text: "bold", size: 28, weight: 700, fontFamily: "Playfair Display" },
-          { text: "Traditional", size: 12, className: "uppercase tracking-[0.14em]" },
-        ],
-        editText: "bold\nTraditional",
-        editFontSize: 46,
-        editFontFamily: "Playfair Display",
-      },
-      {
-        id: "title-editorial",
-        name: "Editorial",
-        category: "Title",
-        preview: [
-          { text: "Editorial", size: 21, weight: 600, fontFamily: "Merriweather" },
-          { text: "Classic", size: 12, className: "uppercase tracking-[0.12em]" },
-        ],
-        editText: "Editorial\nClassic",
-        editFontSize: 42,
-        editFontFamily: "Merriweather",
-      },
-      {
-        id: "title-modern",
-        name: "Modern",
-        category: "Title",
-        preview: [
-          { text: "Modern", size: 20, weight: 600, fontFamily: "Space Grotesk" },
-          { text: "Bauhaus", size: 12, className: "uppercase tracking-[0.12em]" },
-        ],
-        editText: "Modern\nBauhaus",
-        editFontSize: 40,
-        editFontFamily: "Space Grotesk",
-      },
-      {
-        id: "title-elegant",
-        name: "Elegant",
-        category: "Title",
-        preview: [
-          { text: "Elegant", size: 20, weight: 500, fontFamily: "Lora" },
-          { text: "Light", size: 12, className: "uppercase tracking-[0.12em]" },
-        ],
-        editText: "Elegant\nLight",
-        editFontSize: 40,
-        editFontFamily: "Lora",
-      },
-      {
-        id: "title-signature",
-        name: "Signature",
-        category: "Title",
-        preview: [
-          { text: "Signature", size: 18, fontFamily: "Pacifico" },
-          { text: "INDUSTRIAL", size: 18, weight: 700, className: "tracking-[0.08em]" },
-        ],
-        editText: "Signature\nINDUSTRIAL",
-        editFontSize: 38,
-        editFontFamily: "Pacifico",
-      },
-      {
-        id: "title-reliable",
-        name: "Reliable",
-        category: "Title",
-        preview: [
-          { text: "RELIABLE", size: 16, weight: 600, className: "tracking-[0.12em]", fontFamily: "Oswald" },
-          {
-            text: "Typewriter",
-            size: 8,
-            fontFamily: "Space Mono",
-          },
-        ],
-        editText: "RELIABLE\nTypewriter",
-        editFontSize: 34,
-        editFontFamily: "Oswald",
-      },
-    ],
-  },
-];
-
-const textFontFamilies = [
-  "Roboto",
-  "Inter",
-  "Space Grotesk",
-  "Montserrat",
-  "Oswald",
-  "Bebas Neue",
-  "Playfair Display",
-  "Merriweather",
-  "Lora",
-  "Pacifico",
-  "Space Mono",
-  "Georgia",
-  "Times New Roman",
-  "Courier New",
-];
-
-const textFontSizes = [12, 16, 18, 20, 24, 28, 32, 36, 42, 48, 56, 64];
-const textLetterSpacingOptions = [0, 0.5, 1, 1.5, 2, 3];
-const textLineHeightOptions = [1, 1.1, 1.25, 1.4, 1.6];
-
-const backgroundSwatches = [
-  "#0A0A0A",
-  "#1F2937",
-  "#111827",
-  "#0F172A",
-  "#F2F4FA",
-  "#F8FAFC",
-  "#FFFFFF",
-];
-
-const noiseDataUrl =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E";
-
-const formatDuration = (seconds?: number) => {
-  if (seconds == null || Number.isNaN(seconds)) {
-    return "--:--";
+const parseHexColor = (value: string) => {
+  const normalized = value.replace("#", "").trim();
+  if (normalized.length === 3) {
+    const [r, g, b] = normalized.split("");
+    return {
+      r: parseInt(`${r}${r}`, 16),
+      g: parseInt(`${g}${g}`, 16),
+      b: parseInt(`${b}${b}`, 16),
+    };
   }
-  const total = Math.round(seconds);
-  const minutes = Math.floor(total / 60);
-  const remaining = total % 60;
-  return `${minutes}:${remaining.toString().padStart(2, "0")}`;
-};
-
-const formatSpeedLabel = (speed: number) => {
-  if (Number.isInteger(speed)) {
-    return `${speed}`;
-  }
-  const trimmed = speed.toFixed(2).replace(/0$/, "");
-  return trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
-};
-
-const formatTimelineLabel = (seconds: number) => {
-  const total = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const remaining = total % 60;
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${remaining
-      .toString()
-      .padStart(2, "0")}`;
-  }
-  return `${minutes}:${remaining.toString().padStart(2, "0")}`;
-};
-
-const formatTimeWithTenths = (seconds: number) => {
-  const total = Math.max(0, seconds);
-  const minutes = Math.floor(total / 60);
-  const remaining = total - minutes * 60;
-  const remainingText = remaining.toFixed(1).padStart(4, "0");
-  return `${minutes.toString().padStart(2, "0")}:${remainingText}`;
-};
-
-const parseTimeInput = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const parts = trimmed.split(":").map((part) => part.trim());
-  const numericParts = parts.map((part) => Number(part));
-  if (numericParts.some((part) => Number.isNaN(part))) {
-    return null;
-  }
-  if (numericParts.length === 1) {
-    return Math.max(0, numericParts[0]);
-  }
-  if (numericParts.length === 2) {
-    return Math.max(0, numericParts[0] * 60 + numericParts[1]);
-  }
-  if (numericParts.length === 3) {
-    return Math.max(
-      0,
-      numericParts[0] * 3600 + numericParts[1] * 60 + numericParts[2]
-    );
+  if (normalized.length === 6) {
+    return {
+      r: parseInt(normalized.slice(0, 2), 16),
+      g: parseInt(normalized.slice(2, 4), 16),
+      b: parseInt(normalized.slice(4, 6), 16),
+    };
   }
   return null;
 };
 
-const formatSize = (bytes: number) => {
-  if (bytes < 1024) {
-    return `${bytes} B`;
+const toRgba = (value: string, alpha: number) => {
+  const rgb = parseHexColor(value);
+  if (!rgb) {
+    return value;
   }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const clamped = Math.min(1, Math.max(0, alpha));
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamped})`;
 };
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
+let textMeasureContext: CanvasRenderingContext2D | null = null;
+const textStagePaddingX = 24; // Matches `px-3` padding on the stage text wrapper.
+const systemFontFamilies = new Set(["Georgia", "Times New Roman", "Courier New"]);
+const textResizeMinFontSize = 8;
+const textResizeMaxFontSize = 240;
+const stockMusicBucketName =
+  process.env.NEXT_PUBLIC_STOCK_MUSIC_BUCKET ?? "stock-music";
+const stockMusicRootPrefix =
+  process.env.NEXT_PUBLIC_STOCK_MUSIC_ROOT?.replace(/^\/+|\/+$/g, "") ?? "";
+const audioFileExtensions = new Set([
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".flac",
+]);
 
-const createDefaultVideoSettings = (): VideoClipSettings => ({
-  speed: 1,
-  volume: 100,
-  muted: false,
-  fadeEnabled: false,
-  fadeIn: 0.5,
-  fadeOut: 0.5,
-  roundCorners: false,
-  cornerRadiusLinked: true,
-  cornerRadius: 0,
-  cornerRadii: {
-    topLeft: 0,
-    topRight: 0,
-    bottomRight: 0,
-    bottomLeft: 0,
-  },
-  opacity: 100,
-  rotation: 0,
-  flipH: false,
-  flipV: false,
-  brightness: 0,
-  contrast: 0,
-  exposure: 0,
-  hue: 0,
-  saturation: 0,
-  sharpen: 0,
-  noise: 0,
-  blur: 0,
-  vignette: 0,
-});
-
-const cloneVideoSettings = (settings: VideoClipSettings): VideoClipSettings => ({
-  ...settings,
-  cornerRadii: { ...settings.cornerRadii },
-});
-
-const createDefaultTextSettings = (): TextClipSettings => ({
-  text: "Title",
-  fontFamily: "Roboto",
-  fontSize: 48,
-  color: "#ffffff",
-  bold: true,
-  italic: false,
-  align: "center",
-  letterSpacing: 0,
-  lineHeight: 1.1,
-});
-
-const cloneTextSettings = (settings: TextClipSettings): TextClipSettings => ({
-  ...settings,
-});
-
-const createDefaultTransform = (
-  assetAspectRatio: number | undefined,
-  stageAspectRatio: number
-): ClipTransform => {
-  const resolvedStageRatio =
-    Number.isFinite(stageAspectRatio) && stageAspectRatio > 0
-      ? stageAspectRatio
-      : 16 / 9;
-  const resolvedAssetRatio =
-    Number.isFinite(assetAspectRatio) && assetAspectRatio
-      ? assetAspectRatio
-      : resolvedStageRatio;
-  let width = 1;
-  let height = 1;
-  if (resolvedAssetRatio > resolvedStageRatio) {
-    height = resolvedStageRatio / resolvedAssetRatio;
-  } else {
-    width = resolvedAssetRatio / resolvedStageRatio;
-  }
-  return {
-    x: (1 - width) / 2,
-    y: (1 - height) / 2,
-    width,
-    height,
-  };
+type StockAudioTrack = {
+  id: string;
+  name: string;
+  category: string;
+  url: string;
+  path: string;
+  size: number;
+  duration?: number;
 };
 
-const createDefaultTextTransform = (stageAspectRatio: number): ClipTransform => {
-  const width = 0.6;
-  const height = stageAspectRatio > 1.4 ? 0.18 : 0.24;
-  return {
-    x: (1 - width) / 2,
-    y: (1 - height) / 2,
-    width,
-    height,
-  };
-};
-
-type SliderFieldProps = {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  onChange: (value: number) => void;
-  valueLabel?: string;
-};
-
-const SliderField = ({
-  label,
-  value,
-  min,
-  max,
-  step = 1,
-  onChange,
-  valueLabel,
-}: SliderFieldProps) => {
-  const percentage = ((value - min) / (max - min)) * 100;
-  const normalized = Number.isFinite(percentage)
-    ? Math.min(100, Math.max(0, percentage))
-    : 0;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-600">{label}</span>
-        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
-          {valueLabel ?? value}
-        </span>
-      </div>
-      <div className="relative h-4">
-        <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/80" />
-        <div
-          className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
-          style={{ width: `${normalized}%` }}
-        />
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(event) => onChange(Number(event.target.value))}
-          className="refined-slider relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent"
-          aria-label={label}
-        />
-      </div>
-    </div>
-  );
-};
-
-type ToggleSwitchProps = {
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  ariaLabel: string;
-};
-
-const ToggleSwitch = ({ checked, onChange, ariaLabel }: ToggleSwitchProps) => {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={ariaLabel}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/40 focus-visible:ring-offset-2 ${checked ? "bg-[#5B6CFF]" : "bg-gray-200"
-        }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.2)] transition-transform ${checked ? "translate-x-[18px]" : "translate-x-[2px]"
-          }`}
-      />
-    </button>
-  );
-};
-
-const clampTransformToStage = (
-  rect: ClipTransform,
-  stage: { width: number; height: number },
-  minSizePx: number
-) => {
-  const minWidth = Math.min(0.9, minSizePx / stage.width);
-  const minHeight = Math.min(0.9, minSizePx / stage.height);
-  const width = clamp(rect.width, minWidth, 1);
-  const height = clamp(rect.height, minHeight, 1);
-  const x = clamp(rect.x, 0, 1 - width);
-  const y = clamp(rect.y, 0, 1 - height);
-  return {
-    x,
-    y,
-    width,
-    height,
-  };
-};
-
-const getAssetDurationSeconds = (asset?: MediaAsset | null) =>
-  asset?.duration ?? fallbackDuration;
-
-const imageMaxDuration = 3600;
-const defaultTextDuration = 5;
-
-const getAssetMaxDurationSeconds = (asset?: MediaAsset | null) =>
-  asset?.kind === "image" || asset?.kind === "text"
-    ? imageMaxDuration
-    : getAssetDurationSeconds(asset);
-
-const getLaneType = (asset?: MediaAsset | null): LaneType => {
-  if (asset?.kind === "audio") {
-    return "audio";
+const isAudioFile = (name: string, mimeType?: string | null) => {
+  if (mimeType?.startsWith("audio/")) {
+    return true;
   }
-  if (asset?.kind === "text") {
-    return "text";
-  }
-  return "video";
-};
-
-const getLaneEndTime = (laneId: string, clips: TimelineClip[]) =>
-  clips.reduce(
-    (max, clip) =>
-      clip.laneId === laneId
-        ? Math.max(max, clip.startTime + clip.duration)
-        : max,
-    0
-  );
-
-const getWaveformBars = (seed: string, count: number) => {
-  const values: number[] = [];
-  let accumulator = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    accumulator += seed.charCodeAt(index);
-  }
-  for (let i = 0; i < count; i += 1) {
-    const value = Math.abs(Math.sin(accumulator + i * 1.7));
-    values.push(0.2 + value * 0.8);
-  }
-  return values;
-};
-
-const inferMediaKind = (file: File): MediaKind => {
-  if (file.type.startsWith("video/")) {
-    return "video";
-  }
-  if (file.type.startsWith("audio/")) {
-    return "audio";
-  }
-  if (file.type.startsWith("image/")) {
-    return "image";
-  }
-  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (["mp3", "wav", "m4a", "aac"].includes(extension)) {
-    return "audio";
-  }
-  if (["jpg", "jpeg", "png", "gif", "webp"].includes(extension)) {
-    return "image";
-  }
-  return "video";
-};
-
-const getMediaMeta = (kind: MediaKind, url: string) =>
-  new Promise<{
-    duration?: number;
-    width?: number;
-    height?: number;
-    aspectRatio?: number;
-  }>((resolve) => {
-    if (kind === "text") {
-      resolve({});
-      return;
+  const lower = name.toLowerCase();
+  for (const ext of audioFileExtensions) {
+    if (lower.endsWith(ext)) {
+      return true;
     }
-    if (kind === "image") {
-      const image = new Image();
-      image.onload = () => {
-        const width = image.naturalWidth;
-        const height = image.naturalHeight;
-        resolve({
-          width,
-          height,
-          aspectRatio: width && height ? width / height : undefined,
-        });
-      };
-      image.onerror = () => resolve({});
-      image.src = url;
-      return;
-    }
-    const element = document.createElement(
-      kind === "video" ? "video" : "audio"
-    );
-    element.preload = "metadata";
-    element.onloadedmetadata = () => {
-      if (kind === "video") {
-        const video = element as HTMLVideoElement;
-        const width = video.videoWidth;
-        const height = video.videoHeight;
-        resolve({
-          duration: element.duration,
-          width,
-          height,
-          aspectRatio: width && height ? width / height : undefined,
-        });
-        return;
-      }
-      resolve({ duration: element.duration });
-    };
-    element.onerror = () => resolve({});
-    element.src = url;
+  }
+  return false;
+};
+
+const formatStockLabel = (value: string) => {
+  const cleaned = value
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) {
+    return value;
+  }
+  return cleaned.replace(/\b\w/g, (match) => match.toUpperCase());
+};
+
+const resolveFontFamily = (family: string | undefined) => {
+  const trimmed = family?.trim();
+  if (!trimmed) {
+    return "sans-serif";
+  }
+  const escaped = trimmed.replace(/"/g, '\\"');
+  const primary = /\s/.test(trimmed) ? `"${escaped}"` : escaped;
+  return `${primary}, system-ui, sans-serif`;
+};
+
+const getPresetPreviewFontSize = (line: TextPreviewLine) => {
+  const baseSize = line.size;
+  const raw = line.text?.trim() ?? "";
+  if (!raw) {
+    return baseSize;
+  }
+  const condensed = raw.replace(/\s+/g, "");
+  const length = condensed.length;
+  if (length <= 10) {
+    return baseSize;
+  }
+  let budget = 12;
+  if (baseSize >= 24) {
+    budget = 8;
+  } else if (baseSize >= 20) {
+    budget = 10;
+  }
+  const isAllCaps = raw === raw.toUpperCase();
+  const trackingPenalty = line.className?.includes("tracking-") ? 0.9 : 1;
+  const capPenalty = isAllCaps ? 0.92 : 1;
+  const scale = clamp(
+    (budget / length) * trackingPenalty * capPenalty,
+    0.6,
+    1
+  );
+  return Math.max(10, baseSize * scale);
+};
+
+const measureTextBounds = (settings: TextClipSettings) => {
+  if (!textMeasureContext && typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    textMeasureContext = canvas.getContext("2d");
+  }
+  const context = textMeasureContext;
+  const fontFamily = resolveFontFamily(settings.fontFamily);
+  const fontWeight = settings.bold ? 700 : 400;
+  const fontStyle = settings.italic ? "italic" : "normal";
+  const fontSize = settings.fontSize || 16;
+  const lineHeight = settings.lineHeight || 1.2;
+  const letterSpacing = settings.letterSpacing || 0;
+  const lines = settings.text?.split("\n") ?? [" "];
+  if (context) {
+    context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+  }
+  let maxWidth = 0;
+  lines.forEach((line) => {
+    const content = line.length > 0 ? line : " ";
+    const measured = context?.measureText(content).width ?? fontSize;
+    const spacing = letterSpacing * Math.max(0, content.length - 1);
+    maxWidth = Math.max(maxWidth, measured + spacing);
   });
+  const height = Math.max(1, lines.length) * fontSize * lineHeight;
+  const paddingX = settings.backgroundEnabled ? fontSize * 0.9 : 0;
+  const paddingY = settings.backgroundEnabled ? fontSize * 0.3 : 0;
+  const outline = settings.outlineEnabled ? settings.outlineWidth * 2 : 0;
+  return {
+    width: Math.max(1, maxWidth + paddingX + outline + textStagePaddingX),
+    height: Math.max(1, height + paddingY + outline),
+  };
+};
+
+const getTextRenderStyles = (settings: TextClipSettings) => {
+  const shadowBlur = Number.isFinite(settings.shadowBlur)
+    ? settings.shadowBlur
+    : 0;
+  const shadowOpacity = Number.isFinite(settings.shadowOpacity)
+    ? settings.shadowOpacity
+    : 30;
+  const outlineWidth = Number.isFinite(settings.outlineWidth)
+    ? settings.outlineWidth
+    : 0;
+  const backgroundMode = settings.backgroundStyle ?? "line-block-round";
+  const fontWeight = settings.bold ? 700 : 400;
+  const shadowEnabled =
+    settings.shadowEnabled && shadowBlur > 0 && shadowOpacity > 0;
+  const shadowOffset = Math.round(shadowBlur * 0.4);
+  const shadowColor = toRgba(
+    settings.shadowColor,
+    shadowOpacity / 100
+  );
+  const textShadow = shadowEnabled
+    ? `${shadowOffset}px ${shadowOffset}px ${shadowBlur}px ${shadowColor}`
+    : "none";
+  const resolvedOutlineWidth = settings.outlineEnabled ? outlineWidth : 0;
+  const hasOutline = settings.outlineEnabled && resolvedOutlineWidth > 0;
+  const isBackgroundEnabled = settings.backgroundEnabled;
+  const isBlockBackground =
+    backgroundMode === "block" || backgroundMode === "block-rounded";
+  const isRoundedBackground =
+    backgroundMode === "line-block-round" ||
+    backgroundMode === "block-rounded";
+
+  const backgroundStyles: CSSProperties = isBackgroundEnabled
+    ? {
+        backgroundColor: settings.backgroundColor,
+        padding: "0.15em 0.45em",
+        borderRadius: isRoundedBackground ? 10 : 0,
+        display: isBlockBackground ? "inline-block" : "inline",
+        maxWidth: "100%",
+        ...(isBlockBackground
+          ? {}
+          : {
+              boxDecorationBreak: "clone",
+              WebkitBoxDecorationBreak: "clone",
+            }),
+      }
+    : {};
+
+  const textStyle: CSSProperties = {
+    fontFamily: resolveFontFamily(settings.fontFamily),
+    fontSize: settings.fontSize,
+    fontWeight,
+    fontStyle: settings.italic ? "italic" : "normal",
+    lineHeight: settings.lineHeight,
+    letterSpacing: settings.letterSpacing,
+    color: settings.color,
+    textShadow,
+    textRendering: "geometricPrecision",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    ...(hasOutline
+      ? {
+          WebkitTextStrokeWidth: resolvedOutlineWidth,
+          WebkitTextStrokeColor: settings.outlineColor,
+        }
+      : {}),
+    ...backgroundStyles,
+  };
+
+  const containerStyle: CSSProperties = {
+    textAlign: settings.align,
+  };
+
+  return { containerStyle, textStyle };
+};
 
 export default function AdvancedEditorPage() {
+  const textMinLayerSize = 24;
+  const textPresetPreviewCount = 6;
   const [activeTool, setActiveTool] = useState("video");
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
@@ -1740,6 +360,17 @@ export default function AdvancedEditorPage() {
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("All");
   const [isAssetLibraryExpanded, setIsAssetLibraryExpanded] = useState(false);
   const [assetSearch, setAssetSearch] = useState("");
+  const [stockSearch, setStockSearch] = useState("");
+  const [stockCategory, setStockCategory] = useState("All");
+  const [stockMusic, setStockMusic] = useState<StockAudioTrack[]>([]);
+  const [stockMusicStatus, setStockMusicStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [stockMusicError, setStockMusicError] = useState<string | null>(null);
+  const [stockMusicReloadKey, setStockMusicReloadKey] = useState(0);
+  const [showAllStockTags, setShowAllStockTags] = useState(false);
+  const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [stageSelection, setStageSelection] =
     useState<RangeSelectionState | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -1787,6 +418,9 @@ export default function AdvancedEditorPage() {
     useState<TextPanelView>("library");
   const [textPanelTag, setTextPanelTag] =
     useState<TextPresetTag>("All");
+  const [expandedTextGroupId, setExpandedTextGroupId] = useState<string | null>(
+    null
+  );
   const [textPanelPreset, setTextPanelPreset] = useState<TextPreset | null>(
     null
   );
@@ -1797,6 +431,9 @@ export default function AdvancedEditorPage() {
     defaultTextPanelSettings.fontFamily
   );
   const [textPanelFontSize, setTextPanelFontSize] = useState(
+    defaultTextPanelSettings.fontSize
+  );
+  const [textPanelFontSizeDisplay, setTextPanelFontSizeDisplay] = useState(
     defaultTextPanelSettings.fontSize
   );
   const [textPanelColor, setTextPanelColor] = useState(
@@ -1817,9 +454,52 @@ export default function AdvancedEditorPage() {
   const [textPanelLineHeight, setTextPanelLineHeight] = useState(
     defaultTextPanelSettings.lineHeight
   );
+  const [textPanelBackgroundEnabled, setTextPanelBackgroundEnabled] = useState(
+    defaultTextPanelSettings.backgroundEnabled
+  );
+  const [textPanelBackgroundColor, setTextPanelBackgroundColor] = useState(
+    defaultTextPanelSettings.backgroundColor
+  );
+  const [textPanelBackgroundStyle, setTextPanelBackgroundStyle] =
+    useState<TextBackgroundStyle>(
+      defaultTextPanelSettings.backgroundStyle
+    );
+  const [textPanelOutlineEnabled, setTextPanelOutlineEnabled] = useState(
+    defaultTextPanelSettings.outlineEnabled
+  );
+  const [textPanelOutlineColor, setTextPanelOutlineColor] = useState(
+    defaultTextPanelSettings.outlineColor
+  );
+  const [textPanelOutlineWidth, setTextPanelOutlineWidth] = useState(
+    defaultTextPanelSettings.outlineWidth
+  );
+  const [textPanelShadowEnabled, setTextPanelShadowEnabled] = useState(
+    defaultTextPanelSettings.shadowEnabled
+  );
+  const [textPanelShadowColor, setTextPanelShadowColor] = useState(
+    defaultTextPanelSettings.shadowColor
+  );
+  const [textPanelShadowBlur, setTextPanelShadowBlur] = useState(
+    defaultTextPanelSettings.shadowBlur
+  );
+  const [textPanelShadowOpacity, setTextPanelShadowOpacity] = useState(
+    defaultTextPanelSettings.shadowOpacity
+  );
+  const [fontLoadTick, setFontLoadTick] = useState(0);
   const [textPanelSpacingOpen, setTextPanelSpacingOpen] = useState(false);
+  const [textPanelStylesOpen, setTextPanelStylesOpen] = useState(true);
+  const [textPanelStylePresetId, setTextPanelStylePresetId] = useState<
+    string | null
+  >(null);
+  const [textPanelShadowAdvancedOpen, setTextPanelShadowAdvancedOpen] =
+    useState(false);
   const [textPanelStart, setTextPanelStart] = useState("00:00.0");
   const [textPanelEnd, setTextPanelEnd] = useState("00:05.0");
+  const textPanelTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const stageTextEditorRef = useRef<HTMLTextAreaElement | null>(null);
+  const [editingTextClipId, setEditingTextClipId] = useState<string | null>(
+    null
+  );
   const [timelineResizeState, setTimelineResizeState] = useState<{
     startY: number;
     startHeight: number;
@@ -1840,6 +520,11 @@ export default function AdvancedEditorPage() {
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const assetsRef = useRef<MediaAsset[]>([]);
   const lanesRef = useRef<TimelineLane[]>([]);
+  const textSettingsRef = useRef<Record<string, TextClipSettings>>({});
+  const loadedFontFamiliesRef = useRef<Set<string>>(new Set());
+  const loadingFontFamiliesRef = useRef<Map<string, Promise<void>>>(new Map());
+  const fontStylesheetPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
+  const stageAspectRatioRef = useRef(16 / 9);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const floatingMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1849,6 +534,10 @@ export default function AdvancedEditorPage() {
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
   const visualRefs = useRef(new Map<string, HTMLVideoElement | null>());
   const audioRefs = useRef(new Map<string, HTMLAudioElement | null>());
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stockDurationCacheRef = useRef<Map<string, number | null>>(new Map());
+  const stockMusicLoadTimeoutRef = useRef<number | null>(null);
+  const stockMusicLoadIdRef = useRef(0);
   const historyRef = useRef<{
     past: EditorSnapshot[];
     future: EditorSnapshot[];
@@ -1858,6 +547,11 @@ export default function AdvancedEditorPage() {
   const clipboardRef = useRef<ClipboardData | null>(null);
   const dragTransformHistoryRef = useRef(false);
   const resizeTransformHistoryRef = useRef(false);
+  const resizeTextRectRef = useRef<ClipTransform | null>(null);
+  const resizeTextFontRef = useRef<{ clipId: string; fontSize: number } | null>(
+    null
+  );
+  const clipTransformTouchedRef = useRef<Set<string>>(new Set());
   const dragClipHistoryRef = useRef(false);
   const trimHistoryRef = useRef(false);
   const timelinePanRef = useRef<{
@@ -1888,15 +582,101 @@ export default function AdvancedEditorPage() {
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
+  const updateVideoMetaFromElement = useCallback(
+    (clipId: string, assetId: string, element: HTMLVideoElement | null) => {
+      if (!element) {
+        return;
+      }
+      const width = element.videoWidth;
+      const height = element.videoHeight;
+      if (!width || !height) {
+        return;
+      }
+      const aspectRatio = width / height;
+      setAssets((prev) => {
+        const index = prev.findIndex((asset) => asset.id === assetId);
+        if (index < 0) {
+          return prev;
+        }
+        const current = prev[index];
+        if (
+          current.width === width &&
+          current.height === height &&
+          current.aspectRatio === aspectRatio
+        ) {
+          return prev;
+        }
+        const next = [...prev];
+        next[index] = {
+          ...current,
+          width,
+          height,
+          aspectRatio,
+        };
+        return next;
+      });
+      if (clipTransformTouchedRef.current.has(clipId)) {
+        return;
+      }
+      const stageRatio = stageAspectRatioRef.current || 16 / 9;
+      setClipTransforms((prev) => {
+        const current = prev[clipId];
+        if (!current) {
+          return prev;
+        }
+        const nextTransform = createDefaultTransform(
+          aspectRatio,
+          stageRatio
+        );
+        if (
+          Math.abs(current.width - nextTransform.width) < 0.001 &&
+          Math.abs(current.height - nextTransform.height) < 0.001 &&
+          Math.abs(current.x - nextTransform.x) < 0.001 &&
+          Math.abs(current.y - nextTransform.y) < 0.001
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [clipId]: nextTransform,
+        };
+      });
+      setBackgroundTransforms((prev) => {
+        const current = prev[clipId];
+        if (!current) {
+          return prev;
+        }
+        const nextTransform = createDefaultTransform(
+          aspectRatio,
+          stageRatio
+        );
+        if (
+          Math.abs(current.width - nextTransform.width) < 0.001 &&
+          Math.abs(current.height - nextTransform.height) < 0.001 &&
+          Math.abs(current.x - nextTransform.x) < 0.001 &&
+          Math.abs(current.y - nextTransform.y) < 0.001
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [clipId]: nextTransform,
+        };
+      });
+    },
+    []
+  );
+
   const registerVideoRef = useCallback(
-    (clipId: string) => (node: HTMLVideoElement | null) => {
+    (clipId: string, assetId: string) => (node: HTMLVideoElement | null) => {
       if (node) {
         visualRefs.current.set(clipId, node);
+        updateVideoMetaFromElement(clipId, assetId, node);
       } else {
         visualRefs.current.delete(clipId);
       }
     },
-    []
+    [updateVideoMetaFromElement]
   );
 
   const registerAudioRef = useCallback(
@@ -1914,6 +694,72 @@ export default function AdvancedEditorPage() {
     () => new Set(selectedClipIds),
     [selectedClipIds]
   );
+  const textFontSizeDisplay = useMemo(
+    () => Math.round(textPanelFontSizeDisplay),
+    [textPanelFontSizeDisplay]
+  );
+  const textFontSizeOptions = useMemo(() => {
+    if (textFontSizes.includes(textFontSizeDisplay)) {
+      return textFontSizes;
+    }
+    return [textFontSizeDisplay, ...textFontSizes];
+  }, [textFontSizeDisplay]);
+
+  const ensureFontStylesheet = useCallback((fontFamily: string) => {
+    if (typeof document === "undefined") {
+      return Promise.resolve();
+    }
+    const family = fontFamily.trim();
+    if (!family || systemFontFamilies.has(family)) {
+      return Promise.resolve();
+    }
+    const linkId = `font-${family.toLowerCase().replace(/\s+/g, "-")}`;
+    const existing = document.getElementById(linkId);
+    if (existing) {
+      return fontStylesheetPromisesRef.current.get(family) ?? Promise.resolve();
+    }
+    const encoded = encodeURIComponent(family).replace(/%20/g, "+");
+    const link = document.createElement("link");
+    const promise = new Promise<void>((resolve) => {
+      link.onload = () => resolve();
+      link.onerror = () => resolve();
+    });
+    fontStylesheetPromisesRef.current.set(family, promise);
+    link.id = linkId;
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${encoded}:wght@400;500;600;700;800&display=swap`;
+    document.head.appendChild(link);
+    return promise;
+  }, []);
+
+  const loadFontFamily = useCallback((fontFamily: string) => {
+    if (typeof document === "undefined" || !document.fonts) {
+      return Promise.resolve();
+    }
+    const family = fontFamily.trim();
+    if (!family) {
+      return Promise.resolve();
+    }
+    if (loadedFontFamiliesRef.current.has(family)) {
+      return Promise.resolve();
+    }
+    const pending = loadingFontFamiliesRef.current.get(family);
+    if (pending) {
+      return pending;
+    }
+    const loadPromise = ensureFontStylesheet(family)
+      .then(() => document.fonts.load(`16px "${family.replace(/"/g, '\\"')}"`))
+      .then(() => {
+        loadedFontFamiliesRef.current.add(family);
+        setFontLoadTick(Date.now());
+      })
+      .catch(() => {})
+      .finally(() => {
+        loadingFontFamiliesRef.current.delete(family);
+      });
+    loadingFontFamiliesRef.current.set(family, loadPromise);
+    return loadPromise;
+  }, [ensureFontStylesheet]);
 
   const isEditableTarget = useCallback((target: EventTarget | null) => {
     const element = target as HTMLElement | null;
@@ -2067,6 +913,24 @@ export default function AdvancedEditorPage() {
   }, [lanes]);
 
   useEffect(() => {
+    textSettingsRef.current = textSettings;
+  }, [textSettings]);
+
+  useEffect(() => {
+    if (textPanelFontFamily) {
+      loadFontFamily(textPanelFontFamily);
+    }
+  }, [textPanelFontFamily, loadFontFamily]);
+
+  useEffect(() => {
+    Object.values(textSettings).forEach((settings) => {
+      if (settings?.fontFamily) {
+        loadFontFamily(settings.fontFamily);
+      }
+    });
+  }, [textSettings, loadFontFamily]);
+
+  useEffect(() => {
     setLanes((prev) => {
       const laneIdsInUse = new Set(timeline.map((clip) => clip.laneId));
       const next = prev.filter((lane) => laneIdsInUse.has(lane.id));
@@ -2090,6 +954,12 @@ export default function AdvancedEditorPage() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      previewAudioRef.current?.pause();
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeTool === "audio") {
       setAssetFilter("Audio");
     } else if (activeTool === "image") {
@@ -2100,11 +970,250 @@ export default function AdvancedEditorPage() {
   }, [activeTool]);
 
   useEffect(() => {
+    if (activeTool === "audio") {
+      return;
+    }
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+    }
+    setIsPreviewPlaying(false);
+  }, [activeTool]);
+
+  useEffect(() => {
+    if (activeTool !== "audio" || !hasSupabase) {
+      return;
+    }
+    let cancelled = false;
+    const loadId = stockMusicLoadIdRef.current + 1;
+    stockMusicLoadIdRef.current = loadId;
+    const loadStockMusic = async () => {
+      setStockMusicStatus("loading");
+      setStockMusicError(null);
+      if (stockMusicLoadTimeoutRef.current) {
+        window.clearTimeout(stockMusicLoadTimeoutRef.current);
+      }
+      stockMusicLoadTimeoutRef.current = window.setTimeout(() => {
+        setStockMusicStatus((current) =>
+          current === "loading" ? "error" : current
+        );
+        setStockMusicError(
+          "Stock music request timed out. Check storage list access."
+        );
+      }, 15000);
+      try {
+        const { supabaseBrowser } = await import("@/lib/supabase/browser");
+        const bucket = supabaseBrowser.storage.from(stockMusicBucketName);
+        console.log("[stock-music] bucket", {
+          bucket: stockMusicBucketName,
+          root: stockMusicRootPrefix || "(root)",
+        });
+        const listWithTimeout = async (path: string) => {
+          let timeoutId: number | null = null;
+          const timeoutPromise = new Promise<{
+            data: null;
+            error: Error;
+          }>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+              reject(new Error("Stock music request timed out."));
+            }, 10000);
+          });
+          const result = (await Promise.race([
+            bucket.list(path, {
+              limit: 1000,
+              sortBy: { column: "name", order: "asc" },
+            }),
+            timeoutPromise,
+          ])) as {
+            data: Array<{
+              id?: string | null;
+              name: string;
+              metadata?: { size?: number; mimetype?: string | null } | null;
+            }> | null;
+            error: Error | null;
+          };
+          if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+          }
+          if (result.error) {
+            console.error("[stock-music] list error", path, result.error);
+          } else {
+            console.log("[stock-music] list ok", path, {
+              count: result.data?.length ?? 0,
+            });
+          }
+          return result;
+        };
+        const tracks: StockAudioTrack[] = [];
+        const pushFiles = (
+          items: Array<{
+            id?: string | null;
+            name: string;
+            metadata?: { size?: number; mimetype?: string | null } | null;
+          }>,
+          category: string,
+          prefix: string
+        ) => {
+          items.forEach((item) => {
+            const mimeType = item.metadata?.mimetype ?? null;
+            if (!isAudioFile(item.name, mimeType)) {
+              return;
+            }
+            const path = prefix ? `${prefix}/${item.name}` : item.name;
+            const { data } = bucket.getPublicUrl(path);
+            if (!data?.publicUrl) {
+              return;
+            }
+            tracks.push({
+              id: path,
+              name: formatStockLabel(item.name),
+              category,
+              url: data.publicUrl,
+              path,
+              size: Number(item.metadata?.size ?? 0),
+            });
+          });
+        };
+        const isFileEntry = (item: {
+          id?: string | null;
+          name: string;
+          metadata?: { size?: number; mimetype?: string | null } | null;
+        }) =>
+          Boolean(item.id) ||
+          Boolean(item.metadata) ||
+          isAudioFile(item.name, item.metadata?.mimetype ?? null);
+        const collectTracks = async (path: string) => {
+          console.log("[stock-music] collect", path || "(root)");
+          const { data, error } = await listWithTimeout(path);
+          if (error) {
+            throw error;
+          }
+          const entries = data ?? [];
+          const files = entries.filter(isFileEntry);
+          console.log("[stock-music] entries", path || "(root)", {
+            entries: entries.length,
+            files: files.length,
+          });
+          if (files.length > 0) {
+            const label = path
+              ? formatStockLabel(path.split("/").pop() ?? "General")
+              : "General";
+            pushFiles(files, label, path);
+          }
+          const folders = entries.filter((item) => !isFileEntry(item));
+          if (folders.length > 0) {
+            console.log(
+              "[stock-music] folders",
+              path || "(root)",
+              folders.map((folder) => folder.name)
+            );
+          }
+          await Promise.all(
+            folders.map((folder) => {
+              const nextPath = path ? `${path}/${folder.name}` : folder.name;
+              return collectTracks(nextPath);
+            })
+          );
+        };
+        await collectTracks(stockMusicRootPrefix);
+        if (cancelled || loadId !== stockMusicLoadIdRef.current) {
+          return;
+        }
+        tracks.sort((a, b) => a.name.localeCompare(b.name));
+        console.log("[stock-music] tracks", tracks.length);
+        setStockMusic(tracks);
+        setStockMusicStatus("ready");
+      } catch (error) {
+        if (cancelled || loadId !== stockMusicLoadIdRef.current) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to load stock music from Supabase.";
+        console.error("[stock-music] load failed", error);
+        setStockMusicError(message);
+        setStockMusicStatus("error");
+      } finally {
+        if (stockMusicLoadTimeoutRef.current) {
+          window.clearTimeout(stockMusicLoadTimeoutRef.current);
+          stockMusicLoadTimeoutRef.current = null;
+        }
+      }
+    };
+    loadStockMusic();
+    return () => {
+      if (stockMusicLoadTimeoutRef.current) {
+        window.clearTimeout(stockMusicLoadTimeoutRef.current);
+        stockMusicLoadTimeoutRef.current = null;
+      }
+      cancelled = true;
+    };
+  }, [activeTool, hasSupabase, stockMusicReloadKey]);
+
+  useEffect(() => {
+    if (stockMusic.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const loadDurations = async () => {
+      const pending = stockMusic.filter(
+        (track) =>
+          track.duration == null &&
+          !stockDurationCacheRef.current.has(track.id)
+      );
+      if (pending.length === 0) {
+        return;
+      }
+      const updates = new Map<string, number>();
+      const concurrency = Math.min(6, pending.length);
+      const queue = [...pending];
+      const workers = Array.from({ length: concurrency }, () =>
+        (async () => {
+          while (queue.length > 0) {
+            const track = queue.shift();
+            if (!track) {
+              return;
+            }
+            const meta = await getMediaMeta("audio", track.url);
+            const duration =
+              meta.duration != null ? Math.max(0, meta.duration) : null;
+            stockDurationCacheRef.current.set(track.id, duration);
+            if (duration != null) {
+              updates.set(track.id, duration);
+            }
+            if (cancelled) {
+              return;
+            }
+          }
+        })()
+      );
+      await Promise.all(workers);
+      if (cancelled || updates.size === 0) {
+        return;
+      }
+      setStockMusic((prev) =>
+        prev.map((track) => {
+          const nextDuration = updates.get(track.id);
+          if (nextDuration == null) {
+            return track;
+          }
+          return { ...track, duration: nextDuration };
+        })
+      );
+    };
+    loadDurations();
+    return () => {
+      cancelled = true;
+    };
+  }, [stockMusic]);
+
+  useEffect(() => {
     if (!["video", "audio", "image"].includes(activeTool)) {
       setIsAssetLibraryExpanded(false);
     }
     if (activeTool !== "text") {
       setTextPanelView("library");
+      setEditingTextClipId(null);
     }
   }, [activeTool]);
 
@@ -2189,13 +1298,33 @@ export default function AdvancedEditorPage() {
   }, [activeTool]);
 
   const visibleTextPresetGroups = useMemo(() => {
+    if (expandedTextGroupId) {
+      return textPresetGroups.filter((group) => group.id === expandedTextGroupId);
+    }
     if (textPanelTag === "All") {
       return textPresetGroups;
     }
     return textPresetGroups.filter(
       (group) => group.category === textPanelTag
     );
-  }, [textPanelTag]);
+  }, [textPanelTag, expandedTextGroupId]);
+
+  useEffect(() => {
+    if (activeTool !== "text" || textPanelView !== "library") {
+      return;
+    }
+    const families = new Set<string>();
+    visibleTextPresetGroups.forEach((group) => {
+      group.presets.forEach((preset) => {
+        preset.preview.forEach((line) => {
+          if (line.fontFamily) {
+            families.add(line.fontFamily);
+          }
+        });
+      });
+    });
+    families.forEach((family) => loadFontFamily(family));
+  }, [activeTool, textPanelView, visibleTextPresetGroups, loadFontFamily]);
 
   const createTextAsset = (label: string): MediaAsset => ({
     id: crypto.randomUUID(),
@@ -2240,15 +1369,27 @@ export default function AdvancedEditorPage() {
         fontSize: preset.editFontSize,
       };
       setTextPanelPreset(preset);
+      setTextPanelStylePresetId(null);
       setTextPanelDraft(nextSettings.text);
       setTextPanelFontFamily(nextSettings.fontFamily);
       setTextPanelFontSize(nextSettings.fontSize);
+      setTextPanelFontSizeDisplay(nextSettings.fontSize);
       setTextPanelColor(nextSettings.color);
       setTextPanelBold(nextSettings.bold);
       setTextPanelItalic(nextSettings.italic);
       setTextPanelAlign(nextSettings.align);
       setTextPanelLetterSpacing(nextSettings.letterSpacing);
       setTextPanelLineHeight(nextSettings.lineHeight);
+      setTextPanelBackgroundEnabled(nextSettings.backgroundEnabled);
+      setTextPanelBackgroundColor(nextSettings.backgroundColor);
+      setTextPanelBackgroundStyle(nextSettings.backgroundStyle);
+      setTextPanelOutlineEnabled(nextSettings.outlineEnabled);
+      setTextPanelOutlineColor(nextSettings.outlineColor);
+      setTextPanelOutlineWidth(nextSettings.outlineWidth);
+      setTextPanelShadowEnabled(nextSettings.shadowEnabled);
+      setTextPanelShadowColor(nextSettings.shadowColor);
+      setTextPanelShadowBlur(nextSettings.shadowBlur);
+      setTextPanelShadowOpacity(nextSettings.shadowOpacity);
       setTextPanelView("edit");
       addTextClip(nextSettings, preset.name);
     },
@@ -2303,6 +1444,64 @@ export default function AdvancedEditorPage() {
     );
   }, [assetSearch, filteredAssets]);
 
+  const stockCategories = useMemo(() => {
+    const categories = Array.from(
+      new Set(stockMusic.map((track) => track.category))
+    ).sort((a, b) => a.localeCompare(b));
+    return ["All", ...categories];
+  }, [stockMusic]);
+
+  const filteredStockMusic = useMemo(() => {
+    const query = stockSearch.trim().toLowerCase();
+    return stockMusic.filter((track) => {
+      const matchesCategory =
+        stockCategory === "All" || track.category === stockCategory;
+      if (!matchesCategory) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return (
+        track.name.toLowerCase().includes(query) ||
+        track.category.toLowerCase().includes(query)
+      );
+    });
+  }, [stockCategory, stockMusic, stockSearch]);
+
+  const groupedStockMusic = useMemo(() => {
+    const groupMap = new Map<string, StockAudioTrack[]>();
+    filteredStockMusic.forEach((track) => {
+      if (!groupMap.has(track.category)) {
+        groupMap.set(track.category, []);
+      }
+      groupMap.get(track.category)?.push(track);
+    });
+    const order =
+      stockCategory === "All"
+        ? stockCategories.slice(1)
+        : [stockCategory];
+    return order
+      .filter((category) => groupMap.has(category))
+      .map((category) => ({
+        category,
+        tracks: groupMap.get(category) ?? [],
+      }));
+  }, [filteredStockMusic, stockCategories, stockCategory]);
+
+  const stockTagCandidates = stockCategories.slice(1);
+  const maxStockTagCount = 4;
+  const visibleStockTags = showAllStockTags
+    ? stockTagCandidates
+    : stockTagCandidates.slice(0, maxStockTagCount);
+  const hasMoreStockTags = stockTagCandidates.length > maxStockTagCount;
+
+  useEffect(() => {
+    if (stockCategory !== "All" && !stockCategories.includes(stockCategory)) {
+      setStockCategory("All");
+    }
+  }, [stockCategories, stockCategory]);
+
   const timelineClips = useMemo(() => {
     return timeline
       .map((clip) => {
@@ -2324,6 +1523,20 @@ export default function AdvancedEditorPage() {
       left: entry.clip.startTime ?? 0,
     }));
   }, [timelineClips]);
+
+  const clipAssetKindMap = useMemo(() => {
+    return new Map(
+      timelineLayout.map((entry) => [entry.clip.id, entry.asset.kind])
+    );
+  }, [timelineLayout]);
+
+  const getClipMinSize = useCallback(
+    (clipId: string) => {
+      const kind = clipAssetKindMap.get(clipId);
+      return kind === "text" ? textMinLayerSize : minLayerSize;
+    },
+    [clipAssetKindMap, textMinLayerSize]
+  );
 
   const laneIndexMap = useMemo(() => {
     return new Map(lanes.map((lane, index) => [lane.id, index]));
@@ -2560,31 +1773,67 @@ export default function AdvancedEditorPage() {
       }
       return;
     }
-    setActiveTool("text");
-    setTextPanelView("edit");
+    if (activeTool === "text") {
+      setTextPanelView("edit");
+    }
     setTextPanelPreset(null);
     setTextPanelDraft(selectedTextSettings.text);
     setTextPanelFontFamily(selectedTextSettings.fontFamily);
-    setTextPanelFontSize(selectedTextSettings.fontSize);
+    setTextPanelFontSizeDisplay(selectedTextSettings.fontSize);
+    if (resizeTransformState?.clipId !== selectedTextEntry.clip.id) {
+      setTextPanelFontSize(selectedTextSettings.fontSize);
+    }
     setTextPanelColor(selectedTextSettings.color);
     setTextPanelBold(selectedTextSettings.bold);
     setTextPanelItalic(selectedTextSettings.italic);
     setTextPanelAlign(selectedTextSettings.align);
     setTextPanelLetterSpacing(selectedTextSettings.letterSpacing);
     setTextPanelLineHeight(selectedTextSettings.lineHeight);
+    setTextPanelBackgroundEnabled(selectedTextSettings.backgroundEnabled);
+    setTextPanelBackgroundColor(selectedTextSettings.backgroundColor);
+    setTextPanelBackgroundStyle(selectedTextSettings.backgroundStyle);
+    setTextPanelOutlineEnabled(selectedTextSettings.outlineEnabled);
+    setTextPanelOutlineColor(selectedTextSettings.outlineColor);
+    setTextPanelOutlineWidth(selectedTextSettings.outlineWidth);
+    setTextPanelShadowEnabled(selectedTextSettings.shadowEnabled);
+    setTextPanelShadowColor(selectedTextSettings.shadowColor);
+    setTextPanelShadowBlur(selectedTextSettings.shadowBlur);
+    setTextPanelShadowOpacity(selectedTextSettings.shadowOpacity);
+    setTextPanelStylePresetId(null);
     setTextPanelStart(formatTimeWithTenths(selectedTextEntry.clip.startTime));
     setTextPanelEnd(
       formatTimeWithTenths(
         selectedTextEntry.clip.startTime + selectedTextEntry.clip.duration
       )
     );
-  }, [activeTool, selectedTextEntry, selectedTextSettings]);
+  }, [activeTool, selectedTextEntry, selectedTextSettings, resizeTransformState]);
 
   useEffect(() => {
     if (textPanelView === "library") {
       setTextPanelSpacingOpen(false);
+      setTextPanelShadowAdvancedOpen(false);
     }
   }, [textPanelView]);
+
+  useEffect(() => {
+    if (!editingTextClipId) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      stageTextEditorRef.current?.focus();
+      stageTextEditorRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editingTextClipId]);
+
+  useEffect(() => {
+    if (!editingTextClipId) {
+      return;
+    }
+    if (!selectedTextEntry || selectedTextEntry.clip.id !== editingTextClipId) {
+      setEditingTextClipId(null);
+    }
+  }, [editingTextClipId, selectedTextEntry]);
 
   useEffect(() => {
     if (!floatingMenu.clipId) {
@@ -2688,11 +1937,20 @@ export default function AdvancedEditorPage() {
   }, [timelineLayout, currentTime, laneIndexMap]);
 
   const masterEntry = useMemo(() => {
-    if (activeClipEntry) {
+    if (
+      activeClipEntry &&
+      (activeClipEntry.asset.kind === "video" ||
+        activeClipEntry.asset.kind === "audio")
+    ) {
       return activeClipEntry;
     }
     if (visualStack.length > 0) {
-      return visualStack[visualStack.length - 1];
+      for (let index = visualStack.length - 1; index >= 0; index -= 1) {
+        const entry = visualStack[index];
+        if (entry.asset.kind === "video") {
+          return entry;
+        }
+      }
     }
     if (audioStack.length > 0) {
       return audioStack[0];
@@ -2702,7 +1960,7 @@ export default function AdvancedEditorPage() {
 
   const wasPlayingRef = useRef(false);
 
-  const projectAspectRatio = useMemo(() => {
+  const projectAspectRatio = useMemo<number>(() => {
     const visuals = timelineLayout.filter(
       (entry) => entry.asset.kind !== "audio"
     );
@@ -2720,12 +1978,16 @@ export default function AdvancedEditorPage() {
     return sorted[0].asset.aspectRatio ?? 16 / 9;
   }, [timelineLayout, laneIndexMap]);
 
-  const stageAspectRatio = useMemo(() => {
+  const stageAspectRatio = useMemo<number>(() => {
     if (stageSize.width > 0 && stageSize.height > 0) {
       return stageSize.width / stageSize.height;
     }
     return projectAspectRatio;
   }, [stageSize, projectAspectRatio]);
+
+  useEffect(() => {
+    stageAspectRatioRef.current = stageAspectRatio;
+  }, [stageAspectRatio]);
 
   const baseVisualEntry = useMemo(() => {
     const visuals = timelineLayout.filter(
@@ -2782,6 +2044,90 @@ export default function AdvancedEditorPage() {
       return changed ? next : prev;
     });
   }, [timelineClips, stageAspectRatio]);
+
+  useEffect(() => {
+    if (timelineLayout.length === 0) {
+      return;
+    }
+    if (stageSize.width === 0 || stageSize.height === 0) {
+      return;
+    }
+    setClipTransforms((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      timelineLayout.forEach((entry) => {
+        if (entry.asset.kind !== "text") {
+          return;
+        }
+        if (
+          resizeTransformState?.clipId === entry.clip.id ||
+          dragTransformState?.clipId === entry.clip.id
+        ) {
+          return;
+        }
+        const settings = textSettings[entry.clip.id] ?? fallbackTextSettings;
+        if (settings.autoSize === false) {
+          return;
+        }
+        const bounds = measureTextBounds(settings);
+        const scaleXValue = settings.boxScaleX ?? 1;
+        const scaleX = Number.isFinite(scaleXValue)
+          ? Math.max(0.1, scaleXValue)
+          : 1;
+        const scaleYValue = settings.boxScaleY ?? 1;
+        const scaleY = Number.isFinite(scaleYValue)
+          ? Math.max(0.1, scaleYValue)
+          : 1;
+        const width = clamp(
+          (bounds.width * scaleX) / stageSize.width,
+          0.02,
+          1
+        );
+        const height = clamp(
+          (bounds.height * scaleY) / stageSize.height,
+          0.02,
+          1
+        );
+        const base =
+          prev[entry.clip.id] ?? createDefaultTextTransform(stageAspectRatio);
+        const centerX = base.x + base.width / 2;
+        const centerY = base.y + base.height / 2;
+        const fitted = clampTransformToStage(
+          {
+            x: centerX - width / 2,
+            y: centerY - height / 2,
+            width,
+            height,
+          },
+          { width: stageSize.width, height: stageSize.height },
+          textMinLayerSize
+        );
+        const current = prev[entry.clip.id];
+        if (
+          !current ||
+          Math.abs(current.width - fitted.width) > 0.002 ||
+          Math.abs(current.height - fitted.height) > 0.002 ||
+          Math.abs(current.x - fitted.x) > 0.002 ||
+          Math.abs(current.y - fitted.y) > 0.002
+        ) {
+          next[entry.clip.id] = fitted;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [
+    dragTransformState,
+    fallbackTextSettings,
+    resizeTransformState,
+    stageAspectRatio,
+    stageSize.height,
+    stageSize.width,
+    textSettings,
+    fontLoadTick,
+    textMinLayerSize,
+    timelineLayout,
+  ]);
 
   const timelineTotal = useMemo(() => {
     return timeline.reduce(
@@ -3306,6 +2652,9 @@ export default function AdvancedEditorPage() {
         const kind = inferMediaKind(file);
         const url = URL.createObjectURL(file);
         const meta = await getMediaMeta(kind, url);
+        const resolvedAspectRatio =
+          meta.aspectRatio ??
+          (meta.width && meta.height ? meta.width / meta.height : undefined);
         return {
           id: crypto.randomUUID(),
           name: file.name,
@@ -3315,7 +2664,7 @@ export default function AdvancedEditorPage() {
           duration: meta.duration,
           width: meta.width,
           height: meta.height,
-          aspectRatio: meta.aspectRatio,
+          aspectRatio: resolvedAspectRatio,
           createdAt: Date.now(),
         };
       })
@@ -3485,6 +2834,92 @@ export default function AdvancedEditorPage() {
     setTimeline((prev) => [...prev, clip]);
     setActiveAssetId(assetId);
   };
+
+  const handleStockPreviewToggle = useCallback(
+    (track: StockAudioTrack) => {
+      const audio = previewAudioRef.current ?? new Audio();
+      previewAudioRef.current = audio;
+      audio.volume = 0.9;
+      if (previewTrackId === track.id) {
+        if (audio.paused) {
+          const playPromise = audio.play();
+          if (playPromise) {
+            playPromise
+              .then(() => setIsPreviewPlaying(true))
+              .catch(() => setIsPreviewPlaying(false));
+          }
+        } else {
+          audio.pause();
+          setIsPreviewPlaying(false);
+        }
+        return;
+      }
+      audio.pause();
+      setIsPreviewPlaying(false);
+      audio.currentTime = 0;
+      audio.src = track.url;
+      audio.onended = () => {
+        setIsPreviewPlaying(false);
+      };
+      setPreviewTrackId(track.id);
+      const playPromise = audio.play();
+      if (playPromise) {
+        playPromise
+          .then(() => setIsPreviewPlaying(true))
+          .catch(() => setIsPreviewPlaying(false));
+      }
+    },
+    [previewTrackId]
+  );
+
+  const handleAddStockAudio = useCallback(
+    async (track: StockAudioTrack) => {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "audio" && asset.url === track.url
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        return;
+      }
+      let resolvedDuration = track.duration;
+      if (resolvedDuration == null) {
+        if (stockDurationCacheRef.current.has(track.id)) {
+          const cached = stockDurationCacheRef.current.get(track.id);
+          resolvedDuration = cached ?? undefined;
+        } else {
+          const meta = await getMediaMeta("audio", track.url);
+          resolvedDuration = meta.duration;
+          stockDurationCacheRef.current.set(track.id, meta.duration ?? null);
+        }
+      }
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const audioAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name: track.name,
+        kind: "audio",
+        url: track.url,
+        size: track.size,
+        duration: resolvedDuration ?? undefined,
+        createdAt: Date.now(),
+      };
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("audio", nextLanes);
+      const clip = createClip(audioAsset.id, laneId, 0, audioAsset);
+      setLanes(nextLanes);
+      setAssets((prev) => [audioAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(audioAsset.id);
+    },
+    [addToTimeline, createClip, pushHistory]
+  );
+
+  const handleStockMusicRetry = useCallback(() => {
+    setStockMusicStatus("idle");
+    setStockMusicError(null);
+    setStockMusic([]);
+    setStockMusicReloadKey((prev) => prev + 1);
+  }, []);
 
   const handleSplitClip = () => {
     const layoutEntry =
@@ -3660,9 +3095,97 @@ export default function AdvancedEditorPage() {
     });
   };
 
+  const handleTextStylePresetSelect = useCallback(
+    (preset: TextStylePreset) => {
+      const nextSettings: TextClipSettings = {
+        text: textPanelDraft,
+        fontFamily: textPanelFontFamily,
+        fontSize: textPanelFontSize,
+        color: textPanelColor,
+        bold: textPanelBold,
+        italic: textPanelItalic,
+        align: textPanelAlign,
+        letterSpacing: textPanelLetterSpacing,
+        lineHeight: textPanelLineHeight,
+        backgroundEnabled: textPanelBackgroundEnabled,
+        backgroundColor: textPanelBackgroundColor,
+        backgroundStyle: textPanelBackgroundStyle,
+        outlineEnabled: textPanelOutlineEnabled,
+        outlineColor: textPanelOutlineColor,
+        outlineWidth: textPanelOutlineWidth,
+        shadowEnabled: textPanelShadowEnabled,
+        shadowColor: textPanelShadowColor,
+        shadowBlur: textPanelShadowBlur,
+        shadowOpacity: textPanelShadowOpacity,
+        ...preset.settings,
+      };
+
+      setTextPanelStylePresetId(preset.id);
+      setTextPanelColor(nextSettings.color);
+      setTextPanelBackgroundEnabled(nextSettings.backgroundEnabled);
+      setTextPanelBackgroundColor(nextSettings.backgroundColor);
+      setTextPanelBackgroundStyle(nextSettings.backgroundStyle);
+      setTextPanelOutlineEnabled(nextSettings.outlineEnabled);
+      setTextPanelOutlineColor(nextSettings.outlineColor);
+      setTextPanelOutlineWidth(nextSettings.outlineWidth);
+      setTextPanelShadowEnabled(nextSettings.shadowEnabled);
+      setTextPanelShadowColor(nextSettings.shadowColor);
+      setTextPanelShadowBlur(nextSettings.shadowBlur);
+      setTextPanelShadowOpacity(nextSettings.shadowOpacity);
+
+      if (selectedTextEntry) {
+        updateTextSettings(selectedTextEntry.clip.id, (current) => ({
+          ...current,
+          ...preset.settings,
+        }));
+      }
+    },
+    [
+      selectedTextEntry,
+      textPanelAlign,
+      textPanelBackgroundColor,
+      textPanelBackgroundEnabled,
+      textPanelBackgroundStyle,
+      textPanelBold,
+      textPanelColor,
+      textPanelDraft,
+      textPanelFontFamily,
+      textPanelFontSize,
+      textPanelItalic,
+      textPanelLetterSpacing,
+      textPanelLineHeight,
+      textPanelOutlineColor,
+      textPanelOutlineEnabled,
+      textPanelOutlineWidth,
+      textPanelShadowBlur,
+      textPanelShadowColor,
+      textPanelShadowEnabled,
+      textPanelShadowOpacity,
+      updateTextSettings,
+    ]
+  );
+
   const closeFloatingMenu = useCallback(() => {
     setFloatingMenu(closeFloatingMenuState);
   }, []);
+
+  const handleTextLayerDoubleClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>, entry: TimelineLayoutEntry) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFloatingMenu();
+      setSelectedClipId(entry.clip.id);
+      setSelectedClipIds([entry.clip.id]);
+      setActiveAssetId(entry.asset.id);
+      setActiveCanvasClipId(entry.clip.id);
+      setActiveTool("text");
+      setTextPanelView("edit");
+      setDragTransformState(null);
+      setResizeTransformState(null);
+      setEditingTextClipId(entry.clip.id);
+    },
+    [closeFloatingMenu]
+  );
 
   const handleClipContextMenu = (
     event: ReactMouseEvent<HTMLDivElement>,
@@ -4069,6 +3592,9 @@ export default function AdvancedEditorPage() {
     try {
       const url = URL.createObjectURL(file);
       const meta = await getMediaMeta("video", url);
+      const resolvedAspectRatio =
+        meta.aspectRatio ??
+        (meta.width && meta.height ? meta.width / meta.height : undefined);
       const newAsset: MediaAsset = {
         id: crypto.randomUUID(),
         name: file.name,
@@ -4078,7 +3604,7 @@ export default function AdvancedEditorPage() {
         duration: meta.duration,
         width: meta.width,
         height: meta.height,
-        aspectRatio: meta.aspectRatio,
+        aspectRatio: resolvedAspectRatio,
         createdAt: Date.now(),
       };
       setAssets((prev) => [newAsset, ...prev]);
@@ -4278,6 +3804,7 @@ export default function AdvancedEditorPage() {
     }
     event.preventDefault();
     closeFloatingMenu();
+    setEditingTextClipId(null);
     setIsBackgroundSelected(false);
     const rect = stage.getBoundingClientRect();
     setStageSelection({
@@ -4298,9 +3825,13 @@ export default function AdvancedEditorPage() {
     if (event.button !== 0) {
       return;
     }
+    if (editingTextClipId === entry.clip.id) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     closeFloatingMenu();
+    setEditingTextClipId(null);
     setIsBackgroundSelected(false);
     dragTransformHistoryRef.current = false;
     const startRect = ensureClipTransform(entry.clip.id, entry.asset);
@@ -4332,7 +3863,17 @@ export default function AdvancedEditorPage() {
     closeFloatingMenu();
     setIsBackgroundSelected(false);
     resizeTransformHistoryRef.current = false;
+    resizeTextRectRef.current = null;
     const startRect = ensureClipTransform(entry.clip.id, entry.asset);
+    if (entry.asset.kind === "text") {
+      const settings = textSettings[entry.clip.id] ?? fallbackTextSettings;
+      resizeTextFontRef.current = {
+        clipId: entry.clip.id,
+        fontSize: settings.fontSize,
+      };
+    } else {
+      resizeTextFontRef.current = null;
+    }
     const ratioFromRect =
       startRect.height > 0 ? startRect.width / startRect.height : 0;
     const ratioFromAsset =
@@ -4830,8 +4371,9 @@ export default function AdvancedEditorPage() {
           y: snappedY.value / rect.height,
         },
         { width: rect.width, height: rect.height },
-        minLayerSize
+        getClipMinSize(dragTransformState.clipId)
       );
+      clipTransformTouchedRef.current.add(dragTransformState.clipId);
       setClipTransforms((prev) => ({
         ...prev,
         [dragTransformState.clipId]: next,
@@ -4848,7 +4390,13 @@ export default function AdvancedEditorPage() {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [dragTransformState, baseBackgroundTransform, snapGuides, pushHistory]);
+  }, [
+    dragTransformState,
+    baseBackgroundTransform,
+    snapGuides,
+    pushHistory,
+    getClipMinSize,
+  ]);
 
   useEffect(() => {
     if (!resizeTransformState) {
@@ -4868,9 +4416,11 @@ export default function AdvancedEditorPage() {
       const deltaY =
         (event.clientY - resizeTransformState.startY) / rect.height;
       const handle = resizeTransformState.handle;
+      const isTextClip =
+        clipAssetKindMap.get(resizeTransformState.clipId) === "text";
       const hasHorizontal = handle.includes("w") || handle.includes("e");
       const hasVertical = handle.includes("n") || handle.includes("s");
-      const keepAspect = !event.shiftKey;
+      const keepAspect = isTextClip ? event.shiftKey : !event.shiftKey;
       const ratio =
         resizeTransformState.aspectRatio ||
         resizeTransformState.startRect.width /
@@ -4962,15 +4512,102 @@ export default function AdvancedEditorPage() {
       const clamped = clampTransformToStage(
         next,
         { width: rect.width, height: rect.height },
-        minLayerSize
+        getClipMinSize(resizeTransformState.clipId)
       );
+      clipTransformTouchedRef.current.add(resizeTransformState.clipId);
+      if (isTextClip && hasHorizontal && hasVertical) {
+        const resizeFont = resizeTextFontRef.current;
+        if (resizeFont && resizeFont.clipId === resizeTransformState.clipId) {
+          const startWidth = resizeTransformState.startRect.width;
+          const startHeight = resizeTransformState.startRect.height;
+          const widthRatio = startWidth > 0 ? clamped.width / startWidth : 1;
+          const heightRatio = startHeight > 0 ? clamped.height / startHeight : 1;
+          const scale = Math.sqrt(widthRatio * heightRatio);
+          if (Number.isFinite(scale) && scale > 0) {
+            const nextFontSize = clamp(
+              resizeFont.fontSize * scale,
+              textResizeMinFontSize,
+              textResizeMaxFontSize
+            );
+            setTextSettings((prev) => {
+              const current = prev[resizeTransformState.clipId];
+              if (!current) {
+                return prev;
+              }
+              if (Math.abs(current.fontSize - nextFontSize) < 0.1) {
+                return prev;
+              }
+              return {
+                ...prev,
+                [resizeTransformState.clipId]: {
+                  ...current,
+                  fontSize: nextFontSize,
+                },
+              };
+            });
+            if (selectedTextEntry?.clip.id === resizeTransformState.clipId) {
+              setTextPanelFontSizeDisplay((prev) =>
+                Math.abs(prev - nextFontSize) < 0.1 ? prev : nextFontSize
+              );
+            }
+          }
+        }
+      }
+      if (isTextClip) {
+        resizeTextRectRef.current = clamped;
+      }
       setClipTransforms((prev) => ({
         ...prev,
         [resizeTransformState.clipId]: clamped,
       }));
     };
     const handleUp = () => {
+      const clipId = resizeTransformState.clipId;
+      const isTextClip = clipAssetKindMap.get(clipId) === "text";
+      if (isTextClip) {
+        const stage = stageRef.current;
+        const settings =
+          textSettingsRef.current[clipId] ?? fallbackTextSettings;
+        if (stage) {
+          const rect = stage.getBoundingClientRect();
+          const target =
+            resizeTextRectRef.current ??
+            resizeTransformState.startRect;
+          const bounds = measureTextBounds(settings);
+          const widthPx = target.width * rect.width;
+          const heightPx = target.height * rect.height;
+          const nextScaleX =
+            bounds.width > 0
+              ? clamp(widthPx / bounds.width, 0.1, 10)
+              : 1;
+          const nextScaleY =
+            bounds.height > 0
+              ? clamp(heightPx / bounds.height, 0.1, 10)
+              : 1;
+          setTextSettings((prev) => {
+            const current = prev[clipId] ?? settings;
+            if (
+              current.boxScaleX === nextScaleX &&
+              current.boxScaleY === nextScaleY &&
+              current.autoSize !== false
+            ) {
+              return prev;
+            }
+            return {
+              ...prev,
+              [clipId]: {
+                ...current,
+                autoSize: true,
+                boxScaleX: nextScaleX,
+                boxScaleY: nextScaleY,
+              },
+            };
+          });
+        }
+      }
       setResizeTransformState(null);
+      resizeTextRectRef.current = null;
+      resizeTextFontRef.current = null;
       resizeTransformHistoryRef.current = false;
     };
     window.addEventListener("pointermove", handleMove);
@@ -4979,7 +4616,14 @@ export default function AdvancedEditorPage() {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [resizeTransformState, pushHistory]);
+  }, [
+    resizeTransformState,
+    pushHistory,
+    getClipMinSize,
+    clipAssetKindMap,
+    fallbackTextSettings,
+    selectedTextEntry,
+  ]);
 
   const handleAssetDragStart = (
     event: DragEvent<HTMLElement>,
@@ -5450,8 +5094,12 @@ export default function AdvancedEditorPage() {
     </aside>
   );
 
-  const renderSidebar = () => (
-    <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
+  const renderSidebar = () => {
+    const isAudioTool = activeTool === "audio";
+    const useAudioLibraryLayout = isAudioTool && !isAssetLibraryExpanded;
+
+    return (
+      <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
       {showVideoPanel && selectedVideoEntry && selectedVideoSettings ? (
         <div className="flex h-full flex-col">
           {/* Minimal Header */}
@@ -6268,48 +5916,101 @@ export default function AdvancedEditorPage() {
         </div>
       ) : (
         <>
-          <div
-            className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" ? "px-6 py-6" : "px-5 py-5"
-              }`}
-          >
-            {activeTool === "text" ? (
-              <div className="flex flex-col gap-4">
-                {textPanelView === "library" ? (
-                  <>
-                    <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
-                      Text
-                    </h2>
-                    <div className="flex flex-wrap gap-1.5">
-                      {textPresetTags.map((tag) => {
-                        const isActive = textPanelTag === tag;
-                        return (
-                          <button
-                            key={tag}
-                            type="button"
-                            data-selected={isActive}
-                            className={`inline-flex h-8 select-none items-center rounded-full px-3 py-2 text-xs font-semibold transition ${isActive
-                              ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                              : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
-                              }`}
-                            onClick={() => setTextPanelTag(tag)}
-                          >
-                            {tag}
-                          </button>
-                        );
-                      })}
+          {!isAudioTool && (
+            <div
+              className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" ? "px-6 py-6" : "px-5 py-5"
+                }`}
+            >
+              {activeTool === "text" ? (
+                <div className="flex flex-col gap-4">
+                  {textPanelView === "library" ? (
+                    <>
+                      <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                        Text
+                      </h2>
+                      <div className="flex flex-wrap gap-1.5">
+                        {textPresetTags.map((tag) => {
+                          const isActive = textPanelTag === tag;
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              data-selected={isActive}
+                              className={`inline-flex h-8 select-none items-center rounded-full px-3 py-2 text-xs font-semibold transition ${isActive
+                                ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                }`}
+                              onClick={() => {
+                                setTextPanelTag(tag);
+                                setExpandedTextGroupId(null);
+                              }}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <button
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                        type="button"
+                        aria-label="Go back"
+                        onClick={() => setTextPanelView("library")}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-5 w-5">
+                          <path
+                            d="M10 4 6 8l4 4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <div>
+                        <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                          Edit Text
+                        </h2>
+                        <p className="max-w-[200px] truncate text-[11px] font-medium text-gray-400">
+                          {textPanelPreset?.name ??
+                            selectedTextEntry?.asset.name ??
+                            "Text"}
+                        </p>
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-3">
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h2 className="text-lg font-semibold tracking-[-0.01em] text-[#111827]">
+                        {activeToolLabel}
+                      </h2>
+                      {!hasSupabase && (
+                        <p className="text-xs font-medium text-gray-500">
+                          Uploads stay in this browser session
+                        </p>
+                      )}
+                    </div>
+                    {uploading && (
+                      <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#335CFF]">
+                        Uploading
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-5">
                     <button
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-transparent bg-[#F3F4F8] px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#ECEFF6]"
                       type="button"
-                      aria-label="Go back"
-                      onClick={() => setTextPanelView("library")}
+                      onClick={handleUploadClick}
                     >
-                      <svg viewBox="0 0 16 16" className="h-5 w-5">
+                      <svg viewBox="0 0 16 16" className="h-4 w-4">
                         <path
-                          d="M10 4 6 8l4 4"
+                          d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3"
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="1.5"
@@ -6317,108 +6018,56 @@ export default function AdvancedEditorPage() {
                           strokeLinejoin="round"
                         />
                       </svg>
+                      Upload
                     </button>
-                    <div>
-                      <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
-                        Edit Text
-                      </h2>
-                      <p className="max-w-[200px] truncate text-[11px] font-medium text-gray-400">
-                        {textPanelPreset?.name ??
-                          selectedTextEntry?.asset.name ??
-                          "Text"}
-                      </p>
-                    </div>
                   </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h2 className="text-lg font-semibold tracking-[-0.01em] text-[#111827]">
-                      {activeToolLabel}
-                    </h2>
-                    {!hasSupabase && (
-                      <p className="text-xs font-medium text-gray-500">
-                        Uploads stay in this browser session
-                      </p>
-                    )}
-                  </div>
-                  {uploading && (
-                    <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#335CFF]">
-                      Uploading
-                    </span>
-                  )}
-                </div>
-                <div className="mt-5">
-                  <button
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-transparent bg-[#F3F4F8] px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#ECEFF6]"
-                    type="button"
-                    onClick={handleUploadClick}
-                  >
-                    <svg viewBox="0 0 16 16" className="h-4 w-4">
-                      <path
-                        d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    Upload
-                  </button>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="video/*,audio/*,image/*"
-                  multiple
-                  className="hidden"
-                  onChange={handleFiles}
-                />
-                {isBackgroundSelected && (
-                  <div className="mt-5 rounded-2xl border border-gray-100 bg-[#F8FAFF] px-4 py-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                          Background
-                        </h3>
-                        <p className="text-[11px] text-gray-400">Behind clips</p>
-                      </div>
-                      <input
-                        type="color"
-                        aria-label="Background color"
-                        value={canvasBackground}
-                        onChange={(event) =>
-                          setCanvasBackground(event.target.value)
-                        }
-                        className="h-7 w-7 cursor-pointer rounded-full border border-gray-200 bg-transparent"
-                      />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {backgroundSwatches.map((swatch) => (
-                        <button
-                          key={swatch}
-                          type="button"
-                          className={`h-6 w-6 rounded-full border transition ${canvasBackground.toLowerCase() === swatch.toLowerCase()
-                            ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
-                            : "border-gray-200"
-                            }`}
-                          style={{ backgroundColor: swatch }}
-                          onClick={() => setCanvasBackground(swatch)}
-                          aria-label={`Set background to ${swatch}`}
+                  {isBackgroundSelected && (
+                    <div className="mt-5 rounded-2xl border border-gray-100 bg-[#F8FAFF] px-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                            Background
+                          </h3>
+                          <p className="text-[11px] text-gray-400">Behind clips</p>
+                        </div>
+                        <input
+                          type="color"
+                          aria-label="Background color"
+                          value={canvasBackground}
+                          onChange={(event) =>
+                            setCanvasBackground(event.target.value)
+                          }
+                          className="h-7 w-7 cursor-pointer rounded-full border border-gray-200 bg-transparent"
                         />
-                      ))}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {backgroundSwatches.map((swatch) => (
+                          <button
+                            key={swatch}
+                            type="button"
+                            className={`h-6 w-6 rounded-full border transition ${canvasBackground.toLowerCase() === swatch.toLowerCase()
+                              ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
+                              : "border-gray-200"
+                              }`}
+                            style={{ backgroundColor: swatch }}
+                            onClick={() => setCanvasBackground(swatch)}
+                            aria-label={`Set background to ${swatch}`}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           <div
-            className={`flex-1 min-h-0 overflow-y-auto ${activeTool === "text" ? "bg-white" : "bg-[#F7F8FC]"
+            className={`flex-1 min-h-0 overflow-y-auto ${activeTool === "text"
+              ? "bg-white"
+              : isAudioTool
+                ? "bg-gray-50"
+                : "bg-[#F7F8FC]"
               }`}
           >
             {isAssetLibraryExpanded &&
@@ -6652,69 +6301,93 @@ export default function AdvancedEditorPage() {
                 className={
                   activeTool === "text"
                     ? "space-y-8 px-6 py-6"
-                    : "space-y-8 px-5 py-5"
+                    : useAudioLibraryLayout
+                      ? "flex h-full min-h-0 flex-col gap-6 px-6 py-6"
+                      : "space-y-8 px-5 py-5"
                 }
               >
                 {activeTool === "text" ? (
                   textPanelView === "library" ? (
                     <div className="space-y-12">
-                      {visibleTextPresetGroups.map((group) => (
-                        <div key={group.id}>
-                          <div className="mb-3 flex items-center justify-between">
-                            <h3 className="text-md font-semibold text-gray-900">
-                              {group.label}
-                            </h3>
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
-                            >
-                              View All
-                              <svg viewBox="0 0 16 16" className="h-4 w-4">
-                                <path
-                                  d="m6 12 4-4-4-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.4"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
+                      {visibleTextPresetGroups.map((group) => {
+                        const isExpanded = expandedTextGroupId === group.id;
+                        const canExpand =
+                          group.presets.length > textPresetPreviewCount;
+                        const visiblePresets = isExpanded
+                          ? group.presets
+                          : group.presets.slice(0, textPresetPreviewCount);
+                        return (
+                          <div key={group.id}>
+                            <div className="mb-3 flex items-center justify-between">
+                              <h3 className="text-md font-semibold text-gray-900">
+                                {group.label}
+                              </h3>
+                              {canExpand && (
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                                  onClick={() => {
+                                    if (isExpanded) {
+                                      setExpandedTextGroupId(null);
+                                      return;
+                                    }
+                                    setExpandedTextGroupId(group.id);
+                                    setTextPanelTag(group.category);
+                                  }}
+                                >
+                                  {isExpanded ? "Show less" : "View All"}
+                                  <svg
+                                    viewBox="0 0 16 16"
+                                    className={`h-4 w-4 transition ${isExpanded ? "rotate-180" : ""}`}
+                                  >
+                                    <path
+                                      d="m6 12 4-4-4-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.4"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 auto-rows-[120px] sm:auto-rows-[130px] lg:auto-rows-[84px]">
+                              {visiblePresets.map((preset) => (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  className="h-full text-left"
+                                  onClick={() => handleTextPresetSelect(preset)}
+                                >
+                                  <div className="flex h-full flex-col items-center justify-center gap-1 overflow-hidden rounded-[10px] bg-[#F7F7F8] px-3 text-center text-gray-900 transition hover:bg-[#EFF0F2] hover:text-gray-700">
+                                    {preset.preview.map((line, lineIndex) => (
+                                      <span
+                                        key={`${preset.id}-${lineIndex}`}
+                                        className={`block max-w-full leading-none ${line.className ?? ""}`}
+                                        style={{
+                                          fontSize: getPresetPreviewFontSize(line),
+                                          fontFamily: resolveFontFamily(line.fontFamily),
+                                          fontWeight: line.weight,
+                                        }}
+                                      >
+                                        {line.text}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 auto-rows-[120px] sm:auto-rows-[130px] lg:auto-rows-[84px]">
-                            {group.presets.map((preset) => (
-                              <button
-                                key={preset.id}
-                                type="button"
-                                className="h-full text-left"
-                                onClick={() => handleTextPresetSelect(preset)}
-                              >
-                                <div className="flex h-full flex-col items-center justify-center gap-1 rounded-[10px] bg-[#F7F7F8] text-gray-900 transition hover:bg-[#EFF0F2] hover:text-gray-700">
-                                  {preset.preview.map((line, lineIndex) => (
-                                    <span
-                                      key={`${preset.id}-${lineIndex}`}
-                                      className={`leading-none ${line.className ?? ""}`}
-                                      style={{
-                                        fontSize: line.size,
-                                        fontFamily: line.fontFamily,
-                                        fontWeight: line.weight,
-                                      }}
-                                    >
-                                      {line.text}
-                                    </span>
-                                  ))}
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="space-y-6">
                       <div>
                         <div className="rounded-lg border border-transparent bg-gray-50 p-4">
                           <textarea
+                            ref={textPanelTextAreaRef}
                             className="w-full resize-none bg-transparent text-sm font-medium text-gray-900 focus-visible:outline-none"
                             rows={4}
                             value={textPanelDraft}
@@ -6733,9 +6406,9 @@ export default function AdvancedEditorPage() {
                             }}
                             placeholder="Your Text"
                             style={{
-                              fontFamily: textPanelFontFamily,
+                              fontFamily: resolveFontFamily(textPanelFontFamily),
                               fontSize: textPanelFontSize,
-                              fontWeight: textPanelBold ? 600 : 400,
+                              fontWeight: textPanelBold ? 700 : 400,
                               fontStyle: textPanelItalic ? "italic" : "normal",
                               textAlign: textPanelAlign,
                               lineHeight: textPanelLineHeight,
@@ -6769,7 +6442,9 @@ export default function AdvancedEditorPage() {
                                   );
                                 }
                               }}
-                              style={{ fontFamily: textPanelFontFamily }}
+                              style={{
+                                fontFamily: resolveFontFamily(textPanelFontFamily),
+                              }}
                             >
                               {textFontFamilies.map((font) => (
                                 <option key={font} value={font}>
@@ -6794,10 +6469,11 @@ export default function AdvancedEditorPage() {
                           <div className="relative w-24">
                             <select
                               className="h-10 w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 focus:border-[#335CFF] focus:outline-none"
-                              value={textPanelFontSize}
+                              value={textFontSizeDisplay}
                               onChange={(event) => {
                                 const value = Number(event.target.value);
                                 setTextPanelFontSize(value);
+                                setTextPanelFontSizeDisplay(value);
                                 if (selectedTextEntry) {
                                   updateTextSettings(
                                     selectedTextEntry.clip.id,
@@ -6809,7 +6485,7 @@ export default function AdvancedEditorPage() {
                                 }
                               }}
                             >
-                              {textFontSizes.map((size) => (
+                              {textFontSizeOptions.map((size) => (
                                 <option key={size} value={size}>
                                   {size}px
                                 </option>
@@ -6829,27 +6505,6 @@ export default function AdvancedEditorPage() {
                               />
                             </svg>
                           </div>
-                          <label className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white shadow-sm">
-                            <input
-                              type="color"
-                              aria-label="Text color"
-                              value={textPanelColor}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                setTextPanelColor(value);
-                                if (selectedTextEntry) {
-                                  updateTextSettings(
-                                    selectedTextEntry.clip.id,
-                                    (current) => ({
-                                      ...current,
-                                      color: value,
-                                    })
-                                  );
-                                }
-                              }}
-                              className="h-6 w-6 cursor-pointer rounded-full border border-gray-200"
-                            />
-                          </label>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
@@ -7108,22 +6763,758 @@ export default function AdvancedEditorPage() {
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                      >
-                        <svg viewBox="0 0 16 16" className="h-4 w-4">
-                          <path
-                            d="M8 2.91V1M2.91 8H1m2.95-4.05-.9-.9m9 .9.9-.9M8 15v-1.91M15 8h-1.91m-.14 4.95-.9-.9m-9 .9.9-.9M11.182 8a3.182 3.182 0 1 1-6.364 0 3.182 3.182 0 0 1 6.364 0"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        Styles
-                      </button>
+                      <div className="rounded-2xl border border-gray-200/70 bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between text-left"
+                          onClick={() =>
+                            setTextPanelStylesOpen((prev) => !prev)
+                          }
+                          aria-expanded={textPanelStylesOpen}
+                        >
+                          <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                            <svg viewBox="0 0 16 16" className="h-4 w-4">
+                              <path
+                                d="M8 2.91V1M2.91 8H1m2.95-4.05-.9-.9m9 .9.9-.9M8 15v-1.91M15 8h-1.91m-.14 4.95-.9-.9m-9 .9.9-.9M11.182 8a3.182 3.182 0 1 1-6.364 0 3.182 3.182 0 0 1 6.364 0"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            Styles
+                          </span>
+                          <svg
+                            viewBox="0 0 16 16"
+                            className={`h-4 w-4 text-gray-400 transition ${textPanelStylesOpen ? "rotate-180" : ""}`}
+                          >
+                            <path
+                              d="m4 6 4 4 4-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        {textPanelStylesOpen && (
+                          <div className="mt-4 space-y-6">
+                            <div>
+                              <h3 className="text-md font-semibold text-gray-900">
+                                Presets
+                              </h3>
+                              <div className="mt-3 grid grid-cols-3 gap-3 auto-rows-[96px]">
+                                {textStylePresets.map((preset) => {
+                                  const previewSettings: TextClipSettings = {
+                                    ...fallbackTextSettings,
+                                    ...preset.settings,
+                                    fontFamily:
+                                      preset.preview?.fontFamily ??
+                                      "Roboto",
+                                    fontSize:
+                                      preset.preview?.fontSize ??
+                                      28,
+                                    bold:
+                                      preset.preview?.bold ??
+                                      true,
+                                    italic:
+                                      preset.preview?.italic ??
+                                      false,
+                                  };
+                                  const previewText =
+                                    preset.preview?.text ?? "Abc";
+                                  const previewStyles = getTextRenderStyles({
+                                    ...previewSettings,
+                                    text: previewText,
+                                    align: "center",
+                                    lineHeight: 1,
+                                  });
+                                  const shadowBlur = Number.isFinite(
+                                    previewSettings.shadowBlur
+                                  )
+                                    ? previewSettings.shadowBlur
+                                    : 0;
+                                  const shadowOpacity = Number.isFinite(
+                                    previewSettings.shadowOpacity
+                                  )
+                                    ? previewSettings.shadowOpacity
+                                    : 0;
+                                  const shadowEnabled =
+                                    previewSettings.shadowEnabled &&
+                                    shadowBlur > 0 &&
+                                    shadowOpacity > 0;
+                                  const previewShadowBlur = clamp(
+                                    shadowBlur,
+                                    0,
+                                    18
+                                  );
+                                  const shadowOffset = Math.round(
+                                    previewShadowBlur * 0.3
+                                  );
+                                  const shadowColor = toRgba(
+                                    previewSettings.shadowColor,
+                                    shadowOpacity / 100
+                                  );
+                                  const outlineWidth = previewSettings.outlineEnabled
+                                    ? previewSettings.outlineWidth
+                                    : 0;
+                                  const isBackgroundPreview =
+                                    previewSettings.backgroundEnabled;
+                                  const showSvg = !isBackgroundPreview;
+                                  const showLabel = isBackgroundPreview;
+                                  const svgFontSize = clamp(
+                                    (previewSettings.fontSize / 28) * 32,
+                                    22,
+                                    40
+                                  );
+                                  const svgFontWeight = previewSettings.bold
+                                    ? 800
+                                    : 500;
+                                  const previewLabelStyle: CSSProperties = {
+                                    ...previewStyles.textStyle,
+                                    textShadow: "none",
+                                    WebkitTextStrokeWidth: 0,
+                                    color: previewSettings.color,
+                                    whiteSpace: "nowrap",
+                                    wordBreak: "normal",
+                                    lineHeight: 1,
+                                  };
+                                  const isActive =
+                                    textPanelStylePresetId === preset.id;
+                                  return (
+                                    <button
+                                      key={preset.id}
+                                      type="button"
+                                      className="h-full text-left"
+                                      onClick={() =>
+                                        handleTextStylePresetSelect(preset)
+                                      }
+                                      aria-pressed={isActive}
+                                    >
+                                      <div
+                                        className={`group relative flex h-full flex-col items-center justify-center overflow-hidden rounded-[14px] border border-[#EEF1F6] bg-white text-gray-900 shadow-[0_14px_30px_rgba(15,23,42,0.08)] transition hover:border-[#E2E8F0] hover:shadow-[0_18px_36px_rgba(15,23,42,0.12)] hover:text-gray-700 ${isActive
+                                          ? "ring-2 ring-[#5B6CFF]/30"
+                                          : ""
+                                          }`}
+                                      >
+                                        <div className="relative flex h-full w-full items-center justify-center px-3 text-center">
+                                          {showLabel && (
+                                            <span
+                                              className="relative z-10 leading-none"
+                                              style={previewLabelStyle}
+                                            >
+                                              {previewText}
+                                            </span>
+                                          )}
+                                          {showSvg && (
+                                            <svg
+                                              className="pointer-events-none absolute inset-0"
+                                              viewBox="0 0 100 100"
+                                              preserveAspectRatio="xMidYMid meet"
+                                              style={{
+                                                filter: shadowEnabled
+                                                  ? `drop-shadow(${shadowOffset}px ${shadowOffset}px ${previewShadowBlur}px ${shadowColor})`
+                                                  : "none",
+                                              }}
+                                            >
+                                              {outlineWidth > 0 && (
+                                                <text
+                                                  x="50"
+                                                  y="50"
+                                                  fontFamily={resolveFontFamily(
+                                                    previewSettings.fontFamily
+                                                  )}
+                                                  fontWeight={svgFontWeight}
+                                                  fontSize={svgFontSize}
+                                                  dominantBaseline="middle"
+                                                  textAnchor="middle"
+                                                  fill="none"
+                                                  stroke={previewSettings.outlineColor}
+                                                  strokeWidth={Math.max(
+                                                    1,
+                                                    outlineWidth * 1.1
+                                                  )}
+                                                  strokeLinejoin="round"
+                                                  strokeLinecap="round"
+                                                >
+                                                  {previewText}
+                                                </text>
+                                              )}
+                                              <text
+                                                x="50"
+                                                y="50"
+                                                fontFamily={resolveFontFamily(
+                                                  previewSettings.fontFamily
+                                                )}
+                                                fontWeight={svgFontWeight}
+                                                fontSize={svgFontSize}
+                                                dominantBaseline="middle"
+                                                textAnchor="middle"
+                                                fill={previewSettings.color}
+                                              >
+                                                {previewText}
+                                              </text>
+                                            </svg>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div>
+                              <h3 className="text-md font-semibold text-gray-900">
+                                Customize
+                              </h3>
+                              <div className="mt-3 space-y-4">
+                                <div className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 shadow-sm">
+                                  <span className="text-xs font-semibold text-gray-600">
+                                    Text Color
+                                  </span>
+                                  <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                    <input
+                                      type="color"
+                                      aria-label="Text color"
+                                      value={textPanelColor}
+                                      onChange={(event) => {
+                                        const value = event.target.value;
+                                        setTextPanelStylePresetId(null);
+                                        setTextPanelColor(value);
+                                        if (selectedTextEntry) {
+                                          updateTextSettings(
+                                            selectedTextEntry.clip.id,
+                                            (current) => ({
+                                              ...current,
+                                              color: value,
+                                            })
+                                          );
+                                        }
+                                      }}
+                                      className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                    />
+                                  </label>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200/70 bg-white px-3 py-3 shadow-sm">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="text-xs font-semibold text-gray-600">
+                                        Background
+                                      </div>
+                                      <div className="text-[10px] text-gray-400">
+                                        Highlight blocks behind text
+                                      </div>
+                                    </div>
+                                    <ToggleSwitch
+                                      checked={textPanelBackgroundEnabled}
+                                      onChange={(next) => {
+                                        setTextPanelStylePresetId(null);
+                                        setTextPanelBackgroundEnabled(next);
+                                        if (selectedTextEntry) {
+                                          updateTextSettings(
+                                            selectedTextEntry.clip.id,
+                                            (current) => ({
+                                              ...current,
+                                              backgroundEnabled: next,
+                                            })
+                                          );
+                                        }
+                                      }}
+                                      ariaLabel="Toggle text background"
+                                    />
+                                  </div>
+                                  <div
+                                    className={`mt-3 flex items-center gap-3 ${textPanelBackgroundEnabled
+                                      ? ""
+                                      : "pointer-events-none opacity-40"
+                                      }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        aria-pressed={
+                                          textPanelBackgroundStyle ===
+                                          "line-block-hard"
+                                        }
+                                        onClick={() => {
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelBackgroundStyle(
+                                            "line-block-hard"
+                                          );
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                backgroundStyle: "line-block-hard",
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle ===
+                                          "line-block-hard"
+                                          ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                          }`}
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          width="20"
+                                          height="20"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          className="h-5 w-5"
+                                        >
+                                          <path
+                                            fill="currentColor"
+                                            d="M2 5h20v6H2zm3 8h14v6H5z"
+                                          />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-pressed={
+                                          textPanelBackgroundStyle ===
+                                          "line-block-round"
+                                        }
+                                        onClick={() => {
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelBackgroundStyle(
+                                            "line-block-round"
+                                          );
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                backgroundStyle: "line-block-round",
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle ===
+                                          "line-block-round"
+                                          ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                          }`}
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          width="20"
+                                          height="20"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          className="h-5 w-5"
+                                        >
+                                          <path
+                                            fill="currentColor"
+                                            d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zm3 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"
+                                          />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-pressed={
+                                          textPanelBackgroundStyle === "block"
+                                        }
+                                        onClick={() => {
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelBackgroundStyle("block");
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                backgroundStyle: "block",
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle === "block"
+                                          ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                          }`}
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          width="20"
+                                          height="20"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          className="h-5 w-5"
+                                        >
+                                          <path
+                                            fill="currentColor"
+                                            d="M2 5h20v14H2z"
+                                          />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-pressed={
+                                          textPanelBackgroundStyle ===
+                                          "block-rounded"
+                                        }
+                                        onClick={() => {
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelBackgroundStyle(
+                                            "block-rounded"
+                                          );
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                backgroundStyle: "block-rounded",
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle ===
+                                          "block-rounded"
+                                          ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                          }`}
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          width="20"
+                                          height="20"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          className="h-5 w-5"
+                                        >
+                                          <path
+                                            fill="currentColor"
+                                            d="M2 9a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"
+                                          />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                    <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                      <input
+                                        type="color"
+                                        aria-label="Background color"
+                                        value={textPanelBackgroundColor}
+                                        onChange={(event) => {
+                                          const value = event.target.value;
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelBackgroundColor(value);
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                backgroundColor: value,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200/70 bg-white px-3 py-3 shadow-sm">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="text-xs font-semibold text-gray-600">
+                                        Text Outline
+                                      </div>
+                                      <div className="text-[10px] text-gray-400">
+                                        Add stroke for contrast
+                                      </div>
+                                    </div>
+                                    <ToggleSwitch
+                                      checked={textPanelOutlineEnabled}
+                                      onChange={(next) => {
+                                        setTextPanelStylePresetId(null);
+                                        setTextPanelOutlineEnabled(next);
+                                        if (selectedTextEntry) {
+                                          updateTextSettings(
+                                            selectedTextEntry.clip.id,
+                                            (current) => ({
+                                              ...current,
+                                              outlineEnabled: next,
+                                            })
+                                          );
+                                        }
+                                      }}
+                                      ariaLabel="Toggle outline"
+                                    />
+                                  </div>
+                                  <div
+                                    className={`mt-3 flex items-center gap-3 ${textPanelOutlineEnabled
+                                      ? ""
+                                      : "pointer-events-none opacity-40"
+                                      }`}
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      width="14"
+                                      height="13"
+                                      fill="none"
+                                      className="text-gray-500"
+                                    >
+                                      <path
+                                        fill="currentColor"
+                                        d="m.99 11.304.707.707L13.01.697l-.707-.707z"
+                                      />
+                                    </svg>
+                                    <div className="relative flex-1">
+                                      <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+                                      <div
+                                        className="pointer-events-none absolute left-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                                        style={{
+                                          width: `${(textPanelOutlineWidth / 20) * 100}%`,
+                                        }}
+                                      />
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={20}
+                                        step={1}
+                                        value={textPanelOutlineWidth}
+                                        onChange={(event) => {
+                                          const value = Number(
+                                            event.target.value
+                                          );
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelOutlineWidth(value);
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                outlineWidth: value,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className="refined-slider relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent"
+                                        aria-label="Outline size"
+                                      />
+                                    </div>
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      width="16"
+                                      height="16"
+                                      fill="none"
+                                      className="text-gray-500"
+                                    >
+                                      <path
+                                        fill="currentColor"
+                                        d="m.575 11.889 3.536 3.535L15.425 4.111 11.889.575z"
+                                      />
+                                    </svg>
+                                    <input
+                                      readOnly
+                                      value={textPanelOutlineWidth}
+                                      className="h-7 w-12 rounded-lg border border-transparent bg-gray-50 px-2 text-right text-xs font-semibold text-gray-600"
+                                    />
+                                    <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                      <input
+                                        type="color"
+                                        aria-label="Outline color"
+                                        value={textPanelOutlineColor}
+                                        onChange={(event) => {
+                                          const value = event.target.value;
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelOutlineColor(value);
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                outlineColor: value,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200/70 bg-white px-3 py-3 shadow-sm">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="text-xs font-semibold text-gray-600">
+                                        Text Shadow
+                                      </div>
+                                      <div className="text-[10px] text-gray-400">
+                                        Soft depth for readability
+                                      </div>
+                                    </div>
+                                    <ToggleSwitch
+                                      checked={textPanelShadowEnabled}
+                                      onChange={(next) => {
+                                        setTextPanelStylePresetId(null);
+                                        setTextPanelShadowEnabled(next);
+                                        if (!next) {
+                                          setTextPanelShadowAdvancedOpen(false);
+                                        }
+                                        if (selectedTextEntry) {
+                                          updateTextSettings(
+                                            selectedTextEntry.clip.id,
+                                            (current) => ({
+                                              ...current,
+                                              shadowEnabled: next,
+                                            })
+                                          );
+                                        }
+                                      }}
+                                      ariaLabel="Toggle shadow"
+                                    />
+                                  </div>
+                                  <div
+                                    className={`mt-3 flex items-center gap-3 ${textPanelShadowEnabled
+                                      ? ""
+                                      : "pointer-events-none opacity-40"
+                                      }`}
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      width="13"
+                                      height="13"
+                                      fill="none"
+                                      className="text-gray-500"
+                                    >
+                                      <circle cx="6" cy="7" r="6" fill="currentColor" />
+                                      <circle cx="7" cy="6" r="5.5" fill="#fff" stroke="currentColor" />
+                                    </svg>
+                                    <div className="relative flex-1">
+                                      <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+                                      <div
+                                        className="pointer-events-none absolute left-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                                        style={{
+                                          width: `${(textPanelShadowBlur / 30) * 100}%`,
+                                        }}
+                                      />
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={30}
+                                        step={1}
+                                        value={textPanelShadowBlur}
+                                        onChange={(event) => {
+                                          const value = Number(
+                                            event.target.value
+                                          );
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelShadowBlur(value);
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                shadowBlur: value,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className="refined-slider relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent"
+                                        aria-label="Shadow blur"
+                                      />
+                                    </div>
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      width="16"
+                                      height="16"
+                                      fill="none"
+                                      className="text-gray-500"
+                                    >
+                                      <circle cx="6" cy="10" r="5.5" fill="#fff" stroke="currentColor" />
+                                      <path
+                                        stroke="currentColor"
+                                        d="m3.68 14.973 6.594-6.594M2.26 13.722l6.233-6.233m-7.45 4.779 9.231-9.231M.479 10.16l7.124-7.123m-1.776 12.46 5.661-5.661"
+                                      />
+                                      <circle cx="10" cy="6" r="5.5" fill="#fff" stroke="currentColor" />
+                                    </svg>
+                                    <button
+                                      type="button"
+                                      aria-label="Shadow advanced settings"
+                                      onClick={() =>
+                                        setTextPanelShadowAdvancedOpen(
+                                          (prev) => !prev
+                                        )
+                                      }
+                                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50"
+                                    >
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="16"
+                                        height="16"
+                                        fill="none"
+                                        viewBox="0 0 16 16"
+                                        className="h-4 w-4"
+                                      >
+                                        <path
+                                          fill="currentColor"
+                                          d="M6.75 8a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0M12 8a1.25 1.25 0 1 1 2.5 0A1.25 1.25 0 0 1 12 8M1.5 8A1.25 1.25 0 1 1 4 8a1.25 1.25 0 0 1-2.5 0"
+                                        />
+                                      </svg>
+                                    </button>
+                                    <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                      <input
+                                        type="color"
+                                        aria-label="Shadow color"
+                                        value={textPanelShadowColor}
+                                        onChange={(event) => {
+                                          const value = event.target.value;
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelShadowColor(value);
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                shadowColor: value,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                      />
+                                    </label>
+                                  </div>
+                                  {textPanelShadowEnabled &&
+                                    textPanelShadowAdvancedOpen && (
+                                    <div className="mt-3">
+                                      <SliderField
+                                        label="Shadow Opacity"
+                                        value={textPanelShadowOpacity}
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        onChange={(value) => {
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelShadowOpacity(value);
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                shadowOpacity: value,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        valueLabel={`${textPanelShadowOpacity}%`}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                       <div className="rounded-xl border border-gray-200/70 bg-white p-3">
                         <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
@@ -7246,6 +7637,17 @@ export default function AdvancedEditorPage() {
                             align: textPanelAlign,
                             letterSpacing: textPanelLetterSpacing,
                             lineHeight: textPanelLineHeight,
+                            backgroundEnabled: textPanelBackgroundEnabled,
+                            backgroundColor: textPanelBackgroundColor,
+                            backgroundStyle: textPanelBackgroundStyle,
+                            outlineEnabled: textPanelOutlineEnabled,
+                            outlineColor: textPanelOutlineColor,
+                            outlineWidth: textPanelOutlineWidth,
+                            shadowEnabled: textPanelShadowEnabled,
+                            shadowColor: textPanelShadowColor,
+                            shadowBlur: textPanelShadowBlur,
+                            shadowOpacity: textPanelShadowOpacity,
+                            autoSize: true,
                           };
                           setTextPanelPreset(null);
                           addTextClip(nextSettings, "Text");
@@ -7267,6 +7669,257 @@ export default function AdvancedEditorPage() {
                   )
                 ) : ["video", "audio", "image"].includes(activeTool) ? (
                   <>
+                    {activeTool === "audio" && (
+                      <div className="flex flex-col rounded-2xl border border-gray-100 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
+                        <div className="border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
+                          <div className="flex flex-col gap-6">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EEF2FF]">
+                                <svg viewBox="0 0 24 24" className="h-4 w-4">
+                                  <path
+                                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                    fill="#335CFF"
+                                  />
+                                  <path
+                                    fill="url(#audio_header_b)"
+                                    fillOpacity="0.2"
+                                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                  />
+                                  <path
+                                    fill="#fff"
+                                    d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
+                                  />
+                                  <defs>
+                                    <linearGradient
+                                      id="audio_header_b"
+                                      x1="12"
+                                      x2="12"
+                                      y1="0"
+                                      y2="24"
+                                      gradientUnits="userSpaceOnUse"
+                                    >
+                                      <stop stopColor="#fff" />
+                                      <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                                    </linearGradient>
+                                  </defs>
+                                </svg>
+                              </div>
+                              <h2 className="text-lg font-semibold text-gray-900">
+                                Stock Music
+                              </h2>
+                            </div>
+                            <div className="flex w-full flex-col gap-2">
+                              <div className="relative">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                    <path
+                                      d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </span>
+                                <input
+                                  className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                                  placeholder="Search..."
+                                  value={stockSearch}
+                                  onChange={(event) =>
+                                    setStockSearch(event.target.value)
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === "All"
+                                  ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                  : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                  }`}
+                                onClick={() => setStockCategory("All")}
+                              >
+                                All
+                              </button>
+                              {visibleStockTags.map((category) => (
+                                <button
+                                  key={category}
+                                  type="button"
+                                  className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === category
+                                    ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                    : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                    }`}
+                                  onClick={() => setStockCategory(category)}
+                                >
+                                  {category}
+                                </button>
+                              ))}
+                              {hasMoreStockTags && (
+                                <button
+                                  type="button"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                                  onClick={() =>
+                                    setShowAllStockTags((prev) => !prev)
+                                  }
+                                  aria-label={
+                                    showAllStockTags
+                                      ? "Show fewer categories"
+                                      : "Show more categories"
+                                  }
+                                >
+                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                    <path
+                                      d="M6.75 8a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0M12 8a1.25 1.25 0 1 1 2.5 0A1.25 1.25 0 0 1 12 8M1.5 8A1.25 1.25 0 1 1 4 8a1.25 1.25 0 0 1-2.5 0"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="px-6 pb-6 pt-5">
+                          {!hasSupabase ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              Connect Supabase to load stock music.
+                            </div>
+                          ) : stockMusicStatus === "loading" ||
+                            stockMusicStatus === "idle" ? (
+                            <div className="space-y-3">
+                              {Array.from({ length: 4 }).map((_, index) => (
+                                <div
+                                  key={`stock-skeleton-${index}`}
+                                  className="h-16 rounded-2xl bg-gray-100/80 animate-pulse"
+                                />
+                              ))}
+                            </div>
+                          ) : stockMusicStatus === "error" ? (
+                            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                              <p>{stockMusicError ?? "Unable to load stock music."}</p>
+                              <button
+                                type="button"
+                                className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                                onClick={handleStockMusicRetry}
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ) : groupedStockMusic.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              {stockSearch.trim()
+                                ? "No tracks match your search."
+                                : stockMusicRootPrefix
+                                  ? `No stock music found under "${stockMusicRootPrefix}".`
+                                  : "No stock music found."}
+                            </div>
+                          ) : (
+                            <div className="space-y-8">
+                              {groupedStockMusic.map((group) => (
+                                <div key={group.category} className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-gray-900">
+                                      {group.category}
+                                    </h3>
+                                  </div>
+                                  <div className="space-y-3">
+                                    {group.tracks.map((track) => {
+                                      const isActive =
+                                        previewTrackId === track.id;
+                                      const isPlaying =
+                                        isActive && isPreviewPlaying;
+                                      const durationLabel =
+                                        track.duration != null
+                                          ? formatDuration(track.duration)
+                                          : "--:--";
+                                      return (
+                                        <div
+                                          key={track.id}
+                                          className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+                                        >
+                                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                                            <button
+                                              type="button"
+                                              className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-white text-[#335CFF] shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition ${isPlaying
+                                                ? "ring-2 ring-[#335CFF]/30"
+                                                : "hover:shadow-[0_10px_18px_rgba(15,23,42,0.16)]"
+                                                }`}
+                                              onClick={() =>
+                                                handleStockPreviewToggle(track)
+                                              }
+                                              aria-label={
+                                                isPlaying
+                                                  ? "Pause preview"
+                                                  : "Play preview"
+                                              }
+                                            >
+                                              <span
+                                                className={`absolute inset-0 rounded-full bg-gradient-to-br from-white via-[#E0E7FF] to-[#C7D2FE] transition ${isPlaying ? "opacity-100" : "opacity-80"
+                                                  }`}
+                                              />
+                                              <span
+                                                className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition ${isPlaying
+                                                  ? "bg-[#335CFF] text-white"
+                                                  : "bg-white text-gray-700"
+                                                  }`}
+                                              >
+                                                {isPlaying ? (
+                                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                    <path
+                                                      d="M5.2 3.5h2.1v9H5.2zm3.5 0h2.1v9H8.7z"
+                                                      fill="currentColor"
+                                                    />
+                                                  </svg>
+                                                ) : (
+                                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                    <path
+                                                      d="M3 1.91a.5.5 0 0 1 .768-.421l9.57 6.09a.5.5 0 0 1 0 .843l-9.57 6.089A.5.5 0 0 1 3 14.089z"
+                                                      fill="currentColor"
+                                                    />
+                                                  </svg>
+                                                )}
+                                              </span>
+                                            </button>
+                                            <div className="min-w-0 flex-1">
+                                              <div className="truncate text-sm font-semibold text-gray-900">
+                                                {track.name}
+                                              </div>
+                                              <div className="text-xs font-medium text-gray-400">
+                                                {durationLabel}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#335CFF] text-white shadow-[0_8px_18px_rgba(51,92,255,0.25)] transition hover:bg-[#2E52E6]"
+                                            onClick={() =>
+                                              handleAddStockAudio(track)
+                                            }
+                                            aria-label={`Add ${track.name}`}
+                                          >
+                                            <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                              <path
+                                                d="M3 8h10M8 3v10"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -7519,8 +8172,9 @@ export default function AdvancedEditorPage() {
           </div>
         </>
       )}
-    </aside>
-  );
+      </aside>
+    );
+  };
 
   const renderStage = () => (
     <div className="flex min-h-0 flex-1">
@@ -7637,6 +8291,12 @@ export default function AdvancedEditorPage() {
                 entry.asset.kind === "text"
                   ? textSettings[entry.clip.id] ?? fallbackTextSettings
                   : null;
+              const textRenderStyles = textClipSettings
+                ? getTextRenderStyles(textClipSettings)
+                : null;
+              const isEditingText = editingTextClipId === entry.clip.id;
+              const resolvedTextValue =
+                textClipSettings?.text ?? entry.asset.name;
               const videoStyles = videoSettings
                 ? getVideoStyles(videoSettings)
                 : null;
@@ -7656,7 +8316,11 @@ export default function AdvancedEditorPage() {
                   }}
                 >
                   <div
-                    className={`relative h-full w-full ${isActive ? "cursor-move" : "cursor-pointer"
+                    className={`relative h-full w-full ${isActive
+                      ? "cursor-move"
+                      : entry.asset.kind === "text"
+                        ? "cursor-text"
+                        : "cursor-pointer"
                       }`}
                     onPointerDown={(event) =>
                       handleLayerPointerDown(event, entry)
@@ -7664,26 +8328,65 @@ export default function AdvancedEditorPage() {
                     onContextMenu={(event) =>
                       handleClipContextMenu(event, entry)
                     }
+                    onDoubleClick={(event) => {
+                      if (entry.asset.kind !== "text") {
+                        return;
+                      }
+                      handleTextLayerDoubleClick(event, entry);
+                    }}
                   >
                     {entry.asset.kind === "text" ? (
                       <div className="absolute inset-0 flex items-center justify-center overflow-hidden px-3">
-                        <div
-                          className="w-full"
-                          style={{
-                            fontFamily: textClipSettings?.fontFamily,
-                            fontSize: textClipSettings?.fontSize,
-                            fontWeight: textClipSettings?.bold ? 600 : 400,
-                            fontStyle: textClipSettings?.italic
-                              ? "italic"
-                              : "normal",
-                            textAlign: textClipSettings?.align,
-                            color: textClipSettings?.color,
-                            lineHeight: textClipSettings?.lineHeight,
-                            letterSpacing: textClipSettings?.letterSpacing,
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          {textClipSettings?.text ?? entry.asset.name}
+                        <div className="w-full" style={textRenderStyles?.containerStyle}>
+                          {isEditingText ? (
+                            <textarea
+                              ref={stageTextEditorRef}
+                              value={resolvedTextValue}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                if (selectedTextEntry?.clip.id === entry.clip.id) {
+                                  setTextPanelDraft(value);
+                                }
+                                updateTextSettings(entry.clip.id, (current) => ({
+                                  ...current,
+                                  text: value,
+                                }));
+                              }}
+                              onBlur={() => setEditingTextClipId(null)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  setEditingTextClipId(null);
+                                }
+                                if (
+                                  (event.metaKey || event.ctrlKey) &&
+                                  event.key === "Enter"
+                                ) {
+                                  event.preventDefault();
+                                  setEditingTextClipId(null);
+                                }
+                              }}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              className="h-full w-full resize-none bg-transparent text-sm font-medium focus-visible:outline-none"
+                              style={{
+                                ...textRenderStyles?.textStyle,
+                                backgroundColor: "transparent",
+                                padding: 0,
+                                borderRadius: 0,
+                                display: "block",
+                                textShadow: "none",
+                                WebkitTextStrokeWidth: 0,
+                                textAlign: textClipSettings?.align,
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className="max-w-full"
+                              style={textRenderStyles?.textStyle}
+                            >
+                              {resolvedTextValue}
+                            </span>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -7705,10 +8408,21 @@ export default function AdvancedEditorPage() {
                           ) : (
                             <video
                               key={entry.clip.id}
-                              ref={registerVideoRef(entry.clip.id)}
+                              ref={registerVideoRef(
+                                entry.clip.id,
+                                entry.asset.id
+                              )}
                               src={entry.asset.url}
                               className="h-full w-full object-cover"
                               playsInline
+                              preload="metadata"
+                              onLoadedMetadata={(event) =>
+                                updateVideoMetaFromElement(
+                                  entry.clip.id,
+                                  entry.asset.id,
+                                  event.currentTarget
+                                )
+                              }
                               draggable={false}
                             />
                           )}
@@ -9103,6 +9817,14 @@ export default function AdvancedEditorPage() {
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-[#F2F4FA] text-[#0E121B]">
       {renderHeader()}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,audio/*,image/*"
+        multiple
+        className="hidden"
+        onChange={handleFiles}
+      />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {renderToolRail()}
