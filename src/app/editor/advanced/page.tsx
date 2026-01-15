@@ -14,6 +14,8 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
+import { Magnet } from "lucide-react";
+
 import type {
   AssetFilter,
   ClipboardData,
@@ -148,6 +150,131 @@ const toRgba = (value: string, alpha: number) => {
   }
   const clamped = Math.min(1, Math.max(0, alpha));
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamped})`;
+};
+
+const timelineThumbnailTargetWidth = 28;
+const timelineThumbnailMaxCount = 60;
+
+const getThumbnailCountForWidth = (width: number) => {
+  const normalizedWidth = Math.max(1, width);
+  return Math.max(
+    1,
+    Math.min(
+      timelineThumbnailMaxCount,
+      Math.ceil(normalizedWidth / timelineThumbnailTargetWidth)
+    )
+  );
+};
+
+const normalizeTimelineTime = (value: number) =>
+  Math.round(value * 1000) / 1000;
+
+const timelineClipEpsilon = frameStepSeconds / 2;
+
+const loadVideoForThumbnails = (url: string) =>
+  new Promise<HTMLVideoElement>((resolve, reject) => {
+    const video = document.createElement("video");
+    const handleLoaded = () => {
+      cleanup();
+      resolve(video);
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Failed to load video thumbnails."));
+    };
+    const cleanup = () => {
+      video.removeEventListener("loadeddata", handleLoaded);
+      video.removeEventListener("error", handleError);
+    };
+    video.crossOrigin = "anonymous";
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = url;
+    video.addEventListener("loadeddata", handleLoaded, { once: true });
+    video.addEventListener("error", handleError, { once: true });
+    video.load();
+  });
+
+const seekVideoForThumbnail = (video: HTMLVideoElement, time: number) =>
+  new Promise<void>((resolve, reject) => {
+    if (!Number.isFinite(time)) {
+      resolve();
+      return;
+    }
+    const handleSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Failed to seek video thumbnail."));
+    };
+    const cleanup = () => {
+      video.removeEventListener("seeked", handleSeeked);
+      video.removeEventListener("error", handleError);
+    };
+    video.addEventListener("seeked", handleSeeked, { once: true });
+    video.addEventListener("error", handleError, { once: true });
+    if (Math.abs(video.currentTime - time) < 0.01) {
+      cleanup();
+      resolve();
+      return;
+    }
+    video.currentTime = time;
+  });
+
+const generateVideoThumbnails = async (
+  assetUrl: string,
+  clip: TimelineClip,
+  frameCount: number,
+  shouldCancel: () => boolean
+) => {
+  if (frameCount <= 0) {
+    return [];
+  }
+  const video = await loadVideoForThumbnails(assetUrl);
+  const targetHeight = laneHeights.video;
+  const aspectRatio =
+    video.videoWidth && video.videoHeight
+      ? video.videoWidth / video.videoHeight
+      : 16 / 9;
+  const targetWidth = Math.max(1, Math.round(targetHeight * aspectRatio));
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return [];
+  }
+  const videoDuration = Number.isFinite(video.duration)
+    ? video.duration
+    : clip.startOffset + clip.duration;
+  const clipStart = clip.startOffset;
+  const clipEnd = Math.min(clip.startOffset + clip.duration, videoDuration);
+  const span = Math.max(0.05, clipEnd - clipStart);
+  const safeEnd = Math.max(clipStart, clipEnd - 0.05);
+  const frames: string[] = [];
+  for (let index = 0; index < frameCount; index += 1) {
+    if (shouldCancel()) {
+      return [];
+    }
+    const time = clamp(
+      clipStart + (span * (index + 0.5)) / frameCount,
+      clipStart,
+      safeEnd
+    );
+    await seekVideoForThumbnail(video, time);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    try {
+      frames.push(canvas.toDataURL("image/jpeg", 0.72));
+    } catch (error) {
+      frames.push("");
+    }
+  }
+  video.src = "";
+  video.load();
+  return frames;
 };
 
 let textMeasureContext: CanvasRenderingContext2D | null = null;
@@ -384,6 +511,19 @@ export default function AdvancedEditorPage() {
   );
   const [timelineScale, setTimelineScale] = useState(12);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [isTimelineSnappingEnabled, setIsTimelineSnappingEnabled] =
+    useState(true);
+  const [timelineSnapGuide, setTimelineSnapGuide] = useState<number | null>(
+    null
+  );
+  const [timelineCollisionGuide, setTimelineCollisionGuide] = useState<
+    number | null
+  >(null);
+  const [timelineCollisionActive, setTimelineCollisionActive] =
+    useState(false);
+  const [timelineThumbnails, setTimelineThumbnails] = useState<
+    Record<string, { key: string; frames: string[] }>
+  >({});
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
   const [clipOrder, setClipOrder] = useState<Record<string, number>>({});
@@ -527,11 +667,19 @@ export default function AdvancedEditorPage() {
   const stageAspectRatioRef = useRef(16 / 9);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const floatingMenuRef = useRef<HTMLDivElement | null>(null);
+  const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [mainHeight, setMainHeight] = useState(0);
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const timelineThumbnailsRef = useRef<
+    Record<string, { key: string; frames: string[] }>
+  >({});
+  const thumbnailJobRef = useRef(0);
+  const scrubPointerIdRef = useRef<number | null>(null);
+  const scrubPointerTargetRef = useRef<HTMLElement | null>(null);
   const visualRefs = useRef(new Map<string, HTMLVideoElement | null>());
   const audioRefs = useRef(new Map<string, HTMLAudioElement | null>());
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -553,6 +701,7 @@ export default function AdvancedEditorPage() {
   );
   const clipTransformTouchedRef = useRef<Set<string>>(new Set());
   const dragClipHistoryRef = useRef(false);
+  const dragClipStateRef = useRef<ClipDragState | null>(null);
   const trimHistoryRef = useRef(false);
   const timelinePanRef = useRef<{
     startX: number;
@@ -581,6 +730,10 @@ export default function AdvancedEditorPage() {
   const hasSupabase =
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+  useEffect(() => {
+    timelineThumbnailsRef.current = timelineThumbnails;
+  }, [timelineThumbnails]);
 
   const updateVideoMetaFromElement = useCallback(
     (clipId: string, assetId: string, element: HTMLVideoElement | null) => {
@@ -917,6 +1070,10 @@ export default function AdvancedEditorPage() {
   }, [textSettings]);
 
   useEffect(() => {
+    dragClipStateRef.current = dragClipState;
+  }, [dragClipState]);
+
+  useEffect(() => {
     if (textPanelFontFamily) {
       loadFontFamily(textPanelFontFamily);
     }
@@ -1218,17 +1375,17 @@ export default function AdvancedEditorPage() {
   }, [activeTool]);
 
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) {
+    const viewport = stageViewportRef.current;
+    if (!viewport) {
       return;
     }
     const updateSize = () => {
-      const rect = stage.getBoundingClientRect();
-      setStageSize({ width: rect.width, height: rect.height });
+      const rect = viewport.getBoundingClientRect();
+      setStageViewport({ width: rect.width, height: rect.height });
     };
     updateSize();
     const observer = new ResizeObserver(updateSize);
-    observer.observe(stage);
+    observer.observe(viewport);
     return () => observer.disconnect();
   }, []);
 
@@ -1530,6 +1687,82 @@ export default function AdvancedEditorPage() {
     );
   }, [timelineLayout]);
 
+  useEffect(() => {
+    const videoEntries = timelineLayout.filter(
+      (entry) => entry.asset.kind === "video"
+    );
+    const validIds = new Set(videoEntries.map((entry) => entry.clip.id));
+    setTimelineThumbnails((prev) => {
+      let changed = false;
+      const next: Record<string, { key: string; frames: string[] }> = {};
+      Object.entries(prev).forEach(([id, value]) => {
+        if (validIds.has(id)) {
+          next[id] = value;
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    if (videoEntries.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const jobId = (thumbnailJobRef.current += 1);
+    const buildThumbnails = async () => {
+      for (const entry of videoEntries) {
+        if (cancelled || thumbnailJobRef.current !== jobId) {
+          return;
+        }
+        const width = Math.max(
+          1,
+          Math.round(entry.clip.duration * timelineScale)
+        );
+        const frameCount = getThumbnailCountForWidth(width);
+        const key = `${entry.asset.url}:${entry.clip.startOffset}:${entry.clip.duration}:${frameCount}`;
+        const existing = timelineThumbnailsRef.current[entry.clip.id];
+        if (
+          existing &&
+          existing.key === key &&
+          existing.frames.length === frameCount
+        ) {
+          continue;
+        }
+        let frames: string[] = [];
+        try {
+          frames = await generateVideoThumbnails(
+            entry.asset.url,
+            entry.clip,
+            frameCount,
+            () => cancelled || thumbnailJobRef.current !== jobId
+          );
+        } catch (error) {
+          frames = Array.from({ length: frameCount }, () => "");
+        }
+        if (cancelled || thumbnailJobRef.current !== jobId) {
+          return;
+        }
+        const normalizedFrames =
+          frames.length === frameCount
+            ? frames
+            : Array.from({ length: frameCount }, (_, index) =>
+                frames[index] ?? ""
+              );
+        setTimelineThumbnails((prev) => ({
+          ...prev,
+          [entry.clip.id]: {
+            key,
+            frames: normalizedFrames,
+          },
+        }));
+      }
+    };
+    void buildThumbnails();
+    return () => {
+      cancelled = true;
+    };
+  }, [timelineLayout, timelineScale]);
+
   const getClipMinSize = useCallback(
     (clipId: string) => {
       const kind = clipAssetKindMap.get(clipId);
@@ -1628,14 +1861,39 @@ export default function AdvancedEditorPage() {
         }
         return time >= entry.left && time < entry.left + entry.clip.duration;
       });
-      if (candidates.length === 0) {
-        return null;
+      const pickTop = (items: TimelineLayoutEntry[]) =>
+        items.reduce((top, entry) => {
+          const entryIndex = laneIndexMap.get(entry.clip.laneId) ?? 0;
+          const topIndex = laneIndexMap.get(top.clip.laneId) ?? 0;
+          return entryIndex >= topIndex ? entry : top;
+        });
+      if (candidates.length > 0) {
+        return pickTop(candidates);
       }
-      return candidates.reduce((top, entry) => {
-        const entryIndex = laneIndexMap.get(entry.clip.laneId) ?? 0;
-        const topIndex = laneIndexMap.get(top.clip.laneId) ?? 0;
-        return entryIndex >= topIndex ? entry : top;
+      let nearest: TimelineLayoutEntry | null = null;
+      let bestDistance = timelineClipEpsilon + 1;
+      timelineLayout.forEach((entry) => {
+        const isAudio = entry.asset.kind === "audio";
+        if (kind === "visual" && isAudio) {
+          return;
+        }
+        if (kind === "audio" && !isAudio) {
+          return;
+        }
+        const startDistance = Math.abs(entry.left - time);
+        if (startDistance <= timelineClipEpsilon && startDistance < bestDistance) {
+          bestDistance = startDistance;
+          nearest = entry;
+        }
+        const endDistance = Math.abs(
+          entry.left + entry.clip.duration - time
+        );
+        if (endDistance <= timelineClipEpsilon && endDistance < bestDistance) {
+          bestDistance = endDistance;
+          nearest = entry;
+        }
       });
+      return nearest;
     },
     [timelineLayout, laneIndexMap]
   );
@@ -1900,8 +2158,8 @@ export default function AdvancedEditorPage() {
     const visible = timelineLayout.filter(
       (entry) =>
         entry.asset.kind !== "audio" &&
-        currentTime >= entry.left &&
-        currentTime <= entry.left + entry.clip.duration
+        currentTime + timelineClipEpsilon >= entry.left &&
+        currentTime - timelineClipEpsilon <= entry.left + entry.clip.duration
     );
     return visible.sort((a, b) => {
       const aOrder = clipOrder[a.clip.id] ?? 0;
@@ -1923,8 +2181,8 @@ export default function AdvancedEditorPage() {
     const visible = timelineLayout.filter(
       (entry) =>
         entry.asset.kind === "audio" &&
-        currentTime >= entry.left &&
-        currentTime <= entry.left + entry.clip.duration
+        currentTime + timelineClipEpsilon >= entry.left &&
+        currentTime - timelineClipEpsilon <= entry.left + entry.clip.duration
     );
     return visible.sort((a, b) => {
       const aIndex = laneIndexMap.get(a.clip.laneId) ?? 0;
@@ -1978,6 +2236,43 @@ export default function AdvancedEditorPage() {
     return sorted[0].asset.aspectRatio ?? 16 / 9;
   }, [timelineLayout, laneIndexMap]);
 
+  const stageDisplay = useMemo(() => {
+    if (stageViewport.width === 0 || stageViewport.height === 0) {
+      return { width: 0, height: 0 };
+    }
+    if (!Number.isFinite(projectAspectRatio) || projectAspectRatio <= 0) {
+      return {
+        width: stageViewport.width,
+        height: stageViewport.height,
+      };
+    }
+    const viewportRatio = stageViewport.width / stageViewport.height;
+    if (viewportRatio > projectAspectRatio) {
+      const height = stageViewport.height;
+      return { width: height * projectAspectRatio, height };
+    }
+    const width = stageViewport.width;
+    return { width, height: width / projectAspectRatio };
+  }, [projectAspectRatio, stageViewport.height, stageViewport.width]);
+
+  useEffect(() => {
+    if (stageDisplay.width === 0 || stageDisplay.height === 0) {
+      return;
+    }
+    setStageSize((prev) => {
+      if (
+        Math.abs(prev.width - stageDisplay.width) < 0.5 &&
+        Math.abs(prev.height - stageDisplay.height) < 0.5
+      ) {
+        return prev;
+      }
+      return {
+        width: stageDisplay.width,
+        height: stageDisplay.height,
+      };
+    });
+  }, [stageDisplay.height, stageDisplay.width]);
+
   const stageAspectRatio = useMemo<number>(() => {
     if (stageSize.width > 0 && stageSize.height > 0) {
       return stageSize.width / stageSize.height;
@@ -1990,6 +2285,9 @@ export default function AdvancedEditorPage() {
   }, [stageAspectRatio]);
 
   const baseVisualEntry = useMemo(() => {
+    if (visualClipEntry && visualClipEntry.asset.kind !== "audio") {
+      return visualClipEntry;
+    }
     const visuals = timelineLayout.filter(
       (entry) => entry.asset.kind !== "audio"
     );
@@ -1999,7 +2297,7 @@ export default function AdvancedEditorPage() {
     return visuals.reduce((first, entry) =>
       entry.left < first.left ? entry : first
     );
-  }, [timelineLayout]);
+  }, [timelineLayout, visualClipEntry]);
 
   const resolveBackgroundTransform = useCallback(
     (clipId: string, asset: MediaAsset) => {
@@ -2191,6 +2489,24 @@ export default function AdvancedEditorPage() {
       };
     });
   }, [lanes]);
+
+  const dragPreview = useMemo(() => {
+    if (!dragClipState) {
+      return null;
+    }
+    const clip = timeline.find((item) => item.id === dragClipState.clipId);
+    if (!clip) {
+      return null;
+    }
+    return {
+      laneId:
+        dragClipState.previewLaneId ??
+        dragClipState.targetLaneId ??
+        dragClipState.startLaneId,
+      startTime: dragClipState.previewTime ?? clip.startTime,
+      duration: clip.duration,
+    };
+  }, [dragClipState, timeline]);
 
   const laneBounds = useMemo(() => {
     const bounds = new Map<string, { top: number; bottom: number }>();
@@ -2421,6 +2737,26 @@ export default function AdvancedEditorPage() {
     const clampedX = clamp(rawX, 0, maxX);
     const nextTime = clampedX / timelineScale;
     handleScrubToTime(nextTime);
+  };
+
+  const handlePlayheadPointerDown = (
+    event: PointerEvent<HTMLButtonElement>
+  ) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    scrubPointerIdRef.current = event.pointerId;
+    scrubPointerTargetRef.current = event.currentTarget;
+    if (event.currentTarget.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    setIsScrubbing(true);
+    if (isPlaying) {
+      handleTogglePlayback();
+    }
+    handleScrubTo(event.clientX);
   };
 
   useEffect(() => {
@@ -3541,6 +3877,10 @@ export default function AdvancedEditorPage() {
       return;
     }
     pushHistory();
+    updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
+      ...current,
+      muted: true,
+    }));
     const exists = timelineLayout.some(
       (entry) =>
         entry.asset.kind === "audio" &&
@@ -4170,9 +4510,76 @@ export default function AdvancedEditorPage() {
       const deltaSeconds =
         (event.clientX - dragClipState.startX) / timelineScale;
       const rawTime = dragClipState.startLeft + deltaSeconds;
-      const snappedTime = Math.round(rawTime / snapInterval) * snapInterval;
+      const dragDirection = Math.sign(deltaSeconds);
+      const snapThresholdSeconds = snapThresholdPx / timelineScale;
+      const frameThresholdSeconds = frameStepSeconds;
+      let targetTime = rawTime;
+      let snapGuide: number | null = null;
+      const candidateEdges: number[] = [0];
+      timeline.forEach((clip) => {
+        if (clip.id === dragged.id) {
+          return;
+        }
+        candidateEdges.push(clip.startTime, clip.startTime + clip.duration);
+      });
+      if (!event.altKey && isTimelineSnappingEnabled) {
+        const gridTime = Math.round(rawTime / snapInterval) * snapInterval;
+        targetTime = gridTime;
+        let bestDistance = snapThresholdSeconds + 1;
+        let bestTime: number | null = null;
+        let bestGuide: number | null = null;
+        candidateEdges.forEach((edge) => {
+          const startCandidate = edge;
+          const endCandidate = edge - dragged.duration;
+          const startDistance = Math.abs(rawTime - startCandidate);
+          if (startDistance < bestDistance) {
+            bestDistance = startDistance;
+            bestTime = startCandidate;
+            bestGuide = edge;
+          }
+          const endDistance = Math.abs(rawTime - endCandidate);
+          if (endDistance < bestDistance) {
+            bestDistance = endDistance;
+            bestTime = endCandidate;
+            bestGuide = edge;
+          }
+        });
+        if (bestTime !== null && bestDistance <= snapThresholdSeconds) {
+          targetTime = bestTime;
+          snapGuide = bestGuide;
+        }
+        if (snapGuide === null) {
+          let frameDistance = frameThresholdSeconds + 1;
+          let frameTime: number | null = null;
+          let frameGuide: number | null = null;
+          candidateEdges.forEach((edge) => {
+            const startDistance = Math.abs(rawTime - edge);
+            if (startDistance < frameDistance) {
+              frameDistance = startDistance;
+              frameTime = edge;
+              frameGuide = edge;
+            }
+            const endDistance = Math.abs(
+              rawTime - (edge - dragged.duration)
+            );
+            if (endDistance < frameDistance) {
+              frameDistance = endDistance;
+              frameTime = edge - dragged.duration;
+              frameGuide = edge;
+            }
+          });
+          if (frameTime !== null && frameDistance <= frameThresholdSeconds) {
+            targetTime = frameTime;
+            snapGuide = frameGuide;
+          }
+        }
+      }
       const maxStart = Math.max(0, timelineDuration + 10);
-      const targetTime = clamp(snappedTime, 0, maxStart);
+      let liveTime = clamp(normalizeTimelineTime(targetTime), 0, maxStart);
+      if (event.altKey || !isTimelineSnappingEnabled) {
+        liveTime = clamp(normalizeTimelineTime(rawTime), 0, maxStart);
+        snapGuide = null;
+      }
       let targetLaneId = dragClipState.targetLaneId ?? dragClipState.startLaneId;
       let createdLaneId = dragClipState.createdLaneId;
       if (track) {
@@ -4212,26 +4619,101 @@ export default function AdvancedEditorPage() {
           targetLaneId = foundLaneId;
         }
       }
-      if (
-        targetLaneId !== dragClipState.targetLaneId ||
-        createdLaneId !== dragClipState.createdLaneId
-      ) {
-        setDragClipState((prev) =>
-          prev
-            ? {
-              ...prev,
-              targetLaneId,
-              createdLaneId,
-            }
-            : prev
+      const resolveNonOverlappingStart = (
+        startTime: number,
+        duration: number,
+        laneId: string,
+        direction: number
+      ) => {
+        const occupied = timeline
+          .filter(
+            (clip) => clip.laneId === laneId && clip.id !== dragged.id
+          )
+          .map((clip) => ({
+            start: clip.startTime,
+            end: clip.startTime + clip.duration,
+          }))
+          .sort((a, b) => a.start - b.start);
+        if (occupied.length === 0) {
+          return { start: startTime, collision: false };
+        }
+        const dragEnd = startTime + duration;
+        const overlaps = occupied.some(
+          (slot) =>
+            startTime < slot.end - timelineClipEpsilon &&
+            dragEnd > slot.start + timelineClipEpsilon
         );
+        if (!overlaps) {
+          return { start: startTime, collision: false };
+        }
+        const insertionPoints = new Set<number>([0]);
+        let cursor = 0;
+        occupied.forEach((slot) => {
+          insertionPoints.add(slot.start);
+          insertionPoints.add(slot.end);
+          cursor = Math.max(cursor, slot.end);
+        });
+        insertionPoints.add(cursor);
+        const points = Array.from(insertionPoints).sort((a, b) => a - b);
+        const forwardPoints = points.filter(
+          (point) => point >= startTime - timelineClipEpsilon
+        );
+        const backwardPoints = points.filter(
+          (point) => point <= startTime + timelineClipEpsilon
+        );
+        let candidate = startTime;
+        if (direction > 0 && forwardPoints.length > 0) {
+          candidate = forwardPoints[0];
+        } else if (direction < 0 && backwardPoints.length > 0) {
+          candidate = backwardPoints[backwardPoints.length - 1];
+        } else {
+          let bestDistance = Number.POSITIVE_INFINITY;
+          points.forEach((point) => {
+            const distance = Math.abs(point - startTime);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              candidate = point;
+            }
+          });
+        }
+        return {
+          start: clamp(candidate, 0, maxStart),
+          collision: true,
+        };
+      };
+      const resolved = resolveNonOverlappingStart(
+        liveTime,
+        dragged.duration,
+        targetLaneId,
+        dragDirection
+      );
+      const nextDragState = {
+        ...dragClipState,
+        targetLaneId,
+        createdLaneId,
+        previewTime: resolved.start,
+        previewLaneId: targetLaneId,
+      };
+      dragClipStateRef.current = nextDragState;
+      setDragClipState((prev) => (prev ? nextDragState : prev));
+      if (resolved.collision) {
+        setTimelineCollisionGuide(resolved.start);
+        setTimelineCollisionActive(true);
+      } else if (timelineCollisionGuide !== null) {
+        setTimelineCollisionGuide(null);
+        setTimelineCollisionActive(false);
+      }
+      if (snapGuide !== null) {
+        setTimelineSnapGuide(snapGuide);
+      } else if (timelineSnapGuide !== null) {
+        setTimelineSnapGuide(null);
       }
       setTimeline((prev) =>
         prev.map((clip) =>
           clip.id === dragged.id
             ? {
               ...clip,
-              startTime: targetTime,
+              startTime: liveTime,
               laneId: targetLaneId,
             }
             : clip
@@ -4239,31 +4721,83 @@ export default function AdvancedEditorPage() {
       );
     };
     const handleUp = () => {
+      const dragState = dragClipStateRef.current;
+      if (!dragState) {
+        return;
+      }
       setTimeline((prev) => {
-        const dragged = prev.find((clip) => clip.id === dragClipState.clipId);
+        const dragged = prev.find((clip) => clip.id === dragState.clipId);
         if (!dragged) {
           return prev;
         }
         const targetLaneId =
-          dragClipState.targetLaneId ?? dragClipState.startLaneId;
-        const remaining = prev.filter(
-          (clip) => clip.id !== dragClipState.clipId
+          dragState.previewLaneId ??
+          dragState.targetLaneId ??
+          dragState.startLaneId;
+        const resolvedStart = clamp(
+          normalizeTimelineTime(dragState.previewTime ?? dragged.startTime),
+          0,
+          Math.max(0, timelineDuration + 10)
         );
-        const shouldAppend =
-          targetLaneId !== dragClipState.startLaneId &&
-          targetLaneId !== dragClipState.createdLaneId;
-        const appendedStart = getLaneEndTime(targetLaneId, remaining);
-        return [
-          ...remaining,
-          {
-            ...dragged,
-            laneId: targetLaneId,
-            startTime: shouldAppend ? appendedStart : dragged.startTime,
-          },
-        ];
+        const laneClips = prev
+          .filter(
+            (clip) => clip.laneId === targetLaneId || clip.id === dragged.id
+          )
+          .map((clip) =>
+            clip.id === dragged.id
+              ? { ...clip, laneId: targetLaneId, startTime: resolvedStart }
+              : { ...clip }
+          )
+          .sort((a, b) => {
+            if (a.startTime !== b.startTime) {
+              return a.startTime - b.startTime;
+            }
+            if (a.id === dragged.id) {
+              return -1;
+            }
+            if (b.id === dragged.id) {
+              return 1;
+            }
+            return 0;
+          });
+        let cursor = 0;
+        const updatedStarts = new Map<string, number>();
+        laneClips.forEach((clip) => {
+          let nextStart = clip.startTime;
+          if (nextStart < cursor - timelineClipEpsilon) {
+            nextStart = cursor;
+          }
+          nextStart = normalizeTimelineTime(Math.max(0, nextStart));
+          updatedStarts.set(clip.id, nextStart);
+          cursor = nextStart + clip.duration;
+        });
+        return prev.map((clip) => {
+          if (clip.laneId !== targetLaneId && clip.id !== dragged.id) {
+            return clip;
+          }
+          const nextStart = updatedStarts.get(clip.id);
+          if (nextStart === undefined) {
+            return clip;
+          }
+          if (clip.id === dragged.id) {
+            return {
+              ...clip,
+              laneId: targetLaneId,
+              startTime: nextStart,
+            };
+          }
+          if (Math.abs(clip.startTime - nextStart) < timelineClipEpsilon) {
+            return clip;
+          }
+          return { ...clip, startTime: nextStart };
+        });
       });
       dragClipHistoryRef.current = false;
+      setTimelineSnapGuide(null);
+      setTimelineCollisionGuide(null);
+      setTimelineCollisionActive(false);
       setDragClipState(null);
+      dragClipStateRef.current = null;
     };
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
@@ -4278,6 +4812,9 @@ export default function AdvancedEditorPage() {
     timelineScale,
     timelineDuration,
     laneRows,
+    isTimelineSnappingEnabled,
+    timelineSnapGuide,
+    timelineCollisionGuide,
   ]);
 
   useEffect(() => {
@@ -4819,15 +5356,43 @@ export default function AdvancedEditorPage() {
     if (!isScrubbing) {
       return;
     }
-    const handleMove = (event: MouseEvent) => {
+    const handleMove = (event: globalThis.PointerEvent) => {
+      if (
+        scrubPointerIdRef.current !== null &&
+        event.pointerId !== scrubPointerIdRef.current
+      ) {
+        return;
+      }
       handleScrubTo(event.clientX);
     };
-    const handleUp = () => setIsScrubbing(false);
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
+    const handleUp = (event?: globalThis.PointerEvent) => {
+      if (
+        scrubPointerIdRef.current !== null &&
+        event &&
+        event.pointerId !== scrubPointerIdRef.current
+      ) {
+        return;
+      }
+      const target = scrubPointerTargetRef.current;
+      const pointerId = scrubPointerIdRef.current;
+      if (
+        target &&
+        pointerId !== null &&
+        target.hasPointerCapture?.(pointerId)
+      ) {
+        target.releasePointerCapture(pointerId);
+      }
+      scrubPointerIdRef.current = null;
+      scrubPointerTargetRef.current = null;
+      setIsScrubbing(false);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
     return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
     };
   }, [isScrubbing, timelineDuration, timelineScale, getClipAtTime]);
 
@@ -5294,25 +5859,28 @@ export default function AdvancedEditorPage() {
                       <span className="text-sm font-semibold text-gray-700">Volume</span>
                     </div>
                     <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
-                      {selectedVideoSettings.volume}%
+                      {selectedVideoSettings.muted ? 0 : selectedVideoSettings.volume}%
                     </span>
                   </div>
                   <div className="relative mt-3 h-4">
                     <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/80" />
                     <div
                       className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
-                      style={{ width: `${selectedVideoSettings.volume}%` }}
+                      style={{
+                        width: `${selectedVideoSettings.muted ? 0 : selectedVideoSettings.volume}%`,
+                      }}
                     />
                     <input
                       type="range"
                       min={0}
                       max={100}
                       step={1}
-                      value={selectedVideoSettings.volume}
+                      value={selectedVideoSettings.muted ? 0 : selectedVideoSettings.volume}
                       onChange={(event) =>
                         updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
                           ...current,
                           volume: clamp(Number(event.target.value), 0, 100),
+                          muted: clamp(Number(event.target.value), 0, 100) === 0,
                         }))
                       }
                       className="refined-slider relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent"
@@ -5534,11 +6102,30 @@ export default function AdvancedEditorPage() {
                 </div>
 
                 <div className={`${panelCardClass} space-y-3`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
-                      Rotation
-                    </span>
-                    <div className="flex items-center gap-1 rounded-lg border border-gray-200/70 bg-gray-50/70 px-2 py-1">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200/70 bg-gray-50/70 px-3 py-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 16 16"
+                        className="h-4 w-4 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                      >
+                        <path
+                          d="M15 13H1L9 3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M15 13c0-4.273-2.413-8.004-6-10"
+                          strokeDasharray="1 3"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <span>Rotation</span>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-gray-700 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.2)]">
                       <input
                         type="number"
                         min={-180}
@@ -5557,17 +6144,18 @@ export default function AdvancedEditorPage() {
                             ),
                           }))
                         }
-                        className="w-14 bg-transparent text-right text-xs font-semibold text-gray-700 outline-none"
+                        className="w-10 bg-transparent text-right text-xs font-semibold text-gray-700 outline-none"
                       />
-                      <span className="text-[11px] text-gray-400">deg</span>
+                      <span className="text-[11px] text-gray-400">&deg;</span>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${selectedVideoSettings.flipH
+                      aria-label="Flip video horizontally"
+                      className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-gray-600 transition ${selectedVideoSettings.flipH
                         ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_4px_12px_rgba(51,92,255,0.18)]"
-                        : "border-gray-200/70 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                        : "border-gray-200/70 bg-white hover:border-gray-300 hover:bg-gray-50"
                         }`}
                       onClick={() =>
                         updateClipSettings(selectedVideoEntry.clip.id, (
@@ -5575,13 +6163,25 @@ export default function AdvancedEditorPage() {
                         ) => ({ ...current, flipH: !current.flipH }))
                       }
                     >
-                      Flip H
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 16 16"
+                        className="h-5 w-5"
+                        fill="none"
+                      >
+                        <path
+                          fill="currentColor"
+                          d="M8.75 13.333a.75.75 0 0 0-1.5 0zM7.25 14a.75.75 0 0 0 1.5 0zm1.5-4.667a.75.75 0 1 0-1.5 0zm-1.5 1.334a.75.75 0 0 0 1.5 0zm1.5-5.334a.75.75 0 0 0-1.5 0zm-1.5 1.334a.75.75 0 0 0 1.5 0zM8.75 2a.75.75 0 0 0-1.5 0zm-1.5.667a.75.75 0 0 0 1.5 0zM14 9.27h.75zm-1.326.808.39-.64zm0-4.156-.39-.64zM14 6.73h-.75zm-3.41.462.39.64zm0 1.616-.39.64zM2 6.73h.75zm1.326-.808-.39.64zm0 4.156.39.64zM2 9.27h-.75zm3.41-.462-.39-.64zm0-1.616.39-.64zm1.84 6.141V14h1.5v-.667zm0-4v1.334h1.5V9.333zm0-4v1.334h1.5V5.333zM7.25 2v.667h1.5V2zm3.73 5.832 2.084-1.27-.78-1.28-2.085 1.27zm2.27-1.102v2.54h1.5V6.73zm-.186 2.708-2.084-1.27-.78 1.28 2.083 1.27zm.186-.168c0 .091-.042.144-.082.168a.1.1 0 0 1-.052.017.1.1 0 0 1-.052-.017l-.78 1.28c1.15.702 2.466-.217 2.466-1.448zm-.186-2.708a.1.1 0 0 1 .052-.017q.018-.001.052.017c.04.025.082.077.082.168h1.5c0-1.23-1.316-2.15-2.467-1.449zm-2.865-.01c-1.069.65-1.069 2.245 0 2.897l.78-1.281c-.044-.027-.082-.082-.082-.168s.038-.14.083-.168zM5.02 8.167l-2.084 1.27.78 1.28 2.085-1.27zM2.75 9.27V6.73h-1.5v2.54zm.186-2.708 2.084 1.27.78-1.28-2.083-1.27zm-.186.168c0-.091.042-.144.082-.168a.1.1 0 0 1 .052-.017c.01 0 .027.001.052.017l.78-1.28C2.567 4.58 1.25 5.498 1.25 6.73zm.186 2.708a.1.1 0 0 1-.052.017.1.1 0 0 1-.052-.017c-.04-.025-.082-.077-.082-.168h-1.5c0 1.23 1.316 2.15 2.467 1.449zm2.865.01c1.069-.65 1.069-2.245 0-2.897l-.78 1.281c.044-.027.082-.082.082-.168s-.038.14-.083.168z"
+                        />
+                      </svg>
+                      <span className="sr-only">Flip H</span>
                     </button>
                     <button
                       type="button"
-                      className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${selectedVideoSettings.flipV
+                      aria-label="Flip video vertically"
+                      className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-gray-600 transition ${selectedVideoSettings.flipV
                         ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_4px_12px_rgba(51,92,255,0.18)]"
-                        : "border-gray-200/70 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                        : "border-gray-200/70 bg-white hover:border-gray-300 hover:bg-gray-50"
                         }`}
                       onClick={() =>
                         updateClipSettings(selectedVideoEntry.clip.id, (
@@ -5589,92 +6189,18 @@ export default function AdvancedEditorPage() {
                         ) => ({ ...current, flipV: !current.flipV }))
                       }
                     >
-                      Flip V
-                    </button>
-                  </div>
-                </div>
-
-                <div className={`${panelCardClass} space-y-3`}>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
-                    Timing
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
-                      aria-label="Set start time to playhead"
-                      onClick={() =>
-                        handleSetStartAtPlayhead(selectedVideoEntry.clip)
-                      }
-                    >
-                      <svg viewBox="0 0 16 16" className="h-4 w-4">
-                        <path
-                          d="M8 2.7a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 0V1.3m0 4v3.3m2 0H8m2-7.3H6"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 16 16"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                        strokeLinecap="round"
+                      >
+                        <path d="M2.667 8H2m4.667 0H5.333m5.334 0H9.333M14 8h-.667M6.73 14h2.54c.719 0 1.168-.737.808-1.326l-1.27-2.085C8.45 10 7.551 10 7.192 10.59l-1.27 2.085c-.36.59.09 1.326.808 1.326ZM9.27 2H6.73c-.719 0-1.168.737-.808 1.326l1.27 2.085C7.55 6 8.449 6 8.808 5.41l1.27-2.085C10.439 2.736 9.989 2 9.27 2Z" />
                       </svg>
-                    </button>
-                    <div className="flex flex-1 flex-col">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
-                        Start
-                      </span>
-                      <input
-                        key={`${selectedVideoEntry.clip.id}-start-${selectedVideoEntry.clip.startTime}`}
-                        defaultValue={formatTimeWithTenths(
-                          selectedVideoEntry.clip.startTime
-                        )}
-                        onBlur={(event) =>
-                          handleStartTimeCommit(
-                            selectedVideoEntry.clip,
-                            event.target.value
-                          )
-                        }
-                        className="rounded-lg border border-gray-200/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-1 flex-col">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
-                        End
-                      </span>
-                      <input
-                        key={`${selectedVideoEntry.clip.id}-end-${selectedVideoEntry.clip.startTime}-${selectedVideoEntry.clip.duration}`}
-                        defaultValue={formatTimeWithTenths(
-                          selectedVideoEntry.clip.startTime +
-                          selectedVideoEntry.clip.duration
-                        )}
-                        onBlur={(event) =>
-                          handleEndTimeCommit(
-                            selectedVideoEntry.clip,
-                            event.target.value
-                          )
-                        }
-                        className="rounded-lg border border-gray-200/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
-                      aria-label="Set end time to playhead"
-                      onClick={() =>
-                        handleSetEndAtPlayhead(selectedVideoEntry.clip)
-                      }
-                    >
-                      <svg viewBox="0 0 16 16" className="h-4 w-4">
-                        <path
-                          d="M8 2.7a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 0V1.3m0 4v3.3m2 0H8m2-7.3H6"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
+                      <span className="sr-only">Flip V</span>
                     </button>
                   </div>
                 </div>
@@ -8179,72 +8705,83 @@ export default function AdvancedEditorPage() {
   const renderStage = () => (
     <div className="flex min-h-0 flex-1">
       <div
-        ref={stageRef}
-        className={`relative flex h-full w-full items-center justify-center overflow-hidden ${dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
-          }`}
-        onPointerDown={handleStagePointerDown}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          closeFloatingMenu();
-        }}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragOverCanvas(true);
-        }}
-        onDragLeave={() => setDragOverCanvas(false)}
-        onDrop={handleCanvasDrop}
+        ref={stageViewportRef}
+        className="relative flex h-full w-full items-center justify-center"
       >
-        <div className="pointer-events-none absolute inset-0 border border-gray-200 bg-[#F2F4FA] shadow-sm" />
-        {dragOverCanvas && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm font-semibold text-[#335CFF]">
-            Drop to add to timeline
-          </div>
-        )}
-        {baseBackgroundTransform && (
+        <div
+          ref={stageRef}
+          className={`relative flex items-center justify-center overflow-hidden ${dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
+            }`}
+          style={{
+            width: stageDisplay.width ? `${stageDisplay.width}px` : "100%",
+            height: stageDisplay.height ? `${stageDisplay.height}px` : "100%",
+          }}
+          onPointerDown={handleStagePointerDown}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            closeFloatingMenu();
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragOverCanvas(true);
+          }}
+          onDragLeave={() => setDragOverCanvas(false)}
+          onDrop={handleCanvasDrop}
+        >
           <div
-            className="pointer-events-none absolute"
-            style={{
-              left: `${baseBackgroundTransform.x * 100}%`,
-              top: `${baseBackgroundTransform.y * 100}%`,
-              width: `${baseBackgroundTransform.width * 100}%`,
-              height: `${baseBackgroundTransform.height * 100}%`,
-              backgroundColor: canvasBackground,
-              zIndex: 1,
-            }}
+            className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
+            style={{ backgroundColor: canvasBackground }}
           />
-        )}
-                {stageSelection && stageSelectionStyle && (
-                  <div className="pointer-events-none absolute inset-0 z-20">
-                    <div
-                      className="absolute rounded-lg border border-dashed border-[#5B6CFF] bg-[#5B6CFF]/10"
-                      style={{
-                        left: stageSelectionStyle.left,
-                        top: stageSelectionStyle.top,
-                        width: stageSelectionStyle.width,
-                        height: stageSelectionStyle.height,
-                      }}
-                    />
-                  </div>
-                )}
-                {snapGuides && (snapGuides.x.length > 0 || snapGuides.y.length > 0) && (
-                  <div className="pointer-events-none absolute inset-0 z-20">
-                    {snapGuides.x.map((line) => (
-                      <div
-                        key={`snap-x-${line}`}
-                        className="absolute top-0 bottom-0 w-px bg-[#5B6CFF]/70"
-                        style={{ left: `${line}px` }}
-                      />
-                    ))}
-                    {snapGuides.y.map((line) => (
-                      <div
-                        key={`snap-y-${line}`}
-                        className="absolute left-0 right-0 h-px bg-[#5B6CFF]/70"
-                        style={{ top: `${line}px` }}
-                      />
-                    ))}
-                  </div>
-                )}
-        {showEmptyState ? (
+          {dragOverCanvas && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm font-semibold text-[#335CFF]">
+              Drop to add to timeline
+            </div>
+          )}
+          {baseBackgroundTransform && (
+            <div
+              className="pointer-events-none absolute"
+              style={{
+                left: `${baseBackgroundTransform.x * 100}%`,
+                top: `${baseBackgroundTransform.y * 100}%`,
+                width: `${baseBackgroundTransform.width * 100}%`,
+                height: `${baseBackgroundTransform.height * 100}%`,
+                backgroundColor: canvasBackground,
+                zIndex: 1,
+              }}
+            />
+          )}
+          {stageSelection && stageSelectionStyle && (
+            <div className="pointer-events-none absolute inset-0 z-20">
+              <div
+                className="absolute rounded-lg border border-dashed border-[#5B6CFF] bg-[#5B6CFF]/10"
+                style={{
+                  left: stageSelectionStyle.left,
+                  top: stageSelectionStyle.top,
+                  width: stageSelectionStyle.width,
+                  height: stageSelectionStyle.height,
+                }}
+              />
+            </div>
+          )}
+          {snapGuides && (snapGuides.x.length > 0 || snapGuides.y.length > 0) && (
+            <div className="pointer-events-none absolute inset-0 z-20">
+              {snapGuides.x.map((line) => (
+                <div
+                  key={`snap-x-${line}`}
+                  className="absolute top-0 bottom-0 w-px bg-[#5B6CFF]/70"
+                  style={{ left: `${line}px` }}
+                />
+              ))}
+              {snapGuides.y.map((line) => (
+                <div
+                  key={`snap-y-${line}`}
+                  className="absolute left-0 right-0 h-px bg-[#5B6CFF]/70"
+                  style={{ top: `${line}px` }}
+                />
+              ))}
+            </div>
+          )}
+          {showEmptyState ? (
           <div className="relative z-10 flex flex-col items-center gap-3 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
               <svg viewBox="0 0 24 24" className="h-8 w-8">
@@ -8711,18 +9248,21 @@ export default function AdvancedEditorPage() {
                     <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/90" />
                     <div
                       className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
-                      style={{ width: `${floatingVideoSettings.volume}%` }}
+                      style={{
+                        width: `${floatingVideoSettings.muted ? 0 : floatingVideoSettings.volume}%`,
+                      }}
                     />
                     <input
                       type="range"
                       min={0}
                       max={100}
                       step={1}
-                      value={floatingVideoSettings.volume}
+                      value={floatingVideoSettings.muted ? 0 : floatingVideoSettings.volume}
                       onChange={(event) =>
                         updateClipSettings(floatingMenuEntry.clip.id, (current) => ({
                           ...current,
                           volume: clamp(Number(event.target.value), 0, 100),
+                          muted: clamp(Number(event.target.value), 0, 100) === 0,
                         }))
                       }
                       className="refined-slider relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent"
@@ -8731,7 +9271,7 @@ export default function AdvancedEditorPage() {
                   </div>
                   <input
                     readOnly
-                    value={`${floatingVideoSettings.volume}%`}
+                    value={`${floatingVideoSettings.muted ? 0 : floatingVideoSettings.volume}%`}
                     className="h-7 w-14 rounded-lg border border-transparent bg-gray-50 px-2 text-right text-xs font-semibold text-gray-600"
                   />
                 </div>
@@ -9265,6 +9805,7 @@ export default function AdvancedEditorPage() {
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -9313,29 +9854,25 @@ export default function AdvancedEditorPage() {
             </svg>
             <span className="hidden lg:block">Split</span>
           </button>
-          <button
-            className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-            onClick={handleDownloadSelection}
-            disabled={!selectedRange}
-          >
-            <svg viewBox="0 0 16 16" className="h-4 w-4">
-              <path
-                d="M13.5 10.5V12a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-1.5M8 2v7m0 0 2.5-2.5M8 9 5.5 6.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="hidden lg:block">Download</span>
-            {selectionRangeLabel && (
-              <span className="hidden text-[11px] font-medium text-gray-500 sm:block">
-                ({selectionRangeLabel})
-              </span>
-            )}
-          </button>
+          {selectedClipIds.length > 0 && (
+            <button
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                isTimelineSnappingEnabled
+                  ? "border-[#335CFF]/30 bg-[#EEF2FF] text-[#335CFF]"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+              type="button"
+              aria-pressed={isTimelineSnappingEnabled}
+              aria-label="Toggle magnet snapping"
+              title="Toggle magnet snapping (hold Alt to bypass)"
+              onClick={() =>
+                setIsTimelineSnappingEnabled((prev) => !prev)
+              }
+            >
+              <Magnet className="h-4 w-4" />
+              <span className="hidden lg:block">Magnet</span>
+            </button>
+          )}
         </div>
         <div className="relative flex items-center">
           <div className="flex items-center gap-1">
@@ -9524,7 +10061,7 @@ export default function AdvancedEditorPage() {
             )}
             {rangeSelection && (
               <div
-                className="pointer-events-none absolute rounded-lg border border-[#335CFF] bg-[#335CFF]/10"
+                className="pointer-events-none absolute z-30 rounded-lg border border-[#2DD4BF] bg-[#2DD4BF]/25 shadow-[0_0_0_1px_rgba(45,212,191,0.6)]"
                 style={{
                   left: `${clamp(
                     Math.min(
@@ -9595,9 +10132,27 @@ export default function AdvancedEditorPage() {
                 }}
               />
             )}
-            {timelineLayout.length > 0 && (
+            {timelineSnapGuide !== null && (
               <div
-                className="pointer-events-none absolute top-4 bottom-4 w-px bg-[#335CFF]"
+                className="pointer-events-none absolute top-4 bottom-4 w-px bg-amber-400/90 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]"
+                style={{
+                  left: `${timelineSnapGuide * timelineScale + timelinePadding}px`,
+                }}
+              />
+            )}
+            {timelineCollisionGuide !== null && (
+              <div
+                className="pointer-events-none absolute top-4 bottom-4 w-px border-l border-dashed border-amber-300/90"
+                style={{
+                  left: `${timelineCollisionGuide * timelineScale + timelinePadding}px`,
+                }}
+              />
+            )}
+            {timelineLayout.length > 0 && (
+              <button
+                type="button"
+                aria-label="Drag playhead"
+                className="absolute top-4 bottom-4 w-6 -translate-x-1/2 cursor-ew-resize border-0 bg-transparent p-0 focus:outline-none"
                 style={{
                   left: `${clamp(
                     currentTime,
@@ -9605,9 +10160,11 @@ export default function AdvancedEditorPage() {
                     timelineDuration
                   ) * timelineScale + timelinePadding}px`,
                 }}
+                onPointerDown={handlePlayheadPointerDown}
               >
-                <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#335CFF]" />
-              </div>
+                <span className="absolute left-1/2 h-full w-px -translate-x-1/2 bg-[#335CFF]" />
+                <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#335CFF] shadow-[0_0_0_2px_rgba(255,255,255,0.85)]" />
+              </button>
             )}
             {timelineLayout.length === 0 ? (
               <button
@@ -9629,6 +10186,14 @@ export default function AdvancedEditorPage() {
                   const laneClips = timelineLayout
                     .filter((entry) => entry.clip.laneId === lane.id)
                     .sort((a, b) => a.left - b.left);
+                  const laneClipInsetY =
+                    lane.type === "video"
+                      ? 0
+                      : Math.max(4, Math.round(lane.height * 0.12));
+                  const laneClipHeight =
+                    lane.type === "video"
+                      ? lane.height
+                      : Math.max(18, lane.height - laneClipInsetY * 2);
                   return (
                     <div
                       key={lane.id}
@@ -9638,35 +10203,65 @@ export default function AdvancedEditorPage() {
                       <div className="absolute left-2 top-2 text-[10px] uppercase tracking-[0.12em] text-gray-400">
                         {lane.label}
                       </div>
+                      {dragPreview && dragPreview.laneId === lane.id && (
+                        <div
+                          className="pointer-events-none absolute rounded-sm border-2 border-dashed border-amber-300/90 bg-amber-100/30"
+                          style={{
+                            left: `${dragPreview.startTime * timelineScale}px`,
+                            width: `${dragPreview.duration * timelineScale}px`,
+                            top: `${laneClipInsetY}px`,
+                            height: `${laneClipHeight}px`,
+                          }}
+                        />
+                      )}
                       {laneClips.map(({ clip, asset, left }) => {
                         const width = Math.max(
                           1,
-                          Math.round(clip.duration * timelineScale)
+                          clip.duration * timelineScale
                         );
                         const isSelected =
                           selectedClipIdsSet.has(clip.id);
                         const isDragging =
                           dragClipState?.clipId === clip.id;
                         const waveform = getWaveformBars(clip.id, 24);
-                        const textPreview =
-                          textSettings[clip.id]?.text ?? asset.name;
-                        const textPreviewLine =
-                          textPreview.split("\n")[0]?.trim() || "Text";
+                        const thumbnailCount =
+                          lane.type === "video"
+                            ? getThumbnailCountForWidth(width)
+                            : 0;
+                        const thumbnailFrames =
+                          timelineThumbnails[clip.id]?.frames ?? [];
+                        const hasThumbnailFrames =
+                          asset.kind === "video" &&
+                          thumbnailFrames.length === thumbnailCount &&
+                          thumbnailFrames.some((frame) => Boolean(frame));
+                        const clipBorderClass = isSelected
+                          ? "border-[#335CFF]"
+                          : "border-transparent";
+                        const collisionHighlight =
+                          isDragging && timelineCollisionActive
+                            ? "shadow-[0_0_0_2px_rgba(251,191,36,0.65)]"
+                            : "";
+                        const dragLiftClass = isDragging
+                          ? "z-30 -translate-y-1"
+                          : "";
+                        const dragLiftShadow = isDragging
+                          ? "shadow-[0_18px_30px_rgba(15,23,42,0.25)] cursor-grabbing"
+                          : "";
                         return (
                           <div
                             key={clip.id}
-                            className="absolute top-1/2 -translate-y-1/2"
+                            className={`absolute ${dragLiftClass}`}
                             style={{
                               left: `${left * timelineScale}px`,
                               width,
+                              top: `${laneClipInsetY}px`,
+                              height: `${laneClipHeight}px`,
                             }}
                           >
                             <button
                               type="button"
-                              className={`group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-xl border px-3 py-2 text-left text-xs font-semibold shadow-sm transition ${isSelected
-                                ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
-                                } ${isDragging ? "opacity-70" : ""}`}
+                              className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 bg-white p-0 text-left text-[10px] font-semibold shadow-sm transition ${isDragging ? "opacity-70" : ""
+                                } ${collisionHighlight} ${dragLiftShadow}`}
                               data-timeline-clip="true"
                               onMouseDown={(event) => {
                                 event.preventDefault();
@@ -9695,32 +10290,82 @@ export default function AdvancedEditorPage() {
                                 setSelectedClipIds([clip.id]);
                                 setSelectedClipId(clip.id);
                                 dragClipHistoryRef.current = false;
-                                setDragClipState({
+                                const nextDragState = {
                                   clipId: clip.id,
                                   startX: event.clientX,
                                   startLeft: left,
                                   startLaneId: clip.laneId,
-                                });
+                                  previewTime: left,
+                                  previewLaneId: clip.laneId,
+                                };
+                                dragClipStateRef.current = nextDragState;
+                                setDragClipState(nextDragState);
                               }}
                             >
                               {lane.type === "video" && (
-                                <div className="absolute inset-0">
-                                  {asset.kind === "image" ? (
-                                    <img
-                                      src={asset.url}
-                                      alt={asset.name}
-                                      className="h-full w-full object-cover opacity-80"
-                                    />
-                                  ) : (
-                                    <video
-                                      src={asset.url}
-                                      className="h-full w-full object-cover opacity-70"
-                                      muted
-                                      playsInline
-                                      preload="metadata"
-                                    />
+                                <div
+                                  className="absolute inset-0 grid h-full w-full"
+                                  style={{
+                                    gridTemplateColumns: `repeat(${thumbnailCount}, minmax(0, 1fr))`,
+                                  }}
+                                >
+                                  {Array.from(
+                                    { length: thumbnailCount },
+                                    (_, index) => {
+                                      const frameTime = clamp(
+                                        clip.startOffset +
+                                          (clip.duration * (index + 0.5)) /
+                                            Math.max(1, thumbnailCount),
+                                        clip.startOffset,
+                                        clip.startOffset + clip.duration - 0.05
+                                      );
+                                      return (
+                                        <div
+                                          key={`${clip.id}-thumb-${index}`}
+                                          className="relative h-full w-full overflow-hidden border-r border-white/30 bg-slate-100 last:border-r-0"
+                                        >
+                                          {asset.kind === "image" ? (
+                                            <img
+                                              src={asset.url}
+                                              alt={asset.name}
+                                              className="h-full w-full object-cover"
+                                              draggable={false}
+                                            />
+                                          ) : hasThumbnailFrames &&
+                                            thumbnailFrames[index] ? (
+                                            <img
+                                              src={thumbnailFrames[index]}
+                                              alt={`${asset.name} frame ${index + 1}`}
+                                              className="h-full w-full object-cover"
+                                              draggable={false}
+                                            />
+                                          ) : (
+                                            <video
+                                              src={asset.url}
+                                              className="h-full w-full object-cover"
+                                              muted
+                                              playsInline
+                                              preload="auto"
+                                              tabIndex={-1}
+                                              onLoadedData={(event) => {
+                                                const target =
+                                                  event.currentTarget;
+                                                if (
+                                                  Math.abs(
+                                                    target.currentTime -
+                                                      frameTime
+                                                  ) > 0.01
+                                                ) {
+                                                  target.currentTime =
+                                                    frameTime;
+                                                }
+                                              }}
+                                            />
+                                          )}
+                                        </div>
+                                      );
+                                    }
                                   )}
-                                  <div className="absolute inset-0 bg-gradient-to-r from-white/80 via-white/30 to-white/80" />
                                 </div>
                               )}
                               {lane.type === "audio" && (
@@ -9745,30 +10390,14 @@ export default function AdvancedEditorPage() {
                                   ))}
                                 </div>
                               )}
-                              <span
-                                className={`relative z-10 truncate ${
-                                  lane.type === "text"
-                                    ? "text-[11px] font-semibold"
-                                    : ""
-                                }`}
-                                style={
-                                  lane.type === "text"
-                                    ? {
-                                        fontFamily:
-                                          textSettings[clip.id]?.fontFamily,
-                                      }
-                                    : undefined
-                                }
-                              >
-                                {lane.type === "text"
-                                  ? textPreviewLine
-                                  : asset.name}
-                              </span>
-                              <span className="relative z-10 text-[10px] text-gray-400">
+                              <div
+                                className={`pointer-events-none absolute inset-0 rounded-sm border-4 transition ${clipBorderClass}`}
+                              />
+                              <span className="absolute bottom-1 right-1 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
                                 {formatDuration(clip.duration)}
                               </span>
                               <span
-                                className="absolute left-0 top-0 h-full w-2 cursor-col-resize rounded-l-xl bg-black/5"
+                                className="absolute left-0 top-0 h-full w-2 cursor-col-resize rounded-l-sm bg-black/5"
                                 onMouseDown={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
@@ -9784,7 +10413,7 @@ export default function AdvancedEditorPage() {
                                 }}
                               />
                               <span
-                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize rounded-r-xl bg-black/5"
+                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize rounded-r-sm bg-black/5"
                                 onMouseDown={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();

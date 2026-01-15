@@ -44,6 +44,8 @@ export type ClipDragState = {
   startLaneId: string;
   targetLaneId?: string;
   createdLaneId?: string;
+  previewTime?: number;
+  previewLaneId?: string;
 };
 
 export type TrimEdge = "start" | "end";
