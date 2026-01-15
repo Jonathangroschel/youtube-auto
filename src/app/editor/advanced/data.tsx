@@ -1356,6 +1356,7 @@ export const textLetterSpacingOptions = [0, 0.5, 1, 1.5, 2, 3];
 export const textLineHeightOptions = [1, 1.1, 1.25, 1.4, 1.6];
 
 export const backgroundSwatches = [
+  "#000000",
   "#0A0A0A",
   "#1F2937",
   "#111827",

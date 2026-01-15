@@ -6,11 +6,13 @@ import type {
   MediaKind,
   TextClipSettings,
   TimelineClip,
+  TimelineContextMenuState,
   VideoClipSettings,
 } from "./types";
 
 import {
   defaultFloatingMenuState,
+  defaultTimelineContextMenuState,
   fallbackDuration,
   imageMaxDuration,
 } from "./constants";
@@ -304,6 +306,32 @@ export const createFloatingMenuState = (
   y: number
 ): FloatingMenuState => ({
   ...defaultFloatingMenuState,
+  open: true,
+  x,
+  y,
+  clipId,
+});
+
+// Timeline context menu utilities
+export const closeTimelineContextMenuState = (
+  menu: TimelineContextMenuState
+): TimelineContextMenuState =>
+  menu.open
+    ? {
+        ...menu,
+        open: false,
+        showReplaceMedia: false,
+        showAudio: false,
+        clipId: null,
+      }
+    : menu;
+
+export const createTimelineContextMenuState = (
+  clipId: string,
+  x: number,
+  y: number
+): TimelineContextMenuState => ({
+  ...defaultTimelineContextMenuState,
   open: true,
   x,
   y,

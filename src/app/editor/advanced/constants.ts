@@ -1,4 +1,4 @@
-import type { FloatingMenuState, LaneType, TransformHandle } from "./types";
+import type { FloatingMenuState, LaneType, TimelineContextMenuState, TransformHandle } from "./types";
 
 // Timing and duration constants
 export const fallbackDuration = 8;
@@ -112,3 +112,16 @@ export const defaultFloatingMenuState: FloatingMenuState = {
 // Image/text duration constants
 export const imageMaxDuration = 3600;
 export const defaultTextDuration = 5;
+
+// Default timeline context menu state
+export const defaultTimelineContextMenuState: TimelineContextMenuState = {
+  open: false,
+  x: 0,
+  y: 0,
+  clipId: null,
+  showReplaceMedia: false,
+  showAudio: false,
+};
+
+// Timeline context menu dimensions
+export const timelineContextMenuWidth = 200;

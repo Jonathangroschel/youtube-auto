@@ -14,7 +14,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
-import { Magnet } from "lucide-react";
+import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
 
 import type {
   AssetFilter,
@@ -39,6 +39,7 @@ import type {
   TextPreviewLine,
   TextStylePreset,
   TimelineClip,
+  TimelineContextMenuState,
   TimelineLane,
   TimelineLayoutEntry,
   TransformDragState,
@@ -51,6 +52,7 @@ import type {
 import {
   defaultFloatingMenuState,
   defaultTextDuration,
+  defaultTimelineContextMenuState,
   defaultTimelineHeight,
   floaterButtonClass,
   floaterMenuItemClass,
@@ -71,6 +73,7 @@ import {
   snapInterval,
   snapThresholdPx,
   speedPresets,
+  timelineContextMenuWidth,
   timelineHandleHeight,
   timelinePadding,
   timelineScaleMax,
@@ -84,11 +87,13 @@ import {
   cloneTextSettings,
   cloneVideoSettings,
   closeFloatingMenuState,
+  closeTimelineContextMenuState,
   createDefaultTextSettings,
   createDefaultTextTransform,
   createDefaultTransform,
   createDefaultVideoSettings,
   createFloatingMenuState,
+  createTimelineContextMenuState,
   formatDuration,
   formatSize,
   formatSpeedLabel,
@@ -504,7 +509,8 @@ export default function AdvancedEditorPage() {
   const [projectName, setProjectName] = useState("Untitled Project");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [canvasBackground, setCanvasBackground] = useState("#0A0A0A");
+  const [canvasBackground, setCanvasBackground] = useState("#f2f3fa");
+  const [videoBackground, setVideoBackground] = useState("#000000");
   const [isBackgroundSelected, setIsBackgroundSelected] = useState(false);
   const [timelineHeight, setTimelineHeight] = useState(
     defaultTimelineHeight
@@ -532,6 +538,9 @@ export default function AdvancedEditorPage() {
   );
   const [floatingMenu, setFloatingMenu] = useState<FloatingMenuState>(
     defaultFloatingMenuState
+  );
+  const [timelineContextMenu, setTimelineContextMenu] = useState<TimelineContextMenuState>(
+    defaultTimelineContextMenuState
   );
   const [clipTransforms, setClipTransforms] = useState<
     Record<string, ClipTransform>
@@ -658,6 +667,7 @@ export default function AdvancedEditorPage() {
   const [trimState, setTrimState] = useState<TrimState | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceMediaInputRef = useRef<HTMLInputElement | null>(null);
   const assetsRef = useRef<MediaAsset[]>([]);
   const lanesRef = useRef<TimelineLane[]>([]);
   const textSettingsRef = useRef<Record<string, TextClipSettings>>({});
@@ -669,6 +679,7 @@ export default function AdvancedEditorPage() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stageViewportRef = useRef<HTMLDivElement | null>(null);
   const floatingMenuRef = useRef<HTMLDivElement | null>(null);
+  const timelineContextMenuRef = useRef<HTMLDivElement | null>(null);
   const [stageViewport, setStageViewport] = useState({ width: 0, height: 0 });
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [mainHeight, setMainHeight] = useState(0);
@@ -953,6 +964,7 @@ export default function AdvancedEditorPage() {
       textSettings: clonedTextSettings,
       clipOrder: { ...clipOrder },
       canvasBackground,
+      videoBackground,
       currentTime,
       selectedClipId,
       selectedClipIds: [...selectedClipIds],
@@ -969,6 +981,7 @@ export default function AdvancedEditorPage() {
     textSettings,
     clipOrder,
     canvasBackground,
+    videoBackground,
     currentTime,
     selectedClipId,
     selectedClipIds,
@@ -1016,6 +1029,7 @@ export default function AdvancedEditorPage() {
     setTextSettings(snapshot.textSettings);
     setClipOrder(snapshot.clipOrder);
     setCanvasBackground(snapshot.canvasBackground);
+    setVideoBackground(snapshot.videoBackground);
     setCurrentTime(snapshot.currentTime);
     setSelectedClipId(snapshot.selectedClipId);
     setSelectedClipIds(snapshot.selectedClipIds);
@@ -1099,6 +1113,11 @@ export default function AdvancedEditorPage() {
           (item) => item.id === clip.assetId
         );
         next.push({ id: clip.laneId, type: getLaneType(asset) });
+      });
+      // Sort lanes to enforce ordering: video first, then text, then audio at bottom
+      next.sort((a, b) => {
+        const order: Record<string, number> = { video: 0, text: 1, audio: 2 };
+        return (order[a.type] ?? 0) - (order[b.type] ?? 0);
       });
       return next;
     });
@@ -1450,6 +1469,51 @@ export default function AdvancedEditorPage() {
     floatingMenu.y,
   ]);
 
+  // Timeline context menu click-outside detection
+  useEffect(() => {
+    if (!timelineContextMenu.open) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && timelineContextMenuRef.current?.contains(target)) {
+        return;
+      }
+      setTimelineContextMenu(closeTimelineContextMenuState);
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [timelineContextMenu.open]);
+
+  // Timeline context menu position adjustment (viewport coordinates)
+  useEffect(() => {
+    if (!timelineContextMenu.open || typeof window === "undefined") {
+      return;
+    }
+    const menu = timelineContextMenuRef.current;
+    if (!menu) {
+      return;
+    }
+    const menuRect = menu.getBoundingClientRect();
+    
+    // Clamp to viewport bounds
+    const maxX = Math.max(8, window.innerWidth - menuRect.width - 8);
+    const maxY = Math.max(8, window.innerHeight - menuRect.height - 8);
+    
+    const nextX = clamp(timelineContextMenu.x, 8, maxX);
+    const nextY = clamp(timelineContextMenu.y, 8, maxY);
+    
+    if (nextX !== timelineContextMenu.x || nextY !== timelineContextMenu.y) {
+      setTimelineContextMenu((prev) => ({ ...prev, x: nextX, y: nextY }));
+    }
+  }, [
+    timelineContextMenu.open,
+    timelineContextMenu.showReplaceMedia,
+    timelineContextMenu.showAudio,
+    timelineContextMenu.x,
+    timelineContextMenu.y,
+  ]);
+
   const activeToolLabel = useMemo(() => {
     return toolbarItems.find((item) => item.id === activeTool)?.label ?? "Panel";
   }, [activeTool]);
@@ -1574,7 +1638,27 @@ export default function AdvancedEditorPage() {
 
   const createLaneId = (type: LaneType, draft: TimelineLane[]) => {
     const lane = { id: crypto.randomUUID(), type };
-    draft.push(lane);
+    // Maintain lane order: video lanes at top, text lanes in middle, audio lanes at bottom
+    if (type === "audio") {
+      // Audio always goes at the end (bottom)
+      draft.push(lane);
+    } else if (type === "text") {
+      // Text goes before audio lanes
+      const firstAudioIndex = draft.findIndex((l) => l.type === "audio");
+      if (firstAudioIndex === -1) {
+        draft.push(lane);
+      } else {
+        draft.splice(firstAudioIndex, 0, lane);
+      }
+    } else {
+      // Video goes before text and audio lanes
+      const firstNonVideoIndex = draft.findIndex((l) => l.type === "text" || l.type === "audio");
+      if (firstNonVideoIndex === -1) {
+        draft.push(lane);
+      } else {
+        draft.splice(firstNonVideoIndex, 0, lane);
+      }
+    }
     return lane.id;
   };
 
@@ -1935,6 +2019,21 @@ export default function AdvancedEditorPage() {
       null
     );
   }, [floatingMenu.clipId, timelineLayout]);
+  const timelineContextMenuEntry = useMemo(() => {
+    if (!timelineContextMenu.clipId) {
+      return null;
+    }
+    return (
+      timelineLayout.find((entry) => entry.clip.id === timelineContextMenu.clipId) ??
+      null
+    );
+  }, [timelineContextMenu.clipId, timelineLayout]);
+  const timelineContextMenuSettings = useMemo(() => {
+    if (!timelineContextMenuEntry || (timelineContextMenuEntry.asset.kind !== "video" && timelineContextMenuEntry.asset.kind !== "audio")) {
+      return null;
+    }
+    return clipSettings[timelineContextMenuEntry.clip.id] ?? fallbackVideoSettings;
+  }, [clipSettings, fallbackVideoSettings, timelineContextMenuEntry]);
   const selectedVideoEntry = useMemo(() => {
     if (selectedEntry?.asset.kind === "video") {
       return selectedEntry;
@@ -2104,6 +2203,18 @@ export default function AdvancedEditorPage() {
       setFloatingMenu(closeFloatingMenuState);
     }
   }, [floatingMenu.clipId, timelineLayout]);
+
+  useEffect(() => {
+    if (!timelineContextMenu.clipId) {
+      return;
+    }
+    const exists = timelineLayout.some(
+      (entry) => entry.clip.id === timelineContextMenu.clipId
+    );
+    if (!exists) {
+      setTimelineContextMenu(closeTimelineContextMenuState);
+    }
+  }, [timelineContextMenu.clipId, timelineLayout]);
   const canPlay = Boolean(activeClipEntry || firstClipEntry);
   const hasTimelineClips = timeline.length > 0;
   const showEmptyState = !hasTimelineClips;
@@ -2121,6 +2232,17 @@ export default function AdvancedEditorPage() {
   }, [floatingMenu.x, stageSize.width]);
   const floatingSubmenuClass =
     floatingSubmenuSide === "left" ? "right-full mr-2" : "left-full ml-2";
+  const timelineContextSubmenuSide = useMemo(() => {
+    if (typeof window === "undefined") {
+      return "right";
+    }
+    const totalWidth = timelineContextMenuWidth + floaterSubmenuWidth + 8;
+    return timelineContextMenu.x + totalWidth > window.innerWidth - 8
+      ? "left"
+      : "right";
+  }, [timelineContextMenu.x]);
+  const timelineContextSubmenuClass =
+    timelineContextSubmenuSide === "left" ? "right-full mr-2" : "left-full ml-2";
   const stageSelectionStyle = useMemo(() => {
     if (!stageSelection) {
       return null;
@@ -2544,6 +2666,33 @@ export default function AdvancedEditorPage() {
 
   const isResizingTimeline = Boolean(timelineResizeState);
 
+  // Dynamic frame step based on zoom level - larger steps when zoomed out, precise frames when zoomed in
+  const dynamicFrameStep = useMemo(() => {
+    // Target: each click moves roughly 30-50 pixels worth of time on the timeline
+    const targetPixels = 40;
+    const rawStep = targetPixels / timelineScale;
+
+    // Snap to intuitive increments for better UX
+    if (rawStep <= frameStepSeconds * 1.5) return frameStepSeconds; // Single frame (~0.033s)
+    if (rawStep <= 0.08) return frameStepSeconds * 2; // 2 frames
+    if (rawStep <= 0.15) return 0.1;   // ~3 frames
+    if (rawStep <= 0.35) return 0.25;  // Quarter second
+    if (rawStep <= 0.75) return 0.5;   // Half second
+    if (rawStep <= 1.5) return 1;      // 1 second
+    if (rawStep <= 3) return 2;        // 2 seconds
+    if (rawStep <= 7) return 5;        // 5 seconds
+    return 10;                         // 10 seconds for very zoomed out
+  }, [timelineScale]);
+
+  // Format the step for display in tooltips
+  const frameStepLabel = useMemo(() => {
+    if (dynamicFrameStep <= frameStepSeconds * 1.5) return "1 frame";
+    if (dynamicFrameStep <= frameStepSeconds * 2.5) return "2 frames";
+    if (dynamicFrameStep < 0.2) return `${Math.round(dynamicFrameStep * 30)} frames`;
+    if (dynamicFrameStep < 1) return `${dynamicFrameStep}s`;
+    return `${dynamicFrameStep}s`;
+  }, [dynamicFrameStep]);
+
   const selectedRange = useMemo(() => {
     if (selectedClipIds.length === 0) {
       return null;
@@ -2571,6 +2720,51 @@ export default function AdvancedEditorPage() {
       selectedRange.end
     )}`;
   }, [selectedRange]);
+
+  // Check if selected clips can be fused (adjacent clips from same source that form continuous video)
+  const fusableClips = useMemo(() => {
+    if (selectedClipIds.length < 2) {
+      return null;
+    }
+    // Get selected clip entries sorted by their position on timeline
+    const selectedEntries = timelineLayout
+      .filter((entry) => selectedClipIdsSet.has(entry.clip.id))
+      .sort((a, b) => a.left - b.left);
+
+    if (selectedEntries.length !== 2) {
+      return null; // Only support fusing exactly 2 clips for now
+    }
+
+    const [first, second] = selectedEntries;
+    const firstClip = first.clip;
+    const secondClip = second.clip;
+
+    // Must be from the same asset
+    if (firstClip.assetId !== secondClip.assetId) {
+      return null;
+    }
+
+    // Must be on the same lane
+    if (firstClip.laneId !== secondClip.laneId) {
+      return null;
+    }
+
+    // Must be adjacent on the timeline (within small tolerance for floating point)
+    const gap = Math.abs(second.left - (first.left + firstClip.duration));
+    if (gap > 0.01) {
+      return null;
+    }
+
+    // Must be continuous in source media (second clip starts where first ends in source)
+    const expectedOffset = firstClip.startOffset + firstClip.duration;
+    if (Math.abs(secondClip.startOffset - expectedOffset) > 0.01) {
+      return null;
+    }
+
+    return { first: firstClip, second: secondClip };
+  }, [selectedClipIds, selectedClipIdsSet, timelineLayout]);
+
+  const canFuseClips = fusableClips !== null;
 
   const handleFitTimeline = useCallback(() => {
     const scrollEl = timelineScrollRef.current;
@@ -3020,32 +3214,79 @@ export default function AdvancedEditorPage() {
       return createLaneId(laneType, draftLanes);
     }
     let laneId: string | null = null;
+    let foundLaneIndex = -1;
     let cursor = 0;
+    
+    // Calculate section boundaries
+    let videoSectionEnd = 0;
+    let audioSectionStart = -1;
+    let sectionCursor = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const lane = rows[i];
+      if (lane.type !== "audio") {
+        videoSectionEnd = sectionCursor + lane.height + laneGap;
+      } else if (audioSectionStart === -1) {
+        audioSectionStart = sectionCursor;
+      }
+      sectionCursor += lane.height + laneGap;
+    }
+    const totalHeight = sectionCursor - laneGap;
+
     if (offsetY < 0) {
-      laneId = rows[0].id;
+      // Dragging above all lanes - create new lane
+      laneId = createLaneId(laneType, draftLanes);
+    } else if (offsetY > totalHeight + laneGap) {
+      // Dragging below all lanes - create new lane (will be positioned correctly)
+      laneId = createLaneId(laneType, draftLanes);
     } else {
-      const totalHeight =
-        rows.reduce((sum, lane) => sum + lane.height, 0) +
-        Math.max(0, rows.length - 1) * laneGap;
-      if (offsetY > totalHeight + laneGap) {
-        laneId = createLaneId(laneType, draftLanes);
-      } else {
-        for (const lane of rows) {
-          const laneTop = cursor;
-          const laneBottom = cursor + lane.height + laneGap;
-          if (offsetY >= laneTop && offsetY <= laneBottom) {
-            laneId = lane.id;
-            break;
-          }
-          cursor += lane.height + laneGap;
+      // Find which lane we're hovering over
+      for (let i = 0; i < rows.length; i++) {
+        const lane = rows[i];
+        const laneTop = cursor;
+        const laneBottom = cursor + lane.height + laneGap;
+        if (offsetY >= laneTop && offsetY <= laneBottom) {
+          laneId = lane.id;
+          foundLaneIndex = i;
+          break;
+        }
+        cursor += lane.height + laneGap;
+      }
+      
+      // Check if in gap between video and audio section
+      if (!laneId && laneType !== "audio" && audioSectionStart > 0) {
+        if (offsetY >= videoSectionEnd && offsetY < audioSectionStart) {
+          laneId = createLaneId(laneType, draftLanes);
         }
       }
     }
-    if (!laneId) {
-      laneId = createLaneId(laneType, draftLanes);
+    // Check lane type compatibility - enforce lane ordering rules
+    // Audio lanes stay at bottom, video/text lanes stay above audio
+    if (laneId && foundLaneIndex >= 0) {
+      const foundLane = rows[foundLaneIndex];
+      if (foundLane && foundLane.type !== laneType) {
+        // Lane type mismatch - create new lane in correct position
+        let compatibleLaneId: string | null = null;
+        
+        if (laneType === "audio") {
+          // Audio clips can only go to audio lanes (at bottom) - search below
+          for (let i = foundLaneIndex + 1; i < rows.length; i++) {
+            if (rows[i].type === "audio") {
+              compatibleLaneId = rows[i].id;
+              break;
+            }
+          }
+        }
+        // For video/text on audio lane, just create new lane
+        
+        // If no compatible lane found, create a new one (will be inserted at correct position)
+        if (!compatibleLaneId) {
+          compatibleLaneId = createLaneId(laneType, draftLanes);
+        }
+        
+        laneId = compatibleLaneId;
+      }
     }
-    const laneMeta = draftLanes.find((lane) => lane.id === laneId);
-    if (laneMeta && laneMeta.type !== laneType) {
+    if (!laneId) {
       laneId = createLaneId(laneType, draftLanes);
     }
     return laneId;
@@ -3326,6 +3567,56 @@ export default function AdvancedEditorPage() {
     setActiveAssetId(clip.assetId);
   };
 
+  const handleFuseClips = () => {
+    if (!fusableClips) {
+      return;
+    }
+    pushHistory();
+    const { first, second } = fusableClips;
+
+    // Create the fused clip - keep the first clip's id, extend duration
+    const fusedClip: TimelineClip = {
+      ...first,
+      duration: first.duration + second.duration,
+    };
+
+    // Update timeline: replace first clip with fused, remove second
+    setTimeline((prev) => {
+      const firstIndex = prev.findIndex((item) => item.id === first.id);
+      const secondIndex = prev.findIndex((item) => item.id === second.id);
+      if (firstIndex === -1 || secondIndex === -1) {
+        return prev;
+      }
+      // Remove both clips and add the fused one at the first position
+      const filtered = prev.filter(
+        (item) => item.id !== first.id && item.id !== second.id
+      );
+      return [...filtered.slice(0, firstIndex), fusedClip, ...filtered.slice(firstIndex)];
+    });
+
+    // Clean up settings for the removed second clip
+    setClipSettings((prev) => {
+      const next = { ...prev };
+      delete next[second.id];
+      return next;
+    });
+    setTextSettings((prev) => {
+      const next = { ...prev };
+      delete next[second.id];
+      return next;
+    });
+    setClipTransforms((prev) => {
+      const next = { ...prev };
+      delete next[second.id];
+      return next;
+    });
+
+    // Select the fused clip
+    setSelectedClipId(fusedClip.id);
+    setSelectedClipIds([fusedClip.id]);
+    setActiveAssetId(fusedClip.assetId);
+  };
+
   const resolveClipTransform = useCallback(
     (clipId: string, asset: MediaAsset) => {
       if (clipTransforms[clipId]) {
@@ -3505,6 +3796,10 @@ export default function AdvancedEditorPage() {
     setFloatingMenu(closeFloatingMenuState);
   }, []);
 
+  const closeTimelineContextMenu = useCallback(() => {
+    setTimelineContextMenu(closeTimelineContextMenuState);
+  }, []);
+
   const handleTextLayerDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>, entry: TimelineLayoutEntry) => {
       event.preventDefault();
@@ -3543,7 +3838,58 @@ export default function AdvancedEditorPage() {
     if (entry.asset.kind === "text") {
       setActiveTool("text");
     }
+    closeTimelineContextMenu();
     setFloatingMenu(createFloatingMenuState(entry.clip.id, x, y));
+  };
+
+  const handleTimelineClipContextMenu = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    clip: TimelineClip,
+    asset: MediaAsset
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Use fixed positioning (viewport coordinates) so menu can extend above scroll area
+    const menuWidth = timelineContextMenuWidth;
+    // Menu height varies by asset type:
+    // - Video: Split, Copy, Replace, Audio, Delete = ~260px
+    // - Audio: Split, Copy, Replace, Audio, Delete = ~260px
+    // - Image: Split, Copy, Replace, Delete = ~208px
+    // - Text: Split, Copy, Delete = ~156px
+    let menuHeight = 156; // Base: Split, Copy, Delete
+    if (asset.kind === "video" || asset.kind === "audio") {
+      menuHeight = 260;
+    } else if (asset.kind === "image") {
+      menuHeight = 208;
+    }
+    
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1920;
+    
+    // X position in viewport
+    let x = event.clientX;
+    
+    // Adjust x if menu would overflow to the right of viewport
+    if (x + menuWidth > viewportWidth - 8) {
+      x = Math.max(8, x - menuWidth);
+    }
+    
+    // Y position: place menu ABOVE the click point (bottom of menu at cursor)
+    let y = event.clientY - menuHeight;
+    
+    // If menu would go above the viewport, open downward instead
+    if (y < 8) {
+      y = event.clientY + 8;
+    }
+    
+    setSelectedClipId(clip.id);
+    setSelectedClipIds([clip.id]);
+    setActiveAssetId(asset.id);
+    if (asset.kind === "text") {
+      setActiveTool("text");
+    }
+    closeFloatingMenu();
+    setTimelineContextMenu(createTimelineContextMenuState(clip.id, x, y));
   };
 
   const handleReorderClip = useCallback(
@@ -3957,6 +4303,64 @@ export default function AdvancedEditorPage() {
             clip.duration,
             getAssetDurationSeconds(newAsset)
           );
+          return {
+            ...clip,
+            assetId: newAsset.id,
+            duration: nextDuration,
+            startOffset: 0,
+          };
+        })
+      );
+      setActiveAssetId(newAsset.id);
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleReplaceMedia = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length || !selectedEntry) {
+      event.target.value = "";
+      return;
+    }
+    const file = files[0];
+    if (!file) {
+      event.target.value = "";
+      return;
+    }
+    pushHistory();
+    setUploading(true);
+    try {
+      const url = URL.createObjectURL(file);
+      const kind = inferMediaKind(file);
+      const meta = await getMediaMeta(kind, url);
+      const resolvedAspectRatio =
+        meta.aspectRatio ??
+        (meta.width && meta.height ? meta.width / meta.height : undefined);
+      const newAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        kind,
+        url,
+        size: file.size,
+        duration: meta.duration,
+        width: meta.width,
+        height: meta.height,
+        aspectRatio: resolvedAspectRatio,
+        createdAt: Date.now(),
+      };
+      setAssets((prev) => [newAsset, ...prev]);
+      
+      // Replace the clip's asset while keeping position and timing
+      setTimeline((prev) =>
+        prev.map((clip) => {
+          if (clip.id !== selectedEntry.clip.id) {
+            return clip;
+          }
+          // Keep the same duration, but cap it if new asset is shorter
+          const maxDuration = getAssetMaxDurationSeconds(newAsset);
+          const nextDuration = Math.min(clip.duration, maxDuration);
           return {
             ...clip,
             assetId: newAsset.id,
@@ -4582,37 +4986,154 @@ export default function AdvancedEditorPage() {
       }
       let targetLaneId = dragClipState.targetLaneId ?? dragClipState.startLaneId;
       let createdLaneId = dragClipState.createdLaneId;
+      const assetLaneType = asset ? getLaneType(asset) : null;
       if (track) {
         const rect = track.getBoundingClientRect();
         const offsetY = event.clientY - rect.top - timelinePadding;
         let cursor = 0;
         let foundLaneId: string | null = null;
+        let foundLaneIndex = -1;
         if (laneRows.length > 0) {
+          // Calculate section boundaries
+          let videoSectionEnd = 0;
+          let audioSectionStart = -1;
+          let sectionCursor = 0;
+          for (let i = 0; i < laneRows.length; i++) {
+            const lane = laneRows[i];
+            if (lane.type !== "audio") {
+              videoSectionEnd = sectionCursor + lane.height + laneGap;
+            } else if (audioSectionStart === -1) {
+              audioSectionStart = sectionCursor;
+            }
+            sectionCursor += lane.height + laneGap;
+          }
+          const totalHeight = sectionCursor - laneGap;
+
           if (offsetY < 0) {
-            foundLaneId = laneRows[0].id;
+            // Dragging above all lanes - create new lane at top of appropriate section
+            if (!createdLaneId && assetLaneType) {
+              const nextLanes = [...lanesRef.current];
+              createdLaneId = createLaneId(assetLaneType, nextLanes);
+              setLanes(nextLanes);
+            }
+            foundLaneId = createdLaneId ?? null;
+          } else if (offsetY > totalHeight + laneGap) {
+            // Dragging below all lanes - create new lane
+            if (!createdLaneId && assetLaneType) {
+              const nextLanes = [...lanesRef.current];
+              createdLaneId = createLaneId(assetLaneType, nextLanes);
+              setLanes(nextLanes);
+            }
+            foundLaneId = createdLaneId ?? null;
           } else {
-            const totalHeight =
-              laneRows.reduce((sum, lane) => sum + lane.height, 0) +
-              Math.max(0, laneRows.length - 1) * laneGap;
-            if (offsetY > totalHeight + laneGap && asset) {
-              const laneType = getLaneType(asset);
+            // Find which lane we're hovering over
+            // Use reduced hit area - bottom 50% of gap triggers "create new lane"
+            const gapThreshold = 0.5; // Top 50% of gap belongs to lane, bottom 50% creates new lane
+            let wantsNewLane = false;
+            
+            for (let i = 0; i < laneRows.length; i++) {
+              const lane = laneRows[i];
+              const laneTop = cursor;
+              const laneVisualBottom = cursor + lane.height;
+              const laneHitBottom = cursor + lane.height + laneGap;
+              const gapSplit = laneVisualBottom + laneGap * gapThreshold;
+              
+              if (offsetY >= laneTop && offsetY <= laneHitBottom) {
+                // Check if we're in the "create new lane" zone (bottom part of gap)
+                if (offsetY > gapSplit && i < laneRows.length - 1) {
+                  // In the bottom portion of the gap - user wants to create new lane
+                  wantsNewLane = true;
+                  // But only if the next lane is the same type (otherwise we're crossing into different section)
+                  const nextLane = laneRows[i + 1];
+                  if (nextLane.type !== assetLaneType) {
+                    // Next lane is different type - don't create, just use current
+                    foundLaneId = lane.id;
+                    foundLaneIndex = i;
+                    wantsNewLane = false;
+                  }
+                } else {
+                  foundLaneId = lane.id;
+                  foundLaneIndex = i;
+                }
+                break;
+              }
+              cursor += lane.height + laneGap;
+            }
+            
+            // Create new lane if user dragged into gap zone
+            if (wantsNewLane && assetLaneType) {
               if (!createdLaneId) {
                 const nextLanes = [...lanesRef.current];
-                createdLaneId = createLaneId(laneType, nextLanes);
+                createdLaneId = createLaneId(assetLaneType, nextLanes);
                 setLanes(nextLanes);
               }
               foundLaneId = createdLaneId;
-            } else {
-              for (const lane of laneRows) {
-                const laneTop = cursor;
-                const laneBottom = cursor + lane.height + laneGap;
-                if (offsetY >= laneTop && offsetY <= laneBottom) {
-                  foundLaneId = lane.id;
-                  break;
+            }
+            
+            // Check if we're in the gap between video section and audio section
+            // This is where users drag to create a new video lane
+            if (!foundLaneId && assetLaneType !== "audio" && audioSectionStart > 0) {
+              if (offsetY >= videoSectionEnd && offsetY < audioSectionStart) {
+                // In the gap - create new video/text lane
+                if (!createdLaneId) {
+                  const nextLanes = [...lanesRef.current];
+                  createdLaneId = createLaneId(assetLaneType!, nextLanes);
+                  setLanes(nextLanes);
                 }
-                cursor += lane.height + laneGap;
+                foundLaneId = createdLaneId;
               }
             }
+          }
+        }
+        // Check lane type compatibility - enforce lane ordering rules
+        // Audio lanes stay at bottom, video/text lanes stay above audio
+        if (foundLaneId && foundLaneIndex >= 0 && assetLaneType) {
+          const foundLane = laneRows[foundLaneIndex];
+          if (foundLane && foundLane.type !== assetLaneType) {
+            // Lane type mismatch - find nearest compatible lane respecting ordering rules
+            let compatibleLaneId: string | null = null;
+            
+            if (assetLaneType === "audio") {
+              // Audio clips can only go to audio lanes (at bottom) - search below only
+              for (let i = foundLaneIndex + 1; i < laneRows.length; i++) {
+                if (laneRows[i].type === "audio") {
+                  compatibleLaneId = laneRows[i].id;
+                  break;
+                }
+              }
+            } else {
+              // Video/text clips stay above audio - search above only, never into audio section
+              for (let i = foundLaneIndex - 1; i >= 0; i--) {
+                if (laneRows[i].type === assetLaneType) {
+                  compatibleLaneId = laneRows[i].id;
+                  break;
+                }
+              }
+              // If no exact match found above, find any non-audio lane above
+              if (!compatibleLaneId) {
+                for (let i = foundLaneIndex - 1; i >= 0; i--) {
+                  if (laneRows[i].type !== "audio") {
+                    // For video, accept video lanes; for text, accept text lanes
+                    if (laneRows[i].type === assetLaneType) {
+                      compatibleLaneId = laneRows[i].id;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+            
+            // If no compatible lane found, create a new one (will be inserted at correct position)
+            if (!compatibleLaneId) {
+              if (!createdLaneId) {
+                const nextLanes = [...lanesRef.current];
+                createdLaneId = createLaneId(assetLaneType, nextLanes);
+                setLanes(nextLanes);
+              }
+              compatibleLaneId = createdLaneId;
+            }
+            
+            foundLaneId = compatibleLaneId;
           }
         }
         if (foundLaneId) {
@@ -5215,32 +5736,82 @@ export default function AdvancedEditorPage() {
         const offsetX = event.clientX - rect.left - timelinePadding;
         const offsetY = event.clientY - rect.top - timelinePadding;
         let laneId: string | null = null;
+        let foundLaneIndex = -1;
         let cursor = 0;
         if (laneRows.length > 0) {
+          // Calculate section boundaries for proper lane ordering
+          let videoSectionEnd = 0;
+          let audioSectionStart = -1;
+          let sectionCursor = 0;
+          for (let i = 0; i < laneRows.length; i++) {
+            const lane = laneRows[i];
+            if (lane.type !== "audio") {
+              videoSectionEnd = sectionCursor + lane.height + laneGap;
+            } else if (audioSectionStart === -1) {
+              audioSectionStart = sectionCursor;
+            }
+            sectionCursor += lane.height + laneGap;
+          }
+          const totalHeight = sectionCursor - laneGap;
+
           if (offsetY < 0) {
-            laneId = laneRows[0].id;
+            // Dragging above all lanes - create new lane
+            laneId = createLaneId(laneType, nextLanes);
+          } else if (offsetY > totalHeight + laneGap) {
+            // Dragging below all lanes - create new lane (will be positioned correctly)
+            laneId = createLaneId(laneType, nextLanes);
           } else {
-            const totalHeight = lanesHeight;
-            if (offsetY > totalHeight + laneGap) {
-              laneId = createLaneId(laneType, nextLanes);
-            } else {
-              for (const lane of laneRows) {
-                const laneTop = cursor;
-                const laneBottom = cursor + lane.height + laneGap;
-                if (offsetY >= laneTop && offsetY <= laneBottom) {
-                  laneId = lane.id;
-                  break;
-                }
-                cursor += lane.height + laneGap;
+            // Find which lane we're hovering over
+            for (let i = 0; i < laneRows.length; i++) {
+              const lane = laneRows[i];
+              const laneTop = cursor;
+              const laneBottom = cursor + lane.height + laneGap;
+              if (offsetY >= laneTop && offsetY <= laneBottom) {
+                laneId = lane.id;
+                foundLaneIndex = i;
+                break;
+              }
+              cursor += lane.height + laneGap;
+            }
+            
+            // Check if in gap between video and audio section
+            if (!laneId && laneType !== "audio" && audioSectionStart > 0) {
+              if (offsetY >= videoSectionEnd && offsetY < audioSectionStart) {
+                laneId = createLaneId(laneType, nextLanes);
               }
             }
           }
         }
-        if (!laneId) {
-          laneId = createLaneId(laneType, nextLanes);
+        // Check lane type compatibility - enforce lane ordering rules
+        // Audio lanes stay at bottom, video/text lanes stay above audio
+        if (laneId && foundLaneIndex >= 0) {
+          const foundLane = laneRows[foundLaneIndex];
+          if (foundLane && foundLane.type !== laneType) {
+            // Lane type mismatch - find compatible lane or create new one
+            let compatibleLaneId: string | null = null;
+            
+            if (laneType === "audio") {
+              // Audio clips can only go to audio lanes (at bottom) - search below only
+              for (let i = foundLaneIndex + 1; i < laneRows.length; i++) {
+                if (laneRows[i].type === "audio") {
+                  compatibleLaneId = laneRows[i].id;
+                  break;
+                }
+              }
+            } else {
+              // Video/text dragged onto audio - create new lane above audio
+              // Don't search for existing, just create new (user wants new track)
+            }
+            
+            // If no compatible lane found, create a new one (will be inserted at correct position)
+            if (!compatibleLaneId) {
+              compatibleLaneId = createLaneId(laneType, nextLanes);
+            }
+            
+            laneId = compatibleLaneId;
+          }
         }
-        const laneMeta = lanesRef.current.find((lane) => lane.id === laneId);
-        if (laneMeta && laneMeta.type !== laneType) {
+        if (!laneId) {
           laneId = createLaneId(laneType, nextLanes);
         }
         setLanes(nextLanes);
@@ -6552,16 +7123,16 @@ export default function AdvancedEditorPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                            Background
+                            Video Background
                           </h3>
-                          <p className="text-[11px] text-gray-400">Behind clips</p>
+                          <p className="text-[11px] text-gray-400">Behind video content</p>
                         </div>
                         <input
                           type="color"
-                          aria-label="Background color"
-                          value={canvasBackground}
+                          aria-label="Video background color"
+                          value={videoBackground}
                           onChange={(event) =>
-                            setCanvasBackground(event.target.value)
+                            setVideoBackground(event.target.value)
                           }
                           className="h-7 w-7 cursor-pointer rounded-full border border-gray-200 bg-transparent"
                         />
@@ -6571,13 +7142,13 @@ export default function AdvancedEditorPage() {
                           <button
                             key={swatch}
                             type="button"
-                            className={`h-6 w-6 rounded-full border transition ${canvasBackground.toLowerCase() === swatch.toLowerCase()
+                            className={`h-6 w-6 rounded-full border transition ${videoBackground.toLowerCase() === swatch.toLowerCase()
                               ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
                               : "border-gray-200"
                               }`}
                             style={{ backgroundColor: swatch }}
-                            onClick={() => setCanvasBackground(swatch)}
-                            aria-label={`Set background to ${swatch}`}
+                            onClick={() => setVideoBackground(swatch)}
+                            aria-label={`Set video background to ${swatch}`}
                           />
                         ))}
                       </div>
@@ -8730,7 +9301,7 @@ export default function AdvancedEditorPage() {
         >
           <div
             className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
-            style={{ backgroundColor: canvasBackground }}
+            style={{ backgroundColor: "#f2f3fa" }}
           />
           {dragOverCanvas && (
             <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm font-semibold text-[#335CFF]">
@@ -8745,7 +9316,7 @@ export default function AdvancedEditorPage() {
                 top: `${baseBackgroundTransform.y * 100}%`,
                 width: `${baseBackgroundTransform.width * 100}%`,
                 height: `${baseBackgroundTransform.height * 100}%`,
-                backgroundColor: canvasBackground,
+                backgroundColor: videoBackground,
                 zIndex: 1,
               }}
             />
@@ -9004,9 +9575,6 @@ export default function AdvancedEditorPage() {
                 </div>
               );
             })}
-            <div className="absolute bottom-6 right-6 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-gray-700 shadow-sm">
-              {formatDuration(activeClipEntry?.clip.duration)}
-            </div>
           </div>
         ) : activeAsset?.kind === "audio" ? (
           <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4">
@@ -9873,18 +10441,60 @@ export default function AdvancedEditorPage() {
               <span className="hidden lg:block">Magnet</span>
             </button>
           )}
+          {canFuseClips && (
+            <button
+              className="flex items-center gap-2 rounded-lg border border-[#10B981]/30 bg-[#ECFDF5] px-3 py-2 text-xs font-semibold text-[#10B981] transition hover:bg-[#D1FAE5]"
+              type="button"
+              aria-label="Fuse clips"
+              title="Fuse selected clips into one continuous clip"
+              onClick={handleFuseClips}
+            >
+              <ChevronsLeftRightEllipsis className="h-4 w-4" />
+              <span className="hidden lg:block">Fuse</span>
+            </button>
+          )}
         </div>
         <div className="relative flex items-center">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
+            {/* Jump to clip start */}
             <button
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-700"
+              className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
               type="button"
-              aria-label="Skip back"
+              aria-label="Jump to clip start"
+              title="Jump to clip start"
               onClick={() => {
                 if (isPlaying) {
                   setIsPlaying(false);
                 }
-                handleScrubToTime(currentTime - frameStepSeconds);
+                const selectedClip = selectedClipId
+                  ? timeline.find((c) => c.id === selectedClipId)
+                  : null;
+                const targetTime = selectedClip ? selectedClip.startTime : 0;
+                handleScrubToTime(targetTime);
+              }}
+            >
+              <svg viewBox="0 0 16 16" className="h-2.5 w-2.5">
+                <path
+                  d="M2 3v10M4 8l6-5v10z"
+                  fill="currentColor"
+                  stroke="currentColor"
+                  strokeWidth="1"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            {/* Frame back */}
+            <button
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-700"
+              type="button"
+              aria-label="Step back"
+              title={`Step back (${frameStepLabel})`}
+              onClick={() => {
+                if (isPlaying) {
+                  setIsPlaying(false);
+                }
+                handleScrubToTime(currentTime - dynamicFrameStep);
               }}
             >
               <svg viewBox="0 0 16 16" className="h-3 w-3">
@@ -9894,6 +10504,7 @@ export default function AdvancedEditorPage() {
                 />
               </svg>
             </button>
+            {/* Play/Pause */}
             <button
               className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-900"
               type="button"
@@ -9914,21 +10525,53 @@ export default function AdvancedEditorPage() {
                 </svg>
               )}
             </button>
+            {/* Frame forward */}
             <button
               className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-700"
               type="button"
-              aria-label="Skip forward"
+              aria-label="Step forward"
+              title={`Step forward (${frameStepLabel})`}
               onClick={() => {
                 if (isPlaying) {
                   setIsPlaying(false);
                 }
-                handleScrubToTime(currentTime + frameStepSeconds);
+                handleScrubToTime(currentTime + dynamicFrameStep);
               }}
             >
               <svg viewBox="0 0 16 16" className="h-3 w-3">
                 <path
                   d="M2 3.087a.5.5 0 0 1 .825-.38L8.557 7.62a.5.5 0 0 1 0 .76l-5.732 4.913a.5.5 0 0 1-.825-.38zM9 3.087a.5.5 0 0 1 .825-.38l5.732 4.913a.5.5 0 0 1 0 .76l-5.732 4.913a.5.5 0 0 1-.825-.38z"
                   fill="currentColor"
+                />
+              </svg>
+            </button>
+            {/* Jump to clip end */}
+            <button
+              className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              type="button"
+              aria-label="Jump to clip end"
+              title="Jump to clip end"
+              onClick={() => {
+                if (isPlaying) {
+                  setIsPlaying(false);
+                }
+                const selectedClip = selectedClipId
+                  ? timeline.find((c) => c.id === selectedClipId)
+                  : null;
+                const targetTime = selectedClip
+                  ? selectedClip.startTime + selectedClip.duration
+                  : timelineDuration;
+                handleScrubToTime(targetTime);
+              }}
+            >
+              <svg viewBox="0 0 16 16" className="h-2.5 w-2.5">
+                <path
+                  d="M14 3v10M12 8l-6-5v10z"
+                  fill="currentColor"
+                  stroke="currentColor"
+                  strokeWidth="1"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
               </svg>
             </button>
@@ -9991,7 +10634,7 @@ export default function AdvancedEditorPage() {
       </div>
 
       <div
-        className="w-full min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-y-contain px-4 pb-5"
+        className="relative w-full min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-x-contain overscroll-y-contain px-4 pb-5"
         ref={timelineScrollRef}
         onWheel={handleTimelineWheel}
         onPointerDown={handleTimelinePanStart}
@@ -10263,6 +10906,9 @@ export default function AdvancedEditorPage() {
                               className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 bg-white p-0 text-left text-[10px] font-semibold shadow-sm transition ${isDragging ? "opacity-70" : ""
                                 } ${collisionHighlight} ${dragLiftShadow}`}
                               data-timeline-clip="true"
+                              onContextMenu={(event) =>
+                                handleTimelineClipContextMenu(event, clip, asset)
+                              }
                               onMouseDown={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
@@ -10439,6 +11085,231 @@ export default function AdvancedEditorPage() {
             )}
           </div>
         </div>
+        {/* Timeline Context Menu - fixed positioning to allow extending above scroll area */}
+        {timelineContextMenu.open && timelineContextMenuEntry && (
+          <div
+            ref={timelineContextMenuRef}
+            className="fixed z-50"
+            style={{ left: timelineContextMenu.x, top: timelineContextMenu.y }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <div
+              className={`flex flex-col py-2 ${floaterSurfaceClass}`}
+              style={{ width: `${timelineContextMenuWidth}px` }}
+            >
+              {/* Split Element */}
+              <button
+                type="button"
+                className={floaterMenuItemClass}
+                onClick={() => {
+                  handleSplitClip();
+                  closeTimelineContextMenu();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                    <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5.413 5.413 8 8m1.647 1.653 3.686 3.68m-7.919-2.747a2 2 0 1 0-2.828 2.828 2 2 0 0 0 2.828-2.828m0 0 7.92-7.92m-7.92 7.92zM6 4a2 2 0 1 1-4 0 2 2 0 0 1 4 0" />
+                  </svg>
+                  <span>Split Element</span>
+                </div>
+              </button>
+
+              {/* Divider */}
+              <div className="mx-3 my-1.5 h-px bg-gray-100" />
+
+              {/* Copy */}
+              <button
+                type="button"
+                className={floaterMenuItemClass}
+                onClick={() => {
+                  handleCopySelection();
+                  closeTimelineContextMenu();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                    <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M11 5V2a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3m.997-6h8.005c.553 0 .998.448.998 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6c0-.552.445-1 .997-1" />
+                  </svg>
+                  <span>Copy</span>
+                </div>
+              </button>
+
+              {/* Replace Media - only for video/image/audio */}
+              {(timelineContextMenuEntry.asset.kind === "video" || 
+                timelineContextMenuEntry.asset.kind === "image" || 
+                timelineContextMenuEntry.asset.kind === "audio") && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    className={floaterMenuItemClass}
+                    onClick={() =>
+                      setTimelineContextMenu((prev) => ({
+                        ...prev,
+                        showReplaceMedia: !prev.showReplaceMedia,
+                        showAudio: false,
+                      }))
+                    }
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                        <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13.594 9.45A5.632 5.632 0 0 0 3.135 5.83m10.459 3.62 1.442-1.563M13.594 9.45l-1.635-1.508M2.442 7.85a5.631 5.631 0 0 0 10.46 3.616M2.443 7.85 1 9.413M2.442 7.85l1.635 1.508" />
+                      </svg>
+                      <span>Replace Media</span>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 16 16" className="text-gray-400">
+                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 12 4-4-4-4" />
+                    </svg>
+                  </button>
+                  {timelineContextMenu.showReplaceMedia && (
+                    <div
+                      className={`absolute top-0 ${timelineContextSubmenuClass} py-2 ${floaterSurfaceClass}`}
+                      style={{ width: `${floaterSubmenuWidth}px` }}
+                    >
+                      <button
+                        type="button"
+                        className={floaterMenuItemClass}
+                        onClick={() => {
+                          setActiveTool("media");
+                          setIsAssetLibraryExpanded(true);
+                          closeTimelineContextMenu();
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                            <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v7a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7z" />
+                            <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m2 11 3.5-3.5L8 10l2.5-2.5L14 11" />
+                            <circle cx="5.5" cy="5.5" r="1" fill="currentColor" />
+                          </svg>
+                          <span>From Library</span>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className={floaterMenuItemClass}
+                        onClick={() => {
+                          replaceMediaInputRef.current?.click();
+                          closeTimelineContextMenu();
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                            <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3" />
+                          </svg>
+                          <span>Upload New</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Divider */}
+              <div className="mx-3 my-1.5 h-px bg-gray-100" />
+
+              {/* Audio - only for video/audio clips */}
+              {(timelineContextMenuEntry.asset.kind === "video" || 
+                timelineContextMenuEntry.asset.kind === "audio") && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    className={floaterMenuItemClass}
+                    onClick={() =>
+                      setTimelineContextMenu((prev) => ({
+                        ...prev,
+                        showAudio: !prev.showAudio,
+                        showReplaceMedia: false,
+                      }))
+                    }
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                        <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M6 12.667V4.295c0-.574.367-1.084.912-1.265l5.333-1.778A1.333 1.333 0 0 1 14 2.517v8.817m0 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0m-8 1.333a2 2 0 1 1-4 0 2 2 0 0 1 4 0" />
+                      </svg>
+                      <span>Audio</span>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 16 16" className="text-gray-400">
+                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 12 4-4-4-4" />
+                    </svg>
+                  </button>
+                  {timelineContextMenu.showAudio && (
+                    <div
+                      className={`absolute top-0 ${timelineContextSubmenuClass} py-2 ${floaterSurfaceClass}`}
+                      style={{ width: `${floaterSubmenuWidth}px` }}
+                    >
+                      {timelineContextMenuEntry.asset.kind === "video" && (
+                        <button
+                          type="button"
+                          className={floaterMenuItemClass}
+                          onClick={() => {
+                            handleDetachAudio();
+                            closeTimelineContextMenu();
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                              <path d="m8.9 11.8-1.4 1.4a3.3 3.3 0 0 1-4.7-4.7l1.4-1.4M7.1 4.2l1.4-1.4a3.3 3.3 0 0 1 4.7 4.7l-1.4 1.4M9.9 6.1 6.1 9.9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <span>Detach Audio</span>
+                          </div>
+                        </button>
+                      )}
+                      {timelineContextMenuEntry.asset.kind === "video" && (
+                        <div className="mx-3 my-1.5 h-px bg-gray-100" />
+                      )}
+                      <button
+                        type="button"
+                        className={floaterMenuItemClass}
+                        onClick={() => {
+                          if (timelineContextMenuSettings) {
+                            updateClipSettings(timelineContextMenuEntry.clip.id, (current) => ({
+                              ...current,
+                              muted: !current.muted,
+                            }));
+                          }
+                          closeTimelineContextMenu();
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          {timelineContextMenuSettings?.muted ? (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-gray-500">
+                              <path d="M12 6.1 7.6 9H5a3 3 0 0 0-3 3v0a3 3 0 0 0 3 3h2.6l4.4 3.6V6.1zM18.1 4.9a8.8 8.8 0 0 1 0 14.2M15.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-gray-500">
+                              <path d="M6 9h4l5-4v14l-5-4H6zM19 9l-4 4m0-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                          <span>{timelineContextMenuSettings?.muted ? "Unmute Audio" : "Mute Audio"}</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Divider before delete */}
+              <div className="mx-3 my-1.5 h-px bg-gray-100" />
+
+              {/* Delete */}
+              <button
+                type="button"
+                className={floaterMenuItemClass}
+                onClick={() => {
+                  handleDeleteSelected();
+                  closeTimelineContextMenu();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                    <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M6.4 7.2V12zm3.2 0V12zM1.6 4h12.8zm12 0-.694 9.714A1.6 1.6 0 0 1 11.31 15.2H4.69a1.6 1.6 0 0 1-1.596-1.486L2.4 4zm-3.2 0V1.6a.8.8 0 0 0-.8-.8H6.4a.8.8 0 0 0-.8.8V4z" />
+                  </svg>
+                  <span>Delete</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -10453,6 +11324,13 @@ export default function AdvancedEditorPage() {
         multiple
         className="hidden"
         onChange={handleFiles}
+      />
+      <input
+        ref={replaceMediaInputRef}
+        type="file"
+        accept="video/*,audio/*,image/*"
+        className="hidden"
+        onChange={handleReplaceMedia}
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">

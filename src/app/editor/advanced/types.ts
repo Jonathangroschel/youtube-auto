@@ -174,6 +174,15 @@ export type FloatingMenuState = {
   showTiming: boolean;
 };
 
+export type TimelineContextMenuState = {
+  open: boolean;
+  x: number;
+  y: number;
+  clipId: string | null;
+  showReplaceMedia: boolean;
+  showAudio: boolean;
+};
+
 export type SnapGuides = {
   x: number[];
   y: number[];
@@ -189,6 +198,7 @@ export type EditorSnapshot = {
   textSettings: Record<string, TextClipSettings>;
   clipOrder: Record<string, number>;
   canvasBackground: string;
+  videoBackground: string;
   currentTime: number;
   selectedClipId: string | null;
   selectedClipIds: string[];
