@@ -2837,28 +2837,6 @@ export default function AdvancedEditorPage() {
     });
   }, [timelineLayout, currentTime, laneIndexMap]);
 
-  const masterEntry = useMemo(() => {
-    if (
-      activeClipEntry &&
-      (activeClipEntry.asset.kind === "video" ||
-        activeClipEntry.asset.kind === "audio")
-    ) {
-      return activeClipEntry;
-    }
-    if (visualStack.length > 0) {
-      for (let index = visualStack.length - 1; index >= 0; index -= 1) {
-        const entry = visualStack[index];
-        if (entry.asset.kind === "video") {
-          return entry;
-        }
-      }
-    }
-    if (audioStack.length > 0) {
-      return audioStack[0];
-    }
-    return null;
-  }, [activeClipEntry, visualStack, audioStack]);
-
   const wasPlayingRef = useRef(false);
 
   const projectAspectRatio = useMemo<number>(() => {
@@ -3476,50 +3454,6 @@ export default function AdvancedEditorPage() {
 
   useEffect(() => {
     if (!isPlaying) {
-      wasPlayingRef.current = false;
-      return;
-    }
-    if (!masterEntry) {
-      return;
-    }
-    const element =
-      masterEntry.asset.kind === "audio"
-        ? audioRefs.current.get(masterEntry.clip.id)
-        : visualRefs.current.get(masterEntry.clip.id);
-    if (!element) {
-      return;
-    }
-    const clipTime = clamp(
-      currentTime - masterEntry.clip.startTime + masterEntry.clip.startOffset,
-      masterEntry.clip.startOffset,
-      masterEntry.clip.startOffset + masterEntry.clip.duration
-    );
-    if (Math.abs(element.currentTime - clipTime) > 0.05) {
-      element.currentTime = clipTime;
-    }
-    const handleTimeUpdate = () => {
-      const timelineTime =
-        masterEntry.clip.startTime +
-        (element.currentTime - masterEntry.clip.startOffset);
-      setCurrentTime(timelineTime);
-      if (timelineTime >= timelineTotal) {
-        setIsPlaying(false);
-      }
-    };
-    element.addEventListener("timeupdate", handleTimeUpdate);
-    if (element.paused) {
-      const playPromise = element.play();
-      if (playPromise) {
-        playPromise.catch(() => setIsPlaying(false));
-      }
-    }
-    return () => {
-      element.removeEventListener("timeupdate", handleTimeUpdate);
-    };
-  }, [isPlaying, masterEntry, timelineTotal]);
-
-  useEffect(() => {
-    if (!isPlaying || masterEntry) {
       return;
     }
     let frameId = 0;
@@ -3539,7 +3473,7 @@ export default function AdvancedEditorPage() {
     };
     frameId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frameId);
-  }, [isPlaying, masterEntry, timelineTotal]);
+  }, [isPlaying, timelineTotal]);
 
   useEffect(() => {
     if (!isPlaying || wasPlayingRef.current) {
