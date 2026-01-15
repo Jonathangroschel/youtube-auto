@@ -295,6 +295,9 @@ const stockVideoBucketName =
   process.env.NEXT_PUBLIC_STOCK_VIDEO_BUCKET ?? "video-stock-footage";
 const stockVideoRootPrefix =
   process.env.NEXT_PUBLIC_STOCK_VIDEO_ROOT?.replace(/^\/+|\/+$/g, "") ?? "";
+const stockVideoPosterRootPrefix =
+  process.env.NEXT_PUBLIC_STOCK_VIDEO_POSTER_ROOT?.replace(/^\/+|\/+$/g, "") ??
+  "";
 const audioFileExtensions = new Set([
   ".mp3",
   ".wav",
@@ -430,6 +433,33 @@ const resolveStockVideoCategory = (
   return formatStockLabel(candidate);
 };
 
+const stockVideoPosterExtension =
+  process.env.NEXT_PUBLIC_STOCK_VIDEO_POSTER_EXT ?? "jpg";
+
+const resolveStockVideoPosterPath = (path: string) => {
+  const normalized = path.replace(/\\/g, "/");
+  let relativePath = normalized;
+  if (stockVideoRootPrefix && normalized.startsWith(`${stockVideoRootPrefix}/`)) {
+    relativePath = normalized.slice(stockVideoRootPrefix.length + 1);
+  } else if (!stockVideoRootPrefix) {
+    const markers = ["/vertical/", "/horizontal/"];
+    const marker = markers.find((item) => normalized.includes(item));
+    if (marker && !normalized.startsWith(marker.slice(1))) {
+      const markerIndex = normalized.indexOf(marker);
+      relativePath = normalized.slice(markerIndex + 1);
+    }
+  }
+  const dotIndex = relativePath.lastIndexOf(".");
+  if (dotIndex === -1) {
+    return null;
+  }
+  const posterPath = `${relativePath.slice(0, dotIndex)}.${stockVideoPosterExtension}`;
+  if (!stockVideoPosterRootPrefix) {
+    return posterPath;
+  }
+  return `${stockVideoPosterRootPrefix}/${posterPath}`;
+};
+
 type StockVideoCardProps = {
   video: StockVideoItem;
   durationLabel: string;
@@ -451,35 +481,10 @@ const StockVideoCard = ({
   onRequestMeta,
   registerPreviewRef,
 }: StockVideoCardProps) => {
-  const [shouldLoad, setShouldLoad] = useState(priority);
+  const [shouldLoad, setShouldLoad] = useState(false);
   const [hasFrame, setHasFrame] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
-  const cardRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (priority) {
-      setShouldLoad(true);
-      return;
-    }
-    if (shouldLoad) {
-      return;
-    }
-    const target = cardRef.current;
-    if (!target) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldLoad(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" }
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [priority, shouldLoad]);
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     if (!isHovering || !shouldLoad) {
@@ -499,10 +504,12 @@ const StockVideoCard = ({
     setIsHovering(false);
   };
 
+  const showVideoPreview = isHovering && hasFrame;
+  const hasPoster = Boolean(video.thumbnailUrl) && !imageError;
+
   return (
     <div className="space-y-2">
       <button
-        ref={cardRef}
         type="button"
         className="group relative h-24 w-full overflow-hidden rounded-2xl border border-gray-200"
         onClick={() => onAdd(video)}
@@ -512,14 +519,23 @@ const StockVideoCard = ({
         onBlur={handleHoverEnd}
         aria-label={`Add ${video.name}`}
       >
-        {video.thumbnailUrl ? (
+        {hasPoster ? (
           <img
-            src={video.thumbnailUrl}
+            src={video.thumbnailUrl ?? undefined}
             alt={video.name}
-            className="h-full w-full object-cover"
+            loading={priority ? "eager" : "lazy"}
+            decoding="async"
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
+              showVideoPreview ? "opacity-0" : "opacity-100"
+            }`}
+            onError={() => setImageError(true)}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+          <div
+            className={`absolute inset-0 flex h-full w-full items-center justify-center bg-gray-100 text-gray-400 transition-opacity duration-200 ${
+              showVideoPreview ? "opacity-0" : "opacity-100"
+            }`}
+          >
             <svg viewBox="0 0 16 16" className="h-5 w-5" aria-hidden="true">
               <path
                 d="M3 2.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Zm0 2.2v6.6a.6.6 0 0 0 .6.6h8.8a.6.6 0 0 0 .6-.6V4.7a.6.6 0 0 0-.6-.6H3.6a.6.6 0 0 0-.6.6Zm3.1 1.2 4.8 2.6-4.8 2.6V5.9Z"
@@ -532,8 +548,9 @@ const StockVideoCard = ({
           ref={registerPreviewRef(video.id)}
           src={shouldLoad ? video.url : undefined}
           poster={video.thumbnailUrl ?? undefined}
-          className={`absolute inset-0 h-full w-full object-cover transition duration-200 ${hasFrame ? "opacity-100" : "opacity-0"
-            }`}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
+            showVideoPreview ? "opacity-100" : "opacity-0"
+          }`}
           muted
           loop
           playsInline
@@ -552,9 +569,11 @@ const StockVideoCard = ({
           }}
           onLoadedData={() => setHasFrame(true)}
         />
-        <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
-          {durationLabel}
-        </span>
+        {hasFrame && (
+          <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+            {durationLabel}
+          </span>
+        )}
       </button>
     </div>
   );
@@ -934,6 +953,7 @@ export default function AdvancedEditorPage() {
   const audioRefs = useRef(new Map<string, HTMLAudioElement | null>());
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const stockDurationCacheRef = useRef<Map<string, number | null>>(new Map());
+  const stockAudioMetaLoadingRef = useRef<Set<string>>(new Set());
   const stockMusicLoadTimeoutRef = useRef<number | null>(null);
   const stockMusicLoadIdRef = useRef(0);
   const stockVideoMetaCacheRef = useRef<
@@ -1584,63 +1604,6 @@ export default function AdvancedEditorPage() {
   }, [activeTool, hasSupabase, stockMusicReloadKey]);
 
   useEffect(() => {
-    if (stockMusic.length === 0) {
-      return;
-    }
-    let cancelled = false;
-    const loadDurations = async () => {
-      const pending = stockMusic.filter(
-        (track) =>
-          track.duration == null &&
-          !stockDurationCacheRef.current.has(track.id)
-      );
-      if (pending.length === 0) {
-        return;
-      }
-      const updates = new Map<string, number>();
-      const concurrency = Math.min(6, pending.length);
-      const queue = [...pending];
-      const workers = Array.from({ length: concurrency }, () =>
-        (async () => {
-          while (queue.length > 0) {
-            const track = queue.shift();
-            if (!track) {
-              return;
-            }
-            const meta = await getMediaMeta("audio", track.url);
-            const duration =
-              meta.duration != null ? Math.max(0, meta.duration) : null;
-            stockDurationCacheRef.current.set(track.id, duration);
-            if (duration != null) {
-              updates.set(track.id, duration);
-            }
-            if (cancelled) {
-              return;
-            }
-          }
-        })()
-      );
-      await Promise.all(workers);
-      if (cancelled || updates.size === 0) {
-        return;
-      }
-      setStockMusic((prev) =>
-        prev.map((track) => {
-          const nextDuration = updates.get(track.id);
-          if (nextDuration == null) {
-            return track;
-          }
-          return { ...track, duration: nextDuration };
-        })
-      );
-    };
-    loadDurations();
-    return () => {
-      cancelled = true;
-    };
-  }, [stockMusic]);
-
-  useEffect(() => {
     if (activeTool !== "video" || !hasSupabase) {
       return;
     }
@@ -1725,6 +1688,10 @@ export default function AdvancedEditorPage() {
             if (!data?.publicUrl) {
               return;
             }
+            const posterPath = resolveStockVideoPosterPath(path);
+            const posterUrl = posterPath
+              ? bucket.getPublicUrl(posterPath).data.publicUrl
+              : null;
             const fileOrientation =
               resolveStockVideoOrientationFromPath(path) ?? prefixOrientation;
             videos.push({
@@ -1735,6 +1702,7 @@ export default function AdvancedEditorPage() {
               path,
               size: Number(item.metadata?.size ?? 0),
               orientation: fileOrientation ?? undefined,
+              thumbnailUrl: posterUrl ?? null,
             });
           });
         };
@@ -3878,6 +3846,51 @@ export default function AdvancedEditorPage() {
     []
   );
 
+  const applyStockAudioDuration = useCallback(
+    (trackId: string, duration: number | null) => {
+      stockDurationCacheRef.current.set(trackId, duration);
+      if (duration == null) {
+        return;
+      }
+      setStockMusic((prev) =>
+        prev.map((track) =>
+          track.id === trackId && track.duration == null
+            ? { ...track, duration }
+            : track
+        )
+      );
+    },
+    []
+  );
+
+  const requestStockAudioDuration = useCallback(
+    async (track: StockAudioTrack) => {
+      if (track.duration != null) {
+        return;
+      }
+      if (stockDurationCacheRef.current.has(track.id)) {
+        const cached = stockDurationCacheRef.current.get(track.id) ?? null;
+        applyStockAudioDuration(track.id, cached);
+        return;
+      }
+      if (stockAudioMetaLoadingRef.current.has(track.id)) {
+        return;
+      }
+      stockAudioMetaLoadingRef.current.add(track.id);
+      try {
+        const meta = await getMediaMeta("audio", track.url);
+        const duration =
+          meta.duration != null && Number.isFinite(meta.duration)
+            ? Math.max(0, meta.duration)
+            : null;
+        applyStockAudioDuration(track.id, duration);
+      } finally {
+        stockAudioMetaLoadingRef.current.delete(track.id);
+      }
+    },
+    [applyStockAudioDuration]
+  );
+
   const handleStockVideoPreviewStart = useCallback((id: string) => {
     const target = stockVideoPreviewRefs.current.get(id);
     if (!target) {
@@ -4015,6 +4028,12 @@ export default function AdvancedEditorPage() {
       setIsPreviewPlaying(false);
       audio.currentTime = 0;
       audio.src = track.url;
+      audio.onloadedmetadata = () => {
+        const duration = Number.isFinite(audio.duration)
+          ? Math.max(0, audio.duration)
+          : null;
+        applyStockAudioDuration(track.id, duration);
+      };
       audio.onended = () => {
         setIsPreviewPlaying(false);
       };
@@ -4026,7 +4045,7 @@ export default function AdvancedEditorPage() {
           .catch(() => setIsPreviewPlaying(false));
       }
     },
-    [previewTrackId]
+    [applyStockAudioDuration, previewTrackId]
   );
 
   const handleAddStockVideo = useCallback(
@@ -10008,6 +10027,9 @@ export default function AdvancedEditorPage() {
                                         <div
                                           key={track.id}
                                           className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+                                          onMouseEnter={() =>
+                                            requestStockAudioDuration(track)
+                                          }
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-3">
                                             <button
@@ -10018,6 +10040,9 @@ export default function AdvancedEditorPage() {
                                                 }`}
                                               onClick={() =>
                                                 handleStockPreviewToggle(track)
+                                              }
+                                              onFocus={() =>
+                                                requestStockAudioDuration(track)
                                               }
                                               aria-label={
                                                 isPlaying
@@ -10421,7 +10446,7 @@ export default function AdvancedEditorPage() {
       >
         <div
           ref={stageRef}
-          className={`relative flex items-center justify-center overflow-hidden ${dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
+          className={`relative overflow-visible ${dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
             }`}
           style={{
             width: stageDisplay.width ? `${stageDisplay.width}px` : "100%",
@@ -10439,6 +10464,7 @@ export default function AdvancedEditorPage() {
           onDragLeave={() => setDragOverCanvas(false)}
           onDrop={handleCanvasDrop}
         >
+          <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
           <div
             className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
             style={{ backgroundColor: "#f2f3fa" }}
@@ -10869,6 +10895,7 @@ export default function AdvancedEditorPage() {
             })}
           </div>
         )}
+          </div>
         {floatingMenu.open && floatingMenuEntry && (
           <div
             ref={floatingMenuRef}
