@@ -45,6 +45,7 @@ import type {
   TransformDragState,
   TransformHandle,
   TransformResizeState,
+  TransformRotateState,
   TrimState,
   VideoClipSettings,
 } from "./types";
@@ -659,6 +660,8 @@ export default function AdvancedEditorPage() {
     useState<TransformDragState | null>(null);
   const [resizeTransformState, setResizeTransformState] =
     useState<TransformResizeState | null>(null);
+  const [rotateTransformState, setRotateTransformState] =
+    useState<TransformRotateState | null>(null);
   const [dragClipState, setDragClipState] = useState<ClipDragState | null>(
     null
   );
@@ -706,6 +709,7 @@ export default function AdvancedEditorPage() {
   const clipboardRef = useRef<ClipboardData | null>(null);
   const dragTransformHistoryRef = useRef(false);
   const resizeTransformHistoryRef = useRef(false);
+  const rotateTransformHistoryRef = useRef(false);
   const resizeTextRectRef = useRef<ClipTransform | null>(null);
   const resizeTextFontRef = useRef<{ clipId: string; fontSize: number } | null>(
     null
@@ -4643,6 +4647,44 @@ export default function AdvancedEditorPage() {
     });
   };
 
+  const handleRotateStart = (
+    event: PointerEvent<HTMLButtonElement>,
+    entry: TimelineLayoutEntry
+  ) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    closeFloatingMenu();
+    setIsBackgroundSelected(false);
+    rotateTransformHistoryRef.current = false;
+    const stage = stageRef.current;
+    if (!stage) {
+      return;
+    }
+    const rect = stage.getBoundingClientRect();
+    const transform = ensureClipTransform(entry.clip.id, entry.asset);
+    // Calculate center of the element in screen coordinates
+    const centerX = rect.left + (transform.x + transform.width / 2) * rect.width;
+    const centerY = rect.top + (transform.y + transform.height / 2) * rect.height;
+    const startRotation = transform.rotation ?? 0;
+    setSelectedClipId(entry.clip.id);
+    setSelectedClipIds([entry.clip.id]);
+    setActiveAssetId(entry.asset.id);
+    setActiveCanvasClipId(entry.clip.id);
+    setDragTransformState(null);
+    setResizeTransformState(null);
+    setRotateTransformState({
+      clipId: entry.clip.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRotation,
+      centerX,
+      centerY,
+    });
+  };
+
   useEffect(() => {
     if (!trimState) {
       return;
@@ -5385,8 +5427,27 @@ export default function AdvancedEditorPage() {
         backgroundLinesX.push(bgLeft, bgLeft + bgWidth / 2, bgLeft + bgWidth);
         backgroundLinesY.push(bgTop, bgTop + bgHeight / 2, bgTop + bgHeight);
       }
-      const xLines = Array.from(new Set([...stageLinesX, ...backgroundLinesX]));
-      const yLines = Array.from(new Set([...stageLinesY, ...backgroundLinesY]));
+      // Add snap lines from other visible clips
+      const otherClipLinesX: number[] = [];
+      const otherClipLinesY: number[] = [];
+      visualStack.forEach((entry) => {
+        if (entry.clip.id === dragTransformState.clipId) {
+          return; // Skip the clip being dragged
+        }
+        const otherTransform = clipTransforms[entry.clip.id];
+        if (!otherTransform) {
+          return;
+        }
+        const otherLeft = otherTransform.x * rect.width;
+        const otherTop = otherTransform.y * rect.height;
+        const otherWidth = otherTransform.width * rect.width;
+        const otherHeight = otherTransform.height * rect.height;
+        // Add edges and center of other clips
+        otherClipLinesX.push(otherLeft, otherLeft + otherWidth / 2, otherLeft + otherWidth);
+        otherClipLinesY.push(otherTop, otherTop + otherHeight / 2, otherTop + otherHeight);
+      });
+      const xLines = Array.from(new Set([...stageLinesX, ...backgroundLinesX, ...otherClipLinesX]));
+      const yLines = Array.from(new Set([...stageLinesY, ...backgroundLinesY, ...otherClipLinesY]));
       const snapAxis = (
         startPx: number,
         sizePx: number,
@@ -5454,6 +5515,8 @@ export default function AdvancedEditorPage() {
     snapGuides,
     pushHistory,
     getClipMinSize,
+    visualStack,
+    clipTransforms,
   ]);
 
   useEffect(() => {
@@ -5478,7 +5541,15 @@ export default function AdvancedEditorPage() {
         clipAssetKindMap.get(resizeTransformState.clipId) === "text";
       const hasHorizontal = handle.includes("w") || handle.includes("e");
       const hasVertical = handle.includes("n") || handle.includes("s");
-      const keepAspect = isTextClip ? event.shiftKey : !event.shiftKey;
+      const isCornerHandle = hasHorizontal && hasVertical;
+      // Corner handles: maintain aspect ratio by default (shift to free resize)
+      // Edge handles: free resize by default (shift to maintain aspect ratio)
+      // Text clips: always free resize by default (shift to maintain aspect)
+      const keepAspect = isTextClip
+        ? event.shiftKey
+        : isCornerHandle
+          ? !event.shiftKey
+          : event.shiftKey;
       const ratio =
         resizeTransformState.aspectRatio ||
         resizeTransformState.startRect.width /
@@ -5565,6 +5636,99 @@ export default function AdvancedEditorPage() {
           y = resizeTransformState.startRect.y + deltaY;
         }
         next = { x, y, width, height };
+      }
+
+      // Apply snapping during resize
+      const stageLinesX = [0, rect.width / 2, rect.width];
+      const stageLinesY = [0, rect.height / 2, rect.height];
+      const otherClipLinesX: number[] = [];
+      const otherClipLinesY: number[] = [];
+      visualStack.forEach((entry) => {
+        if (entry.clip.id === resizeTransformState.clipId) {
+          return;
+        }
+        const otherTransform = clipTransforms[entry.clip.id];
+        if (!otherTransform) {
+          return;
+        }
+        const otherLeft = otherTransform.x * rect.width;
+        const otherTop = otherTransform.y * rect.height;
+        const otherWidth = otherTransform.width * rect.width;
+        const otherHeight = otherTransform.height * rect.height;
+        otherClipLinesX.push(otherLeft, otherLeft + otherWidth / 2, otherLeft + otherWidth);
+        otherClipLinesY.push(otherTop, otherTop + otherHeight / 2, otherTop + otherHeight);
+      });
+      const xLines = Array.from(new Set([...stageLinesX, ...otherClipLinesX]));
+      const yLines = Array.from(new Set([...stageLinesY, ...otherClipLinesY]));
+
+      // Snap the edges being resized
+      const snapEdge = (edgePx: number, lines: number[]) => {
+        let bestOffset = 0;
+        let bestLine: number | null = null;
+        let bestDistance = snapThresholdPx + 1;
+        lines.forEach((line) => {
+          const distance = line - edgePx;
+          const abs = Math.abs(distance);
+          if (abs <= snapThresholdPx && abs < bestDistance) {
+            bestDistance = abs;
+            bestOffset = distance;
+            bestLine = line;
+          }
+        });
+        return { offset: bestOffset, guide: bestLine };
+      };
+
+      let snappedGuideX: number | null = null;
+      let snappedGuideY: number | null = null;
+
+      // Snap right edge when resizing from east
+      if (handle.includes("e")) {
+        const rightEdgePx = (next.x + next.width) * rect.width;
+        const snap = snapEdge(rightEdgePx, xLines);
+        if (snap.guide !== null) {
+          next.width = snap.guide / rect.width - next.x;
+          snappedGuideX = snap.guide;
+        }
+      }
+      // Snap left edge when resizing from west
+      if (handle.includes("w")) {
+        const leftEdgePx = next.x * rect.width;
+        const snap = snapEdge(leftEdgePx, xLines);
+        if (snap.guide !== null) {
+          const rightEdge = next.x + next.width;
+          next.x = snap.guide / rect.width;
+          next.width = rightEdge - next.x;
+          snappedGuideX = snap.guide;
+        }
+      }
+      // Snap bottom edge when resizing from south
+      if (handle.includes("s")) {
+        const bottomEdgePx = (next.y + next.height) * rect.height;
+        const snap = snapEdge(bottomEdgePx, yLines);
+        if (snap.guide !== null) {
+          next.height = snap.guide / rect.height - next.y;
+          snappedGuideY = snap.guide;
+        }
+      }
+      // Snap top edge when resizing from north
+      if (handle.includes("n")) {
+        const topEdgePx = next.y * rect.height;
+        const snap = snapEdge(topEdgePx, yLines);
+        if (snap.guide !== null) {
+          const bottomEdge = next.y + next.height;
+          next.y = snap.guide / rect.height;
+          next.height = bottomEdge - next.y;
+          snappedGuideY = snap.guide;
+        }
+      }
+
+      if (snappedGuideX !== null || snappedGuideY !== null) {
+        setSnapGuides({
+          x: snappedGuideX !== null ? [snappedGuideX] : [],
+          y: snappedGuideY !== null ? [snappedGuideY] : [],
+        });
+      } else {
+        setSnapGuides(null);
       }
 
       const clamped = clampTransformToStage(
@@ -5664,6 +5828,7 @@ export default function AdvancedEditorPage() {
         }
       }
       setResizeTransformState(null);
+      setSnapGuides(null);
       resizeTextRectRef.current = null;
       resizeTextFontRef.current = null;
       resizeTransformHistoryRef.current = false;
@@ -5681,7 +5846,72 @@ export default function AdvancedEditorPage() {
     clipAssetKindMap,
     fallbackTextSettings,
     selectedTextEntry,
+    visualStack,
+    clipTransforms,
   ]);
+
+  // Rotation effect
+  useEffect(() => {
+    if (!rotateTransformState) {
+      return;
+    }
+    const handleMove = (event: globalThis.PointerEvent) => {
+      if (!rotateTransformHistoryRef.current) {
+        pushHistory();
+        rotateTransformHistoryRef.current = true;
+      }
+      // Calculate angle from center to current mouse position
+      const dx = event.clientX - rotateTransformState.centerX;
+      const dy = event.clientY - rotateTransformState.centerY;
+      const currentAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+      // Calculate angle from center to start position
+      const startDx = rotateTransformState.startX - rotateTransformState.centerX;
+      const startDy = rotateTransformState.startY - rotateTransformState.centerY;
+      const startAngle = Math.atan2(startDy, startDx) * (180 / Math.PI);
+      // Calculate rotation delta
+      let deltaRotation = currentAngle - startAngle;
+      // Normalize to -180 to 180
+      while (deltaRotation > 180) deltaRotation -= 360;
+      while (deltaRotation < -180) deltaRotation += 360;
+      // Calculate new rotation
+      let newRotation = rotateTransformState.startRotation + deltaRotation;
+      // Snap to 0, 90, 180, -90 degrees when within 5 degrees
+      const snapAngles = [0, 90, 180, -180, -90, 270, -270];
+      for (const snapAngle of snapAngles) {
+        if (Math.abs(newRotation - snapAngle) < 5) {
+          newRotation = snapAngle === 270 ? -90 : snapAngle === -270 ? 90 : snapAngle;
+          break;
+        }
+      }
+      // Normalize to -180 to 180
+      while (newRotation > 180) newRotation -= 360;
+      while (newRotation < -180) newRotation += 360;
+      clipTransformTouchedRef.current.add(rotateTransformState.clipId);
+      setClipTransforms((prev) => {
+        const current = prev[rotateTransformState.clipId];
+        if (!current) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [rotateTransformState.clipId]: {
+            ...current,
+            rotation: newRotation,
+          },
+        };
+      });
+    };
+    const handleUp = () => {
+      setRotateTransformState(null);
+      rotateTransformHistoryRef.current = false;
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, [rotateTransformState, pushHistory]);
 
   const handleAssetDragStart = (
     event: DragEvent<HTMLElement>,
@@ -9273,11 +9503,24 @@ export default function AdvancedEditorPage() {
     );
   };
 
+  const handleViewportClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    // Only deselect if clicking directly on the viewport (not on the stage or its children)
+    if (event.target === event.currentTarget) {
+      setSelectedClipIds([]);
+      setSelectedClipId(null);
+      setActiveCanvasClipId(null);
+      setActiveAssetId(null);
+      setIsBackgroundSelected(false);
+      closeFloatingMenu();
+    }
+  };
+
   const renderStage = () => (
     <div className="flex min-h-0 flex-1">
       <div
         ref={stageViewportRef}
         className="relative flex h-full w-full items-center justify-center"
+        onClick={handleViewportClick}
       >
         <div
           ref={stageRef}
@@ -9411,6 +9654,7 @@ export default function AdvancedEditorPage() {
               const noiseLevel = videoSettings?.noise ?? 0;
               const vignetteLevel = videoSettings?.vignette ?? 0;
               const clipZ = index + 2;
+              const clipRotation = transform.rotation ?? 0;
               return (
                 <div
                   key={entry.clip.id}
@@ -9421,6 +9665,8 @@ export default function AdvancedEditorPage() {
                     width: `${transform.width * 100}%`,
                     height: `${transform.height * 100}%`,
                     zIndex: clipZ,
+                    transform: clipRotation ? `rotate(${clipRotation}deg)` : undefined,
+                    transformOrigin: 'center center',
                   }}
                 >
                   <div
@@ -9554,11 +9800,58 @@ export default function AdvancedEditorPage() {
                     )}
                     {isActive && (
                       <div className="absolute inset-0">
+                        {/* Rotation handle */}
+                        <button
+                          type="button"
+                          className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center cursor-grab active:cursor-grabbing"
+                          style={{
+                            top: '-28px',
+                            width: '20px',
+                            height: '20px',
+                            touchAction: 'none',
+                          }}
+                          onPointerDown={(event) =>
+                            handleRotateStart(event, entry)
+                          }
+                          aria-label="Rotate"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            className="text-[#8F9199] hover:text-[#335CFF] transition-colors"
+                          >
+                            <path
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M20.87 13.274A8.958 8.958 0 0 0 4.232 7.516m16.638 5.758 2.294-2.488m-2.294 2.488-2.6-2.399m-15.14-.149a8.959 8.959 0 0 0 16.64 5.753M3.13 10.726.836 13.214m2.294-2.488 2.6 2.399"
+                            />
+                          </svg>
+                        </button>
+                        {/* Connecting line from rotation handle to top edge */}
+                        <div
+                          className="absolute left-1/2 -translate-x-1/2 w-px bg-[#335CFF]/40"
+                          style={{
+                            top: '-12px',
+                            height: '12px',
+                          }}
+                        />
+                        {/* Resize handles */}
                         {transformHandles.map((handle) => (
                           <button
                             key={`${entry.clip.id}-${handle.id}`}
                             type="button"
-                            className={`absolute h-3 w-3 rounded-full border border-[#335CFF] bg-white shadow-sm ${handle.className} ${handle.cursor}`}
+                            className={`absolute border border-[#335CFF] bg-white shadow-sm ${handle.className} ${handle.cursor} ${
+                              handle.isCorner
+                                ? 'h-3 w-3 rounded-full'
+                                : handle.id === 'n' || handle.id === 's'
+                                  ? 'h-1.5 w-8 rounded-full'
+                                  : 'h-8 w-1.5 rounded-full'
+                            }`}
                             onPointerDown={(event) =>
                               handleResizeStart(
                                 event,

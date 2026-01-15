@@ -64,6 +64,7 @@ export type ClipTransform = {
   y: number;
   width: number;
   height: number;
+  rotation?: number;
 };
 
 export type CornerRadii = {
@@ -148,6 +149,15 @@ export type TransformResizeState = {
   startY: number;
   startRect: ClipTransform;
   aspectRatio: number;
+};
+
+export type TransformRotateState = {
+  clipId: string;
+  startX: number;
+  startY: number;
+  startRotation: number;
+  centerX: number;
+  centerY: number;
 };
 
 export type RangeSelectionState = {

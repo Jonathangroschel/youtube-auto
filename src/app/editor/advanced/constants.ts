@@ -25,50 +25,61 @@ export const laneHeights: Record<LaneType, number> = {
 };
 
 // Transform handles configuration
+// isCorner: true = proportional scaling (maintains aspect ratio)
+// isCorner: false = edge handles for non-proportional cropping
 export const transformHandles: Array<{
   id: TransformHandle;
   className: string;
   cursor: string;
+  isCorner: boolean;
 }> = [
   {
     id: "nw",
     className: "left-0 top-0 translate-x-1/2 translate-y-1/2",
     cursor: "cursor-nwse-resize",
+    isCorner: true,
   },
   {
     id: "n",
     className: "left-1/2 top-0 -translate-x-1/2 translate-y-1/2",
     cursor: "cursor-ns-resize",
+    isCorner: false,
   },
   {
     id: "ne",
     className: "right-0 top-0 -translate-x-1/2 translate-y-1/2",
     cursor: "cursor-nesw-resize",
+    isCorner: true,
   },
   {
     id: "e",
     className: "right-0 top-1/2 -translate-x-1/2 -translate-y-1/2",
     cursor: "cursor-ew-resize",
+    isCorner: false,
   },
   {
     id: "se",
     className: "right-0 bottom-0 -translate-x-1/2 -translate-y-1/2",
     cursor: "cursor-nwse-resize",
+    isCorner: true,
   },
   {
     id: "s",
     className: "left-1/2 bottom-0 -translate-x-1/2 -translate-y-1/2",
     cursor: "cursor-ns-resize",
+    isCorner: false,
   },
   {
     id: "sw",
     className: "left-0 bottom-0 translate-x-1/2 -translate-y-1/2",
     cursor: "cursor-nesw-resize",
+    isCorner: true,
   },
   {
     id: "w",
     className: "left-0 top-1/2 translate-x-1/2 -translate-y-1/2",
     cursor: "cursor-ew-resize",
+    isCorner: false,
   },
 ];
 
