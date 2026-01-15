@@ -115,7 +115,6 @@ import {
   backgroundSwatches,
   mediaFilters,
   noiseDataUrl,
-  stockVideos,
   textFontFamilies,
   textFontSizes,
   textLetterSpacingOptions,
@@ -292,6 +291,10 @@ const stockMusicBucketName =
   process.env.NEXT_PUBLIC_STOCK_MUSIC_BUCKET ?? "stock-music";
 const stockMusicRootPrefix =
   process.env.NEXT_PUBLIC_STOCK_MUSIC_ROOT?.replace(/^\/+|\/+$/g, "") ?? "";
+const stockVideoBucketName =
+  process.env.NEXT_PUBLIC_STOCK_VIDEO_BUCKET ?? "video-stock-footage";
+const stockVideoRootPrefix =
+  process.env.NEXT_PUBLIC_STOCK_VIDEO_ROOT?.replace(/^\/+|\/+$/g, "") ?? "";
 const audioFileExtensions = new Set([
   ".mp3",
   ".wav",
@@ -299,6 +302,13 @@ const audioFileExtensions = new Set([
   ".aac",
   ".ogg",
   ".flac",
+]);
+const videoFileExtensions = new Set([
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".webm",
+  ".avi",
 ]);
 
 type StockAudioTrack = {
@@ -311,12 +321,43 @@ type StockAudioTrack = {
   duration?: number;
 };
 
+type StockVideoOrientation = "horizontal" | "vertical" | "square";
+
+type StockVideoItem = {
+  id: string;
+  name: string;
+  category: string;
+  url: string;
+  path: string;
+  size: number;
+  duration?: number;
+  width?: number;
+  height?: number;
+  orientation?: StockVideoOrientation;
+  thumbnailUrl?: string | null;
+};
+
+type StockVideoOrientationFilter = "all" | "vertical" | "horizontal";
+
 const isAudioFile = (name: string, mimeType?: string | null) => {
   if (mimeType?.startsWith("audio/")) {
     return true;
   }
   const lower = name.toLowerCase();
   for (const ext of audioFileExtensions) {
+    if (lower.endsWith(ext)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isVideoFile = (name: string, mimeType?: string | null) => {
+  if (mimeType?.startsWith("video/")) {
+    return true;
+  }
+  const lower = name.toLowerCase();
+  for (const ext of videoFileExtensions) {
     if (lower.endsWith(ext)) {
       return true;
     }
@@ -334,6 +375,189 @@ const formatStockLabel = (value: string) => {
     return value;
   }
   return cleaned.replace(/\b\w/g, (match) => match.toUpperCase());
+};
+
+const isOrientationLabel = (label: string) =>
+  /^(vertical|horizontal|portrait|landscape)$/i.test(label.trim());
+
+const resolveStockVideoOrientationFromPath = (path: string) => {
+  const segments = path
+    .split("/")
+    .map((segment) => segment.toLowerCase())
+    .filter(Boolean);
+  for (const segment of segments) {
+    if (segment.includes("vertical") || segment.includes("portrait")) {
+      return "vertical" as const;
+    }
+    if (segment.includes("horizontal") || segment.includes("landscape")) {
+      return "horizontal" as const;
+    }
+  }
+  return null;
+};
+
+const resolveStockVideoOrientationFromMeta = (
+  width?: number,
+  height?: number
+) => {
+  if (!width || !height) {
+    return null;
+  }
+  if (Math.abs(width - height) <= 2) {
+    return "square" as const;
+  }
+  return width >= height ? ("horizontal" as const) : ("vertical" as const);
+};
+
+const resolveStockVideoCategory = (
+  path: string,
+  orientationHint?: StockVideoOrientation | null
+) => {
+  if (!path) {
+    return "General";
+  }
+  const segments = path.split("/").filter(Boolean);
+  let candidate = segments[segments.length - 1] ?? "";
+  if (
+    orientationHint &&
+    candidate.toLowerCase().includes(orientationHint.toLowerCase())
+  ) {
+    candidate = segments[segments.length - 2] ?? candidate;
+  }
+  if (!candidate || isOrientationLabel(candidate)) {
+    return "General";
+  }
+  return formatStockLabel(candidate);
+};
+
+type StockVideoCardProps = {
+  video: StockVideoItem;
+  durationLabel: string;
+  priority?: boolean;
+  onAdd: (video: StockVideoItem) => void;
+  onPreviewStart: (id: string) => void;
+  onPreviewStop: (id: string) => void;
+  onRequestMeta?: (video: StockVideoItem) => void;
+  registerPreviewRef: (id: string) => (node: HTMLVideoElement | null) => void;
+};
+
+const StockVideoCard = ({
+  video,
+  durationLabel,
+  priority = false,
+  onAdd,
+  onPreviewStart,
+  onPreviewStop,
+  onRequestMeta,
+  registerPreviewRef,
+}: StockVideoCardProps) => {
+  const [shouldLoad, setShouldLoad] = useState(priority);
+  const [hasFrame, setHasFrame] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const cardRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (priority) {
+      setShouldLoad(true);
+      return;
+    }
+    if (shouldLoad) {
+      return;
+    }
+    const target = cardRef.current;
+    if (!target) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [priority, shouldLoad]);
+
+  useEffect(() => {
+    if (!isHovering || !shouldLoad) {
+      return;
+    }
+    onPreviewStart(video.id);
+    return () => onPreviewStop(video.id);
+  }, [isHovering, onPreviewStart, onPreviewStop, shouldLoad, video.id]);
+
+  const handleHoverStart = () => {
+    setShouldLoad(true);
+    setIsHovering(true);
+    onRequestMeta?.(video);
+  };
+
+  const handleHoverEnd = () => {
+    setIsHovering(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <button
+        ref={cardRef}
+        type="button"
+        className="group relative h-24 w-full overflow-hidden rounded-2xl border border-gray-200"
+        onClick={() => onAdd(video)}
+        onMouseEnter={handleHoverStart}
+        onMouseLeave={handleHoverEnd}
+        onFocus={handleHoverStart}
+        onBlur={handleHoverEnd}
+        aria-label={`Add ${video.name}`}
+      >
+        {video.thumbnailUrl ? (
+          <img
+            src={video.thumbnailUrl}
+            alt={video.name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+            <svg viewBox="0 0 16 16" className="h-5 w-5" aria-hidden="true">
+              <path
+                d="M3 2.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Zm0 2.2v6.6a.6.6 0 0 0 .6.6h8.8a.6.6 0 0 0 .6-.6V4.7a.6.6 0 0 0-.6-.6H3.6a.6.6 0 0 0-.6.6Zm3.1 1.2 4.8 2.6-4.8 2.6V5.9Z"
+                fill="currentColor"
+              />
+            </svg>
+          </div>
+        )}
+        <video
+          ref={registerPreviewRef(video.id)}
+          src={shouldLoad ? video.url : undefined}
+          poster={video.thumbnailUrl ?? undefined}
+          className={`absolute inset-0 h-full w-full object-cover transition duration-200 ${hasFrame ? "opacity-100" : "opacity-0"
+            }`}
+          muted
+          loop
+          playsInline
+          preload={shouldLoad ? "metadata" : "none"}
+          onLoadedMetadata={(event) => {
+            if (!shouldLoad) {
+              return;
+            }
+            const target = event.currentTarget;
+            if (!Number.isFinite(target.duration)) {
+              return;
+            }
+            try {
+              target.currentTime = Math.min(0.05, target.duration || 0);
+            } catch (error) {}
+          }}
+          onLoadedData={() => setHasFrame(true)}
+        />
+        <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+          {durationLabel}
+        </span>
+      </button>
+    </div>
+  );
 };
 
 const resolveFontFamily = (family: string | undefined) => {
@@ -502,6 +726,18 @@ export default function AdvancedEditorPage() {
   const [stockMusicError, setStockMusicError] = useState<string | null>(null);
   const [stockMusicReloadKey, setStockMusicReloadKey] = useState(0);
   const [showAllStockTags, setShowAllStockTags] = useState(false);
+  const [stockVideoSearch, setStockVideoSearch] = useState("");
+  const [stockVideoCategory, setStockVideoCategory] = useState("All");
+  const [stockVideoOrientation, setStockVideoOrientation] =
+    useState<StockVideoOrientationFilter>("all");
+  const [stockVideoItems, setStockVideoItems] = useState<StockVideoItem[]>([]);
+  const [stockVideoStatus, setStockVideoStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [stockVideoError, setStockVideoError] = useState<string | null>(null);
+  const [stockVideoReloadKey, setStockVideoReloadKey] = useState(0);
+  const [showAllStockVideoTags, setShowAllStockVideoTags] = useState(false);
+  const [isStockVideoExpanded, setIsStockVideoExpanded] = useState(false);
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [stageSelection, setStageSelection] =
@@ -700,6 +936,23 @@ export default function AdvancedEditorPage() {
   const stockDurationCacheRef = useRef<Map<string, number | null>>(new Map());
   const stockMusicLoadTimeoutRef = useRef<number | null>(null);
   const stockMusicLoadIdRef = useRef(0);
+  const stockVideoMetaCacheRef = useRef<
+    Map<
+      string,
+      {
+        duration: number | null;
+        width?: number;
+        height?: number;
+        orientation?: StockVideoOrientation | null;
+      }
+    >
+  >(new Map());
+  const stockVideoMetaLoadingRef = useRef<Set<string>>(new Set());
+  const stockVideoLoadTimeoutRef = useRef<number | null>(null);
+  const stockVideoLoadIdRef = useRef(0);
+  const stockVideoPreviewRefs = useRef<Map<string, HTMLVideoElement | null>>(
+    new Map()
+  );
   const historyRef = useRef<{
     past: EditorSnapshot[];
     future: EditorSnapshot[];
@@ -1388,14 +1641,195 @@ export default function AdvancedEditorPage() {
   }, [stockMusic]);
 
   useEffect(() => {
+    if (activeTool !== "video" || !hasSupabase) {
+      return;
+    }
+    let cancelled = false;
+    const loadId = stockVideoLoadIdRef.current + 1;
+    stockVideoLoadIdRef.current = loadId;
+    const loadStockVideos = async () => {
+      setStockVideoStatus("loading");
+      setStockVideoError(null);
+      if (stockVideoLoadTimeoutRef.current) {
+        window.clearTimeout(stockVideoLoadTimeoutRef.current);
+      }
+      stockVideoLoadTimeoutRef.current = window.setTimeout(() => {
+        setStockVideoStatus((current) =>
+          current === "loading" ? "error" : current
+        );
+        setStockVideoError(
+          "Stock video request timed out. Check storage list access."
+        );
+      }, 15000);
+      try {
+        const { supabaseBrowser } = await import("@/lib/supabase/browser");
+        const bucket = supabaseBrowser.storage.from(stockVideoBucketName);
+        console.log("[stock-video] bucket", {
+          bucket: stockVideoBucketName,
+          root: stockVideoRootPrefix || "(root)",
+        });
+        const listWithTimeout = async (path: string) => {
+          let timeoutId: number | null = null;
+          const timeoutPromise = new Promise<{
+            data: null;
+            error: Error;
+          }>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+              reject(new Error("Stock video request timed out."));
+            }, 10000);
+          });
+          const result = (await Promise.race([
+            bucket.list(path, {
+              limit: 1000,
+              sortBy: { column: "name", order: "asc" },
+            }),
+            timeoutPromise,
+          ])) as {
+            data: Array<{
+              id?: string | null;
+              name: string;
+              metadata?: { size?: number; mimetype?: string | null } | null;
+            }> | null;
+            error: Error | null;
+          };
+          if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+          }
+          if (result.error) {
+            console.error("[stock-video] list error", path, result.error);
+          } else {
+            console.log("[stock-video] list ok", path, {
+              count: result.data?.length ?? 0,
+            });
+          }
+          return result;
+        };
+        const videos: StockVideoItem[] = [];
+        const pushFiles = (
+          items: Array<{
+            id?: string | null;
+            name: string;
+            metadata?: { size?: number; mimetype?: string | null } | null;
+          }>,
+          prefix: string
+        ) => {
+          const prefixOrientation = resolveStockVideoOrientationFromPath(prefix);
+          const category = resolveStockVideoCategory(prefix, prefixOrientation);
+          items.forEach((item) => {
+            const mimeType = item.metadata?.mimetype ?? null;
+            if (!isVideoFile(item.name, mimeType)) {
+              return;
+            }
+            const path = prefix ? `${prefix}/${item.name}` : item.name;
+            const { data } = bucket.getPublicUrl(path);
+            if (!data?.publicUrl) {
+              return;
+            }
+            const fileOrientation =
+              resolveStockVideoOrientationFromPath(path) ?? prefixOrientation;
+            videos.push({
+              id: path,
+              name: formatStockLabel(item.name),
+              category,
+              url: data.publicUrl,
+              path,
+              size: Number(item.metadata?.size ?? 0),
+              orientation: fileOrientation ?? undefined,
+            });
+          });
+        };
+        const isFileEntry = (item: {
+          id?: string | null;
+          name: string;
+          metadata?: { size?: number; mimetype?: string | null } | null;
+        }) =>
+          Boolean(item.id) ||
+          Boolean(item.metadata) ||
+          isVideoFile(item.name, item.metadata?.mimetype ?? null);
+        const collectVideos = async (path: string) => {
+          console.log("[stock-video] collect", path || "(root)");
+          const { data, error } = await listWithTimeout(path);
+          if (error) {
+            throw error;
+          }
+          const entries = data ?? [];
+          const files = entries.filter(isFileEntry);
+          console.log("[stock-video] entries", path || "(root)", {
+            entries: entries.length,
+            files: files.length,
+          });
+          if (files.length > 0) {
+            pushFiles(files, path);
+          }
+          const folders = entries.filter((item) => !isFileEntry(item));
+          if (folders.length > 0) {
+            console.log(
+              "[stock-video] folders",
+              path || "(root)",
+              folders.map((folder) => folder.name)
+            );
+          }
+          await Promise.all(
+            folders.map((folder) => {
+              const nextPath = path ? `${path}/${folder.name}` : folder.name;
+              return collectVideos(nextPath);
+            })
+          );
+        };
+        await collectVideos(stockVideoRootPrefix);
+        if (cancelled || loadId !== stockVideoLoadIdRef.current) {
+          return;
+        }
+        videos.sort((a, b) => a.name.localeCompare(b.name));
+        console.log("[stock-video] videos", videos.length);
+        setStockVideoItems(videos);
+        setStockVideoStatus("ready");
+      } catch (error) {
+        if (cancelled || loadId !== stockVideoLoadIdRef.current) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to load stock videos from Supabase.";
+        console.error("[stock-video] load failed", error);
+        setStockVideoError(message);
+        setStockVideoStatus("error");
+      } finally {
+        if (stockVideoLoadTimeoutRef.current) {
+          window.clearTimeout(stockVideoLoadTimeoutRef.current);
+          stockVideoLoadTimeoutRef.current = null;
+        }
+      }
+    };
+    loadStockVideos();
+    return () => {
+      if (stockVideoLoadTimeoutRef.current) {
+        window.clearTimeout(stockVideoLoadTimeoutRef.current);
+        stockVideoLoadTimeoutRef.current = null;
+      }
+      cancelled = true;
+    };
+  }, [activeTool, hasSupabase, stockVideoReloadKey]);
+
+  useEffect(() => {
     if (!["video", "audio", "image"].includes(activeTool)) {
       setIsAssetLibraryExpanded(false);
+    }
+    if (activeTool !== "video") {
+      setIsStockVideoExpanded(false);
     }
     if (activeTool !== "text") {
       setTextPanelView("library");
       setEditingTextClipId(null);
     }
   }, [activeTool]);
+
+  useEffect(() => {
+    if (isStockVideoExpanded) {
+      setIsAssetLibraryExpanded(false);
+    }
+  }, [isStockVideoExpanded]);
 
   useEffect(() => {
     const viewport = stageViewportRef.current;
@@ -1746,6 +2180,89 @@ export default function AdvancedEditorPage() {
       setStockCategory("All");
     }
   }, [stockCategories, stockCategory]);
+
+  const stockVideoCategories = useMemo(() => {
+    const categories = Array.from(
+      new Set(stockVideoItems.map((item) => item.category))
+    )
+      .filter((category) => !isOrientationLabel(category))
+      .sort((a, b) => a.localeCompare(b));
+    return ["All", ...categories];
+  }, [stockVideoItems]);
+
+  const filteredStockVideos = useMemo(() => {
+    const query = stockVideoSearch.trim().toLowerCase();
+    return stockVideoItems.filter((item) => {
+      const matchesCategory =
+        stockVideoCategory === "All" || item.category === stockVideoCategory;
+      if (!matchesCategory) {
+        return false;
+      }
+      if (stockVideoOrientation !== "all") {
+        const orientation =
+          item.orientation ??
+          resolveStockVideoOrientationFromPath(item.path);
+        if (orientation !== stockVideoOrientation) {
+          return false;
+        }
+      }
+      if (!query) {
+        return true;
+      }
+      return (
+        item.name.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query)
+      );
+    });
+  }, [
+    stockVideoCategory,
+    stockVideoItems,
+    stockVideoOrientation,
+    stockVideoSearch,
+  ]);
+
+  const groupedStockVideos = useMemo(() => {
+    const groupMap = new Map<string, StockVideoItem[]>();
+    filteredStockVideos.forEach((item) => {
+      if (!groupMap.has(item.category)) {
+        groupMap.set(item.category, []);
+      }
+      groupMap.get(item.category)?.push(item);
+    });
+    const order =
+      stockVideoCategory === "All"
+        ? stockVideoCategories.slice(1)
+        : [stockVideoCategory];
+    return order
+      .filter((category) => groupMap.has(category))
+      .map((category) => ({
+        category,
+        videos: groupMap.get(category) ?? [],
+      }));
+  }, [filteredStockVideos, stockVideoCategories, stockVideoCategory]);
+
+  const stockVideoTagCandidates = stockVideoCategories.slice(1);
+  const maxStockVideoTagCount = 4;
+  const visibleStockVideoTags = showAllStockVideoTags
+    ? stockVideoTagCandidates
+    : stockVideoTagCandidates.slice(0, maxStockVideoTagCount);
+  const hasMoreStockVideoTags =
+    stockVideoTagCandidates.length > maxStockVideoTagCount;
+  const previewStockVideoCount = 6;
+  const previewStockVideos = useMemo(
+    () => filteredStockVideos.slice(0, previewStockVideoCount),
+    [filteredStockVideos]
+  );
+  const hasMoreStockVideos = filteredStockVideos.length > previewStockVideoCount;
+
+  useEffect(() => {
+    if (
+      stockVideoCategory !== "All" &&
+      !stockVideoCategories.includes(stockVideoCategory)
+    ) {
+      setStockVideoCategory("All");
+    }
+  }, [stockVideoCategories, stockVideoCategory]);
 
   const timelineClips = useMemo(() => {
     return timeline
@@ -3416,6 +3933,131 @@ export default function AdvancedEditorPage() {
     setActiveAssetId(assetId);
   };
 
+  const registerStockVideoPreview = useCallback(
+    (id: string) => (node: HTMLVideoElement | null) => {
+      if (node) {
+        stockVideoPreviewRefs.current.set(id, node);
+      } else {
+        stockVideoPreviewRefs.current.delete(id);
+      }
+    },
+    []
+  );
+
+  const handleStockVideoPreviewStart = useCallback((id: string) => {
+    const target = stockVideoPreviewRefs.current.get(id);
+    if (!target) {
+      return;
+    }
+    const resetPreview = (video: HTMLVideoElement | null) => {
+      if (!video || !video.src) {
+        return;
+      }
+      video.pause();
+      try {
+        video.currentTime = 0;
+      } catch (error) {}
+    };
+    stockVideoPreviewRefs.current.forEach((video, key) => {
+      if (!video || key === id) {
+        return;
+      }
+      resetPreview(video);
+    });
+    if (target.src) {
+      try {
+        target.currentTime = 0;
+      } catch (error) {}
+    }
+    const playPromise = target.play();
+    if (playPromise) {
+      playPromise.catch(() => {});
+    }
+  }, []);
+
+  const handleStockVideoPreviewStop = useCallback((id: string) => {
+    const target = stockVideoPreviewRefs.current.get(id);
+    if (!target) {
+      return;
+    }
+    target.pause();
+    if (!target.src) {
+      return;
+    }
+    try {
+      target.currentTime = 0;
+    } catch (error) {}
+  }, []);
+
+  const requestStockVideoMeta = useCallback(async (video: StockVideoItem) => {
+    const cached = stockVideoMetaCacheRef.current.get(video.id);
+    if (cached) {
+      const patch: Partial<StockVideoItem> = {};
+      if (video.duration == null && cached.duration != null) {
+        patch.duration = cached.duration;
+      }
+      if (!video.width && cached.width) {
+        patch.width = cached.width;
+      }
+      if (!video.height && cached.height) {
+        patch.height = cached.height;
+      }
+      if (!video.orientation && cached.orientation) {
+        patch.orientation = cached.orientation;
+      }
+      if (Object.keys(patch).length > 0) {
+        setStockVideoItems((prev) =>
+          prev.map((item) =>
+            item.id === video.id ? { ...item, ...patch } : item
+          )
+        );
+      }
+      return;
+    }
+    if (stockVideoMetaLoadingRef.current.has(video.id)) {
+      return;
+    }
+    stockVideoMetaLoadingRef.current.add(video.id);
+    try {
+      const meta = await getMediaMeta("video", video.url);
+      const duration =
+        typeof meta.duration === "number" && Number.isFinite(meta.duration)
+          ? Math.max(0, meta.duration)
+          : null;
+      const orientation =
+        resolveStockVideoOrientationFromMeta(meta.width, meta.height) ??
+        resolveStockVideoOrientationFromPath(video.path);
+      stockVideoMetaCacheRef.current.set(video.id, {
+        duration,
+        width: meta.width,
+        height: meta.height,
+        orientation: orientation ?? null,
+      });
+      const patch: Partial<StockVideoItem> = {};
+      if (duration != null) {
+        patch.duration = duration;
+      }
+      if (meta.width) {
+        patch.width = meta.width;
+      }
+      if (meta.height) {
+        patch.height = meta.height;
+      }
+      if (orientation && !video.orientation) {
+        patch.orientation = orientation;
+      }
+      if (Object.keys(patch).length > 0) {
+        setStockVideoItems((prev) =>
+          prev.map((item) =>
+            item.id === video.id ? { ...item, ...patch } : item
+          )
+        );
+      }
+    } finally {
+      stockVideoMetaLoadingRef.current.delete(video.id);
+    }
+  }, []);
+
   const handleStockPreviewToggle = useCallback(
     (track: StockAudioTrack) => {
       const audio = previewAudioRef.current ?? new Audio();
@@ -3451,6 +4093,77 @@ export default function AdvancedEditorPage() {
       }
     },
     [previewTrackId]
+  );
+
+  const handleAddStockVideo = useCallback(
+    async (video: StockVideoItem) => {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "video" && asset.url === video.url
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        return;
+      }
+      let resolvedDuration = video.duration;
+      let resolvedWidth = video.width;
+      let resolvedHeight = video.height;
+      if (resolvedDuration == null || !resolvedWidth || !resolvedHeight) {
+        const cached = stockVideoMetaCacheRef.current.get(video.id);
+        if (cached) {
+          resolvedDuration = cached.duration ?? resolvedDuration;
+          resolvedWidth = cached.width ?? resolvedWidth;
+          resolvedHeight = cached.height ?? resolvedHeight;
+        } else {
+          const meta = await getMediaMeta("video", video.url);
+          if (
+            typeof meta.duration === "number" &&
+            Number.isFinite(meta.duration)
+          ) {
+            resolvedDuration = meta.duration;
+          }
+          resolvedWidth = meta.width ?? resolvedWidth;
+          resolvedHeight = meta.height ?? resolvedHeight;
+          stockVideoMetaCacheRef.current.set(video.id, {
+            duration:
+              typeof meta.duration === "number" &&
+              Number.isFinite(meta.duration)
+                ? meta.duration
+                : null,
+            width: meta.width,
+            height: meta.height,
+            orientation:
+              resolveStockVideoOrientationFromMeta(meta.width, meta.height) ??
+              null,
+          });
+        }
+      }
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const aspectRatio =
+        resolvedWidth && resolvedHeight
+          ? resolvedWidth / resolvedHeight
+          : undefined;
+      const videoAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name: video.name,
+        kind: "video",
+        url: video.url,
+        size: video.size,
+        duration: resolvedDuration ?? undefined,
+        width: resolvedWidth,
+        height: resolvedHeight,
+        aspectRatio,
+        createdAt: Date.now(),
+      };
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes);
+      const clip = createClip(videoAsset.id, laneId, 0, videoAsset);
+      setLanes(nextLanes);
+      setAssets((prev) => [videoAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(videoAsset.id);
+    },
+    [addToTimeline, createClip, pushHistory]
   );
 
   const handleAddStockAudio = useCallback(
@@ -3494,6 +4207,13 @@ export default function AdvancedEditorPage() {
     },
     [addToTimeline, createClip, pushHistory]
   );
+
+  const handleStockVideoRetry = useCallback(() => {
+    setStockVideoStatus("idle");
+    setStockVideoError(null);
+    setStockVideoItems([]);
+    setStockVideoReloadKey((prev) => prev + 1);
+  }, []);
 
   const handleStockMusicRetry = useCallback(() => {
     setStockMusicStatus("idle");
@@ -7243,7 +7963,7 @@ export default function AdvancedEditorPage() {
         </div>
       ) : (
         <>
-          {!isAudioTool && (
+          {!isAudioTool && !(isStockVideoExpanded && activeTool === "video") && (
             <div
               className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" ? "px-6 py-6" : "px-5 py-5"
                 }`}
@@ -7617,6 +8337,196 @@ export default function AdvancedEditorPage() {
                               {asset.name}
                             </div>
                           </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isStockVideoExpanded && activeTool === "video" ? (
+              <div className="flex min-h-full flex-col">
+                <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                        aria-label="Go back"
+                        onClick={() => setIsStockVideoExpanded(false)}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="M10 4 6 8l4 4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        Stock Videos
+                      </h2>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <input
+                        className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                        placeholder="Search..."
+                        value={stockVideoSearch}
+                        onChange={(event) =>
+                          setStockVideoSearch(event.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          { value: "all", label: "All" },
+                          { value: "vertical", label: "Vertical" },
+                          { value: "horizontal", label: "Horizontal" },
+                        ] as const
+                      ).map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${stockVideoOrientation === option.value
+                            ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                            : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                            }`}
+                          onClick={() => setStockVideoOrientation(option.value)}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${stockVideoCategory === "All"
+                        ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                        : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                        }`}
+                      onClick={() => setStockVideoCategory("All")}
+                    >
+                      All
+                    </button>
+                    {visibleStockVideoTags.map((category) => (
+                      <button
+                        key={category}
+                        type="button"
+                        className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${stockVideoCategory === category
+                          ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                          : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                          }`}
+                        onClick={() => setStockVideoCategory(category)}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                    {hasMoreStockVideoTags && (
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                        onClick={() =>
+                          setShowAllStockVideoTags((prev) => !prev)
+                        }
+                        aria-label={
+                          showAllStockVideoTags
+                            ? "Show fewer categories"
+                            : "Show more categories"
+                        }
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="M6.75 8a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0M12 8a1.25 1.25 0 1 1 2.5 0A1.25 1.25 0 0 1 12 8M1.5 8A1.25 1.25 0 1 1 4 8a1.25 1.25 0 0 1-2.5 0"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 px-5 py-5">
+                  {!hasSupabase ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      Connect Supabase to load stock videos.
+                    </div>
+                  ) : stockVideoStatus === "loading" ||
+                    stockVideoStatus === "idle" ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {Array.from({
+                        length: previewStockVideoCount,
+                      }).map((_, index) => (
+                        <div
+                          key={`stock-video-expanded-skeleton-${index}`}
+                          className="h-24 rounded-2xl bg-gray-100/80 animate-pulse"
+                        />
+                      ))}
+                    </div>
+                  ) : stockVideoStatus === "error" ? (
+                    <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                      <p>{stockVideoError ?? "Unable to load stock videos."}</p>
+                      <button
+                        type="button"
+                        className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                        onClick={handleStockVideoRetry}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : groupedStockVideos.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      {stockVideoSearch.trim()
+                        ? "No videos match your search."
+                        : stockVideoRootPrefix
+                          ? `No stock videos found under "${stockVideoRootPrefix}".`
+                          : "No stock videos found."}
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      {groupedStockVideos.map((group) => (
+                        <div key={group.category} className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-gray-900">
+                              {group.category}
+                            </h3>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {group.videos.map((video) => {
+                              const durationLabel =
+                                video.duration != null
+                                  ? formatDuration(video.duration)
+                                  : "--:--";
+                              return (
+                                <StockVideoCard
+                                  key={video.id}
+                                  video={video}
+                                  durationLabel={durationLabel}
+                                  onAdd={handleAddStockVideo}
+                                  onPreviewStart={handleStockVideoPreviewStart}
+                                  onPreviewStop={handleStockVideoPreviewStop}
+                                  onRequestMeta={requestStockVideoMeta}
+                                  registerPreviewRef={registerStockVideoPreview}
+                                />
+                              );
+                            })}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -9274,7 +10184,10 @@ export default function AdvancedEditorPage() {
                         <button
                           className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
                           type="button"
-                          onClick={() => setIsAssetLibraryExpanded(true)}
+                          onClick={() => {
+                            setIsStockVideoExpanded(false);
+                            setIsAssetLibraryExpanded(true);
+                          }}
                         >
                           View all
                           <svg viewBox="0 0 16 16" className="h-3 w-3">
@@ -9453,6 +10366,15 @@ export default function AdvancedEditorPage() {
                           <button
                             className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
                             type="button"
+                            aria-label={
+                              hasMoreStockVideos
+                                ? "View all stock videos"
+                                : "Browse stock videos"
+                            }
+                            onClick={() => {
+                              setIsAssetLibraryExpanded(false);
+                              setIsStockVideoExpanded(true);
+                            }}
                           >
                             View all
                             <svg viewBox="0 0 16 16" className="h-3 w-3">
@@ -9467,24 +10389,65 @@ export default function AdvancedEditorPage() {
                             </svg>
                           </button>
                         </div>
-                        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                          {stockVideos.map((stock) => (
-                            <div key={stock.id} className="space-y-2">
-                              <div className="relative h-24 overflow-hidden rounded-2xl border border-gray-200">
-                                <img
-                                  src={stock.image}
-                                  alt={stock.title}
-                                  className="h-full w-full object-cover"
-                                />
-                                <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                  {stock.duration}
-                                </span>
-                              </div>
-                              <div className="text-[11px] font-medium text-gray-700">
-                                {stock.title}
-                              </div>
+                        <div className="mt-3">
+                          {!hasSupabase ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              Connect Supabase to load stock videos.
                             </div>
-                          ))}
+                          ) : stockVideoStatus === "loading" ||
+                            stockVideoStatus === "idle" ? (
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                              {Array.from({
+                                length: previewStockVideoCount,
+                              }).map((_, index) => (
+                                <div
+                                  key={`stock-video-skeleton-${index}`}
+                                  className="h-24 rounded-2xl bg-gray-100/80 animate-pulse"
+                                />
+                              ))}
+                            </div>
+                          ) : stockVideoStatus === "error" ? (
+                            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                              <p>{stockVideoError ?? "Unable to load stock videos."}</p>
+                              <button
+                                type="button"
+                                className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                                onClick={handleStockVideoRetry}
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ) : filteredStockVideos.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              {stockVideoSearch.trim()
+                                ? "No videos match your search."
+                                : stockVideoRootPrefix
+                                  ? `No stock videos found under "${stockVideoRootPrefix}".`
+                                  : "No stock videos found."}
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                              {previewStockVideos.map((video) => {
+                                const durationLabel =
+                                  video.duration != null
+                                    ? formatDuration(video.duration)
+                                    : "--:--";
+                                return (
+                                  <StockVideoCard
+                                    key={video.id}
+                                    video={video}
+                                    durationLabel={durationLabel}
+                                    priority
+                                    onAdd={handleAddStockVideo}
+                                    onPreviewStart={handleStockVideoPreviewStart}
+                                    onPreviewStop={handleStockVideoPreviewStop}
+                                    onRequestMeta={requestStockVideoMeta}
+                                    registerPreviewRef={registerStockVideoPreview}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -11464,6 +12427,7 @@ export default function AdvancedEditorPage() {
                         className={floaterMenuItemClass}
                         onClick={() => {
                           setActiveTool("media");
+                          setIsStockVideoExpanded(false);
                           setIsAssetLibraryExpanded(true);
                           closeTimelineContextMenu();
                         }}
