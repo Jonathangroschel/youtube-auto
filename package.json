@@ -6,9 +6,12 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node scripts/fix-supabase-tslib.js"
   },
   "dependencies": {
+    "@giphy/js-fetch-api": "^5.7.0",
+    "@giphy/react-components": "^10.1.1",
     "@supabase/supabase-js": "^2.90.1",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",

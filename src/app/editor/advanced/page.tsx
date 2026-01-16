@@ -15,6 +15,8 @@ import {
 } from "react";
 
 import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
+import { GiphyFetch } from "@giphy/js-fetch-api";
+import type { IGif } from "@giphy/js-types";
 
 import type {
   AssetFilter,
@@ -160,6 +162,14 @@ const toRgba = (value: string, alpha: number) => {
 
 const timelineThumbnailTargetWidth = 28;
 const timelineThumbnailMaxCount = 60;
+const audioLaneMinHeight = 32;
+const audioLaneMaxHeight = 200;
+const audioWaveformMinBars = 24;
+const audioWaveformMaxBars = 320;
+const audioWaveformMinPeakCount = 200;
+const audioWaveformMaxPeakCount = 4000;
+const audioWaveformPeaksPerSecond = 60;
+const audioWaveformMinBarHeight = 0.03;
 
 const getThumbnailCountForWidth = (width: number) => {
   const normalizedWidth = Math.max(1, width);
@@ -228,6 +238,102 @@ const seekVideoForThumbnail = (video: HTMLVideoElement, time: number) =>
       return;
     }
     video.currentTime = time;
+  });
+
+const getWaveformBarCount = (width: number) =>
+  clamp(Math.round(width / 6), audioWaveformMinBars, audioWaveformMaxBars);
+
+const getWaveformPeakCount = (duration: number) =>
+  clamp(
+    Math.floor(
+      (Number.isFinite(duration) ? duration : 0) *
+        audioWaveformPeaksPerSecond
+    ),
+    audioWaveformMinPeakCount,
+    audioWaveformMaxPeakCount
+  );
+
+const normalizeWaveformPeak = (value: number) =>
+  Math.min(1, Math.pow(value, 0.7));
+
+const scheduleIdleWork = (cb: (deadline?: IdleDeadline) => void) => {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.requestIdleCallback === "function"
+  ) {
+    window.requestIdleCallback(cb, { timeout: 200 });
+    return;
+  }
+  setTimeout(() => cb(undefined), 16);
+};
+
+const waitForIdle = () =>
+  new Promise<void>((resolve) => {
+    scheduleIdleWork(() => resolve());
+  });
+
+const buildAudioPeaksAsync = (
+  buffer: AudioBuffer,
+  peakCount: number,
+  shouldCancel?: () => boolean
+) =>
+  new Promise<number[]>((resolve) => {
+    if (peakCount <= 0 || buffer.length === 0) {
+      resolve([]);
+      return;
+    }
+    const peaks = new Array(peakCount).fill(0);
+    const channelCount = buffer.numberOfChannels;
+    const channelData = Array.from(
+      { length: channelCount },
+      (_, index) => buffer.getChannelData(index)
+    );
+    const samples = buffer.length;
+    const samplesPerPeak = Math.max(1, Math.floor(samples / peakCount));
+    let index = 0;
+    const processChunk = (deadline?: IdleDeadline) => {
+      if (shouldCancel?.()) {
+        resolve([]);
+        return;
+      }
+      const startTime = performance.now();
+      while (index < peakCount) {
+        if (shouldCancel?.()) {
+          resolve([]);
+          return;
+        }
+        if (deadline) {
+          if (deadline.timeRemaining() < 3 && index > 0) {
+            break;
+          }
+        } else if (performance.now() - startTime > 12 && index > 0) {
+          break;
+        }
+        const start = index * samplesPerPeak;
+        const end =
+          index === peakCount - 1
+            ? samples
+            : Math.min(samples, start + samplesPerPeak);
+        let max = 0;
+        for (let channel = 0; channel < channelCount; channel += 1) {
+          const data = channelData[channel];
+          for (let j = start; j < end; j += 1) {
+            const value = Math.abs(data[j]);
+            if (value > max) {
+              max = value;
+            }
+          }
+        }
+        peaks[index] = max;
+        index += 1;
+      }
+      if (index < peakCount) {
+        scheduleIdleWork(processChunk);
+        return;
+      }
+      resolve(peaks);
+    };
+    scheduleIdleWork(processChunk);
   });
 
 const generateVideoThumbnails = async (
@@ -299,6 +405,7 @@ const stockVideoRootPrefix =
 const stockVideoPosterRootPrefix =
   process.env.NEXT_PUBLIC_STOCK_VIDEO_POSTER_ROOT?.replace(/^\/+|\/+$/g, "") ??
   "";
+const giphyApiKey = process.env.NEXT_PUBLIC_GIPHY_API_KEY ?? "";
 const audioFileExtensions = new Set([
   ".mp3",
   ".wav",
@@ -314,6 +421,13 @@ const videoFileExtensions = new Set([
   ".webm",
   ".avi",
 ]);
+
+type AudioWaveformData = {
+  key: string;
+  peaks: number[];
+  duration: number;
+  status: "ready" | "error";
+};
 
 type StockAudioTrack = {
   id: string;
@@ -342,6 +456,7 @@ type StockVideoItem = {
 };
 
 type StockVideoOrientationFilter = "all" | "vertical" | "horizontal";
+
 
 const isAudioFile = (name: string, mimeType?: string | null) => {
   if (mimeType?.startsWith("audio/")) {
@@ -459,6 +574,39 @@ const resolveStockVideoPosterPath = (path: string) => {
     return posterPath;
   }
   return `${stockVideoPosterRootPrefix}/${posterPath}`;
+};
+
+const parseGiphyNumber = (value?: string | number) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const resolveGiphyPreviewUrl = (gif: IGif) =>
+  gif.images.preview_gif?.url ??
+  gif.images.fixed_width?.url ??
+  gif.images.downsized?.url ??
+  gif.images.original?.url ??
+  "";
+
+const resolveGiphyAssetImage = (gif: IGif) => {
+  const image =
+    gif.images.original ??
+    gif.images.downsized_medium ??
+    gif.images.downsized ??
+    gif.images.fixed_width ??
+    gif.images.preview_gif;
+  if (!image?.url) {
+    return null;
+  }
+  return {
+    url: image.url,
+    width: parseGiphyNumber(image.width),
+    height: parseGiphyNumber(image.height),
+    size: parseGiphyNumber(image.size) ?? 0,
+  };
 };
 
 type StockVideoCardProps = {
@@ -579,6 +727,33 @@ const StockVideoCard = ({
     </div>
   );
 };
+
+const GiphyLogo = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 163.8 35"
+    className={className}
+    aria-hidden="true"
+  >
+    <g fill="none" fillRule="evenodd">
+      <path fill="#000" d="M4 4h20v27H4z" />
+      <g fillRule="nonzero">
+        <path fill="#04ff8e" d="M0 3h4v29H0z" />
+        <path fill="#8e2eff" d="M24 11h4v21h-4z" />
+        <path fill="#00c5ff" d="M0 31h28v4H0z" />
+        <path fill="#fff152" d="M0 0h16v4H0z" />
+        <path fill="#ff5b5b" d="M24 8V4h-4V0h-4v12h12V8" />
+        <path fill="#551c99" d="M24 16v-4h4" />
+      </g>
+      <path fill="#999131" d="M16 0v4h-4" />
+      <path
+        fill="#000"
+        fillRule="nonzero"
+        d="M59.1 12c-2-1.9-4.4-2.4-6.2-2.4-4.4 0-7.3 2.6-7.3 8 0 3.5 1.8 7.8 7.3 7.8 1.4 0 3.7-.3 5.2-1.4v-3.5h-6.9v-6h13.3v12.1c-1.7 3.5-6.4 5.3-11.7 5.3-10.7 0-14.8-7.2-14.8-14.3S42.7 3.2 52.9 3.2c3.8 0 7.1.8 10.7 4.4zm9.1 19.2V4h7.6v27.2zm20.1-7.4v7.3h-7.7V4h13.2c7.3 0 10.9 4.6 10.9 9.9 0 5.6-3.6 9.9-10.9 9.9zm0-6.5h5.5c2.1 0 3.2-1.6 3.2-3.3 0-1.8-1.1-3.4-3.2-3.4h-5.5zM125 31.2V20.9h-9.8v10.3h-7.7V4h7.7v10.3h9.8V4h7.6v27.2zm24.2-17.9 5.9-9.3h8.7v.3l-10.8 16v10.8h-7.7V20.3L135 4.3V4h8.7z"
+      />
+    </g>
+  </svg>
+);
 
 const resolveFontFamily = (family: string | undefined) => {
   const trimmed = family?.trim();
@@ -729,6 +904,9 @@ const getTextRenderStyles = (settings: TextClipSettings) => {
 export default function AdvancedEditorPage() {
   const textMinLayerSize = 24;
   const textPresetPreviewCount = 6;
+  const gifPreviewCount = 6;
+  const gifSearchLimit = 30;
+  const gifPreviewIntervalMs = 15000;
   const [activeTool, setActiveTool] = useState("video");
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
@@ -737,6 +915,39 @@ export default function AdvancedEditorPage() {
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("All");
   const [isAssetLibraryExpanded, setIsAssetLibraryExpanded] = useState(false);
   const [assetSearch, setAssetSearch] = useState("");
+  const [isGifLibraryExpanded, setIsGifLibraryExpanded] = useState(false);
+  const [isStickerLibraryExpanded, setIsStickerLibraryExpanded] = useState(false);
+  const [gifSearch, setGifSearch] = useState("");
+  const [gifTrending, setGifTrending] = useState<IGif[]>([]);
+  const [gifTrendingStatus, setGifTrendingStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [gifTrendingError, setGifTrendingError] = useState<string | null>(null);
+  const [gifMemeResults, setGifMemeResults] = useState<IGif[]>([]);
+  const [gifMemeStatus, setGifMemeStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [gifPreviewIndex, setGifPreviewIndex] = useState(0);
+  const [gifSearchResults, setGifSearchResults] = useState<IGif[]>([]);
+  const [gifSearchStatus, setGifSearchStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [gifSearchError, setGifSearchError] = useState<string | null>(null);
+  const [stickerSearch, setStickerSearch] = useState("");
+  const [stickerTrending, setStickerTrending] = useState<IGif[]>([]);
+  const [stickerTrendingStatus, setStickerTrendingStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [stickerTrendingError, setStickerTrendingError] = useState<
+    string | null
+  >(null);
+  const [stickerSearchResults, setStickerSearchResults] = useState<IGif[]>([]);
+  const [stickerSearchStatus, setStickerSearchStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [stickerSearchError, setStickerSearchError] = useState<string | null>(
+    null
+  );
   const [stockSearch, setStockSearch] = useState("");
   const [stockCategory, setStockCategory] = useState("All");
   const [stockMusic, setStockMusic] = useState<StockAudioTrack[]>([]);
@@ -772,6 +983,9 @@ export default function AdvancedEditorPage() {
   const [timelineHeight, setTimelineHeight] = useState(
     defaultTimelineHeight
   );
+  const [audioLaneHeight, setAudioLaneHeight] = useState(
+    laneHeights.audio
+  );
   const [timelineScale, setTimelineScale] = useState(12);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [isTimelineSnappingEnabled, setIsTimelineSnappingEnabled] =
@@ -786,6 +1000,9 @@ export default function AdvancedEditorPage() {
     useState(false);
   const [timelineThumbnails, setTimelineThumbnails] = useState<
     Record<string, { key: string; frames: string[] }>
+  >({});
+  const [audioWaveforms, setAudioWaveforms] = useState<
+    Record<string, AudioWaveformData>
   >({});
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
@@ -910,6 +1127,10 @@ export default function AdvancedEditorPage() {
     startY: number;
     startHeight: number;
   } | null>(null);
+  const [audioLaneResizeState, setAudioLaneResizeState] = useState<{
+    startY: number;
+    startHeight: number;
+  } | null>(null);
   const [rangeSelection, setRangeSelection] =
     useState<RangeSelectionState | null>(null);
   const [dragTransformState, setDragTransformState] =
@@ -948,6 +1169,10 @@ export default function AdvancedEditorPage() {
     Record<string, { key: string; frames: string[] }>
   >({});
   const thumbnailJobRef = useRef(0);
+  const audioWaveformsRef = useRef(audioWaveforms);
+  const audioWaveformJobRef = useRef(0);
+  const audioWaveformLoadingRef = useRef<Set<string>>(new Set());
+  const audioContextRef = useRef<AudioContext | null>(null);
   const scrubPointerIdRef = useRef<number | null>(null);
   const scrubPointerTargetRef = useRef<HTMLElement | null>(null);
   const visualRefs = useRef(new Map<string, HTMLVideoElement | null>());
@@ -1019,10 +1244,34 @@ export default function AdvancedEditorPage() {
   const hasSupabase =
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const hasGiphy = Boolean(giphyApiKey);
+  const giphyFetch = useMemo(
+    () => (hasGiphy ? new GiphyFetch(giphyApiKey) : null),
+    [hasGiphy, giphyApiKey]
+  );
 
   useEffect(() => {
     timelineThumbnailsRef.current = timelineThumbnails;
   }, [timelineThumbnails]);
+
+  useEffect(() => {
+    audioWaveformsRef.current = audioWaveforms;
+  }, [audioWaveforms]);
+
+  const getAudioContext = useCallback(() => {
+    if (audioContextRef.current) {
+      return audioContextRef.current;
+    }
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioContextConstructor) {
+      return null;
+    }
+    audioContextRef.current = new AudioContextConstructor();
+    return audioContextRef.current;
+  }, []);
 
   const updateVideoMetaFromElement = useCallback(
     (clipId: string, assetId: string, element: HTMLVideoElement | null) => {
@@ -1785,6 +2034,12 @@ export default function AdvancedEditorPage() {
     if (!["video", "audio", "image"].includes(activeTool)) {
       setIsAssetLibraryExpanded(false);
     }
+    if (activeTool !== "image") {
+      setIsGifLibraryExpanded(false);
+    }
+    if (activeTool !== "elements") {
+      setIsStickerLibraryExpanded(false);
+    }
     if (activeTool !== "video") {
       setIsStockVideoExpanded(false);
     }
@@ -1797,8 +2052,197 @@ export default function AdvancedEditorPage() {
   useEffect(() => {
     if (isStockVideoExpanded) {
       setIsAssetLibraryExpanded(false);
+      setIsGifLibraryExpanded(false);
     }
   }, [isStockVideoExpanded]);
+
+  useEffect(() => {
+    if (isGifLibraryExpanded) {
+      setIsAssetLibraryExpanded(false);
+      setIsStockVideoExpanded(false);
+    }
+  }, [isGifLibraryExpanded]);
+
+  useEffect(() => {
+    if (isStickerLibraryExpanded) {
+      setIsAssetLibraryExpanded(false);
+      setIsStockVideoExpanded(false);
+      setIsGifLibraryExpanded(false);
+    }
+  }, [isStickerLibraryExpanded]);
+
+  useEffect(() => {
+    if (activeTool !== "image" || !giphyFetch || !hasGiphy) {
+      return;
+    }
+    if (gifTrendingStatus !== "idle" || gifTrending.length > 0) {
+      return;
+    }
+    setGifTrendingStatus("loading");
+    setGifTrendingError(null);
+    giphyFetch
+      .trending({ limit: Math.max(gifPreviewCount, gifSearchLimit) })
+      .then((result) => {
+        const data = result.data ?? [];
+        setGifTrending(data);
+        setGifTrendingStatus("ready");
+      })
+      .catch((error) => {
+        console.error("[giphy] trending error", error);
+        setGifTrendingError("Unable to load GIFs.");
+        setGifTrendingStatus("error");
+      });
+  }, [
+    activeTool,
+    gifPreviewCount,
+    gifSearchLimit,
+    gifTrending.length,
+    gifTrendingStatus,
+    giphyFetch,
+    hasGiphy,
+  ]);
+
+  useEffect(() => {
+    if (activeTool !== "image" || !giphyFetch || !hasGiphy) {
+      return;
+    }
+    if (gifMemeStatus !== "idle" || gifMemeResults.length > 0) {
+      return;
+    }
+    setGifMemeStatus("loading");
+    giphyFetch
+      .search("meme", { limit: Math.max(gifPreviewCount * 4, 24) })
+      .then((result) => {
+        const data = result.data ?? [];
+        setGifMemeResults(data);
+        setGifMemeStatus("ready");
+      })
+      .catch((error) => {
+        console.error("[giphy] meme search error", error);
+        setGifMemeStatus("error");
+      });
+  }, [
+    activeTool,
+    gifMemeResults.length,
+    gifMemeStatus,
+    gifPreviewCount,
+    giphyFetch,
+    hasGiphy,
+  ]);
+
+  useEffect(() => {
+    if (activeTool !== "image" || !giphyFetch || !hasGiphy) {
+      return;
+    }
+    const query = gifSearch.trim();
+    if (!query) {
+      setGifSearchResults([]);
+      setGifSearchStatus("idle");
+      setGifSearchError(null);
+      return;
+    }
+    let cancelled = false;
+    setGifSearchStatus("loading");
+    setGifSearchError(null);
+    const timeoutId = window.setTimeout(() => {
+      giphyFetch
+        .search(query, { limit: gifSearchLimit })
+        .then((result) => {
+          if (cancelled) {
+            return;
+          }
+          const data = result.data ?? [];
+          setGifSearchResults(data);
+          setGifSearchStatus("ready");
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
+          console.error("[giphy] search error", error);
+          setGifSearchError("Unable to search GIFs.");
+          setGifSearchStatus("error");
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeTool, gifSearch, gifSearchLimit, giphyFetch, hasGiphy]);
+
+  useEffect(() => {
+    if (activeTool !== "elements" || !giphyFetch || !hasGiphy) {
+      return;
+    }
+    if (stickerTrendingStatus !== "idle" || stickerTrending.length > 0) {
+      return;
+    }
+    setStickerTrendingStatus("loading");
+    setStickerTrendingError(null);
+    giphyFetch
+      .trending({
+        limit: Math.max(gifPreviewCount, gifSearchLimit),
+        type: "stickers",
+      })
+      .then((result) => {
+        const data = result.data ?? [];
+        setStickerTrending(data);
+        setStickerTrendingStatus("ready");
+      })
+      .catch((error) => {
+        console.error("[giphy] sticker trending error", error);
+        setStickerTrendingError("Unable to load stickers.");
+        setStickerTrendingStatus("error");
+      });
+  }, [
+    activeTool,
+    gifPreviewCount,
+    gifSearchLimit,
+    giphyFetch,
+    hasGiphy,
+    stickerTrending.length,
+    stickerTrendingStatus,
+  ]);
+
+  useEffect(() => {
+    if (activeTool !== "elements" || !giphyFetch || !hasGiphy) {
+      return;
+    }
+    const query = stickerSearch.trim();
+    if (!query) {
+      setStickerSearchResults([]);
+      setStickerSearchStatus("idle");
+      setStickerSearchError(null);
+      return;
+    }
+    let cancelled = false;
+    setStickerSearchStatus("loading");
+    setStickerSearchError(null);
+    const timeoutId = window.setTimeout(() => {
+      giphyFetch
+        .search(query, { limit: gifSearchLimit, type: "stickers" })
+        .then((result) => {
+          if (cancelled) {
+            return;
+          }
+          const data = result.data ?? [];
+          setStickerSearchResults(data);
+          setStickerSearchStatus("ready");
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
+          console.error("[giphy] sticker search error", error);
+          setStickerSearchError("Unable to search stickers.");
+          setStickerSearchStatus("error");
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeTool, stickerSearch, gifSearchLimit, giphyFetch, hasGiphy]);
 
   useEffect(() => {
     const viewport = stageViewportRef.current;
@@ -1964,6 +2408,15 @@ export default function AdvancedEditorPage() {
     createdAt: Date.now(),
   });
 
+  const resolveSnappedStartTime = (startTime: number) => {
+    const safeStart = Number.isFinite(startTime) ? startTime : 0;
+    const clampedStart = Math.max(0, safeStart);
+    if (clampedStart < snapInterval) {
+      return 0;
+    }
+    return Math.round(clampedStart / snapInterval) * snapInterval;
+  };
+
   const addTextClip = useCallback(
     (settings: TextClipSettings, label: string, startTime?: number) => {
       setIsBackgroundSelected(false);
@@ -1971,8 +2424,9 @@ export default function AdvancedEditorPage() {
       const asset = createTextAsset(label);
       const nextLanes = [...lanesRef.current];
       const laneId = createLaneId("text", nextLanes);
-      const resolvedStart =
-        startTime ?? Math.max(0, Math.round(currentTime / snapInterval) * snapInterval);
+      const resolvedStart = resolveSnappedStartTime(
+        startTime ?? currentTime
+      );
       const clip = createClip(asset.id, laneId, resolvedStart, asset);
       setLanes(nextLanes);
       setAssets((prev) => [asset, ...prev]);
@@ -2091,6 +2545,77 @@ export default function AdvancedEditorPage() {
       asset.name.toLowerCase().includes(query)
     );
   }, [assetSearch, filteredAssets]);
+
+  const gifPreviewPool = useMemo(
+    () => (gifMemeResults.length > 0 ? gifMemeResults : gifTrending),
+    [gifMemeResults, gifTrending]
+  );
+
+  const gifPreviewItems = useMemo(() => {
+    const pool = gifPreviewPool;
+    if (pool.length <= gifPreviewCount) {
+      return pool;
+    }
+    const start = gifPreviewIndex % pool.length;
+    return Array.from({ length: gifPreviewCount }, (_, index) =>
+      pool[(start + index) % pool.length]
+    );
+  }, [gifPreviewCount, gifPreviewIndex, gifPreviewPool]);
+
+  const stickerPreviewItems = useMemo(
+    () => stickerTrending.slice(0, gifPreviewCount),
+    [gifPreviewCount, stickerTrending]
+  );
+
+  const stickerGridItems = useMemo(() => {
+    const query = stickerSearch.trim();
+    return query ? stickerSearchResults : stickerTrending;
+  }, [stickerSearch, stickerSearchResults, stickerTrending]);
+
+  const stickerGridStatus =
+    stickerSearch.trim().length > 0
+      ? stickerSearchStatus
+      : stickerTrendingStatus;
+  const stickerGridError =
+    stickerSearch.trim().length > 0
+      ? stickerSearchError
+      : stickerTrendingError;
+
+  const gifGridItems = useMemo(() => {
+    const query = gifSearch.trim();
+    return query ? gifSearchResults : gifTrending;
+  }, [gifSearch, gifSearchResults, gifTrending]);
+
+  const gifGridStatus =
+    gifSearch.trim().length > 0 ? gifSearchStatus : gifTrendingStatus;
+  const gifGridError =
+    gifSearch.trim().length > 0 ? gifSearchError : gifTrendingError;
+
+  useEffect(() => {
+    setGifPreviewIndex(0);
+  }, [gifPreviewPool.length]);
+
+  useEffect(() => {
+    if (!hasGiphy || activeTool !== "image" || isGifLibraryExpanded) {
+      return;
+    }
+    const poolLength = gifPreviewPool.length;
+    if (poolLength <= 1) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      setGifPreviewIndex(
+        (prev) => (prev + gifPreviewCount) % poolLength
+      );
+    }, gifPreviewIntervalMs);
+    return () => window.clearInterval(intervalId);
+  }, [
+    activeTool,
+    gifPreviewIntervalMs,
+    gifPreviewPool.length,
+    hasGiphy,
+    isGifLibraryExpanded,
+  ]);
 
   const stockCategories = useMemo(() => {
     const categories = Array.from(
@@ -2337,6 +2862,161 @@ export default function AdvancedEditorPage() {
     };
   }, [timelineLayout, timelineScale]);
 
+  useEffect(() => {
+    const audioEntries = timelineLayout.filter(
+      (entry) => entry.asset.kind === "audio"
+    );
+    const validIds = new Set(audioEntries.map((entry) => entry.asset.id));
+    setAudioWaveforms((prev) => {
+      let changed = false;
+      const next: Record<string, AudioWaveformData> = {};
+      Object.entries(prev).forEach(([id, value]) => {
+        if (validIds.has(id)) {
+          next[id] = value;
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    if (audioEntries.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const jobId = (audioWaveformJobRef.current += 1);
+    const buildWaveforms = async () => {
+      for (const entry of audioEntries) {
+        if (cancelled || audioWaveformJobRef.current !== jobId) {
+          return;
+        }
+        const asset = entry.asset;
+        const key = `${asset.url}:${asset.duration ?? "0"}`;
+        const existing = audioWaveformsRef.current[asset.id];
+        if (existing && existing.key === key) {
+          continue;
+        }
+        if (audioWaveformLoadingRef.current.has(asset.id)) {
+          continue;
+        }
+        audioWaveformLoadingRef.current.add(asset.id);
+        try {
+          await waitForIdle();
+          const response = await fetch(asset.url);
+          if (!response.ok) {
+            throw new Error("Failed to load audio.");
+          }
+          const buffer = await response.arrayBuffer();
+          const audioContext = getAudioContext();
+          if (!audioContext) {
+            throw new Error("Audio context unavailable.");
+          }
+          await waitForIdle();
+          const audioBuffer = await audioContext.decodeAudioData(buffer);
+          const peakCount = getWaveformPeakCount(audioBuffer.duration);
+          await waitForIdle();
+          const peaks = await buildAudioPeaksAsync(
+            audioBuffer,
+            peakCount,
+            () => cancelled || audioWaveformJobRef.current !== jobId
+          );
+          if (cancelled || audioWaveformJobRef.current !== jobId) {
+            return;
+          }
+          setAudioWaveforms((prev) => ({
+            ...prev,
+            [asset.id]: {
+              key,
+              peaks,
+              duration: audioBuffer.duration,
+              status: "ready",
+            },
+          }));
+        } catch (error) {
+          if (cancelled || audioWaveformJobRef.current !== jobId) {
+            return;
+          }
+          setAudioWaveforms((prev) => ({
+            ...prev,
+            [asset.id]: {
+              key,
+              peaks: [],
+              duration: asset.duration ?? 0,
+              status: "error",
+            },
+          }));
+        } finally {
+          audioWaveformLoadingRef.current.delete(asset.id);
+        }
+      }
+    };
+    void buildWaveforms();
+    return () => {
+      cancelled = true;
+    };
+  }, [getAudioContext, timelineLayout]);
+
+  const getAudioClipWaveformBars = useCallback(
+    (clip: TimelineClip, asset: MediaAsset, width: number) => {
+      const barCount = getWaveformBarCount(width);
+      const cached = audioWaveforms[asset.id];
+      if (!cached || cached.status !== "ready" || cached.peaks.length === 0) {
+        return getWaveformBars(clip.id, barCount);
+      }
+      const duration =
+        cached.duration > 0
+          ? cached.duration
+          : getAssetDurationSeconds(asset);
+      if (!duration || duration <= 0) {
+        return getWaveformBars(clip.id, barCount);
+      }
+      const startRatio = clamp(clip.startOffset / duration, 0, 1);
+      const endRatio = clamp(
+        (clip.startOffset + clip.duration) / duration,
+        0,
+        1
+      );
+      const startIndex = Math.floor(startRatio * cached.peaks.length);
+      const endIndex = Math.max(
+        startIndex + 1,
+        Math.ceil(endRatio * cached.peaks.length)
+      );
+      if (startIndex >= cached.peaks.length) {
+        return getWaveformBars(clip.id, barCount);
+      }
+      const boundedEndIndex = Math.min(
+        endIndex,
+        cached.peaks.length
+      );
+      const span = boundedEndIndex - startIndex;
+      if (span <= 0) {
+        return getWaveformBars(clip.id, barCount);
+      }
+      const bars = new Array(barCount);
+      for (let i = 0; i < barCount; i += 1) {
+        const sliceStart =
+          startIndex + Math.floor((span * i) / barCount);
+        const sliceEnd =
+          startIndex +
+          Math.floor((span * (i + 1)) / barCount);
+        const safeEnd = Math.min(
+          boundedEndIndex,
+          Math.max(sliceStart + 1, sliceEnd)
+        );
+        let max = 0;
+        for (let j = sliceStart; j < safeEnd; j += 1) {
+          const value = cached.peaks[j] ?? 0;
+          if (value > max) {
+            max = value;
+          }
+        }
+        const normalized = normalizeWaveformPeak(max);
+        bars[i] = Math.max(audioWaveformMinBarHeight, normalized);
+      }
+      return bars;
+    },
+    [audioWaveforms]
+  );
+
   const getClipMinSize = useCallback(
     (clipId: string) => {
       const kind = clipAssetKindMap.get(clipId);
@@ -2439,7 +3119,12 @@ export default function AdvancedEditorPage() {
         items.reduce((top, entry) => {
           const entryIndex = laneIndexMap.get(entry.clip.laneId) ?? 0;
           const topIndex = laneIndexMap.get(top.clip.laneId) ?? 0;
-          return entryIndex >= topIndex ? entry : top;
+          if (entryIndex !== topIndex) {
+            return entryIndex < topIndex ? entry : top;
+          }
+          const entryOrder = clipOrder[entry.clip.id] ?? 0;
+          const topOrder = clipOrder[top.clip.id] ?? 0;
+          return entryOrder >= topOrder ? entry : top;
         });
       if (candidates.length > 0) {
         return pickTop(candidates);
@@ -2469,7 +3154,7 @@ export default function AdvancedEditorPage() {
       });
       return nearest;
     },
-    [timelineLayout, laneIndexMap]
+    [timelineLayout, laneIndexMap, clipOrder]
   );
 
   const firstClipEntry = useMemo(() => {
@@ -2708,7 +3393,9 @@ export default function AdvancedEditorPage() {
   const canPlay = Boolean(activeClipEntry || firstClipEntry);
   const hasTimelineClips = timeline.length > 0;
   const showEmptyState = !hasTimelineClips;
-  const showVideoPanel = Boolean(selectedVideoEntry && selectedVideoSettings);
+  const showVideoPanel =
+    activeTool === "video" &&
+    Boolean(selectedVideoEntry && selectedVideoSettings);
   const showAudioPanel = Boolean(selectedAudioEntry && selectedAudioSettings);
   const floatingSubmenuSide = useMemo(() => {
     if (!stageSize.width) {
@@ -2774,17 +3461,17 @@ export default function AdvancedEditorPage() {
         currentTime - timelineClipEpsilon <= entry.left + entry.clip.duration
     );
     return visible.sort((a, b) => {
+      const aIndex = laneIndexMap.get(a.clip.laneId) ?? 0;
+      const bIndex = laneIndexMap.get(b.clip.laneId) ?? 0;
+      if (aIndex !== bIndex) {
+        return bIndex - aIndex;
+      }
       const aOrder = clipOrder[a.clip.id] ?? 0;
       const bOrder = clipOrder[b.clip.id] ?? 0;
       if (aOrder !== bOrder) {
         return aOrder - bOrder;
       }
-      const aIndex = laneIndexMap.get(a.clip.laneId) ?? 0;
-      const bIndex = laneIndexMap.get(b.clip.laneId) ?? 0;
-      if (aIndex === bIndex) {
-        return a.left - b.left;
-      }
-      return aIndex - bIndex;
+      return a.left - b.left;
     });
   }, [timelineLayout, currentTime, laneIndexMap, clipOrder]);
 
@@ -3056,6 +3743,12 @@ export default function AdvancedEditorPage() {
     return Math.max(1, Math.ceil(minLabelPx / pxPerTick));
   }, [timelineDuration, timelineScale, tickStep]);
 
+  const getLaneHeight = useCallback(
+    (type: LaneType) =>
+      type === "audio" ? audioLaneHeight : laneHeights[type],
+    [audioLaneHeight]
+  );
+
   const laneRows = useMemo(() => {
     const counts: Record<LaneType, number> = {
       video: 0,
@@ -3074,10 +3767,19 @@ export default function AdvancedEditorPage() {
         id: lane.id,
         type: lane.type,
         label,
-        height: laneHeights[lane.type],
+        height: getLaneHeight(lane.type),
       };
     });
-  }, [lanes]);
+  }, [getLaneHeight, lanes]);
+
+  const lastAudioLaneId = useMemo(() => {
+    for (let index = laneRows.length - 1; index >= 0; index -= 1) {
+      if (laneRows[index].type === "audio") {
+        return laneRows[index].id;
+      }
+    }
+    return null;
+  }, [laneRows]);
 
   const dragPreview = useMemo(() => {
     if (!dragClipState) {
@@ -3132,6 +3834,7 @@ export default function AdvancedEditorPage() {
   }, [mainHeight, timelineHeight, timelineMinHeight]);
 
   const isResizingTimeline = Boolean(timelineResizeState);
+  const isResizingAudioLane = Boolean(audioLaneResizeState);
 
   // Dynamic frame step based on zoom level - larger steps when zoomed out, precise frames when zoomed in
   const dynamicFrameStep = useMemo(() => {
@@ -3262,6 +3965,20 @@ export default function AdvancedEditorPage() {
     setTimelineResizeState({
       startY: event.clientY,
       startHeight: timelineHeight,
+    });
+  };
+
+  const handleAudioLaneResizeStart = (
+    event: PointerEvent<HTMLDivElement>
+  ) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setAudioLaneResizeState({
+      startY: event.clientY,
+      startHeight: audioLaneHeight,
     });
   };
 
@@ -3615,7 +4332,7 @@ export default function AdvancedEditorPage() {
     const rows = draftLanes.map((lane) => ({
       id: lane.id,
       type: lane.type,
-      height: laneHeights[lane.type],
+      height: getLaneHeight(lane.type),
     }));
     if (rows.length === 0) {
       return createLaneId(laneType, draftLanes);
@@ -3731,7 +4448,9 @@ export default function AdvancedEditorPage() {
           options.target === "timeline"
             ? resolveDropLaneId(laneType, offsetY, nextLanes)
             : createLaneId(laneType, nextLanes);
-        const startTime = baseStartTime + index * snapInterval;
+        const startTime = resolveSnappedStartTime(
+          baseStartTime + index * snapInterval
+        );
         newClips.push(createClip(asset.id, laneId, startTime, asset));
       });
       setLanes(nextLanes);
@@ -3812,7 +4531,7 @@ export default function AdvancedEditorPage() {
     const clip = createClip(
       assetId,
       laneId,
-      Math.max(0, Math.round(startTime / snapInterval) * snapInterval),
+      resolveSnappedStartTime(startTime),
       assetOverride
     );
     setTimeline((prev) => [...prev, clip]);
@@ -4144,6 +4863,105 @@ export default function AdvancedEditorPage() {
     },
     [addToTimeline, createClip, pushHistory]
   );
+
+  const handleAddGif = useCallback(
+    (gif: IGif) => {
+      const assetImage = resolveGiphyAssetImage(gif);
+      if (!assetImage) {
+        return;
+      }
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "image" && asset.url === assetImage.url
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        return;
+      }
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const name = gif.title?.trim() || "GIF";
+      const aspectRatio =
+        assetImage.width && assetImage.height
+          ? assetImage.width / assetImage.height
+          : undefined;
+      const gifAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name,
+        kind: "image",
+        url: assetImage.url,
+        size: assetImage.size,
+        width: assetImage.width,
+        height: assetImage.height,
+        aspectRatio,
+        createdAt: Date.now(),
+      };
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes);
+      const clip = createClip(gifAsset.id, laneId, 0, gifAsset);
+      setLanes(nextLanes);
+      setAssets((prev) => [gifAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(gifAsset.id);
+    },
+    [addToTimeline, createClip, pushHistory]
+  );
+
+  const handleAddSticker = useCallback(
+    (sticker: IGif) => {
+      const assetImage = resolveGiphyAssetImage(sticker);
+      if (!assetImage) {
+        return;
+      }
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "image" && asset.url === assetImage.url
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        return;
+      }
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const name = sticker.title?.trim() || "Sticker";
+      const aspectRatio =
+        assetImage.width && assetImage.height
+          ? assetImage.width / assetImage.height
+          : undefined;
+      const stickerAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name,
+        kind: "image",
+        url: assetImage.url,
+        size: assetImage.size,
+        width: assetImage.width,
+        height: assetImage.height,
+        aspectRatio,
+        createdAt: Date.now(),
+      };
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes);
+      const clip = createClip(stickerAsset.id, laneId, 0, stickerAsset);
+      setLanes(nextLanes);
+      setAssets((prev) => [stickerAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(stickerAsset.id);
+    },
+    [addToTimeline, createClip, pushHistory]
+  );
+
+  const handleGifTrendingRetry = useCallback(() => {
+    setGifTrending([]);
+    setGifTrendingError(null);
+    setGifTrendingStatus("idle");
+    setGifMemeResults([]);
+    setGifMemeStatus("idle");
+    setGifPreviewIndex(0);
+  }, []);
+
+  const handleStickerTrendingRetry = useCallback(() => {
+    setStickerTrending([]);
+    setStickerTrendingError(null);
+    setStickerTrendingStatus("idle");
+  }, []);
 
   const handleStockVideoRetry = useCallback(() => {
     setStockVideoStatus("idle");
@@ -5436,6 +6254,30 @@ export default function AdvancedEditorPage() {
       window.removeEventListener("pointercancel", handleUp);
     };
   }, [timelineResizeState, timelineMinHeight, timelineMaxHeight]);
+
+  useEffect(() => {
+    if (!audioLaneResizeState) {
+      return;
+    }
+    const handleMove = (event: globalThis.PointerEvent) => {
+      const delta = event.clientY - audioLaneResizeState.startY;
+      const nextHeight = clamp(
+        audioLaneResizeState.startHeight + delta,
+        audioLaneMinHeight,
+        audioLaneMaxHeight
+      );
+      setAudioLaneHeight(nextHeight);
+    };
+    const handleUp = () => setAudioLaneResizeState(null);
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+    };
+  }, [audioLaneResizeState]);
 
   useEffect(() => {
     if (!rangeSelection) {
@@ -7921,7 +8763,10 @@ export default function AdvancedEditorPage() {
         </div>
       ) : (
         <>
-          {!isAudioTool && !(isStockVideoExpanded && activeTool === "video") && (
+          {!isAudioTool &&
+            !(isStockVideoExpanded && activeTool === "video") &&
+            !(isGifLibraryExpanded && activeTool === "image") &&
+            !(isStickerLibraryExpanded && activeTool === "elements") && (
             <div
               className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" ? "px-6 py-6" : "px-5 py-5"
                 }`}
@@ -8075,7 +8920,289 @@ export default function AdvancedEditorPage() {
                 : "bg-[#F7F8FC]"
               }`}
           >
-            {isAssetLibraryExpanded &&
+            {isStickerLibraryExpanded && activeTool === "elements" ? (
+              <div className="flex min-h-full flex-col">
+                <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                        aria-label="Go back"
+                        onClick={() => setIsStickerLibraryExpanded(false)}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="M10 4 6 8l4 4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        Stickers
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-500">
+                      <span>Powered by</span>
+                      <GiphyLogo className="h-3 w-auto" />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <input
+                        className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-9 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                        placeholder="Search for stickers"
+                        value={stickerSearch}
+                        onChange={(event) =>
+                          setStickerSearch(event.target.value)
+                        }
+                      />
+                      {stickerSearch.trim() && (
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100"
+                          onClick={() => setStickerSearch("")}
+                          aria-label="Clear search"
+                        >
+                          <svg viewBox="0 0 16 16" className="h-3 w-3">
+                            <path
+                              d="M12 4 4 12M4 4l8 8"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1 px-5 py-5">
+                  {!hasGiphy ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      Add a GIPHY API key to enable stickers.
+                    </div>
+                  ) : (stickerGridStatus === "idle" ||
+                    stickerGridStatus === "loading") &&
+                    stickerGridItems.length === 0 ? (
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
+                      {Array.from({ length: gifPreviewCount }).map((_, index) => (
+                        <div
+                          key={`sticker-skeleton-${index}`}
+                          className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                        />
+                      ))}
+                    </div>
+                  ) : stickerGridStatus === "error" ? (
+                    <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                      <p>{stickerGridError ?? "Unable to load stickers."}</p>
+                      {stickerSearch.trim().length === 0 && (
+                        <button
+                          type="button"
+                          className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                          onClick={handleStickerTrendingRetry}
+                        >
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  ) : stickerGridItems.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      {stickerSearch.trim()
+                        ? "No stickers match your search."
+                        : "No stickers available right now."}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
+                      {stickerGridItems.map((sticker) => {
+                        const previewUrl = resolveGiphyPreviewUrl(sticker);
+                        const title = sticker.title?.trim() || "Sticker";
+                        return (
+                          <button
+                            key={sticker.id}
+                            type="button"
+                            className="group relative h-24 w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                            onClick={() => handleAddSticker(sticker)}
+                            aria-label={`Add ${title}`}
+                          >
+                            {previewUrl ? (
+                              <img
+                                src={previewUrl}
+                                alt={`Preview of sticker ${title}`}
+                                className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                Sticker
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isGifLibraryExpanded && activeTool === "image" ? (
+              <div className="flex min-h-full flex-col">
+                <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                        aria-label="Go back"
+                        onClick={() => setIsGifLibraryExpanded(false)}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="M10 4 6 8l4 4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        GIFs
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-500">
+                      <span>Powered by</span>
+                      <GiphyLogo className="h-3 w-auto" />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <input
+                        className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-9 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                        placeholder="Search for GIFs"
+                        value={gifSearch}
+                        onChange={(event) => setGifSearch(event.target.value)}
+                      />
+                      {gifSearch.trim() && (
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100"
+                          onClick={() => setGifSearch("")}
+                          aria-label="Clear search"
+                        >
+                          <svg viewBox="0 0 16 16" className="h-3 w-3">
+                            <path
+                              d="M12 4 4 12M4 4l8 8"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1 px-5 py-5">
+                  {!hasGiphy ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      Add a GIPHY API key to enable GIF search.
+                    </div>
+                  ) : (gifGridStatus === "idle" ||
+                    gifGridStatus === "loading") &&
+                    gifGridItems.length === 0 ? (
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
+                      {Array.from({ length: gifPreviewCount }).map((_, index) => (
+                        <div
+                          key={`gif-skeleton-${index}`}
+                          className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                        />
+                      ))}
+                    </div>
+                  ) : gifGridStatus === "error" ? (
+                    <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                      <p>{gifGridError ?? "Unable to load GIFs."}</p>
+                      {gifSearch.trim().length === 0 && (
+                        <button
+                          type="button"
+                          className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                          onClick={handleGifTrendingRetry}
+                        >
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  ) : gifGridItems.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      {gifSearch.trim()
+                        ? "No GIFs match your search."
+                        : "No GIFs available right now."}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
+                      {gifGridItems.map((gif) => {
+                        const previewUrl = resolveGiphyPreviewUrl(gif);
+                        const title = gif.title?.trim() || "GIF";
+                        return (
+                          <button
+                            key={gif.id}
+                            type="button"
+                            className="group relative h-24 w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                            onClick={() => handleAddGif(gif)}
+                            aria-label={`Add ${title}`}
+                          >
+                            {previewUrl ? (
+                              <img
+                                src={previewUrl}
+                                alt={`Preview of gif ${title}`}
+                                className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                GIF
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isAssetLibraryExpanded &&
             ["video", "audio", "image"].includes(activeTool) ? (
               <div className="flex min-h-full flex-col">
                 <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
@@ -9864,9 +10991,209 @@ export default function AdvancedEditorPage() {
                   )
                 ) : ["video", "audio", "image"].includes(activeTool) ? (
                   <>
+                    <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-semibold text-gray-900">
+                            Asset Library
+                          </h3>
+                          <button
+                            type="button"
+                            className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EEF2FF] text-[#335CFF]"
+                            onClick={handleUploadClick}
+                            aria-label="Upload media"
+                          >
+                            <svg viewBox="0 0 16 16" className="h-4 w-4">
+                              <path
+                                d="M3 8h10M8 3v10"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                        <button
+                          className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                          type="button"
+                          onClick={() => {
+                            setIsStockVideoExpanded(false);
+                            setIsAssetLibraryExpanded(true);
+                          }}
+                        >
+                          View all
+                          <svg viewBox="0 0 16 16" className="h-3 w-3">
+                            <path
+                              d="m6 12 4-4-4-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {mediaFilters.map((filter) => (
+                          <button
+                            key={filter}
+                            type="button"
+                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${assetFilter === filter
+                              ? "bg-[#EEF2FF] text-[#335CFF]"
+                              : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                              }`}
+                            onClick={() => setAssetFilter(filter)}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                      </div>
+                      {filteredAssets.length === 0 ? (
+                        <div className="mt-6 rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                          Upload media to build your library.
+                        </div>
+                      ) : (
+                        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {filteredAssets.map((asset) => (
+                            <div key={asset.id} className="space-y-2">
+                              <button
+                                type="button"
+                                className={`group relative h-24 w-full overflow-hidden rounded-2xl border transition ${asset.id === activeAssetId
+                                  ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
+                                  : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                onClick={() => addToTimeline(asset.id)}
+                                draggable
+                                onDragStart={(event) =>
+                                  handleAssetDragStart(event, asset.id)
+                                }
+                              >
+                                {asset.kind === "image" && (
+                                  <img
+                                    src={asset.url}
+                                    alt={asset.name}
+                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                  />
+                                )}
+                                {asset.kind === "video" && (
+                                  <video
+                                    src={asset.url}
+                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                    muted
+                                    playsInline
+                                  />
+                                )}
+                                {asset.kind === "audio" && (
+                                <div className="flex h-full w-full items-center justify-center bg-[#EEF2FF] text-[#335CFF]">
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="24"
+                                    height="24"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    className="h-8 w-8 text-primary"
+                                    aria-hidden="true"
+                                  >
+                                    <g filter="url(#audio_svg__a)">
+                                      <path
+                                        fill="currentColor"
+                                        d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                      />
+                                      <path
+                                        fill="url(#audio_svg__b)"
+                                        fillOpacity="0.2"
+                                        d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                      />
+                                    </g>
+                                    <g filter="url(#audio_svg__c)">
+                                      <path
+                                        fill="#fff"
+                                        d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
+                                      />
+                                    </g>
+                                    <defs>
+                                      <filter
+                                        id="audio_svg__a"
+                                        width="24"
+                                        height="24"
+                                        x="0"
+                                        y="0"
+                                        colorInterpolationFilters="sRGB"
+                                        filterUnits="userSpaceOnUse"
+                                      >
+                                        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                                        <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
+                                        <feColorMatrix
+                                          in="SourceAlpha"
+                                          result="hardAlpha"
+                                          values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                                        />
+                                        <feOffset dy="0.5" />
+                                        <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
+                                        <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
+                                        <feBlend in2="shape" result="effect1_innerShadow_22531_1167" />
+                                      </filter>
+                                      <filter
+                                        id="audio_svg__c"
+                                        width="14"
+                                        height="19.411"
+                                        x="5"
+                                        y="3.1"
+                                        colorInterpolationFilters="sRGB"
+                                        filterUnits="userSpaceOnUse"
+                                      >
+                                        <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                                        <feColorMatrix
+                                          in="SourceAlpha"
+                                          result="hardAlpha"
+                                          values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                                        />
+                                        <feOffset dy="1" />
+                                        <feGaussianBlur stdDeviation="1" />
+                                        <feComposite in2="hardAlpha" operator="out" />
+                                        <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
+                                        <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_22531_1167" />
+                                        <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_1167" result="shape" />
+                                      </filter>
+                                      <linearGradient
+                                        id="audio_svg__b"
+                                        x1="12"
+                                        x2="12"
+                                        y1="0"
+                                        y2="24"
+                                        gradientUnits="userSpaceOnUse"
+                                      >
+                                        <stop stopColor="#fff" />
+                                        <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                                      </linearGradient>
+                                    </defs>
+                                  </svg>
+                                </div>
+                                )}
+                                {asset.kind !== "image" && (
+                                  <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                    {formatDuration(asset.duration)}
+                                  </span>
+                                )}
+                              </button>
+                              <div className="flex items-center justify-between text-[11px] text-gray-500">
+                                <span className="truncate font-medium text-gray-700">
+                                  {asset.name}
+                                </span>
+                                <span>{formatSize(asset.size)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     {activeTool === "audio" && (
                       <div className="flex flex-col rounded-2xl border border-gray-100 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
-                        <div className="border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
+                        <div className="rounded-t-2xl border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
                           <div className="flex flex-col gap-6">
                             <div className="flex items-center gap-2">
                               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EEF2FF]">
@@ -10121,205 +11448,103 @@ export default function AdvancedEditorPage() {
                         </div>
                       </div>
                     )}
-                    <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-semibold text-gray-900">
-                            Asset Library
-                          </h3>
+
+                    {activeTool === "image" && (
+                      <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <GiphyLogo className="h-4 w-auto" />
+                            <h3 className="text-sm font-semibold text-gray-900">
+                              GIFs
+                            </h3>
+                          </div>
                           <button
+                            className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
                             type="button"
-                            className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EEF2FF] text-[#335CFF]"
-                            onClick={handleUploadClick}
-                            aria-label="Upload media"
+                            onClick={() => {
+                              setIsAssetLibraryExpanded(false);
+                              setIsGifLibraryExpanded(true);
+                            }}
                           >
-                            <svg viewBox="0 0 16 16" className="h-4 w-4">
+                            View All
+                            <svg viewBox="0 0 16 16" className="h-3 w-3">
                               <path
-                                d="M3 8h10M8 3v10"
+                                d="m6 12 4-4-4-4"
                                 fill="none"
                                 stroke="currentColor"
-                                strokeWidth="1.5"
+                                strokeWidth="1.4"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                               />
                             </svg>
                           </button>
                         </div>
-                        <button
-                          className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
-                          type="button"
-                          onClick={() => {
-                            setIsStockVideoExpanded(false);
-                            setIsAssetLibraryExpanded(true);
-                          }}
-                        >
-                          View all
-                          <svg viewBox="0 0 16 16" className="h-3 w-3">
-                            <path
-                              d="m6 12 4-4-4-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {mediaFilters.map((filter) => (
-                          <button
-                            key={filter}
-                            type="button"
-                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${assetFilter === filter
-                              ? "bg-[#EEF2FF] text-[#335CFF]"
-                              : "bg-gray-50 text-gray-500 hover:bg-gray-100"
-                              }`}
-                            onClick={() => setAssetFilter(filter)}
-                          >
-                            {filter}
-                          </button>
-                        ))}
-                      </div>
-                      {filteredAssets.length === 0 ? (
-                        <div className="mt-6 rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
-                          Upload media to build your library.
-                        </div>
-                      ) : (
-                        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                          {filteredAssets.map((asset) => (
-                            <div key={asset.id} className="space-y-2">
+                        <div className="mt-3">
+                          {!hasGiphy ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              Add a GIPHY API key to enable GIFs.
+                            </div>
+                          ) : (gifTrendingStatus === "idle" ||
+                            gifTrendingStatus === "loading") &&
+                            gifPreviewItems.length === 0 ? (
+                            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
+                              {Array.from({ length: gifPreviewCount }).map(
+                                (_, index) => (
+                                  <div
+                                    key={`gif-preview-skeleton-${index}`}
+                                    className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                                  />
+                                )
+                              )}
+                            </div>
+                          ) : gifTrendingStatus === "error" ? (
+                            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                              <p>{gifTrendingError ?? "Unable to load GIFs."}</p>
                               <button
                                 type="button"
-                                className={`group relative h-24 w-full overflow-hidden rounded-2xl border transition ${asset.id === activeAssetId
-                                  ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
-                                  : "border-gray-200 hover:border-gray-300"
-                                  }`}
-                                onClick={() => addToTimeline(asset.id)}
-                                draggable
-                                onDragStart={(event) =>
-                                  handleAssetDragStart(event, asset.id)
-                                }
+                                className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                                onClick={handleGifTrendingRetry}
                               >
-                                {asset.kind === "image" && (
-                                  <img
-                                    src={asset.url}
-                                    alt={asset.name}
-                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                                  />
-                                )}
-                                {asset.kind === "video" && (
-                                  <video
-                                    src={asset.url}
-                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                                    muted
-                                    playsInline
-                                  />
-                                )}
-                                {asset.kind === "audio" && (
-                                <div className="flex h-full w-full items-center justify-center bg-[#EEF2FF] text-[#335CFF]">
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="24"
-                                    height="24"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    className="h-8 w-8 text-primary"
-                                    aria-hidden="true"
-                                  >
-                                    <g filter="url(#audio_svg__a)">
-                                      <path
-                                        fill="currentColor"
-                                        d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                                      />
-                                      <path
-                                        fill="url(#audio_svg__b)"
-                                        fillOpacity="0.2"
-                                        d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                                      />
-                                    </g>
-                                    <g filter="url(#audio_svg__c)">
-                                      <path
-                                        fill="#fff"
-                                        d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
-                                      />
-                                    </g>
-                                    <defs>
-                                      <filter
-                                        id="audio_svg__a"
-                                        width="24"
-                                        height="24"
-                                        x="0"
-                                        y="0"
-                                        colorInterpolationFilters="sRGB"
-                                        filterUnits="userSpaceOnUse"
-                                      >
-                                        <feFlood floodOpacity="0" result="BackgroundImageFix" />
-                                        <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-                                        <feColorMatrix
-                                          in="SourceAlpha"
-                                          result="hardAlpha"
-                                          values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                                        />
-                                        <feOffset dy="0.5" />
-                                        <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-                                        <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-                                        <feBlend in2="shape" result="effect1_innerShadow_22531_1167" />
-                                      </filter>
-                                      <filter
-                                        id="audio_svg__c"
-                                        width="14"
-                                        height="19.411"
-                                        x="5"
-                                        y="3.1"
-                                        colorInterpolationFilters="sRGB"
-                                        filterUnits="userSpaceOnUse"
-                                      >
-                                        <feFlood floodOpacity="0" result="BackgroundImageFix" />
-                                        <feColorMatrix
-                                          in="SourceAlpha"
-                                          result="hardAlpha"
-                                          values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                                        />
-                                        <feOffset dy="1" />
-                                        <feGaussianBlur stdDeviation="1" />
-                                        <feComposite in2="hardAlpha" operator="out" />
-                                        <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-                                        <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_22531_1167" />
-                                        <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_1167" result="shape" />
-                                      </filter>
-                                      <linearGradient
-                                        id="audio_svg__b"
-                                        x1="12"
-                                        x2="12"
-                                        y1="0"
-                                        y2="24"
-                                        gradientUnits="userSpaceOnUse"
-                                      >
-                                        <stop stopColor="#fff" />
-                                        <stop offset="1" stopColor="#fff" stopOpacity="0" />
-                                      </linearGradient>
-                                    </defs>
-                                  </svg>
-                                </div>
-                                )}
-                                {asset.kind !== "image" && (
-                                  <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                    {formatDuration(asset.duration)}
-                                  </span>
-                                )}
+                                Retry
                               </button>
-                              <div className="flex items-center justify-between text-[11px] text-gray-500">
-                                <span className="truncate font-medium text-gray-700">
-                                  {asset.name}
-                                </span>
-                                <span>{formatSize(asset.size)}</span>
-                              </div>
                             </div>
-                          ))}
+                          ) : gifPreviewItems.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              No GIFs available right now.
+                            </div>
+                          ) : (
+                            <div className="grid h-[384px] grid-cols-2 gap-3 auto-rows-[0px] grid-rows-3 md:h-[142px] md:grid-cols-4 md:grid-rows-1 lg:h-[180px] lg:grid-cols-3 lg:grid-rows-2">
+                              {gifPreviewItems.map((gif) => {
+                                const previewUrl = resolveGiphyPreviewUrl(gif);
+                                const title = gif.title?.trim() || "GIF";
+                                return (
+                                  <button
+                                    key={gif.id}
+                                    type="button"
+                                    className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                                    onClick={() => handleAddGif(gif)}
+                                    aria-label={`Add ${title}`}
+                                  >
+                                    {previewUrl ? (
+                                      <img
+                                        src={previewUrl}
+                                        alt={`Preview of gif ${title}`}
+                                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                        GIF
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {activeTool === "video" && (
                       <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
@@ -10416,6 +11641,103 @@ export default function AdvancedEditorPage() {
                       </div>
                     )}
                   </>
+                ) : activeTool === "elements" ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <GiphyLogo className="h-4 w-auto" />
+                          <h3 className="text-sm font-semibold text-gray-900">
+                            Stickers
+                          </h3>
+                        </div>
+                        <button
+                          className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                          type="button"
+                          onClick={() => setIsStickerLibraryExpanded(true)}
+                        >
+                          View All
+                          <svg viewBox="0 0 16 16" className="h-3 w-3">
+                            <path
+                              d="m6 12 4-4-4-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="mt-3">
+                        {!hasGiphy ? (
+                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                            Add a GIPHY API key to enable stickers.
+                          </div>
+                        ) : (stickerTrendingStatus === "idle" ||
+                          stickerTrendingStatus === "loading") &&
+                          stickerPreviewItems.length === 0 ? (
+                          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
+                            {Array.from({ length: gifPreviewCount }).map(
+                              (_, index) => (
+                                <div
+                                  key={`sticker-preview-skeleton-${index}`}
+                                  className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                                />
+                              )
+                            )}
+                          </div>
+                        ) : stickerTrendingStatus === "error" ? (
+                          <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                            <p>
+                              {stickerTrendingError ??
+                                "Unable to load stickers."}
+                            </p>
+                            <button
+                              type="button"
+                              className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                              onClick={handleStickerTrendingRetry}
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        ) : stickerPreviewItems.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                            No stickers available right now.
+                          </div>
+                        ) : (
+                          <div className="grid h-[384px] grid-cols-2 gap-3 auto-rows-[0px] grid-rows-3 md:h-[142px] md:grid-cols-4 md:grid-rows-1 lg:h-[180px] lg:grid-cols-3 lg:grid-rows-2">
+                            {stickerPreviewItems.map((sticker) => {
+                              const previewUrl = resolveGiphyPreviewUrl(sticker);
+                              const title = sticker.title?.trim() || "Sticker";
+                              return (
+                                <button
+                                  key={sticker.id}
+                                  type="button"
+                                  className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                                  onClick={() => handleAddSticker(sticker)}
+                                  aria-label={`Add ${title}`}
+                                >
+                                  {previewUrl ? (
+                                    <img
+                                      src={previewUrl}
+                                      alt={`Preview of sticker ${title}`}
+                                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                      Sticker
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
                     {activeToolLabel} tools are coming next.
@@ -12153,7 +13475,19 @@ export default function AdvancedEditorPage() {
                           selectedClipIdsSet.has(clip.id);
                         const isDragging =
                           dragClipState?.clipId === clip.id;
-                        const waveform = getWaveformBars(clip.id, 24);
+                        const waveform =
+                          lane.type === "audio"
+                            ? getAudioClipWaveformBars(
+                                clip,
+                                asset,
+                                width
+                              )
+                            : null;
+                        const waveformHeight =
+                          lane.type === "audio"
+                            ? Math.max(8, laneClipHeight - 6)
+                            : 0;
+                        const waveformColumns = waveform?.length ?? 0;
                         const thumbnailCount =
                           lane.type === "video"
                             ? getThumbnailCountForWidth(width)
@@ -12308,19 +13642,34 @@ export default function AdvancedEditorPage() {
                                 <div className="absolute inset-0 bg-[#F8FAFF]" />
                               )}
                               {lane.type === "audio" && (
-                                <div className="absolute inset-0 flex items-end gap-[2px] px-2 py-2">
-                                  {waveform.map((value, index) => (
-                                    <span
-                                      key={`${clip.id}-wave-${index}`}
-                                      className="w-1 rounded-full bg-[#7C93FF]"
-                                      style={{
-                                        height: `${Math.round(
-                                          value * (lane.height - 12)
-                                        )}px`,
-                                        opacity: 0.65,
-                                      }}
-                                    />
-                                  ))}
+                                <div className="absolute inset-0 px-2 py-2">
+                                  <span className="pointer-events-none absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-[#A5B4FC]/60" />
+                                  <div
+                                    className="grid h-full w-full items-center gap-[2px]"
+                                    style={
+                                      waveformColumns > 0
+                                        ? {
+                                            gridTemplateColumns: `repeat(${waveformColumns}, minmax(0, 1fr))`,
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    {waveform?.map((value, index) => (
+                                      <span
+                                        key={`${clip.id}-wave-${index}`}
+                                        className="relative mx-auto w-full max-w-[4px] rounded-full bg-[#6E86FF]"
+                                        style={{
+                                          height: `${Math.max(
+                                            1,
+                                            Math.round(
+                                              value * waveformHeight
+                                            )
+                                          )}px`,
+                                          opacity: 0.75,
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                               <div
@@ -12365,6 +13714,21 @@ export default function AdvancedEditorPage() {
                           </div>
                         );
                       })}
+                      {lane.id === lastAudioLaneId && (
+                        <div
+                          className="absolute left-2 right-2 bottom-1 flex h-3 cursor-row-resize items-center justify-center opacity-70 hover:opacity-100"
+                          onPointerDown={handleAudioLaneResizeStart}
+                          aria-label="Resize audio lanes"
+                        >
+                          <span
+                            className={`h-0.5 w-16 rounded-full transition ${
+                              isResizingAudioLane
+                                ? "bg-[#335CFF]"
+                                : "bg-gray-300/80"
+                            }`}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
