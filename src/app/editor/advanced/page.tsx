@@ -69,6 +69,7 @@ import {
   minCanvasHeight,
   minClipDuration,
   minLayerSize,
+  clipTransformMaxScale,
   panelButtonClass,
   panelCardClass,
   snapInterval,
@@ -2806,6 +2807,14 @@ export default function AdvancedEditorPage() {
   }, [timelineLayout, currentTime, laneIndexMap]);
 
   const wasPlayingRef = useRef(false);
+  const timelineJumpRef = useRef(false);
+  const lastTimelineTimeRef = useRef(currentTime);
+
+  useEffect(() => {
+    const delta = Math.abs(currentTime - lastTimelineTimeRef.current);
+    timelineJumpRef.current = delta > frameStepSeconds * 3;
+    lastTimelineTimeRef.current = currentTime;
+  }, [currentTime]);
 
   const projectAspectRatio = useMemo<number>(() => {
     const visuals = timelineLayout.filter(
@@ -3516,16 +3525,18 @@ export default function AdvancedEditorPage() {
       element.playbackRate = clamp(settings.speed, 0.1, 4);
       element.muted = settings.muted;
       element.volume = settings.muted ? 0 : baseVolume * fadeGain;
+      const clipTime = clamp(
+        currentTime - entry.clip.startTime + entry.clip.startOffset,
+        entry.clip.startOffset,
+        entry.clip.startOffset + entry.clip.duration
+      );
+      const shouldSeek =
+        !isPlaying || timelineJumpRef.current || element.paused;
+      if (shouldSeek && Math.abs(element.currentTime - clipTime) > 0.05) {
+        element.currentTime = clipTime;
+      }
       if (isPlaying) {
         if (element.paused) {
-          const clipTime = clamp(
-            currentTime - entry.clip.startTime + entry.clip.startOffset,
-            entry.clip.startOffset,
-            entry.clip.startOffset + entry.clip.duration
-          );
-          if (Math.abs(element.currentTime - clipTime) > 0.05) {
-            element.currentTime = clipTime;
-          }
           const playPromise = element.play();
           if (playPromise) {
             playPromise.catch(() => setIsPlaying(false));
@@ -3533,16 +3544,6 @@ export default function AdvancedEditorPage() {
         }
       } else {
         element.pause();
-      }
-      if (!isPlaying) {
-        const clipTime = clamp(
-          currentTime - entry.clip.startTime + entry.clip.startOffset,
-          entry.clip.startOffset,
-          entry.clip.startOffset + entry.clip.duration
-        );
-        if (Math.abs(element.currentTime - clipTime) > 0.05) {
-          element.currentTime = clipTime;
-        }
       }
     });
   }, [visualStack, currentTime, isPlaying, clipSettings, fallbackVideoSettings]);
@@ -3564,16 +3565,18 @@ export default function AdvancedEditorPage() {
       const baseVolume = clamp(settings.volume / 100, 0, 1);
       element.muted = settings.muted;
       element.volume = settings.muted ? 0 : baseVolume;
+      const clipTime = clamp(
+        currentTime - entry.clip.startTime + entry.clip.startOffset,
+        entry.clip.startOffset,
+        entry.clip.startOffset + entry.clip.duration
+      );
+      const shouldSeek =
+        !isPlaying || timelineJumpRef.current || element.paused;
+      if (shouldSeek && Math.abs(element.currentTime - clipTime) > 0.05) {
+        element.currentTime = clipTime;
+      }
       if (isPlaying) {
         if (element.paused) {
-          const clipTime = clamp(
-            currentTime - entry.clip.startTime + entry.clip.startOffset,
-            entry.clip.startOffset,
-            entry.clip.startOffset + entry.clip.duration
-          );
-          if (Math.abs(element.currentTime - clipTime) > 0.05) {
-            element.currentTime = clipTime;
-          }
           const playPromise = element.play();
           if (playPromise) {
             playPromise.catch(() => setIsPlaying(false));
@@ -3581,16 +3584,6 @@ export default function AdvancedEditorPage() {
         }
       } else {
         element.pause();
-      }
-      if (!isPlaying) {
-        const clipTime = clamp(
-          currentTime - entry.clip.startTime + entry.clip.startOffset,
-          entry.clip.startOffset,
-          entry.clip.startOffset + entry.clip.duration
-        );
-        if (Math.abs(element.currentTime - clipTime) > 0.05) {
-          element.currentTime = clipTime;
-        }
       }
     });
   }, [audioStack, currentTime, isPlaying, clipSettings, fallbackVideoSettings]);
@@ -6156,6 +6149,16 @@ export default function AdvancedEditorPage() {
       } else if (snapGuides) {
         setSnapGuides(null);
       }
+      const minSize = getClipMinSize(dragTransformState.clipId);
+      const allowOverflow =
+        clipAssetKindMap.get(dragTransformState.clipId) !== "text";
+      const clampOptions = allowOverflow
+        ? {
+            allowOverflow: true,
+            maxScale: clipTransformMaxScale,
+            minVisiblePx: minSize,
+          }
+        : undefined;
       const next = clampTransformToStage(
         {
           ...draftRect,
@@ -6163,7 +6166,8 @@ export default function AdvancedEditorPage() {
           y: snappedY.value / rect.height,
         },
         { width: rect.width, height: rect.height },
-        getClipMinSize(dragTransformState.clipId)
+        minSize,
+        clampOptions
       );
       clipTransformTouchedRef.current.add(dragTransformState.clipId);
       setClipTransforms((prev) => ({
@@ -6188,6 +6192,7 @@ export default function AdvancedEditorPage() {
     snapGuides,
     pushHistory,
     getClipMinSize,
+    clipAssetKindMap,
     visualStack,
     clipTransforms,
   ]);
@@ -6404,10 +6409,19 @@ export default function AdvancedEditorPage() {
         setSnapGuides(null);
       }
 
+      const minSize = getClipMinSize(resizeTransformState.clipId);
+      const clampOptions = !isTextClip
+        ? {
+            allowOverflow: true,
+            maxScale: clipTransformMaxScale,
+            minVisiblePx: minSize,
+          }
+        : undefined;
       const clamped = clampTransformToStage(
         next,
         { width: rect.width, height: rect.height },
-        getClipMinSize(resizeTransformState.clipId)
+        minSize,
+        clampOptions
       );
       clipTransformTouchedRef.current.add(resizeTransformState.clipId);
       if (isTextClip && hasHorizontal && hasVertical) {
@@ -10464,437 +10478,502 @@ export default function AdvancedEditorPage() {
           onDragLeave={() => setDragOverCanvas(false)}
           onDrop={handleCanvasDrop}
         >
-          <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
-          <div
-            className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
-            style={{ backgroundColor: "#f2f3fa" }}
-          />
-          {dragOverCanvas && (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm font-semibold text-[#335CFF]">
-              Drop to add to timeline
-            </div>
-          )}
-          {baseBackgroundTransform && (
-            <div
-              className="pointer-events-none absolute"
-              style={{
-                left: `${baseBackgroundTransform.x * 100}%`,
-                top: `${baseBackgroundTransform.y * 100}%`,
-                width: `${baseBackgroundTransform.width * 100}%`,
-                height: `${baseBackgroundTransform.height * 100}%`,
-                backgroundColor: videoBackground,
-                zIndex: 1,
-              }}
-            />
-          )}
-          {stageSelection && stageSelectionStyle && (
-            <div className="pointer-events-none absolute inset-0 z-20">
+          <div className="relative flex h-full w-full items-center justify-center">
+            <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
               <div
-                className="absolute rounded-lg border border-dashed border-[#5B6CFF] bg-[#5B6CFF]/10"
-                style={{
-                  left: stageSelectionStyle.left,
-                  top: stageSelectionStyle.top,
-                  width: stageSelectionStyle.width,
-                  height: stageSelectionStyle.height,
-                }}
+                className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
+                style={{ backgroundColor: "#f2f3fa" }}
               />
-            </div>
-          )}
-          {snapGuides && (snapGuides.x.length > 0 || snapGuides.y.length > 0) && (
-            <div className="pointer-events-none absolute inset-0 z-20">
-              {snapGuides.x.map((line) => (
+              {dragOverCanvas && (
+                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm font-semibold text-[#335CFF]">
+                  Drop to add to timeline
+                </div>
+              )}
+              {baseBackgroundTransform && (
                 <div
-                  key={`snap-x-${line}`}
-                  className="absolute top-0 bottom-0 w-px bg-[#5B6CFF]/70"
-                  style={{ left: `${line}px` }}
-                />
-              ))}
-              {snapGuides.y.map((line) => (
-                <div
-                  key={`snap-y-${line}`}
-                  className="absolute left-0 right-0 h-px bg-[#5B6CFF]/70"
-                  style={{ top: `${line}px` }}
-                />
-              ))}
-            </div>
-          )}
-          {showEmptyState ? (
-          <div className="relative z-10 flex flex-col items-center gap-3 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
-              <svg viewBox="0 0 24 24" className="h-8 w-8">
-                <path
-                  d="M12 4v10m0 0-4-4m4 4 4-4M5 18h14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold">
-                Drop your first clip
-              </h2>
-              <p className="text-sm text-gray-500">
-                Upload media to preview it here
-              </p>
-            </div>
-            <button
-              type="button"
-              className="rounded-lg bg-[#335CFF] px-4 py-2 text-sm font-semibold text-white"
-              onClick={handleUploadClick}
-            >
-              Upload media
-            </button>
-          </div>
-        ) : visualStack.length > 0 ? (
-          <div className="relative z-10 h-full w-full">
-            {visualStack.map((entry, index) => {
-              const transform = resolveClipTransform(
-                entry.clip.id,
-                entry.asset
-              );
-              const isSelected = selectedClipIdsSet.has(entry.clip.id);
-              const isActive = activeCanvasClipId === entry.clip.id;
-              const videoSettings =
-                entry.asset.kind === "video"
-                  ? clipSettings[entry.clip.id] ?? fallbackVideoSettings
-                  : null;
-              const textClipSettings =
-                entry.asset.kind === "text"
-                  ? textSettings[entry.clip.id] ?? fallbackTextSettings
-                  : null;
-              const textRenderStyles = textClipSettings
-                ? getTextRenderStyles(textClipSettings)
-                : null;
-              const isEditingText = editingTextClipId === entry.clip.id;
-              const resolvedTextValue =
-                textClipSettings?.text ?? entry.asset.name;
-              const videoStyles = videoSettings
-                ? getVideoStyles(videoSettings)
-                : null;
-              const noiseLevel = videoSettings?.noise ?? 0;
-              const vignetteLevel = videoSettings?.vignette ?? 0;
-              const clipZ = index + 2;
-              const clipRotation = transform.rotation ?? 0;
-              return (
-                <div
-                  key={entry.clip.id}
-                  className="absolute"
+                  className="pointer-events-none absolute"
                   style={{
-                    left: `${transform.x * 100}%`,
-                    top: `${transform.y * 100}%`,
-                    width: `${transform.width * 100}%`,
-                    height: `${transform.height * 100}%`,
-                    zIndex: clipZ,
-                    transform: clipRotation ? `rotate(${clipRotation}deg)` : undefined,
-                    transformOrigin: 'center center',
+                    left: `${baseBackgroundTransform.x * 100}%`,
+                    top: `${baseBackgroundTransform.y * 100}%`,
+                    width: `${baseBackgroundTransform.width * 100}%`,
+                    height: `${baseBackgroundTransform.height * 100}%`,
+                    backgroundColor: videoBackground,
+                    zIndex: 1,
                   }}
-                >
-                  <div
-                    className={`relative h-full w-full ${isActive
-                      ? "cursor-move"
-                      : entry.asset.kind === "text"
-                        ? "cursor-text"
-                        : "cursor-pointer"
-                      }`}
-                    onPointerDown={(event) =>
-                      handleLayerPointerDown(event, entry)
-                    }
-                    onContextMenu={(event) =>
-                      handleClipContextMenu(event, entry)
-                    }
-                    onDoubleClick={(event) => {
-                      if (entry.asset.kind !== "text") {
-                        return;
-                      }
-                      handleTextLayerDoubleClick(event, entry);
-                    }}
+                />
+              )}
+              {showEmptyState ? (
+                <div className="relative z-10 flex flex-col items-center gap-3 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
+                    <svg viewBox="0 0 24 24" className="h-8 w-8">
+                      <path
+                        d="M12 4v10m0 0-4-4m4 4 4-4M5 18h14"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      Drop your first clip
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      Upload media to preview it here
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-[#335CFF] px-4 py-2 text-sm font-semibold text-white"
+                    onClick={handleUploadClick}
                   >
-                    {entry.asset.kind === "text" ? (
-                      <div className="absolute inset-0 flex items-center justify-center overflow-hidden px-3">
-                        <div className="w-full" style={textRenderStyles?.containerStyle}>
-                          {isEditingText ? (
-                            <textarea
-                              ref={stageTextEditorRef}
-                              value={resolvedTextValue}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                if (selectedTextEntry?.clip.id === entry.clip.id) {
-                                  setTextPanelDraft(value);
-                                }
-                                updateTextSettings(entry.clip.id, (current) => ({
-                                  ...current,
-                                  text: value,
-                                }));
-                              }}
-                              onBlur={() => setEditingTextClipId(null)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Escape") {
-                                  event.preventDefault();
-                                  setEditingTextClipId(null);
-                                }
-                                if (
-                                  (event.metaKey || event.ctrlKey) &&
-                                  event.key === "Enter"
-                                ) {
-                                  event.preventDefault();
-                                  setEditingTextClipId(null);
-                                }
-                              }}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              className="h-full w-full resize-none bg-transparent text-sm font-medium focus-visible:outline-none"
-                              style={{
-                                ...textRenderStyles?.textStyle,
-                                backgroundColor: "transparent",
-                                padding: 0,
-                                borderRadius: 0,
-                                display: "block",
-                                textShadow: "none",
-                                WebkitTextStrokeWidth: 0,
-                                textAlign: textClipSettings?.align,
-                              }}
-                            />
-                          ) : (
-                            <span
-                              className="max-w-full"
-                              style={textRenderStyles?.textStyle}
-                            >
-                              {resolvedTextValue}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
+                    Upload media
+                  </button>
+                </div>
+              ) : visualStack.length > 0 ? (
+                <div className="relative z-10 h-full w-full">
+                  {visualStack.map((entry, index) => {
+                    const transform = resolveClipTransform(
+                      entry.clip.id,
+                      entry.asset
+                    );
+                    const isActive = activeCanvasClipId === entry.clip.id;
+                    const videoSettings =
+                      entry.asset.kind === "video"
+                        ? clipSettings[entry.clip.id] ?? fallbackVideoSettings
+                        : null;
+                    const textClipSettings =
+                      entry.asset.kind === "text"
+                        ? textSettings[entry.clip.id] ?? fallbackTextSettings
+                        : null;
+                    const textRenderStyles = textClipSettings
+                      ? getTextRenderStyles(textClipSettings)
+                      : null;
+                    const isEditingText = editingTextClipId === entry.clip.id;
+                    const resolvedTextValue =
+                      textClipSettings?.text ?? entry.asset.name;
+                    const videoStyles = videoSettings
+                      ? getVideoStyles(videoSettings)
+                      : null;
+                    const noiseLevel = videoSettings?.noise ?? 0;
+                    const vignetteLevel = videoSettings?.vignette ?? 0;
+                    const clipZ = index + 2;
+                    const clipRotation = transform.rotation ?? 0;
+                    return (
                       <div
-                        className="absolute inset-0 overflow-hidden"
-                        style={videoStyles?.frameStyle}
+                        key={entry.clip.id}
+                        className="absolute"
+                        style={{
+                          left: `${transform.x * 100}%`,
+                          top: `${transform.y * 100}%`,
+                          width: `${transform.width * 100}%`,
+                          height: `${transform.height * 100}%`,
+                          zIndex: clipZ,
+                          transform: clipRotation
+                            ? `rotate(${clipRotation}deg)`
+                            : undefined,
+                          transformOrigin: "center center",
+                        }}
                       >
                         <div
-                          className="absolute inset-0"
-                          style={videoStyles?.mediaStyle}
+                          className={`relative h-full w-full ${
+                            isActive
+                              ? "cursor-move"
+                              : entry.asset.kind === "text"
+                                ? "cursor-text"
+                                : "cursor-pointer"
+                          }`}
+                          onPointerDown={(event) =>
+                            handleLayerPointerDown(event, entry)
+                          }
+                          onContextMenu={(event) =>
+                            handleClipContextMenu(event, entry)
+                          }
+                          onDoubleClick={(event) => {
+                            if (entry.asset.kind !== "text") {
+                              return;
+                            }
+                            handleTextLayerDoubleClick(event, entry);
+                          }}
                         >
-                          {entry.asset.kind === "image" ? (
-                            <img
-                              src={entry.asset.url}
-                              alt={entry.asset.name}
-                              className="h-full w-full object-cover"
-                              draggable={false}
-                            />
+                          {entry.asset.kind === "text" ? (
+                            <div className="absolute inset-0 flex items-center justify-center overflow-hidden px-3">
+                              <div
+                                className="w-full"
+                                style={textRenderStyles?.containerStyle}
+                              >
+                                {isEditingText ? (
+                                  <textarea
+                                    ref={stageTextEditorRef}
+                                    value={resolvedTextValue}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      if (
+                                        selectedTextEntry?.clip.id ===
+                                        entry.clip.id
+                                      ) {
+                                        setTextPanelDraft(value);
+                                      }
+                                      updateTextSettings(
+                                        entry.clip.id,
+                                        (current) => ({
+                                          ...current,
+                                          text: value,
+                                        })
+                                      );
+                                    }}
+                                    onBlur={() => setEditingTextClipId(null)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Escape") {
+                                        event.preventDefault();
+                                        setEditingTextClipId(null);
+                                      }
+                                      if (
+                                        (event.metaKey || event.ctrlKey) &&
+                                        event.key === "Enter"
+                                      ) {
+                                        event.preventDefault();
+                                        setEditingTextClipId(null);
+                                      }
+                                    }}
+                                    onPointerDown={(event) =>
+                                      event.stopPropagation()
+                                    }
+                                    className="h-full w-full resize-none bg-transparent text-sm font-medium focus-visible:outline-none"
+                                    style={{
+                                      ...textRenderStyles?.textStyle,
+                                      backgroundColor: "transparent",
+                                      padding: 0,
+                                      borderRadius: 0,
+                                      display: "block",
+                                      textShadow: "none",
+                                      WebkitTextStrokeWidth: 0,
+                                      textAlign: textClipSettings?.align,
+                                    }}
+                                  />
+                                ) : (
+                                  <span
+                                    className="max-w-full"
+                                    style={textRenderStyles?.textStyle}
+                                  >
+                                    {resolvedTextValue}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           ) : (
-                            <video
-                              key={entry.clip.id}
-                              ref={registerVideoRef(
-                                entry.clip.id,
-                                entry.asset.id
+                            <div
+                              className="absolute inset-0 overflow-hidden"
+                              style={videoStyles?.frameStyle}
+                            >
+                              <div
+                                className="absolute inset-0"
+                                style={videoStyles?.mediaStyle}
+                              >
+                                {entry.asset.kind === "image" ? (
+                                  <img
+                                    src={entry.asset.url}
+                                    alt={entry.asset.name}
+                                    className="h-full w-full object-cover"
+                                    draggable={false}
+                                  />
+                                ) : (
+                                  <video
+                                    key={entry.clip.id}
+                                    ref={registerVideoRef(
+                                      entry.clip.id,
+                                      entry.asset.id
+                                    )}
+                                    src={entry.asset.url}
+                                    className="h-full w-full object-cover"
+                                    playsInline
+                                    preload="metadata"
+                                    onLoadedMetadata={(event) =>
+                                      updateVideoMetaFromElement(
+                                        entry.clip.id,
+                                        entry.asset.id,
+                                        event.currentTarget
+                                      )
+                                    }
+                                    draggable={false}
+                                  />
+                                )}
+                              </div>
+                              {videoStyles && noiseLevel > 0 && (
+                                <div
+                                  className="pointer-events-none absolute inset-0 mix-blend-soft-light"
+                                  style={videoStyles.noiseStyle}
+                                />
                               )}
-                              src={entry.asset.url}
-                              className="h-full w-full object-cover"
-                              playsInline
-                              preload="metadata"
-                              onLoadedMetadata={(event) =>
-                                updateVideoMetaFromElement(
-                                  entry.clip.id,
-                                  entry.asset.id,
-                                  event.currentTarget
-                                )
-                              }
-                              draggable={false}
-                            />
+                              {videoStyles && vignetteLevel > 0 && (
+                                <div
+                                  className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0)_55%,_rgba(0,0,0,0.6)_100%)]"
+                                  style={videoStyles.vignetteStyle}
+                                />
+                              )}
+                            </div>
                           )}
                         </div>
-                        {videoStyles && noiseLevel > 0 && (
-                          <div
-                            className="pointer-events-none absolute inset-0 mix-blend-soft-light"
-                            style={videoStyles.noiseStyle}
-                          />
-                        )}
-                        {videoStyles && vignetteLevel > 0 && (
-                          <div
-                            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0)_55%,_rgba(0,0,0,0.6)_100%)]"
-                            style={videoStyles.vignetteStyle}
-                          />
-                        )}
                       </div>
-                    )}
-                    {isSelected && (
-                      <div className="pointer-events-none absolute inset-0 border-2 border-[#335CFF] shadow-[0_0_0_1px_rgba(51,92,255,0.35)]" />
-                    )}
-                    {isActive && (
-                      <div className="absolute inset-0">
-                        {/* Rotation handle */}
-                        <button
-                          type="button"
-                          className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center cursor-grab active:cursor-grabbing"
-                          style={{
-                            top: '-28px',
-                            width: '20px',
-                            height: '20px',
-                            touchAction: 'none',
-                          }}
-                          onPointerDown={(event) =>
-                            handleRotateStart(event, entry)
-                          }
-                          aria-label="Rotate"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="14"
-                            height="14"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            className="text-[#8F9199] hover:text-[#335CFF] transition-colors"
-                          >
-                            <path
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M20.87 13.274A8.958 8.958 0 0 0 4.232 7.516m16.638 5.758 2.294-2.488m-2.294 2.488-2.6-2.399m-15.14-.149a8.959 8.959 0 0 0 16.64 5.753M3.13 10.726.836 13.214m2.294-2.488 2.6 2.399"
-                            />
-                          </svg>
-                        </button>
-                        {/* Connecting line from rotation handle to top edge */}
-                        <div
-                          className="absolute left-1/2 -translate-x-1/2 w-px bg-[#335CFF]/40"
-                          style={{
-                            top: '-12px',
-                            height: '12px',
-                          }}
-                        />
-                        {/* Resize handles */}
-                        {transformHandles.map((handle) => (
-                          <button
-                            key={`${entry.clip.id}-${handle.id}`}
-                            type="button"
-                            className={`absolute border border-[#335CFF] bg-white shadow-sm ${handle.className} ${handle.cursor} ${
-                              handle.isCorner
-                                ? 'h-3 w-3 rounded-full'
-                                : handle.id === 'n' || handle.id === 's'
-                                  ? 'h-1.5 w-8 rounded-full'
-                                  : 'h-8 w-1.5 rounded-full'
-                            }`}
-                            onPointerDown={(event) =>
-                              handleResizeStart(
-                                event,
-                                entry,
-                                handle.id
-                              )
-                            }
-                            aria-label={`Resize ${handle.id}`}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        ) : activeAsset?.kind === "audio" ? (
-          <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4">
-            <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-[#E7EDFF] text-[#335CFF]">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                fill="none"
-                viewBox="0 0 24 24"
-                className="h-10 w-10 text-primary"
-                aria-hidden="true"
-              >
-                <g filter="url(#audio_svg__a)">
-                  <path
-                    fill="currentColor"
-                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                  />
-                  <path
-                    fill="url(#audio_svg__b)"
-                    fillOpacity="0.2"
-                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                  />
-                </g>
-                <g filter="url(#audio_svg__c)">
-                  <path
-                    fill="#fff"
-                    d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
-                  />
-                </g>
-                <defs>
-                  <filter
-                    id="audio_svg__a"
-                    width="24"
-                    height="24"
-                    x="0"
-                    y="0"
-                    colorInterpolationFilters="sRGB"
-                    filterUnits="userSpaceOnUse"
-                  >
-                    <feFlood floodOpacity="0" result="BackgroundImageFix" />
-                    <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-                    <feColorMatrix
-                      in="SourceAlpha"
-                      result="hardAlpha"
-                      values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                    />
-                    <feOffset dy="0.5" />
-                    <feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic" />
-                    <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
-                    <feBlend in2="shape" result="effect1_innerShadow_22531_1167" />
-                  </filter>
-                  <filter
-                    id="audio_svg__c"
-                    width="14"
-                    height="19.411"
-                    x="5"
-                    y="3.1"
-                    colorInterpolationFilters="sRGB"
-                    filterUnits="userSpaceOnUse"
-                  >
-                    <feFlood floodOpacity="0" result="BackgroundImageFix" />
-                    <feColorMatrix
-                      in="SourceAlpha"
-                      result="hardAlpha"
-                      values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                    />
-                    <feOffset dy="1" />
-                    <feGaussianBlur stdDeviation="1" />
-                    <feComposite in2="hardAlpha" operator="out" />
-                    <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
-                    <feBlend in2="BackgroundImageFix" result="effect1_dropShadow_22531_1167" />
-                    <feBlend in="SourceGraphic" in2="effect1_dropShadow_22531_1167" result="shape" />
-                  </filter>
-                  <linearGradient
-                    id="audio_svg__b"
-                    x1="12"
-                    x2="12"
-                    y1="0"
-                    y2="24"
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <stop stopColor="#fff" />
-                    <stop offset="1" stopColor="#fff" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-              </svg>
+              ) : activeAsset?.kind === "audio" ? (
+                <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-[#E7EDFF] text-[#335CFF]">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="24"
+                      height="24"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      className="h-10 w-10 text-primary"
+                      aria-hidden="true"
+                    >
+                      <g filter="url(#audio_svg__a)">
+                        <path
+                          fill="currentColor"
+                          d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                        />
+                        <path
+                          fill="url(#audio_svg__b)"
+                          fillOpacity="0.2"
+                          d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                        />
+                      </g>
+                      <g filter="url(#audio_svg__c)">
+                        <path
+                          fill="#fff"
+                          d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
+                        />
+                      </g>
+                      <defs>
+                        <filter
+                          id="audio_svg__a"
+                          width="24"
+                          height="24"
+                          x="0"
+                          y="0"
+                          colorInterpolationFilters="sRGB"
+                          filterUnits="userSpaceOnUse"
+                        >
+                          <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                          <feBlend
+                            in="SourceGraphic"
+                            in2="BackgroundImageFix"
+                            result="shape"
+                          />
+                          <feColorMatrix
+                            in="SourceAlpha"
+                            result="hardAlpha"
+                            values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                          />
+                          <feOffset dy="0.5" />
+                          <feComposite
+                            in2="hardAlpha"
+                            k2="-1"
+                            k3="1"
+                            operator="arithmetic"
+                          />
+                          <feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.1 0" />
+                          <feBlend
+                            in2="shape"
+                            result="effect1_innerShadow_22531_1167"
+                          />
+                        </filter>
+                        <filter
+                          id="audio_svg__c"
+                          width="14"
+                          height="19.411"
+                          x="5"
+                          y="3.1"
+                          colorInterpolationFilters="sRGB"
+                          filterUnits="userSpaceOnUse"
+                        >
+                          <feFlood floodOpacity="0" result="BackgroundImageFix" />
+                          <feColorMatrix
+                            in="SourceAlpha"
+                            result="hardAlpha"
+                            values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                          />
+                          <feOffset dy="1" />
+                          <feGaussianBlur stdDeviation="1" />
+                          <feComposite in2="hardAlpha" operator="out" />
+                          <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0" />
+                          <feBlend
+                            in2="BackgroundImageFix"
+                            result="effect1_dropShadow_22531_1167"
+                          />
+                          <feBlend
+                            in="SourceGraphic"
+                            in2="effect1_dropShadow_22531_1167"
+                            result="shape"
+                          />
+                        </filter>
+                        <linearGradient
+                          id="audio_svg__b"
+                          x1="12"
+                          x2="12"
+                          y1="0"
+                          y2="24"
+                          gradientUnits="userSpaceOnUse"
+                        >
+                          <stop stopColor="#fff" />
+                          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
+                  <p className="text-sm text-gray-500">Audio preview ready</p>
+                </div>
+              ) : null}
+              {audioStack.length > 0 && (
+                <div className="absolute inset-0 pointer-events-none opacity-0">
+                  {audioStack.map((entry) => {
+                    return (
+                      <audio
+                        key={entry.clip.id}
+                        ref={registerAudioRef(entry.clip.id)}
+                        src={entry.asset.url}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <p className="text-sm text-gray-500">Audio preview ready</p>
-          </div>
-        ) : null}
-        {audioStack.length > 0 && (
-          <div className="absolute inset-0 pointer-events-none opacity-0">
-            {audioStack.map((entry) => {
-              return (
-                <audio
-                  key={entry.clip.id}
-                  ref={registerAudioRef(entry.clip.id)}
-                  src={entry.asset.url}
-                />
-              );
-            })}
-          </div>
-        )}
+            <div className="pointer-events-none absolute inset-0 z-20 overflow-visible">
+              {stageSelection && stageSelectionStyle && (
+                <div className="pointer-events-none absolute inset-0">
+                  <div
+                    className="absolute rounded-lg border border-dashed border-[#5B6CFF] bg-[#5B6CFF]/10"
+                    style={{
+                      left: stageSelectionStyle.left,
+                      top: stageSelectionStyle.top,
+                      width: stageSelectionStyle.width,
+                      height: stageSelectionStyle.height,
+                    }}
+                  />
+                </div>
+              )}
+              {snapGuides &&
+                (snapGuides.x.length > 0 || snapGuides.y.length > 0) && (
+                  <div className="pointer-events-none absolute inset-0">
+                    {snapGuides.x.map((line) => (
+                      <div
+                        key={`snap-x-${line}`}
+                        className="absolute top-0 bottom-0 w-px bg-[#5B6CFF]/70"
+                        style={{ left: `${line}px` }}
+                      />
+                    ))}
+                    {snapGuides.y.map((line) => (
+                      <div
+                        key={`snap-y-${line}`}
+                        className="absolute left-0 right-0 h-px bg-[#5B6CFF]/70"
+                        style={{ top: `${line}px` }}
+                      />
+                    ))}
+                  </div>
+                )}
+              {visualStack.length > 0 && (
+                <div className="relative h-full w-full">
+                  {visualStack.map((entry, index) => {
+                    const transform = resolveClipTransform(
+                      entry.clip.id,
+                      entry.asset
+                    );
+                    const isSelected = selectedClipIdsSet.has(entry.clip.id);
+                    const isActive = activeCanvasClipId === entry.clip.id;
+                    if (!isSelected && !isActive) {
+                      return null;
+                    }
+                    const clipZ = index + 2;
+                    const clipRotation = transform.rotation ?? 0;
+                    return (
+                      <div
+                        key={`${entry.clip.id}-overlay`}
+                        className="absolute"
+                        style={{
+                          left: `${transform.x * 100}%`,
+                          top: `${transform.y * 100}%`,
+                          width: `${transform.width * 100}%`,
+                          height: `${transform.height * 100}%`,
+                          zIndex: clipZ,
+                          transform: clipRotation
+                            ? `rotate(${clipRotation}deg)`
+                            : undefined,
+                          transformOrigin: "center center",
+                        }}
+                      >
+                        {isSelected && (
+                          <div className="pointer-events-none absolute inset-0 border-2 border-[#335CFF] shadow-[0_0_0_1px_rgba(51,92,255,0.35)]" />
+                        )}
+                        {isActive && (
+                          <div className="absolute inset-0">
+                            <button
+                              type="button"
+                              className="pointer-events-auto absolute left-1/2 -translate-x-1/2 flex items-center justify-center cursor-grab active:cursor-grabbing"
+                              style={{
+                                top: "-28px",
+                                width: "20px",
+                                height: "20px",
+                                touchAction: "none",
+                              }}
+                              onPointerDown={(event) =>
+                                handleRotateStart(event, entry)
+                              }
+                              aria-label="Rotate"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                className="text-[#8F9199] hover:text-[#335CFF] transition-colors"
+                              >
+                                <path
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M20.87 13.274A8.958 8.958 0 0 0 4.232 7.516m16.638 5.758 2.294-2.488m-2.294 2.488-2.6-2.399m-15.14-.149a8.959 8.959 0 0 0 16.64 5.753M3.13 10.726.836 13.214m2.294-2.488 2.6 2.399"
+                                />
+                              </svg>
+                            </button>
+                            <div
+                              className="pointer-events-none absolute left-1/2 -translate-x-1/2 w-px bg-[#335CFF]/40"
+                              style={{
+                                top: "-12px",
+                                height: "12px",
+                              }}
+                            />
+                            {transformHandles.map((handle) => (
+                              <button
+                                key={`${entry.clip.id}-${handle.id}-overlay`}
+                                type="button"
+                                className={`pointer-events-auto absolute border border-[#335CFF] bg-white shadow-sm ${handle.className} ${handle.cursor} ${
+                                  handle.isCorner
+                                    ? "h-3 w-3 rounded-full"
+                                    : handle.id === "n" || handle.id === "s"
+                                      ? "h-1.5 w-8 rounded-full"
+                                      : "h-8 w-1.5 rounded-full"
+                                }`}
+                                onPointerDown={(event) =>
+                                  handleResizeStart(event, entry, handle.id)
+                                }
+                                aria-label={`Resize ${handle.id}`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         {floatingMenu.open && floatingMenuEntry && (
           <div

@@ -204,14 +204,40 @@ export const createDefaultTextTransform = (stageAspectRatio: number): ClipTransf
 export const clampTransformToStage = (
   rect: ClipTransform,
   stage: { width: number; height: number },
-  minSizePx: number
+  minSizePx: number,
+  options?: {
+    allowOverflow?: boolean;
+    maxScale?: number;
+    minVisiblePx?: number;
+  }
 ) => {
   const minWidth = Math.min(0.9, minSizePx / stage.width);
   const minHeight = Math.min(0.9, minSizePx / stage.height);
-  const width = clamp(rect.width, minWidth, 1);
-  const height = clamp(rect.height, minHeight, 1);
-  const x = clamp(rect.x, 0, 1 - width);
-  const y = clamp(rect.y, 0, 1 - height);
+  const allowOverflow = options?.allowOverflow ?? false;
+  const maxScale = options?.maxScale ?? 1;
+  const maxWidth = Math.max(minWidth, allowOverflow ? maxScale : 1);
+  const maxHeight = Math.max(minHeight, allowOverflow ? maxScale : 1);
+  const width = clamp(rect.width, minWidth, maxWidth);
+  const height = clamp(rect.height, minHeight, maxHeight);
+  if (!allowOverflow) {
+    const x = clamp(rect.x, 0, 1 - width);
+    const y = clamp(rect.y, 0, 1 - height);
+    return {
+      x,
+      y,
+      width,
+      height,
+    };
+  }
+  const minVisiblePx = options?.minVisiblePx ?? minSizePx;
+  const minVisibleWidth = Math.min(width, minVisiblePx / stage.width);
+  const minVisibleHeight = Math.min(height, minVisiblePx / stage.height);
+  const minX = -width + minVisibleWidth;
+  const maxX = 1 - minVisibleWidth;
+  const minY = -height + minVisibleHeight;
+  const maxY = 1 - minVisibleHeight;
+  const x = clamp(rect.x, minX, maxX);
+  const y = clamp(rect.y, minY, maxY);
   return {
     x,
     y,

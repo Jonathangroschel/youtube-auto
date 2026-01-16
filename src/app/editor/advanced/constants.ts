@@ -16,6 +16,7 @@ export const defaultTimelineHeight = 260;
 export const minCanvasHeight = 80;
 export const timelineHandleHeight = 16;
 export const minLayerSize = 80;
+export const clipTransformMaxScale = 4;
 export const snapThresholdPx = 8;
 
 export const laneHeights: Record<LaneType, number> = {
