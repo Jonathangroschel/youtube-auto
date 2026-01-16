@@ -2897,24 +2897,15 @@ export default function AdvancedEditorPage() {
     );
   }, [timelineLayout, visualClipEntry]);
 
-  const resolveBackgroundTransform = useCallback(
-    (clipId: string, asset: MediaAsset) => {
-      return (
-        backgroundTransforms[clipId] ??
-        createDefaultTransform(asset.aspectRatio, stageAspectRatio)
-      );
-    },
-    [backgroundTransforms, stageAspectRatio]
-  );
+  const resolveBackgroundTransform = useCallback(() => {
+    return { x: 0, y: 0, width: 1, height: 1 };
+  }, []);
 
   const baseBackgroundTransform = useMemo(() => {
     if (!baseVisualEntry) {
       return null;
     }
-    return resolveBackgroundTransform(
-      baseVisualEntry.clip.id,
-      baseVisualEntry.asset
-    );
+    return resolveBackgroundTransform();
   }, [baseVisualEntry, resolveBackgroundTransform]);
 
   useEffect(() => {
