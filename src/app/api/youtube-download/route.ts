@@ -6,9 +6,6 @@ export const runtime = "nodejs";
 
 const SUPABASE_BUCKET = "youtube-downloads";
 
-// Timeout for Apify actor (2 minutes to be safe)
-const ACTOR_TIMEOUT_SECS = 120;
-
 type ApifyResultItem = {
   title?: string;
   videoId?: string;
@@ -208,17 +205,13 @@ export async function POST(request: Request) {
     const client = new ApifyClient({ token: apiToken });
     
     // Run the YouTube downloader actor (z4hUd9qNTetQtzEcK)
+    // Note: call() waits for completion by default. Vercel functions have their own timeout.
     console.log("Starting Apify actor for URL:", url, "Quality:", quality);
-    const run = await client.actor("z4hUd9qNTetQtzEcK").call(
-      {
-        urls: [{ url }],
-        quality,
-        proxy: { useApifyProxy: true },
-      },
-      {
-        timeoutSecs: ACTOR_TIMEOUT_SECS,
-      }
-    );
+    const run = await client.actor("z4hUd9qNTetQtzEcK").call({
+      urls: [{ url }],
+      quality,
+      proxy: { useApifyProxy: true },
+    });
 
     if (!run?.defaultDatasetId) {
       return NextResponse.json(
