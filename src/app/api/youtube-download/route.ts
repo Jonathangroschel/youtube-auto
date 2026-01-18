@@ -186,7 +186,10 @@ export async function POST(request: Request) {
   }
 
   const videoId = extractVideoId(url);
-  const quality = payload?.quality || "1080p";
+  // Valid quality options: "high", "medium", "low", "metadata"
+  const validQualities = ["high", "medium", "low", "metadata"];
+  const requestedQuality = payload?.quality?.toLowerCase() || "medium";
+  const quality = validQualities.includes(requestedQuality) ? requestedQuality : "medium";
 
   try {
     // Get video title via oEmbed first

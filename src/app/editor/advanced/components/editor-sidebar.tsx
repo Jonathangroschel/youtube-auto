@@ -328,6 +328,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [youtubeClipStart, setYoutubeClipStart] = useState("");
   const [youtubeClipEnd, setYoutubeClipEnd] = useState("");
   const [youtubeLocation, setYoutubeLocation] = useState("US");
+  const [youtubeQuality, setYoutubeQuality] = useState<"high" | "medium" | "low">("medium");
   const [youtubeError, setYoutubeError] = useState<string | null>(null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [tiktokUrl, setTiktokUrl] = useState("");
@@ -399,6 +400,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
         startSeconds,
         endSeconds,
         location: location.length > 0 ? location : undefined,
+        quality: youtubeQuality,
       });
       setYoutubeUrl("");
       setYoutubeClipStart("");
@@ -5701,6 +5703,28 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               aria-label="Clip end time"
                               disabled={youtubeLoading}
                             />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-[#7A8699]">
+                            Quality
+                          </label>
+                          <div className="flex gap-1">
+                            {(["high", "medium", "low"] as const).map((q) => (
+                              <button
+                                key={q}
+                                type="button"
+                                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                                  youtubeQuality === q
+                                    ? "bg-[#5E81AC] text-white"
+                                    : "border border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#5E81AC] hover:text-[#5E81AC]"
+                                }`}
+                                onClick={() => setYoutubeQuality(q)}
+                                disabled={youtubeLoading}
+                              >
+                                {q.charAt(0).toUpperCase() + q.slice(1)}
+                              </button>
+                            ))}
                           </div>
                         </div>
                         <div className="flex items-center justify-end">

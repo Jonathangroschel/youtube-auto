@@ -6483,11 +6483,13 @@ export default function AdvancedEditorPage() {
       startSeconds,
       endSeconds,
       location,
+      quality,
     }: {
       url: string;
       startSeconds?: number | null;
       endSeconds?: number | null;
       location?: string;
+      quality?: "high" | "medium" | "low";
     }) => {
       const response = await fetch("/api/youtube-download", {
         method: "POST",
@@ -6497,6 +6499,7 @@ export default function AdvancedEditorPage() {
         body: JSON.stringify({
           url,
           location,
+          quality: quality || "medium",
         }),
       });
 
