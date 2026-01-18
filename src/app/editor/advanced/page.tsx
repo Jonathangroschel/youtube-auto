@@ -182,6 +182,7 @@ type SubtitleSegment = {
   startTime: number;
   endTime: number;
   sourceClipId: string | null;
+  words?: TimedWord[];
 };
 
 type TimedEntry = {
@@ -206,6 +207,62 @@ type TimedSegment = {
   end: number;
   text: string;
   speaker?: string;
+  words?: TimedWord[];
+};
+
+const escapeSubtitleHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "\"":
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
+
+const buildHighlightedSubtitleHtml = (
+  words: Array<{ word?: string; text?: string }>,
+  activeIndex: number,
+  highlightColor: string
+) => {
+  const color = highlightColor || "#FDE047";
+  return words
+    .map((entry, index) => {
+      const token = escapeSubtitleHtml(
+        String(entry.word ?? entry.text ?? "")
+      ).trim();
+      if (!token) {
+        return "";
+      }
+      if (index === activeIndex) {
+        return `<span style="color: ${color};">${token}</span>`;
+      }
+      return `<span>${token}</span>`;
+    })
+    .filter(Boolean)
+    .join(" ");
+};
+
+const findActiveWordIndex = (
+  words: Array<{ start: number; end: number }>,
+  time: number,
+  epsilon = 0.02
+) => {
+  for (let i = 0; i < words.length; i += 1) {
+    const word = words[i];
+    if (time >= word.start - epsilon && time < word.end + epsilon) {
+      return i;
+    }
+  }
+  return -1;
 };
 
 const subtitleLanguages: SubtitleLanguageOption[] = [
@@ -452,12 +509,20 @@ export default function AdvancedEditorPage() {
     "style" | "edit"
   >("style");
   const [subtitleStyleFilter, setSubtitleStyleFilter] = useState("All");
+  const defaultSubtitleStyleId =
+    subtitleStylePresets.find((preset) => preset.id === "clean-cut")?.id ??
+    subtitleStylePresets[0]?.id ??
+    null;
   const [subtitleStyleId, setSubtitleStyleId] = useState<string | null>(
-    subtitleStylePresets[0]?.id ?? null
+    defaultSubtitleStyleId
   );
+  const [subtitleStyleOverrides, setSubtitleStyleOverrides] = useState<
+    Record<string, { settings?: Partial<TextClipSettings>; preview?: TextStylePreset["preview"] }>
+  >({});
   const [detachedSubtitleIds, setDetachedSubtitleIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [subtitleMoveTogether, setSubtitleMoveTogether] = useState(true);
   const [, startTransition] = useTransition();
   const textPanelTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const stageTextEditorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -493,6 +558,13 @@ export default function AdvancedEditorPage() {
   const lanesRef = useRef<TimelineLane[]>([]);
   const subtitleLaneIdRef = useRef<string | null>(null);
   const subtitleGroupTransformsRef = useRef<Map<string, ClipTransform> | null>(
+    null
+  );
+  const subtitleResizeGroupTransformsRef = useRef<Map<string, ClipTransform> | null>(
+    null
+  );
+  const subtitleResizeFontMapRef = useRef<Map<string, number> | null>(null);
+  const subtitleRotateGroupTransformsRef = useRef<Map<string, ClipTransform> | null>(
     null
   );
   const textSettingsRef = useRef<Record<string, TextClipSettings>>({});
@@ -633,6 +705,28 @@ export default function AdvancedEditorPage() {
       shadowOpacity: 30,
     };
   }, []);
+  const resolvedSubtitleStylePresets = useMemo(() => {
+    if (!subtitleStyleOverrides || Object.keys(subtitleStyleOverrides).length === 0) {
+      return subtitleStylePresets;
+    }
+    return subtitleStylePresets.map((preset) => {
+      const override = subtitleStyleOverrides[preset.id];
+      if (!override) {
+        return preset;
+      }
+      return {
+        ...preset,
+        settings: {
+          ...preset.settings,
+          ...override.settings,
+        },
+        preview: {
+          ...preset.preview,
+          ...override.preview,
+        },
+      };
+    });
+  }, [subtitleStyleOverrides]);
   const hasSupabase =
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -2225,6 +2319,21 @@ export default function AdvancedEditorPage() {
   const subtitleClipIdSet = useMemo(() => {
     return new Set(subtitleSegments.map((segment) => segment.clipId));
   }, [subtitleSegments]);
+  const subtitleSourceClipMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    subtitleSegments.forEach((segment) => {
+      if (!segment.sourceClipId) {
+        return;
+      }
+      const existing = map.get(segment.sourceClipId);
+      if (existing) {
+        existing.push(segment.clipId);
+      } else {
+        map.set(segment.sourceClipId, [segment.clipId]);
+      }
+    });
+    return map;
+  }, [subtitleSegments]);
 
   const visualTimelineEntries = useMemo(() => {
     return timelineLayout.filter((entry) => entry.asset.kind !== "audio");
@@ -2684,6 +2793,33 @@ export default function AdvancedEditorPage() {
     }
     return null;
   }, [selectedEntry]);
+  const selectedSubtitleEntry = useMemo(() => {
+    if (!selectedEntry || !subtitleClipIdSet.has(selectedEntry.clip.id)) {
+      return null;
+    }
+    return selectedEntry;
+  }, [selectedEntry, subtitleClipIdSet]);
+  const subtitleSelectionVisible = useMemo(() => {
+    if (!selectedSubtitleEntry) {
+      return false;
+    }
+    const start = selectedSubtitleEntry.clip.startTime;
+    const end = start + selectedSubtitleEntry.clip.duration;
+    return (
+      currentTime + timelineClipEpsilon >= start &&
+      currentTime - timelineClipEpsilon <= end
+    );
+  }, [currentTime, selectedSubtitleEntry, timelineClipEpsilon]);
+  const selectedSubtitleTransform = useMemo(() => {
+    if (!selectedSubtitleEntry) {
+      return null;
+    }
+    const aspectRatio = stageAspectRatioRef.current || 16 / 9;
+    return (
+      clipTransforms[selectedSubtitleEntry.clip.id] ??
+      createSubtitleTransform(aspectRatio)
+    );
+  }, [clipTransforms, selectedSubtitleEntry]);
   const selectedVideoSettings = useMemo(() => {
     if (!selectedVideoEntry) {
       return null;
@@ -2977,6 +3113,7 @@ export default function AdvancedEditorPage() {
   // This is how professional video players render subtitles for smooth performance
   const activeSubtitleIndexRef = useRef<number>(-1);
   const lastRenderedSubtitleIdRef = useRef<string | null>(null);
+  const activeSubtitleWordIndexRef = useRef<number>(-1);
   const subtitleOverlayRef = useRef<HTMLDivElement>(null);
   const subtitleTextRef = useRef<HTMLSpanElement>(null);
 
@@ -3064,11 +3201,22 @@ export default function AdvancedEditorPage() {
     text: string; 
     styles: ReturnType<typeof getTextRenderStyles>;
     transform: ClipTransform;
+    wordHighlightEnabled: boolean;
+    wordHighlightColor: string;
   }>>(new Map());
   
   // Pre-compute styles for all subtitles when they change
   useEffect(() => {
-    const cache = new Map<string, { text: string; styles: ReturnType<typeof getTextRenderStyles>; transform: ClipTransform }>();
+    const cache = new Map<
+      string,
+      {
+        text: string;
+        styles: ReturnType<typeof getTextRenderStyles>;
+        transform: ClipTransform;
+        wordHighlightEnabled: boolean;
+        wordHighlightColor: string;
+      }
+    >();
     const aspectRatio = stageAspectRatioRef.current || 16 / 9;
     
     subtitleSegments.forEach(segment => {
@@ -3078,6 +3226,8 @@ export default function AdvancedEditorPage() {
         text: settings.text ?? segment.text,
         styles: getTextRenderStyles(settings),
         transform,
+        wordHighlightEnabled: Boolean(settings.wordHighlightEnabled),
+        wordHighlightColor: settings.wordHighlightColor ?? "#FDE047",
       });
     });
     
@@ -3086,11 +3236,70 @@ export default function AdvancedEditorPage() {
     // Reset tracking refs when subtitle data changes to avoid stale matches
     activeSubtitleIndexRef.current = -1;
     lastRenderedSubtitleIdRef.current = null;
-  }, [subtitleSegments, textSettings, fallbackTextSettings, clipTransforms]);
+    activeSubtitleWordIndexRef.current = -1;
+    if (!isPlaying) {
+      updateSubtitleForTimeRef.current(playbackTimeRef.current);
+    }
+  }, [subtitleSegments, textSettings, fallbackTextSettings, clipTransforms, isPlaying]);
 
   // Ultra-lightweight DOM update - just reads from cache
   // Uses direct property assignment for maximum performance during playback
-  const updateSubtitleDOM = useCallback((clipId: string | null) => {
+  const updateSubtitleWordHighlight = useCallback(
+    (
+      entry: { segment: SubtitleSegment; startTime: number } | null,
+      time: number,
+      force: boolean
+    ) => {
+      const textEl = subtitleTextRef.current;
+      if (!entry || !textEl) {
+        activeSubtitleWordIndexRef.current = -1;
+        return;
+      }
+      const { segment } = entry;
+      const cached = subtitleStyleCacheRef.current.get(segment.clipId);
+      if (!cached) {
+        activeSubtitleWordIndexRef.current = -1;
+        return;
+      }
+      const words = segment.words ?? [];
+      const canHighlight =
+        cached.wordHighlightEnabled &&
+        words.length > 0 &&
+        !cached.text.includes("\n");
+      if (!canHighlight) {
+        if (force) {
+          textEl.textContent = cached.text;
+        }
+        activeSubtitleWordIndexRef.current = -1;
+        return;
+      }
+      const offset = entry.startTime - segment.startTime;
+      const timedWords = offset
+        ? words.map((word) => ({
+            start: word.start + offset,
+            end: word.end + offset,
+          }))
+        : words;
+      const nextIndex = findActiveWordIndex(timedWords, time);
+      if (!force && nextIndex === activeSubtitleWordIndexRef.current) {
+        return;
+      }
+      activeSubtitleWordIndexRef.current = nextIndex;
+      textEl.innerHTML = buildHighlightedSubtitleHtml(
+        words,
+        nextIndex,
+        cached.wordHighlightColor
+      );
+    },
+    []
+  );
+
+  const updateSubtitleDOM = useCallback(
+    (
+      clipId: string | null,
+      entry?: { segment: SubtitleSegment; startTime: number } | null,
+      time?: number
+    ) => {
     const overlay = subtitleOverlayRef.current;
     const textEl = subtitleTextRef.current;
     if (!overlay || !textEl) return;
@@ -3098,6 +3307,9 @@ export default function AdvancedEditorPage() {
     if (!clipId) {
       overlay.style.opacity = '0';
       overlay.style.visibility = 'hidden';
+      overlay.style.pointerEvents = 'none';
+      delete overlay.dataset.clipId;
+      activeSubtitleWordIndexRef.current = -1;
       return;
     }
     
@@ -3105,6 +3317,9 @@ export default function AdvancedEditorPage() {
     if (!cached) {
       overlay.style.opacity = '0';
       overlay.style.visibility = 'hidden';
+      overlay.style.pointerEvents = 'none';
+      delete overlay.dataset.clipId;
+      activeSubtitleWordIndexRef.current = -1;
       return;
     }
     
@@ -3115,9 +3330,8 @@ export default function AdvancedEditorPage() {
     overlay.style.height = `${cached.transform.height * 100}%`;
     overlay.style.opacity = '1';
     overlay.style.visibility = 'visible';
-    
-    // Update text content
-    textEl.textContent = cached.text;
+    overlay.style.pointerEvents = 'auto';
+    overlay.dataset.clipId = clipId;
     
     // Apply text styles efficiently
     const s = cached.styles.textStyle;
@@ -3147,7 +3361,13 @@ export default function AdvancedEditorPage() {
       textEl.style.padding = '';
       textEl.style.borderRadius = '';
     }
-  }, []);
+    if (entry && typeof time === "number") {
+      updateSubtitleWordHighlight(entry, time, true);
+    } else {
+      textEl.textContent = cached.text;
+      activeSubtitleWordIndexRef.current = -1;
+    }
+  }, [updateSubtitleWordHighlight]);
 
   // Binary search for finding active subtitle - optimized for sequential playback
   // Uses cache for O(1) sequential access, falls back to O(log n) binary search
@@ -3209,21 +3429,33 @@ export default function AdvancedEditorPage() {
         if (lastRenderedSubtitleIdRef.current !== null) {
           activeSubtitleIndexRef.current = -1;
           lastRenderedSubtitleIdRef.current = null;
+          activeSubtitleWordIndexRef.current = -1;
           updateSubtitleDOM(null);
         }
         return;
       }
       
       const idx = findActiveSubtitleIndex(time);
-      const newId = idx >= 0 ? sortedSubtitleClips[idx]?.segment.clipId : null;
+      const entry = idx >= 0 ? sortedSubtitleClips[idx] : null;
+      const newId = entry?.segment.clipId ?? null;
       
       if (newId !== lastRenderedSubtitleIdRef.current) {
         activeSubtitleIndexRef.current = idx;
         lastRenderedSubtitleIdRef.current = newId;
-        updateSubtitleDOM(newId);
+        activeSubtitleWordIndexRef.current = -1;
+        updateSubtitleDOM(newId, entry ?? null, time);
+        return;
+      }
+      if (entry) {
+        updateSubtitleWordHighlight(entry, time, false);
       }
     };
-  }, [sortedSubtitleClips, findActiveSubtitleIndex, updateSubtitleDOM]);
+  }, [
+    sortedSubtitleClips,
+    findActiveSubtitleIndex,
+    updateSubtitleDOM,
+    updateSubtitleWordHighlight,
+  ]);
   
   // Force subtitle update when subtitle data changes (clips moved, edited, etc.)
   // This ensures subtitles stay in sync after timeline edits
@@ -3231,6 +3463,7 @@ export default function AdvancedEditorPage() {
     // Reset cached state to force re-evaluation
     activeSubtitleIndexRef.current = -1;
     lastRenderedSubtitleIdRef.current = null;
+    activeSubtitleWordIndexRef.current = -1;
     // Update with current time
     updateSubtitleForTimeRef.current(playbackTimeRef.current);
   }, [sortedSubtitleClips]);
@@ -3582,7 +3815,12 @@ export default function AdvancedEditorPage() {
     (
       words: Array<{ start: number; end: number; word?: string; text?: string }>
     ) => {
-      const segments: Array<{ start: number; end: number; text: string }> = [];
+      const segments: Array<{
+        start: number;
+        end: number;
+        text: string;
+        words?: TimedWord[];
+      }> = [];
       
       // Lightning-fast subtitles that match exact speech timing
       // NO artificial duration extensions - subtitles end exactly when words end
@@ -3607,7 +3845,17 @@ export default function AdvancedEditorPage() {
         // Use EXACT word timings - no artificial extension
         // This ensures subtitles change at the precise moment speech changes
         if (text && end > start) {
-          segments.push({ start, end, text });
+          segments.push({
+            start,
+            end,
+            text,
+            words: current.map((entry) => ({
+              start: entry.start,
+              end: entry.end,
+              word: entry.word,
+              text: entry.text,
+            })),
+          });
         }
         current = [];
         currentText = "";
@@ -3749,7 +3997,7 @@ export default function AdvancedEditorPage() {
   const resolveSubtitleSettings = useCallback(
     (text: string) => {
       const style =
-        subtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
+        resolvedSubtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
         null;
       const preview = style?.preview;
       return {
@@ -3767,22 +4015,67 @@ export default function AdvancedEditorPage() {
         autoSize: false,
       };
     },
-    [subtitleBaseSettings, subtitleStyleId]
+    [subtitleBaseSettings, subtitleStyleId, resolvedSubtitleStylePresets]
+  );
+
+  const resolveSubtitleStyleTargets = useCallback(
+    (targetClipId: string | null) => {
+      if (subtitleSegments.length === 0) {
+        return [];
+      }
+      const selectedSubtitleClipId =
+        targetClipId && subtitleClipIdSet.has(targetClipId) ? targetClipId : null;
+      if (!selectedSubtitleClipId) {
+        return subtitleSegments.map((segment) => segment.clipId);
+      }
+      if (!subtitleMoveTogether) {
+        return [selectedSubtitleClipId];
+      }
+      const targetSegment = subtitleSegments.find(
+        (segment) => segment.clipId === selectedSubtitleClipId
+      );
+      if (!targetSegment || detachedSubtitleIds.has(selectedSubtitleClipId)) {
+        return [selectedSubtitleClipId];
+      }
+      const targetSourceId = targetSegment.sourceClipId;
+      const grouped = subtitleSegments.filter((segment) => {
+        if (detachedSubtitleIds.has(segment.clipId)) {
+          return false;
+        }
+        if (targetSourceId) {
+          return segment.sourceClipId === targetSourceId;
+        }
+        return segment.clipId === selectedSubtitleClipId;
+      });
+      if (grouped.length === 0) {
+        return [selectedSubtitleClipId];
+      }
+      return grouped.map((segment) => segment.clipId);
+    },
+    [
+      subtitleSegments,
+      subtitleClipIdSet,
+      subtitleMoveTogether,
+      detachedSubtitleIds,
+    ]
   );
 
   const applySubtitleStyle = useCallback(
     (styleId: string) => {
       setSubtitleStyleId(styleId);
-      const style = subtitleStylePresets.find((preset) => preset.id === styleId);
-      if (!style || subtitleSegments.length === 0) {
+      const style = resolvedSubtitleStylePresets.find(
+        (preset) => preset.id === styleId
+      );
+      const targetClipIds = resolveSubtitleStyleTargets(selectedClipId);
+      if (!style || targetClipIds.length === 0) {
         return;
       }
       const preview = style.preview;
       setTextSettings((prev) => {
         const next = { ...prev };
-        subtitleSegments.forEach((segment) => {
-          const current = next[segment.clipId] ?? subtitleBaseSettings;
-          next[segment.clipId] = {
+        targetClipIds.forEach((clipId) => {
+          const current = next[clipId] ?? subtitleBaseSettings;
+          next[clipId] = {
             ...current,
             ...style.settings,
             fontFamily: preview?.fontFamily ?? current.fontFamily,
@@ -3796,14 +4089,68 @@ export default function AdvancedEditorPage() {
         return next;
       });
     },
-    [subtitleSegments, subtitleBaseSettings]
+    [
+      resolveSubtitleStyleTargets,
+      selectedClipId,
+      subtitleBaseSettings,
+      resolvedSubtitleStylePresets,
+    ]
+  );
+
+  const handleSubtitleStyleUpdate = useCallback(
+    (
+      styleId: string,
+      settings: Partial<TextClipSettings>,
+      preview?: TextStylePreset["preview"]
+    ) => {
+      setSubtitleStyleOverrides((prev) => {
+        const current = prev[styleId];
+        return {
+          ...prev,
+          [styleId]: {
+            settings: {
+              ...(current?.settings ?? {}),
+              ...settings,
+            },
+            preview: {
+              ...(current?.preview ?? {}),
+              ...(preview ?? {}),
+            },
+          },
+        };
+      });
+      const targetClipIds = resolveSubtitleStyleTargets(selectedClipId);
+      if (styleId !== subtitleStyleId || targetClipIds.length === 0) {
+        return;
+      }
+      setTextSettings((prev) => {
+        const next = { ...prev };
+        targetClipIds.forEach((clipId) => {
+          const current = next[clipId] ?? subtitleBaseSettings;
+          next[clipId] = {
+            ...current,
+            ...settings,
+            autoSize: false,
+          };
+        });
+        return next;
+      });
+    },
+    [
+      resolveSubtitleStyleTargets,
+      selectedClipId,
+      subtitleStyleId,
+      subtitleBaseSettings,
+    ]
   );
 
   const handleSubtitleTextUpdate = useCallback(
     (segmentId: string, text: string) => {
       setSubtitleSegments((prev) =>
         prev.map((segment) =>
-          segment.id === segmentId ? { ...segment, text } : segment
+          segment.id === segmentId
+            ? { ...segment, text, words: undefined }
+            : segment
         )
       );
       const target = subtitleSegments.find(
@@ -3853,6 +4200,7 @@ export default function AdvancedEditorPage() {
       startTime,
       endTime: startTime + duration,
       sourceClipId: null,
+      words: undefined,
     };
     setLanes(nextLanes);
     setAssets((prev) => [asset, ...prev]);
@@ -3983,10 +4331,20 @@ export default function AdvancedEditorPage() {
           }
           const nextStart = Math.max(0, segment.startTime + offsetSeconds);
           const nextEnd = Math.max(0, segment.endTime + offsetSeconds);
+          const nextWords = segment.words?.map((word) => {
+            const start = Math.max(0, word.start + offsetSeconds);
+            const end = Math.max(0, word.end + offsetSeconds);
+            return {
+              ...word,
+              start,
+              end: Math.max(start, end),
+            };
+          });
           return {
             ...segment,
             startTime: nextStart,
             endTime: Math.max(nextStart, nextEnd),
+            words: nextWords,
           };
         })
       );
@@ -4475,6 +4833,39 @@ export default function AdvancedEditorPage() {
             entry.clip.startTime + (start - clipStartOffset) / playbackRate;
           const timelineEnd =
             entry.clip.startTime + (end - clipStartOffset) / playbackRate;
+          const wordEntries = segment.words
+            ? segment.words
+                .map((word) => {
+                  const rawStart = clamp(
+                    Number(word.start),
+                    clipStartOffset,
+                    clipEndOffset
+                  );
+                  const rawEnd = clamp(
+                    Number(word.end),
+                    clipStartOffset,
+                    clipEndOffset
+                  );
+                  if (
+                    !Number.isFinite(rawStart) ||
+                    !Number.isFinite(rawEnd) ||
+                    rawEnd <= rawStart
+                  ) {
+                    return null;
+                  }
+                  return {
+                    start:
+                      entry.clip.startTime +
+                      (rawStart - clipStartOffset) / playbackRate,
+                    end:
+                      entry.clip.startTime +
+                      (rawEnd - clipStartOffset) / playbackRate,
+                    word: word.word,
+                    text: word.text,
+                  };
+                })
+                .filter((word): word is TimedWord => word !== null)
+            : undefined;
           const asset = {
             ...createTextAsset("Subtitle"),
             duration: Math.max(0.01, timelineEnd - timelineStart),
@@ -4491,6 +4882,7 @@ export default function AdvancedEditorPage() {
             startTime: timelineStart,
             endTime: timelineEnd,
             sourceClipId: entry.clip.id,
+            words: wordEntries && wordEntries.length > 0 ? wordEntries : undefined,
           });
         });
       }
@@ -6192,10 +6584,56 @@ export default function AdvancedEditorPage() {
       setTextSettings((prev) => {
         const current = prev[clipId] ?? createDefaultTextSettings();
         const next = updater(current);
-        return { ...prev, [clipId]: next };
+        const isSubtitleClip = subtitleSegments.some(
+          (segment) => segment.clipId === clipId
+        );
+        if (!isSubtitleClip || !subtitleMoveTogether) {
+          return { ...prev, [clipId]: next };
+        }
+        const targetSegment = subtitleSegments.find(
+          (segment) => segment.clipId === clipId
+        );
+        if (!targetSegment || detachedSubtitleIds.has(clipId)) {
+          return { ...prev, [clipId]: next };
+        }
+        const targetSourceId = targetSegment.sourceClipId;
+        const groupIds = subtitleSegments
+          .filter((segment) => !detachedSubtitleIds.has(segment.clipId))
+          .filter((segment) =>
+            targetSourceId
+              ? segment.sourceClipId === targetSourceId
+              : segment.clipId === clipId
+          )
+          .map((segment) => segment.clipId);
+        if (groupIds.length <= 1) {
+          return { ...prev, [clipId]: next };
+        }
+        const nextState = { ...prev };
+        groupIds.forEach((id) => {
+          const existing = prev[id] ?? createDefaultTextSettings();
+          if (id === clipId) {
+            nextState[id] = {
+              ...next,
+              autoSize: false,
+            };
+            return;
+          }
+          nextState[id] = {
+            ...existing,
+            ...next,
+            text: existing.text,
+            autoSize: false,
+          };
+        });
+        return nextState;
       });
     },
-    [pushHistoryThrottled]
+    [
+      pushHistoryThrottled,
+      subtitleMoveTogether,
+      subtitleSegments,
+      detachedSubtitleIds,
+    ]
   );
 
   const handleTextStylePresetSelect = useCallback(
@@ -6653,12 +7091,28 @@ export default function AdvancedEditorPage() {
       return;
     }
     pushHistory();
-    const idsToRemove =
+    const baseIds =
       selectedClipIds.length > 0
         ? selectedClipIds
         : selectedClipId
           ? [selectedClipId]
           : [];
+    if (baseIds.length === 0) {
+      return;
+    }
+    const subtitleClipIdsToRemove = new Set<string>();
+    const sourceIdsToRemove = new Set(baseIds);
+    subtitleSegments.forEach((segment) => {
+      if (segment.sourceClipId && sourceIdsToRemove.has(segment.sourceClipId)) {
+        subtitleClipIdsToRemove.add(segment.clipId);
+      }
+      if (sourceIdsToRemove.has(segment.clipId)) {
+        subtitleClipIdsToRemove.add(segment.clipId);
+      }
+    });
+    const idsToRemove = Array.from(
+      new Set([...baseIds, ...subtitleClipIdsToRemove])
+    );
     setTimeline((prev) => {
       const next = prev.filter((clip) => !idsToRemove.includes(clip.id));
       if (next.length === prev.length) {
@@ -6670,6 +7124,9 @@ export default function AdvancedEditorPage() {
       setActiveAssetId(nextSelected?.assetId ?? null);
       return next;
     });
+    setSubtitleSegments((prev) =>
+      prev.filter((segment) => !subtitleClipIdsToRemove.has(segment.clipId))
+    );
     setTextSettings((prev) => {
       const next = { ...prev };
       idsToRemove.forEach((id) => {
@@ -6677,7 +7134,22 @@ export default function AdvancedEditorPage() {
       });
       return next;
     });
-  }, [pushHistory, selectedClipId, selectedClipIds]);
+    setClipTransforms((prev) => {
+      const next = { ...prev };
+      idsToRemove.forEach((id) => {
+        delete next[id];
+      });
+      return next;
+    });
+    setDetachedSubtitleIds((prev) => {
+      if (prev.size === 0) {
+        return prev;
+      }
+      const next = new Set(prev);
+      idsToRemove.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, [pushHistory, selectedClipId, selectedClipIds, subtitleSegments]);
 
   keyboardStateRef.current = {
     currentTime,
@@ -6889,15 +7361,51 @@ export default function AdvancedEditorPage() {
         return;
       }
       pushHistory();
+      const targetStart = Math.max(0, nextStart);
+      const delta = targetStart - clip.startTime;
+      const attachedSubtitleIds = subtitleSourceClipMap.get(clip.id);
+      const attachedSet = attachedSubtitleIds
+        ? new Set(attachedSubtitleIds)
+        : null;
       setTimeline((prev) =>
-        prev.map((item) =>
-          item.id === clip.id
-            ? { ...item, startTime: Math.max(0, nextStart) }
-            : item
-        )
+        prev.map((item) => {
+          if (item.id === clip.id) {
+            return { ...item, startTime: targetStart };
+          }
+          if (
+            attachedSet &&
+            attachedSet.has(item.id) &&
+            Math.abs(delta) >= timelineClipEpsilon
+          ) {
+            return { ...item, startTime: Math.max(0, item.startTime + delta) };
+          }
+          return item;
+        })
       );
+      if (subtitleClipIdSet.has(clip.id) && delta !== 0) {
+        setSubtitleSegments((prev) =>
+          prev.map((segment) => {
+            if (segment.clipId !== clip.id) {
+              return segment;
+            }
+            const nextWords = segment.words?.map((word) => {
+              const start = Math.max(0, word.start + delta);
+              const end = Math.max(0, word.end + delta);
+              return {
+                ...word,
+                start,
+                end: Math.max(start, end),
+              };
+            });
+            return {
+              ...segment,
+              words: nextWords,
+            };
+          })
+        );
+      }
     },
-    [pushHistory]
+    [pushHistory, subtitleClipIdSet, subtitleSourceClipMap]
   );
 
   const handleEndTimeCommit = useCallback(
@@ -6934,16 +7442,30 @@ export default function AdvancedEditorPage() {
   const handleSetStartAtPlayhead = useCallback(
     (clip: TimelineClip) => {
       const time = playbackTimeRef.current;
+      const targetStart = Math.max(0, time);
+      const delta = targetStart - clip.startTime;
+      const attachedSubtitleIds = subtitleSourceClipMap.get(clip.id);
+      const attachedSet = attachedSubtitleIds
+        ? new Set(attachedSubtitleIds)
+        : null;
       pushHistory();
       setTimeline((prev) =>
-        prev.map((item) =>
-          item.id === clip.id
-            ? { ...item, startTime: Math.max(0, time) }
-            : item
-        )
+        prev.map((item) => {
+          if (item.id === clip.id) {
+            return { ...item, startTime: targetStart };
+          }
+          if (
+            attachedSet &&
+            attachedSet.has(item.id) &&
+            Math.abs(delta) >= timelineClipEpsilon
+          ) {
+            return { ...item, startTime: Math.max(0, item.startTime + delta) };
+          }
+          return item;
+        })
       );
     },
-    [pushHistory]
+    [pushHistory, subtitleSourceClipMap]
   );
 
   const handleSetEndAtPlayhead = useCallback(
@@ -7061,6 +7583,52 @@ export default function AdvancedEditorPage() {
     return styles;
   }, [computeVideoStyles]);
 
+  const getSubtitleDragGroup = useCallback(
+    (clipId: string) => {
+      if (!subtitleMoveTogether) {
+        return null;
+      }
+      const targetSegment = subtitleSegments.find(
+        (segment) => segment.clipId === clipId
+      );
+      if (!targetSegment || detachedSubtitleIds.has(clipId)) {
+        return null;
+      }
+      const targetSourceId = targetSegment.sourceClipId;
+      const groupTransforms = new Map<string, ClipTransform>();
+      subtitleSegments.forEach((segment) => {
+        if (detachedSubtitleIds.has(segment.clipId)) {
+          return;
+        }
+        if (targetSourceId) {
+          if (segment.sourceClipId !== targetSourceId) {
+            return;
+          }
+        } else if (segment.clipId !== clipId) {
+          return;
+        }
+        const segmentEntry = timelineLayout.find(
+          (item) => item.clip.id === segment.clipId
+        );
+        if (!segmentEntry) {
+          return;
+        }
+        groupTransforms.set(
+          segment.clipId,
+          ensureClipTransform(segment.clipId, segmentEntry.asset)
+        );
+      });
+      return groupTransforms.size > 0 ? groupTransforms : null;
+    },
+    [
+      subtitleMoveTogether,
+      subtitleSegments,
+      detachedSubtitleIds,
+      timelineLayout,
+      ensureClipTransform,
+    ]
+  );
+
   const handleStagePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
@@ -7111,30 +7679,45 @@ export default function AdvancedEditorPage() {
     }
     const isSubtitleClip =
       entry.asset.kind === "text" && subtitleClipIdSet.has(entry.clip.id);
-    const isDetachedSubtitle = isSubtitleClip
-      ? detachedSubtitleIds.has(entry.clip.id)
-      : false;
-    if (isSubtitleClip && !isDetachedSubtitle) {
-      const groupTransforms = new Map<string, ClipTransform>();
-      subtitleSegments.forEach((segment) => {
-        if (detachedSubtitleIds.has(segment.clipId)) {
-          return;
-        }
-        const segmentEntry = timelineLayout.find(
-          (item) => item.clip.id === segment.clipId
-        );
-        if (!segmentEntry) {
-          return;
-        }
-        groupTransforms.set(
-          segment.clipId,
-          ensureClipTransform(segment.clipId, segmentEntry.asset)
-        );
-      });
-      subtitleGroupTransformsRef.current = groupTransforms;
-    } else {
-      subtitleGroupTransformsRef.current = null;
+    subtitleGroupTransformsRef.current = isSubtitleClip
+      ? getSubtitleDragGroup(entry.clip.id)
+      : null;
+    setDragTransformState({
+      clipId: entry.clip.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect,
+    });
+  };
+
+  const handleSubtitleOverlayPointerDown = (
+    event: PointerEvent<HTMLDivElement>
+  ) => {
+    if (event.button !== 0) {
+      return;
     }
+    const overlay = subtitleOverlayRef.current;
+    const clipId = overlay?.dataset.clipId ?? lastRenderedSubtitleIdRef.current;
+    if (!clipId) {
+      return;
+    }
+    const entry = timelineLayoutMap.get(clipId);
+    if (!entry) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    closeFloatingMenu();
+    setEditingTextClipId(null);
+    setIsBackgroundSelected(false);
+    dragTransformHistoryRef.current = false;
+    const startRect = ensureClipTransform(entry.clip.id, entry.asset);
+    setSelectedClipId(entry.clip.id);
+    setSelectedClipIds([entry.clip.id]);
+    setActiveAssetId(entry.asset.id);
+    setActiveCanvasClipId(entry.clip.id);
+    setActiveTool("subtitles");
+    subtitleGroupTransformsRef.current = getSubtitleDragGroup(entry.clip.id);
     setDragTransformState({
       clipId: entry.clip.id,
       startX: event.clientX,
@@ -7164,8 +7747,29 @@ export default function AdvancedEditorPage() {
         clipId: entry.clip.id,
         fontSize: settings.fontSize,
       };
+      const isSubtitleClip = subtitleClipIdSet.has(entry.clip.id);
+      if (isSubtitleClip) {
+        const group = getSubtitleDragGroup(entry.clip.id);
+        subtitleResizeGroupTransformsRef.current = group;
+        if (group) {
+          const fontMap = new Map<string, number>();
+          group.forEach((_transform, clipId) => {
+            const groupSettings =
+              textSettingsRef.current[clipId] ?? fallbackTextSettings;
+            fontMap.set(clipId, groupSettings.fontSize);
+          });
+          subtitleResizeFontMapRef.current = fontMap;
+        } else {
+          subtitleResizeFontMapRef.current = null;
+        }
+      } else {
+        subtitleResizeGroupTransformsRef.current = null;
+        subtitleResizeFontMapRef.current = null;
+      }
     } else {
       resizeTextFontRef.current = null;
+      subtitleResizeGroupTransformsRef.current = null;
+      subtitleResizeFontMapRef.current = null;
     }
     const ratioFromRect =
       startRect.height > 0 ? startRect.width / startRect.height : 0;
@@ -7210,6 +7814,11 @@ export default function AdvancedEditorPage() {
     }
     const rect = stage.getBoundingClientRect();
     const transform = ensureClipTransform(entry.clip.id, entry.asset);
+    const isSubtitleClip =
+      entry.asset.kind === "text" && subtitleClipIdSet.has(entry.clip.id);
+    subtitleRotateGroupTransformsRef.current = isSubtitleClip
+      ? getSubtitleDragGroup(entry.clip.id)
+      : null;
     // Calculate center of the element in screen coordinates
     const centerX = rect.left + (transform.x + transform.width / 2) * rect.width;
     const centerY = rect.top + (transform.y + transform.height / 2) * rect.height;
@@ -7846,17 +8455,37 @@ export default function AdvancedEditorPage() {
       } else if (timelineSnapGuide !== null) {
         setTimelineSnapGuide(null);
       }
-      setTimeline((prev) =>
-        prev.map((clip) =>
-          clip.id === dragged.id
-            ? {
+      const attachedSubtitleIds = subtitleSourceClipMap.get(dragged.id);
+      setTimeline((prev) => {
+        const current = prev.find((clip) => clip.id === dragged.id);
+        const currentStart = current?.startTime ?? dragged.startTime;
+        const delta = liveTime - currentStart;
+        const shouldShiftSubtitles =
+          attachedSubtitleIds && attachedSubtitleIds.length > 0;
+        const attachedSet = shouldShiftSubtitles
+          ? new Set(attachedSubtitleIds)
+          : null;
+        return prev.map((clip) => {
+          if (clip.id === dragged.id) {
+            return {
               ...clip,
               startTime: liveTime,
               laneId: targetLaneId,
-            }
-            : clip
-        )
-      );
+            };
+          }
+          if (
+            attachedSet &&
+            attachedSet.has(clip.id) &&
+            Math.abs(delta) >= timelineClipEpsilon
+          ) {
+            return {
+              ...clip,
+              startTime: Math.max(0, clip.startTime + delta),
+            };
+          }
+          return clip;
+        });
+      });
     };
     const handleUp = () => {
       const dragState = dragClipStateRef.current;
@@ -7909,25 +8538,59 @@ export default function AdvancedEditorPage() {
           updatedStarts.set(clip.id, nextStart);
           cursor = nextStart + clip.duration;
         });
+        const sourceDeltas = new Map<string, number>();
+        updatedStarts.forEach((nextStart, clipId) => {
+          if (!subtitleSourceClipMap.has(clipId)) {
+            return;
+          }
+          const original = prev.find((clip) => clip.id === clipId);
+          if (!original) {
+            return;
+          }
+          const delta = nextStart - original.startTime;
+          if (Math.abs(delta) < timelineClipEpsilon) {
+            return;
+          }
+          sourceDeltas.set(clipId, delta);
+        });
+        const subtitleDeltas = new Map<string, number>();
+        if (sourceDeltas.size > 0) {
+          sourceDeltas.forEach((delta, sourceId) => {
+            const attached = subtitleSourceClipMap.get(sourceId);
+            if (!attached || attached.length === 0) {
+              return;
+            }
+            attached.forEach((subtitleId) => {
+              subtitleDeltas.set(subtitleId, delta);
+            });
+          });
+        }
         return prev.map((clip) => {
-          if (clip.laneId !== targetLaneId && clip.id !== dragged.id) {
-            return clip;
-          }
           const nextStart = updatedStarts.get(clip.id);
-          if (nextStart === undefined) {
-            return clip;
+          if (nextStart !== undefined) {
+            if (clip.id === dragged.id) {
+              return {
+                ...clip,
+                laneId: targetLaneId,
+                startTime: nextStart,
+              };
+            }
+            if (Math.abs(clip.startTime - nextStart) < timelineClipEpsilon) {
+              return clip;
+            }
+            return { ...clip, startTime: nextStart };
           }
-          if (clip.id === dragged.id) {
+          const subtitleDelta = subtitleDeltas.get(clip.id);
+          if (
+            subtitleDelta !== undefined &&
+            Math.abs(subtitleDelta) >= timelineClipEpsilon
+          ) {
             return {
               ...clip,
-              laneId: targetLaneId,
-              startTime: nextStart,
+              startTime: Math.max(0, clip.startTime + subtitleDelta),
             };
           }
-          if (Math.abs(clip.startTime - nextStart) < timelineClipEpsilon) {
-            return clip;
-          }
-          return { ...clip, startTime: nextStart };
+          return clip;
         });
       });
       dragClipHistoryRef.current = false;
@@ -7953,6 +8616,7 @@ export default function AdvancedEditorPage() {
     isTimelineSnappingEnabled,
     timelineSnapGuide,
     timelineCollisionGuide,
+    subtitleSourceClipMap,
   ]);
 
   useEffect(() => {
@@ -8371,7 +9035,10 @@ export default function AdvancedEditorPage() {
         minSize,
         clampOptions
       );
-      clipTransformTouchedRef.current.add(resizeTransformState.clipId);
+      const resizeGroupTransforms = subtitleResizeGroupTransformsRef.current;
+      const isSubtitleGroupResize =
+        resizeGroupTransforms &&
+        resizeGroupTransforms.has(resizeTransformState.clipId);
       if (isTextClip && hasHorizontal && hasVertical) {
         const resizeFont = resizeTextFontRef.current;
         if (resizeFont && resizeFont.clipId === resizeTransformState.clipId) {
@@ -8381,31 +9048,72 @@ export default function AdvancedEditorPage() {
           const heightRatio = startHeight > 0 ? clamped.height / startHeight : 1;
           const scale = Math.sqrt(widthRatio * heightRatio);
           if (Number.isFinite(scale) && scale > 0) {
-            const nextFontSize = clamp(
-              resizeFont.fontSize * scale,
-              textResizeMinFontSize,
-              textResizeMaxFontSize
-            );
-            setTextSettings((prev) => {
-              const current = prev[resizeTransformState.clipId];
-              if (!current) {
-                return prev;
-              }
-              if (Math.abs(current.fontSize - nextFontSize) < 0.1) {
-                return prev;
-              }
-              return {
-                ...prev,
-                [resizeTransformState.clipId]: {
-                  ...current,
-                  fontSize: nextFontSize,
-                },
-              };
-            });
-            if (selectedTextEntry?.clip.id === resizeTransformState.clipId) {
-              setTextPanelFontSizeDisplay((prev) =>
-                Math.abs(prev - nextFontSize) < 0.1 ? prev : nextFontSize
+            const groupFonts = subtitleResizeFontMapRef.current;
+            if (isSubtitleGroupResize && groupFonts) {
+              setTextSettings((prev) => {
+                let changed = false;
+                const nextState = { ...prev };
+                groupFonts.forEach((baseSize, clipId) => {
+                  const current = prev[clipId];
+                  if (!current) {
+                    return;
+                  }
+                  const nextFontSize = clamp(
+                    baseSize * scale,
+                    textResizeMinFontSize,
+                    textResizeMaxFontSize
+                  );
+                  if (Math.abs(current.fontSize - nextFontSize) < 0.1) {
+                    return;
+                  }
+                  nextState[clipId] = {
+                    ...current,
+                    fontSize: nextFontSize,
+                  };
+                  changed = true;
+                });
+                return changed ? nextState : prev;
+              });
+              const activeBase =
+                groupFonts.get(resizeTransformState.clipId) ??
+                resizeFont.fontSize;
+              const activeFontSize = clamp(
+                activeBase * scale,
+                textResizeMinFontSize,
+                textResizeMaxFontSize
               );
+              if (selectedTextEntry?.clip.id === resizeTransformState.clipId) {
+                setTextPanelFontSizeDisplay((prev) =>
+                  Math.abs(prev - activeFontSize) < 0.1 ? prev : activeFontSize
+                );
+              }
+            } else {
+              const nextFontSize = clamp(
+                resizeFont.fontSize * scale,
+                textResizeMinFontSize,
+                textResizeMaxFontSize
+              );
+              setTextSettings((prev) => {
+                const current = prev[resizeTransformState.clipId];
+                if (!current) {
+                  return prev;
+                }
+                if (Math.abs(current.fontSize - nextFontSize) < 0.1) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  [resizeTransformState.clipId]: {
+                    ...current,
+                    fontSize: nextFontSize,
+                  },
+                };
+              });
+              if (selectedTextEntry?.clip.id === resizeTransformState.clipId) {
+                setTextPanelFontSizeDisplay((prev) =>
+                  Math.abs(prev - nextFontSize) < 0.1 ? prev : nextFontSize
+                );
+              }
             }
           }
         }
@@ -8413,15 +9121,55 @@ export default function AdvancedEditorPage() {
       if (isTextClip) {
         resizeTextRectRef.current = clamped;
       }
-      setClipTransforms((prev) => ({
-        ...prev,
-        [resizeTransformState.clipId]: clamped,
-      }));
+      if (isSubtitleGroupResize && resizeGroupTransforms) {
+        const deltaX = clamped.x - resizeTransformState.startRect.x;
+        const deltaY = clamped.y - resizeTransformState.startRect.y;
+        const deltaWidth = clamped.width - resizeTransformState.startRect.width;
+        const deltaHeight = clamped.height - resizeTransformState.startRect.height;
+        setClipTransforms((prev) => {
+          const nextTransforms = { ...prev };
+          resizeGroupTransforms.forEach((startTransform, clipId) => {
+            const draftGroupRect = {
+              ...startTransform,
+              x: startTransform.x + deltaX,
+              y: startTransform.y + deltaY,
+              width: startTransform.width + deltaWidth,
+              height: startTransform.height + deltaHeight,
+            };
+            const groupMinSize = getClipMinSize(clipId);
+            const groupAllowOverflow =
+              clipAssetKindMap.get(clipId) !== "text";
+            const groupClampOptions = groupAllowOverflow
+              ? {
+                  allowOverflow: true,
+                  maxScale: clipTransformMaxScale,
+                  minVisiblePx: groupMinSize,
+                }
+              : undefined;
+            const groupClamped = clampTransformToStage(
+              draftGroupRect,
+              { width: rect.width, height: rect.height },
+              groupMinSize,
+              groupClampOptions
+            );
+            clipTransformTouchedRef.current.add(clipId);
+            nextTransforms[clipId] = groupClamped;
+          });
+          return nextTransforms;
+        });
+      } else {
+        clipTransformTouchedRef.current.add(resizeTransformState.clipId);
+        setClipTransforms((prev) => ({
+          ...prev,
+          [resizeTransformState.clipId]: clamped,
+        }));
+      }
     };
     const handleUp = () => {
       const clipId = resizeTransformState.clipId;
       const isTextClip = clipAssetKindMap.get(clipId) === "text";
-      if (isTextClip) {
+      const isSubtitleClip = subtitleClipIdSet.has(clipId);
+      if (isTextClip && !isSubtitleClip) {
         const stage = stageRef.current;
         const settings =
           textSettingsRef.current[clipId] ?? fallbackTextSettings;
@@ -8466,6 +9214,8 @@ export default function AdvancedEditorPage() {
       setSnapGuides(null);
       resizeTextRectRef.current = null;
       resizeTextFontRef.current = null;
+      subtitleResizeGroupTransformsRef.current = null;
+      subtitleResizeFontMapRef.current = null;
       resizeTransformHistoryRef.current = false;
     };
     window.addEventListener("pointermove", handleMove);
@@ -8483,6 +9233,7 @@ export default function AdvancedEditorPage() {
     selectedTextEntry,
     visualStack,
     clipTransforms,
+    subtitleClipIdSet,
   ]);
 
   // Rotation effect
@@ -8521,24 +9272,45 @@ export default function AdvancedEditorPage() {
       // Normalize to -180 to 180
       while (newRotation > 180) newRotation -= 360;
       while (newRotation < -180) newRotation += 360;
-      clipTransformTouchedRef.current.add(rotateTransformState.clipId);
-      setClipTransforms((prev) => {
-        const current = prev[rotateTransformState.clipId];
-        if (!current) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [rotateTransformState.clipId]: {
-            ...current,
-            rotation: newRotation,
-          },
-        };
-      });
+      const rotateGroupTransforms = subtitleRotateGroupTransformsRef.current;
+      const isSubtitleGroupRotate =
+        rotateGroupTransforms &&
+        rotateGroupTransforms.has(rotateTransformState.clipId);
+      if (isSubtitleGroupRotate && rotateGroupTransforms) {
+        const delta = newRotation - rotateTransformState.startRotation;
+        setClipTransforms((prev) => {
+          const nextTransforms = { ...prev };
+          rotateGroupTransforms.forEach((startTransform, clipId) => {
+            const current = prev[clipId] ?? startTransform;
+            nextTransforms[clipId] = {
+              ...current,
+              rotation: (startTransform.rotation ?? 0) + delta,
+            };
+            clipTransformTouchedRef.current.add(clipId);
+          });
+          return nextTransforms;
+        });
+      } else {
+        clipTransformTouchedRef.current.add(rotateTransformState.clipId);
+        setClipTransforms((prev) => {
+          const current = prev[rotateTransformState.clipId];
+          if (!current) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [rotateTransformState.clipId]: {
+              ...current,
+              rotation: newRotation,
+            },
+          };
+        });
+      }
     };
     const handleUp = () => {
       setRotateTransformState(null);
       rotateTransformHistoryRef.current = false;
+      subtitleRotateGroupTransformsRef.current = null;
     };
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
@@ -9058,6 +9830,7 @@ export default function AdvancedEditorPage() {
     requestStockVideoMeta,
     selectedAudioEntry,
     selectedAudioSettings,
+    selectedClipId,
     selectedTextEntry,
     selectedVideoEntry,
     selectedVideoSettings,
@@ -9145,7 +9918,9 @@ export default function AdvancedEditorPage() {
     subtitleStatus,
     subtitleStyleFilter,
     subtitleStyleId,
+    subtitleStylePresets: resolvedSubtitleStylePresets,
     detachedSubtitleIds,
+    subtitleMoveTogether,
     applySubtitleStyle,
     handleGenerateSubtitles,
     handleSubtitleAddLine,
@@ -9153,7 +9928,9 @@ export default function AdvancedEditorPage() {
     handleSubtitleDeleteAll,
     handleSubtitleDetachToggle,
     handleSubtitleShiftAll,
+    handleSubtitleStyleUpdate,
     handleSubtitleTextUpdate,
+    setSubtitleMoveTogether,
     textFontSizeDisplay,
     textFontSizeOptions,
     textPanelAlign,
@@ -9503,15 +10280,17 @@ export default function AdvancedEditorPage() {
                   {/* This approach bypasses React re-renders for smooth subtitle display */}
                   <div
                     ref={subtitleOverlayRef}
-                    className="pointer-events-none"
+                    className="cursor-grab"
                     style={{
                       position: 'absolute',
                       zIndex: 999,
                       opacity: 0,
                       visibility: 'hidden',
+                      pointerEvents: 'none',
                       willChange: 'opacity, transform',
                       contain: 'layout style',
                     }}
+                    onPointerDown={handleSubtitleOverlayPointerDown}
                   >
                     <div 
                       className="flex items-end justify-center px-3"
@@ -9787,6 +10566,95 @@ export default function AdvancedEditorPage() {
                       </div>
                     );
                   })}
+                  {subtitleSelectionVisible &&
+                    selectedSubtitleEntry &&
+                    selectedSubtitleTransform && (
+                      <div
+                        className="absolute"
+                        style={{
+                          left: `${selectedSubtitleTransform.x * 100}%`,
+                          top: `${selectedSubtitleTransform.y * 100}%`,
+                          width: `${selectedSubtitleTransform.width * 100}%`,
+                          height: `${selectedSubtitleTransform.height * 100}%`,
+                          zIndex: 30,
+                          transform:
+                            selectedSubtitleTransform.rotation &&
+                              selectedSubtitleTransform.rotation !== 0
+                              ? `rotate(${selectedSubtitleTransform.rotation}deg)`
+                              : undefined,
+                          transformOrigin: "center center",
+                        }}
+                      >
+                        {selectedClipIdsSet.has(
+                          selectedSubtitleEntry.clip.id
+                        ) && (
+                          <div className="pointer-events-none absolute inset-0 border-2 border-[#335CFF] shadow-[0_0_0_1px_rgba(51,92,255,0.35)]" />
+                        )}
+                        {activeCanvasClipId === selectedSubtitleEntry.clip.id && (
+                          <div className="absolute inset-0">
+                            <button
+                              type="button"
+                              className="pointer-events-auto absolute left-1/2 -translate-x-1/2 flex items-center justify-center cursor-grab active:cursor-grabbing"
+                              style={{
+                                top: "-28px",
+                                width: "20px",
+                                height: "20px",
+                                touchAction: "none",
+                              }}
+                              onPointerDown={(event) =>
+                                handleRotateStart(event, selectedSubtitleEntry)
+                              }
+                              aria-label="Rotate subtitle"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                className="text-[#8F9199] hover:text-[#335CFF] transition-colors"
+                              >
+                                <path
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M20.87 13.274A8.958 8.958 0 0 0 4.232 7.516m16.638 5.758 2.294-2.488m-2.294 2.488-2.6-2.399m-15.14-.149a8.959 8.959 0 0 0 16.64 5.753M3.13 10.726.836 13.214m2.294-2.488 2.6 2.399"
+                                />
+                              </svg>
+                            </button>
+                            <div
+                              className="pointer-events-none absolute left-1/2 -translate-x-1/2 w-px bg-[#335CFF]/40"
+                              style={{
+                                top: "-12px",
+                                height: "12px",
+                              }}
+                            />
+                            {transformHandles.map((handle) => (
+                              <button
+                                key={`${selectedSubtitleEntry.clip.id}-${handle.id}-subtitle`}
+                                type="button"
+                                className={`pointer-events-auto absolute border border-[#335CFF] bg-white shadow-sm ${handle.className} ${handle.cursor} ${
+                                  handle.isCorner
+                                    ? "h-3 w-3 rounded-full"
+                                    : handle.id === "n" || handle.id === "s"
+                                      ? "h-1.5 w-8 rounded-full"
+                                      : "h-8 w-1.5 rounded-full"
+                                }`}
+                                onPointerDown={(event) =>
+                                  handleResizeStart(
+                                    event,
+                                    selectedSubtitleEntry,
+                                    handle.id
+                                  )
+                                }
+                                aria-label={`Resize subtitle ${handle.id}`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
               )}
             </div>
@@ -11207,6 +12075,7 @@ export default function AdvancedEditorPage() {
             const width = Math.max(1, clip.duration * timelineScale);
             const isSelected = selectedClipIdsSet.has(clip.id);
             const isDragging = dragClipState?.clipId === clip.id;
+            const isSubtitleClip = subtitleClipIdSet.has(clip.id);
             const waveform =
               lane.type === "audio"
                 ? getAudioClipWaveformBars(clip, asset, width)
@@ -11232,6 +12101,13 @@ export default function AdvancedEditorPage() {
             const dragLiftShadow = isDragging
               ? "shadow-[0_18px_30px_rgba(15,23,42,0.25)] cursor-grabbing"
               : "";
+            const clipBackgroundClass =
+              lane.type === "text"
+                ? isSubtitleClip
+                  ? "bg-[#CAA7FC]"
+                  : "bg-[#F8FAFF]"
+                : "bg-white";
+            const trimHandleClass = isSubtitleClip ? "bg-[#CAA7FC]" : "bg-black/5";
             return (
               <div
                 key={clip.id}
@@ -11245,7 +12121,7 @@ export default function AdvancedEditorPage() {
               >
                 <button
                   type="button"
-                  className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 bg-white p-0 text-left text-[10px] font-semibold shadow-sm transition ${isDragging ? "opacity-70" : ""} ${collisionHighlight} ${dragLiftShadow}`}
+                  className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 ${clipBackgroundClass} p-0 text-left text-[10px] font-semibold shadow-sm transition ${isDragging ? "opacity-70" : ""} ${collisionHighlight} ${dragLiftShadow}`}
                   data-timeline-clip="true"
                   onContextMenu={(event) =>
                     handleTimelineClipContextMenu(event, clip, asset)
@@ -11355,9 +12231,6 @@ export default function AdvancedEditorPage() {
                   {lane.type === "audio" && (
                     <div className="absolute inset-0 bg-[#EEF2FF]" />
                   )}
-                  {lane.type === "text" && (
-                    <div className="absolute inset-0 bg-[#F8FAFF]" />
-                  )}
                   {lane.type === "audio" && (
                     <div className="absolute inset-0 px-2 py-2">
                       <span className="pointer-events-none absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-[#A5B4FC]/60" />
@@ -11390,11 +12263,13 @@ export default function AdvancedEditorPage() {
                   <div
                     className={`pointer-events-none absolute inset-0 rounded-sm border-4 transition ${clipBorderClass}`}
                   />
-                  <span className="absolute bottom-1 right-1 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                    {formatDuration(clip.duration)}
-                  </span>
+                  {!isSubtitleClip && (
+                    <span className="absolute bottom-1 right-1 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                      {formatDuration(clip.duration)}
+                    </span>
+                  )}
                   <span
-                    className="absolute left-0 top-0 h-full w-2 cursor-col-resize rounded-l-sm bg-black/5"
+                    className={`absolute left-0 top-0 h-full w-2 cursor-col-resize rounded-l-sm ${trimHandleClass}`}
                     onMouseDown={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -11410,7 +12285,7 @@ export default function AdvancedEditorPage() {
                     }}
                   />
                   <span
-                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize rounded-r-sm bg-black/5"
+                    className={`absolute right-0 top-0 h-full w-2 cursor-col-resize rounded-r-sm ${trimHandleClass}`}
                     onMouseDown={(event) => {
                       event.preventDefault();
                       event.stopPropagation();

@@ -155,6 +155,8 @@ export const createDefaultTextSettings = (): TextClipSettings => ({
   shadowOpacity: 30,
   boxScaleX: 1,
   boxScaleY: 1,
+  wordHighlightEnabled: false,
+  wordHighlightColor: "#FDE047",
   autoSize: true,
 });
 

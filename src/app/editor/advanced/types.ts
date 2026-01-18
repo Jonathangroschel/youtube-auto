@@ -131,6 +131,8 @@ export type TextClipSettings = {
   boxScaleX?: number;
   boxScaleY?: number;
   autoSize?: boolean;
+  wordHighlightEnabled?: boolean;
+  wordHighlightColor?: string;
 };
 
 export type TransformHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";

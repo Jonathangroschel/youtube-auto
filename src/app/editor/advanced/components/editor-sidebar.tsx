@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
@@ -17,7 +18,6 @@ import { panelButtonClass, panelCardClass, speedPresets } from "../constants";
 import {
   backgroundSwatches,
   mediaFilters,
-  subtitleStylePresets,
   subtitleStyleFilters,
   textFontFamilies,
   textLetterSpacingOptions,
@@ -62,6 +62,7 @@ type EditorSidebarProps = {
     clipId: string,
     updater: (current: TextClipSettings) => TextClipSettings
   ) => void;
+  selectedClipId: string | null;
 } & Record<string, any>;
 
 type SubtitleSegmentEntry = {
@@ -116,6 +117,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleSubtitleDeleteAll,
     handleSubtitleDetachToggle,
     handleSubtitleShiftAll,
+    handleSubtitleStyleUpdate,
     handleSubtitleTextUpdate,
     handleStickerTrendingRetry,
     handleStockMusicRetry,
@@ -146,6 +148,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     requestStockVideoMeta,
     selectedAudioEntry,
     selectedAudioSettings,
+    selectedClipId,
     selectedTextEntry,
     selectedVideoEntry,
     selectedVideoSettings,
@@ -201,6 +204,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     setSubtitleLanguage,
     setSubtitleSource,
     setSubtitleStyleFilter,
+    setSubtitleMoveTogether,
     setVideoBackground,
     setVideoPanelView,
     showAllStockTags,
@@ -233,7 +237,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     subtitleStatus,
     subtitleStyleFilter,
     subtitleStyleId,
+    subtitleStylePresets,
     detachedSubtitleIds,
+    subtitleMoveTogether,
     textFontSizeDisplay,
     textFontSizeOptions,
     textPanelAlign,
@@ -296,6 +302,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [showSubtitleTimings, setShowSubtitleTimings] = useState(false);
   const [shiftTimingsOpen, setShiftTimingsOpen] = useState(false);
   const [shiftSeconds, setShiftSeconds] = useState("0.0");
+  const [subtitleStyleEditorOpen, setSubtitleStyleEditorOpen] = useState(false);
+  const [subtitleStyleEditorId, setSubtitleStyleEditorId] = useState<string | null>(
+    null
+  );
+  const [subtitleStyleDraft, setSubtitleStyleDraft] = useState<TextClipSettings | null>(
+    null
+  );
 
   useEffect(() => {
     if (subtitleStatus !== "loading") {
@@ -368,6 +381,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     setShiftTimingsOpen(false);
   };
 
+  const subtitleStyleSampleText = "The quick brown";
   const recentStylePreset =
     subtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
     subtitleStylePresets[0];
@@ -387,15 +401,118 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     };
     return getTextRenderStyles(previewSettings);
   }, [fallbackTextSettings, recentStylePreset]);
+  const subtitleStyleDraftPreview = useMemo(() => {
+    if (!subtitleStyleDraft) {
+      return null;
+    }
+    return getTextRenderStyles({
+      ...subtitleStyleDraft,
+      align: "center",
+    });
+  }, [subtitleStyleDraft]);
+  const subtitleStyleEditorPreset = useMemo(() => {
+    if (!subtitleStyleEditorId) {
+      return null;
+    }
+    return (
+      subtitleStylePresets.find((preset) => preset.id === subtitleStyleEditorId) ??
+      null
+    );
+  }, [subtitleStyleEditorId, subtitleStylePresets]);
+
+  const buildSubtitleStyleDraft = (preset: typeof subtitleStylePresets[number]) => {
+    return {
+      ...fallbackTextSettings,
+      ...preset.settings,
+      text: subtitleStyleSampleText,
+      fontFamily: preset.preview?.fontFamily ?? fallbackTextSettings.fontFamily,
+      fontSize: preset.preview?.fontSize ?? fallbackTextSettings.fontSize,
+      bold: preset.preview?.bold ?? fallbackTextSettings.bold,
+      italic: preset.preview?.italic ?? fallbackTextSettings.italic,
+      align: "center",
+    };
+  };
+
+  const updateSubtitleStyleDraft = (nextDraft: TextClipSettings) => {
+    setSubtitleStyleDraft(nextDraft);
+    if (!subtitleStyleEditorId) {
+      return;
+    }
+    const { text: _text, autoSize: _autoSize, ...settings } = nextDraft;
+    handleSubtitleStyleUpdate(subtitleStyleEditorId, settings, {
+      fontFamily: nextDraft.fontFamily,
+      fontSize: nextDraft.fontSize,
+      bold: nextDraft.bold,
+      italic: nextDraft.italic,
+      text:
+        subtitleStyleEditorPreset?.preview?.text ??
+        subtitleStyleEditorPreset?.name ??
+        "Style",
+    });
+  };
+
+  const openSubtitleStyleEditor = (
+    preset: typeof subtitleStylePresets[number]
+  ) => {
+    setSubtitleStyleEditorId(preset.id);
+    setSubtitleStyleDraft(buildSubtitleStyleDraft(preset));
+    setSubtitleStyleEditorOpen(true);
+  };
+
+  const closeSubtitleStyleEditor = () => {
+    setSubtitleStyleEditorOpen(false);
+    setSubtitleStyleEditorId(null);
+    setSubtitleStyleDraft(null);
+  };
+
+  const handleSubtitleStyleSelect = (
+    preset: typeof subtitleStylePresets[number]
+  ) => {
+    applySubtitleStyle(preset.id);
+  };
+
+  const handleSubtitleStyleKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    preset: typeof subtitleStylePresets[number]
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleSubtitleStyleSelect(preset);
+    }
+  };
 
   const activeSubtitleMenuSegment = subtitleRowMenu.segmentId
     ? subtitleSegments.find(
         (segment: { id: string }) => segment.id === subtitleRowMenu.segmentId
       ) ?? null
     : null;
-  const isSubtitleMenuDetached = activeSubtitleMenuSegment
-    ? detachedSubtitleIds?.has(activeSubtitleMenuSegment.clipId)
-    : false;
+  const selectedSubtitleClipId = useMemo(() => {
+    if (!selectedClipId) {
+      return null;
+    }
+    return subtitleSegments.some((segment) => segment.clipId === selectedClipId)
+      ? selectedClipId
+      : null;
+  }, [selectedClipId, subtitleSegments]);
+  const groupToggleChecked = selectedSubtitleClipId
+    ? subtitleMoveTogether &&
+      !detachedSubtitleIds?.has(selectedSubtitleClipId)
+    : subtitleMoveTogether;
+  const handleGroupToggle = (next: boolean) => {
+    if (selectedSubtitleClipId) {
+      if (!subtitleMoveTogether) {
+        setSubtitleMoveTogether(true);
+      }
+      const isDetached = detachedSubtitleIds?.has(selectedSubtitleClipId);
+      if (next && isDetached) {
+        handleSubtitleDetachToggle(selectedSubtitleClipId);
+      } else if (!next && !isDetached) {
+        handleSubtitleDetachToggle(selectedSubtitleClipId);
+      }
+      return;
+    }
+    setSubtitleMoveTogether(next);
+  };
 
 
   const isAudioTool = activeTool === "audio";
@@ -424,7 +541,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       return styles;
     }
     return styles.filter((style) => style.category === subtitleStyleFilter);
-  }, [subtitleStyleFilter]);
+  }, [subtitleStyleFilter, subtitleStylePresets]);
   const hasSubtitleResults = subtitleSegments?.length > 0;
 
   return (
@@ -1225,28 +1342,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   <div id="subtitles-extra-header-root" />
                 </div>
                 {hasSubtitleResults && (
-                  <div className="flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
-                    >
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-gray-100 text-[10px] font-semibold text-gray-600">
-                        {subtitleLanguage?.region ?? "US"}
-                      </span>
-                      <span className="text-sm font-semibold">
-                        {subtitleLanguage?.label ?? "English"}
-                      </span>
-                      <svg viewBox="0 0 16 16" className="h-3 w-3 text-gray-400">
-                        <path
-                          d="m4 6 4 4 4-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+                      <span>Group</span>
+                      <ToggleSwitch
+                        checked={groupToggleChecked}
+                        onChange={handleGroupToggle}
+                        ariaLabel="Toggle subtitle group"
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
                       <div className="relative">
                         <button
@@ -1280,12 +1384,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <div
                             ref={settingsMenuRef}
                             data-testid="@context-menu/container/editor/subtitles/settings-dropdown"
-                            className="absolute right-0 z-30 mt-2 w-56 rounded-xl border border-gray-100 bg-white p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
+                            className="absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
                           >
                             <button
                               type="button"
                               data-testid="@editor/subtitles/settings-cog/shift-all"
-                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
                               onClick={() => {
                                 setShiftSeconds("0.0");
                                 setShiftTimingsOpen(true);
@@ -1309,7 +1413,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             <button
                               type="button"
                               data-testid="@editor/subtitles/settings-cog/timings"
-                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
                               onClick={() => {
                                 setShowSubtitleTimings((prev) => !prev);
                                 setSubtitleActiveTab("edit");
@@ -1333,7 +1437,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             <button
                               type="button"
                               data-testid="@editor/subtitles/settings-cog/delete-all"
-                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
                               onClick={() => {
                                 handleSubtitleDeleteAll();
                                 setSubtitleSettingsOpen(false);
@@ -2454,135 +2558,463 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-1 flex-col">
-                  <div className="border-b border-gray-100 px-6 py-3">
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                      {subtitleStyleFilters.map((filter) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${
-                            subtitleStyleFilter === filter
-                              ? "bg-gray-100 text-gray-900"
-                              : "bg-gray-50 text-gray-600 hover:bg-gray-100"
-                          }`}
-                          onClick={() => setSubtitleStyleFilter(filter)}
-                        >
-                          {filter}
-                        </button>
-                      ))}
+                <div className="flex min-h-0 flex-1 flex-col">
+                  {subtitleActiveTab === "style" && !subtitleStyleEditorOpen && (
+                    <div className="border-b border-gray-100 px-6 py-3">
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                        {subtitleStyleFilters.map((filter) => (
+                          <button
+                            key={filter}
+                            type="button"
+                            className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${
+                              subtitleStyleFilter === filter
+                                ? "bg-gray-100 text-gray-900"
+                                : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                            }`}
+                            onClick={() => setSubtitleStyleFilter(filter)}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   {subtitleActiveTab === "style" ? (
-                    <div className="flex-1 px-6 py-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-[0_16px_28px_rgba(15,23,42,0.12)]">
-                          <div className="relative h-20 overflow-hidden rounded-t-xl bg-gradient-to-br from-slate-400/80 via-slate-500/70 to-slate-700/70">
-                            <div className="absolute left-2 top-2 z-10 flex items-center gap-1">
-                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 shadow-sm">
-                                <svg viewBox="0 0 12 12" className="h-3.5 w-3.5">
-                                  <path
-                                    d="M6 3V6L7.5 7.5M11 6C11 8.76142 8.76142 11 6 11C3.23858 11 1 8.76142 1 6C1 3.23858 3.23858 1 6 1C8.76142 1 11 3.23858 11 6Z"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              </div>
+                    subtitleStyleEditorOpen && subtitleStyleDraft ? (
+                      <div className="flex min-h-0 flex-1 flex-col">
+                        <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                              aria-label="Back to styles"
+                              onClick={closeSubtitleStyleEditor}
+                            >
+                              <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                <path
+                                  d="M10 4 6 8l4 4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                            <div>
+                              <h3 className="text-base font-semibold text-gray-900">
+                                Edit style
+                              </h3>
+                              <p className="text-xs text-gray-500">
+                                {subtitleStyleEditorPreset?.name ?? "Style"}
+                              </p>
                             </div>
-                            <div className="flex h-full items-center justify-center px-2 text-center text-white">
+                          </div>
+                        </div>
+                        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                              Preview
+                            </div>
+                            <div className="mt-2 flex h-20 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70 px-2 text-center">
                               <span
-                                className="max-h-10 overflow-hidden text-xs font-semibold leading-snug"
-                                style={recentStylePreview?.textStyle}
+                                className="max-h-12 overflow-hidden text-center text-xs font-semibold leading-snug"
+                                style={subtitleStyleDraftPreview?.textStyle}
                               >
-                                {recentStylePreset?.preview?.text ?? "Recent style"}
+                                {subtitleStyleSampleText}
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center justify-between px-3 py-2">
-                            <span className="text-sm font-medium text-gray-700">
-                              Recent style
-                            </span>
-                            <div className="flex items-center gap-1">
+
+                          <div className="grid gap-4">
+                            <div className="space-y-2">
+                              <label className="text-xs font-semibold text-gray-600">
+                                Font
+                              </label>
+                              <select
+                                value={subtitleStyleDraft.fontFamily}
+                                onChange={(event) =>
+                                  updateSubtitleStyleDraft({
+                                    ...subtitleStyleDraft,
+                                    fontFamily: event.target.value,
+                                  })
+                                }
+                                className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-800 shadow-sm focus:border-[#5B6CFF] focus:outline-none"
+                              >
+                                {textFontFamilies.map((family) => (
+                                  <option key={family} value={family}>
+                                    {family}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <SliderField
+                              label="Font size"
+                              value={subtitleStyleDraft.fontSize}
+                              min={16}
+                              max={72}
+                              step={1}
+                              onChange={(value) =>
+                                updateSubtitleStyleDraft({
+                                  ...subtitleStyleDraft,
+                                  fontSize: value,
+                                })
+                              }
+                            />
+
+                            <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                className="inline-flex items-center gap-1 rounded-md bg-[#5B6CFF] px-2 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#4B5BEE]"
+                                aria-pressed={subtitleStyleDraft.bold}
+                                className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition ${
+                                  subtitleStyleDraft.bold
+                                    ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                                }`}
+                                onClick={() =>
+                                  updateSubtitleStyleDraft({
+                                    ...subtitleStyleDraft,
+                                    bold: !subtitleStyleDraft.bold,
+                                  })
+                                }
                               >
-                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/20">
-                                  <svg viewBox="0 0 8 12" className="h-3 w-3">
-                                    <path
-                                      d="M4.941 5.4h2.588c.364 0 .59.336.406.602L3.935 11.802c-.243.352-.876.206-.876-.202V6.6H.471c-.364 0-.59-.336-.406-.602L4.065.198c.243-.352.876-.206.876.202V5.4Z"
-                                      fill="currentColor"
-                                    />
-                                  </svg>
-                                </span>
-                                Save
+                                B
                               </button>
                               <button
                                 type="button"
-                                className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-200"
+                                aria-pressed={subtitleStyleDraft.italic}
+                                className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold italic transition ${
+                                  subtitleStyleDraft.italic
+                                    ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                                }`}
+                                onClick={() =>
+                                  updateSubtitleStyleDraft({
+                                    ...subtitleStyleDraft,
+                                    italic: !subtitleStyleDraft.italic,
+                                  })
+                                }
+                              >
+                                I
+                              </button>
+                              <div className="ml-auto flex items-center gap-2">
+                                <span className="text-xs font-semibold text-gray-600">
+                                  Text color
+                                </span>
+                                <input
+                                  type="color"
+                                  value={subtitleStyleDraft.color}
+                                  onChange={(event) =>
+                                    updateSubtitleStyleDraft({
+                                      ...subtitleStyleDraft,
+                                      color: event.target.value,
+                                    })
+                                  }
+                                  className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-700">
+                                  Outline
+                                </span>
+                                <ToggleSwitch
+                                  checked={subtitleStyleDraft.outlineEnabled}
+                                  onChange={(next) =>
+                                    updateSubtitleStyleDraft({
+                                      ...subtitleStyleDraft,
+                                      outlineEnabled: next,
+                                    })
+                                  }
+                                  ariaLabel="Toggle subtitle outline"
+                                />
+                              </div>
+                              {subtitleStyleDraft.outlineEnabled && (
+                                <div className="mt-3 space-y-3">
+                                  <SliderField
+                                    label="Outline width"
+                                    value={subtitleStyleDraft.outlineWidth}
+                                    min={1}
+                                    max={8}
+                                    step={0.5}
+                                    onChange={(value) =>
+                                      updateSubtitleStyleDraft({
+                                        ...subtitleStyleDraft,
+                                        outlineWidth: value,
+                                      })
+                                    }
+                                  />
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-600">
+                                      Outline color
+                                    </span>
+                                    <input
+                                      type="color"
+                                      value={subtitleStyleDraft.outlineColor}
+                                      onChange={(event) =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          outlineColor: event.target.value,
+                                        })
+                                      }
+                                      className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-700">
+                                  Shadow
+                                </span>
+                                <ToggleSwitch
+                                  checked={subtitleStyleDraft.shadowEnabled}
+                                  onChange={(next) =>
+                                    updateSubtitleStyleDraft({
+                                      ...subtitleStyleDraft,
+                                      shadowEnabled: next,
+                                    })
+                                  }
+                                  ariaLabel="Toggle subtitle shadow"
+                                />
+                              </div>
+                              {subtitleStyleDraft.shadowEnabled && (
+                                <div className="mt-3 space-y-3">
+                                  <SliderField
+                                    label="Shadow blur"
+                                    value={subtitleStyleDraft.shadowBlur}
+                                    min={2}
+                                    max={24}
+                                    step={1}
+                                    onChange={(value) =>
+                                      updateSubtitleStyleDraft({
+                                        ...subtitleStyleDraft,
+                                        shadowBlur: value,
+                                      })
+                                    }
+                                  />
+                                  <SliderField
+                                    label="Shadow opacity"
+                                    value={subtitleStyleDraft.shadowOpacity}
+                                    min={10}
+                                    max={100}
+                                    step={5}
+                                    valueLabel={`${subtitleStyleDraft.shadowOpacity}%`}
+                                    onChange={(value) =>
+                                      updateSubtitleStyleDraft({
+                                        ...subtitleStyleDraft,
+                                        shadowOpacity: value,
+                                      })
+                                    }
+                                  />
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-600">
+                                      Shadow color
+                                    </span>
+                                    <input
+                                      type="color"
+                                      value={subtitleStyleDraft.shadowColor}
+                                      onChange={(event) =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          shadowColor: event.target.value,
+                                        })
+                                      }
+                                      className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-700">
+                                  Background
+                                </span>
+                                <ToggleSwitch
+                                  checked={subtitleStyleDraft.backgroundEnabled}
+                                  onChange={(next) =>
+                                    updateSubtitleStyleDraft({
+                                      ...subtitleStyleDraft,
+                                      backgroundEnabled: next,
+                                    })
+                                  }
+                                  ariaLabel="Toggle subtitle background"
+                                />
+                              </div>
+                              {subtitleStyleDraft.backgroundEnabled && (
+                                <div className="mt-3 space-y-3">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                                        subtitleStyleDraft.backgroundStyle ===
+                                        "line-block-round"
+                                          ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                      }`}
+                                      onClick={() =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          backgroundStyle: "line-block-round",
+                                        })
+                                      }
+                                    >
+                                      Line
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                                        subtitleStyleDraft.backgroundStyle ===
+                                        "block-rounded"
+                                          ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
+                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                      }`}
+                                      onClick={() =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          backgroundStyle: "block-rounded",
+                                        })
+                                      }
+                                    >
+                                      Block
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-600">
+                                      Background color
+                                    </span>
+                                    <input
+                                      type="color"
+                                      value={subtitleStyleDraft.backgroundColor}
+                                      onChange={(event) =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          backgroundColor: event.target.value,
+                                        })
+                                      }
+                                      className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-y-auto px-6 py-4">
+                        <div className="space-y-4">
+                          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                              <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                  Selected style
+                                </div>
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {recentStylePreset?.name ?? "Style"}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-50"
+                                onClick={() => {
+                                  if (recentStylePreset) {
+                                    openSubtitleStyleEditor(recentStylePreset);
+                                  }
+                                }}
                               >
                                 Edit
                               </button>
                             </div>
+                            <div className="relative h-24 bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70">
+                              <div className="flex h-full items-center justify-center px-3 text-center text-white">
+                                <span
+                                  className="max-h-12 overflow-hidden text-xs font-semibold leading-snug"
+                                  style={recentStylePreview?.textStyle}
+                                >
+                                  {recentStylePreset?.preview?.text ??
+                                    subtitleStyleSampleText}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            {filteredSubtitleStyles.map((preset) => {
+                              const previewSettings: TextClipSettings = {
+                                ...fallbackTextSettings,
+                                ...preset.settings,
+                                fontFamily:
+                                  preset.preview?.fontFamily ?? "Inter",
+                                fontSize: preset.preview?.fontSize ?? 22,
+                                bold: preset.preview?.bold ?? true,
+                                italic: preset.preview?.italic ?? false,
+                                text: preset.preview?.text ?? "Everything and I love",
+                                align: "center",
+                              };
+                              const previewStyles = getTextRenderStyles(
+                                previewSettings
+                              );
+                              const isSelected = subtitleStyleId === preset.id;
+                              return (
+                                <div
+                                  key={preset.id}
+                                  role="button"
+                                  tabIndex={0}
+                                  className={`group cursor-pointer overflow-hidden rounded-xl border text-left shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 ${
+                                    isSelected
+                                      ? "border-[#5B6CFF] ring-1 ring-[#5B6CFF]/30"
+                                      : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                  onClick={() => handleSubtitleStyleSelect(preset)}
+                                  onKeyDown={(event) =>
+                                    handleSubtitleStyleKeyDown(event, preset)
+                                  }
+                                >
+                                  <div className="relative flex h-20 items-center justify-center bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70">
+                                    <span
+                                      className="max-h-10 overflow-hidden text-center text-xs font-semibold leading-snug"
+                                      style={previewStyles.textStyle}
+                                    >
+                                      {preset.preview?.text ?? "Sample"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between px-3 py-2">
+                                    <span
+                                      className={`text-sm font-medium ${
+                                        isSelected ? "text-[#5B6CFF]" : "text-gray-700"
+                                      }`}
+                                    >
+                                      {preset.name}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 opacity-0 transition group-hover:opacity-100"
+                                      onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        openSubtitleStyleEditor(preset);
+                                      }}
+                                    >
+                                      Edit
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                        {filteredSubtitleStyles.map((preset) => {
-                          const previewSettings: TextClipSettings = {
-                            ...fallbackTextSettings,
-                            ...preset.settings,
-                            fontFamily:
-                              preset.preview?.fontFamily ?? "Inter",
-                            fontSize: preset.preview?.fontSize ?? 22,
-                            bold: preset.preview?.bold ?? true,
-                            italic: preset.preview?.italic ?? false,
-                            text: preset.preview?.text ?? "Everything and I love",
-                            align: "center",
-                          };
-                          const previewStyles = getTextRenderStyles(
-                            previewSettings
-                          );
-                          const isSelected = subtitleStyleId === preset.id;
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              className={`group overflow-hidden rounded-xl border text-left shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 ${
-                                isSelected
-                                  ? "border-[#5B6CFF] ring-1 ring-[#5B6CFF]/30"
-                                  : "border-gray-200 hover:border-gray-300"
-                              }`}
-                              onClick={() => applySubtitleStyle(preset.id)}
-                            >
-                              <div className="relative flex h-20 items-center justify-center bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70">
-                                <span
-                                  className="max-h-10 overflow-hidden text-center text-xs font-semibold leading-snug"
-                                  style={previewStyles.textStyle}
-                                >
-                                  {preset.preview?.text ?? "Sample"}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between px-3 py-2">
-                                <span
-                                  className={`text-sm font-medium ${
-                                    isSelected ? "text-[#5B6CFF]" : "text-gray-700"
-                                  }`}
-                                >
-                                  {preset.name}
-                                </span>
-                                <span className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 opacity-0 transition group-hover:opacity-100">
-                                  Edit
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })}
                       </div>
-                    </div>
+                    )
                   ) : (
-                    <div className="flex-1 px-6 py-4">
+                    <div className="flex-1 overflow-y-auto px-6 py-4">
                       <div className="space-y-3">
                         {subtitleSegments.map((segment: SubtitleSegmentEntry) => {
                           const clip = segment.clip ?? null;
@@ -2618,11 +3050,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 />
                                 <div className="flex flex-col items-end gap-2">
                                   {showSubtitleTimings && clip && (
-                                    <div className="flex flex-col gap-2">
+                                    <div className="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50/70 p-2">
                                       <div className="flex items-center gap-2">
                                         <button
                                           type="button"
-                                          className="flex h-7 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                                          className="flex h-7 items-center gap-1 rounded-md bg-white px-2 text-[10px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
                                           onClick={() =>
                                             handleSetStartAtPlayhead(clip)
                                           }
@@ -2651,13 +3083,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               event.target.value
                                             )
                                           }
-                                          className="h-7 w-20 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
+                                          className="h-7 w-24 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
                                         />
                                       </div>
                                       <div className="flex items-center gap-2">
                                         <button
                                           type="button"
-                                          className="flex h-7 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                                          className="flex h-7 items-center gap-1 rounded-md bg-white px-2 text-[10px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
                                           onClick={() =>
                                             handleSetEndAtPlayhead(clip)
                                           }
@@ -2686,7 +3118,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               event.target.value
                                             )
                                           }
-                                          className="h-7 w-20 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
+                                          className="h-7 w-24 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
                                         />
                                       </div>
                                     </div>
@@ -2746,36 +3178,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   }}
                 >
                   <div className="w-48 rounded-xl border border-gray-100 bg-white p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]">
-                    <button
-                      type="button"
-                      data-testid="@editor/subtitles/subtitles-editor/row/options/style-scope-toggle"
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                      onClick={() => {
-                        if (activeSubtitleMenuSegment?.clipId) {
-                          handleSubtitleDetachToggle(
-                            activeSubtitleMenuSegment.clipId
-                          );
-                        }
-                        setSubtitleRowMenu((prev) => ({
-                          ...prev,
-                          open: false,
-                          segmentId: null,
-                        }));
-                      }}
-                    >
-                      <svg
-                        viewBox="0 0 16 16"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="m8.943 11.771-1.414 1.414a3.333 3.333 0 0 1-4.714-4.714l1.414-1.414M7.057 4.23l1.414-1.414a3.333 3.333 0 0 1 4.714 4.714l-1.414 1.414" />
-                      </svg>
-                      {isSubtitleMenuDetached ? "Attach" : "Detach"}
-                    </button>
                     <button
                       type="button"
                       data-testid="@editor/subtitles/subtitles-editor/row/options/delete"
