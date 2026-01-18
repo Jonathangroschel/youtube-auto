@@ -204,26 +204,59 @@ export async function POST(request: Request) {
 
     const client = new ApifyClient({ token: apiToken });
     
-    // Run the YouTube downloader actor (z4hUd9qNTetQtzEcK)
-    // Note: call() waits for completion by default. Vercel functions have their own timeout.
+    // Start the YouTube downloader actor (z4hUd9qNTetQtzEcK)
+    // Use start() instead of call() to avoid Vercel timeout issues
     console.log("Starting Apify actor for URL:", url, "Quality:", quality);
-    const run = await client.actor("z4hUd9qNTetQtzEcK").call({
+    const run = await client.actor("z4hUd9qNTetQtzEcK").start({
       urls: [{ url }],
       quality,
       proxy: { useApifyProxy: true },
     });
 
-    if (!run?.defaultDatasetId) {
+    if (!run?.id) {
+      return NextResponse.json(
+        { error: "Failed to start downloader actor." },
+        { status: 502 }
+      );
+    }
+
+    console.log("Actor run started, ID:", run.id);
+
+    // Poll for completion (max 2 minutes, check every 2 seconds)
+    const maxWaitTime = 120000; // 2 minutes
+    const pollInterval = 2000; // 2 seconds
+    const startTime = Date.now();
+    let runStatus = await client.run(run.id).get();
+
+    while (runStatus.status !== "SUCCEEDED" && Date.now() - startTime < maxWaitTime) {
+      if (runStatus.status === "FAILED" || runStatus.status === "ABORTED") {
+        return NextResponse.json(
+          { error: `Actor run ${runStatus.status.toLowerCase()}.` },
+          { status: 502 }
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      runStatus = await client.run(run.id).get();
+    }
+
+    if (runStatus.status !== "SUCCEEDED") {
+      return NextResponse.json(
+        { error: "Actor run timed out or did not complete." },
+        { status: 502 }
+      );
+    }
+
+    if (!runStatus.defaultDatasetId) {
       return NextResponse.json(
         { error: "Downloader did not return dataset results." },
         { status: 502 }
       );
     }
 
-    console.log("Actor run completed, dataset:", run.defaultDatasetId);
+    console.log("Actor run completed, dataset:", runStatus.defaultDatasetId);
 
     // Get results from dataset
-    const items = await readDatasetItems(client, run.defaultDatasetId);
+    const items = await readDatasetItems(client, runStatus.defaultDatasetId);
     console.log("Dataset items:", JSON.stringify(items, null, 2));
 
     let downloadUrl: string | null = null;
@@ -249,9 +282,9 @@ export async function POST(request: Request) {
     }
 
     // Strategy 2: Check key-value store for video file
-    if (!downloadResponse && run.id) {
+    if (!downloadResponse && runStatus.id) {
       console.log("Checking key-value store...");
-      const kvResult = await tryGetKeyValueStoreVideo(run.id, apiToken);
+      const kvResult = await tryGetKeyValueStoreVideo(runStatus.id, apiToken);
       if (kvResult) {
         try {
           const response = await fetch(kvResult.url);
