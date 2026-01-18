@@ -1,5 +1,6 @@
 import type {
   AssetFilter,
+  TextClipSettings,
   TextPresetGroup,
   TextPresetTag,
   TextStylePreset,
@@ -1313,6 +1314,133 @@ export const textStylePresets: TextStylePreset[] = [
     },
   },
 ];
+
+export const subtitleStyleFilters = ["All", "Social", "Business", "Retro"];
+
+const subtitleStyleVariants: Array<{
+  settings: Partial<TextClipSettings>;
+  preview: { fontFamily?: string; fontSize?: number; bold?: boolean; italic?: boolean };
+}> = [
+  {
+    settings: {
+      color: "#ffffff",
+      shadowEnabled: true,
+      shadowColor: "#000000",
+      shadowBlur: 14,
+      shadowOpacity: 45,
+      outlineEnabled: false,
+      backgroundEnabled: false,
+    },
+    preview: {
+      fontFamily: "Inter",
+      fontSize: 22,
+      bold: true,
+    },
+  },
+  {
+    settings: {
+      color: "#111827",
+      backgroundEnabled: true,
+      backgroundColor: "#FDE68A",
+      backgroundStyle: "line-block-round",
+      shadowEnabled: false,
+      outlineEnabled: false,
+    },
+    preview: {
+      fontFamily: "DM Sans",
+      fontSize: 20,
+      bold: true,
+    },
+  },
+  {
+    settings: {
+      color: "#ffffff",
+      outlineEnabled: true,
+      outlineColor: "#111827",
+      outlineWidth: 3,
+      shadowEnabled: false,
+      backgroundEnabled: false,
+    },
+    preview: {
+      fontFamily: "Space Grotesk",
+      fontSize: 21,
+      bold: true,
+    },
+  },
+  {
+    settings: {
+      color: "#111827",
+      backgroundEnabled: true,
+      backgroundColor: "#E0F2FE",
+      backgroundStyle: "block-rounded",
+      shadowEnabled: true,
+      shadowColor: "#0F172A",
+      shadowBlur: 8,
+      shadowOpacity: 15,
+      outlineEnabled: false,
+    },
+    preview: {
+      fontFamily: "Inter",
+      fontSize: 20,
+      bold: true,
+    },
+  },
+];
+
+const subtitleStyleCatalog = [
+  { id: "whisper", name: "Whisper", category: "Social" },
+  { id: "fusion", name: "Fusion", category: "Social" },
+  { id: "glide", name: "Glide", category: "Social" },
+  { id: "glide2", name: "Glide2", category: "Social" },
+  { id: "pulse", name: "Pulse", category: "Social" },
+  { id: "wiggle", name: "Wiggle", category: "Social" },
+  { id: "pretty-little-marketer", name: "Pretty Little Marketer", category: "Business" },
+  { id: "ali", name: "Ali", category: "Business" },
+  { id: "slay", name: "Slay", category: "Social" },
+  { id: "kitty", name: "Kitty", category: "Social" },
+  { id: "hustle", name: "Hustle", category: "Business" },
+  { id: "grape", name: "Grape", category: "Retro" },
+  { id: "karl", name: "Karl", category: "Business" },
+  { id: "sprout", name: "Sprout", category: "Retro" },
+  { id: "flex", name: "Flex", category: "Business" },
+  { id: "snugle", name: "Snugle", category: "Social" },
+  { id: "mint", name: "Mint", category: "Retro" },
+  { id: "rizz", name: "Rizz", category: "Social" },
+  { id: "lime", name: "Lime", category: "Retro" },
+  { id: "phantom", name: "Phantom", category: "Retro" },
+  { id: "bulb", name: "Bulb", category: "Retro" },
+  { id: "vegas", name: "Vegas", category: "Retro" },
+  { id: "boba", name: "Boba", category: "Retro" },
+  { id: "matcha", name: "Matcha", category: "Retro" },
+  { id: "shadeplay", name: "Shadeplay", category: "Retro" },
+  { id: "simple", name: "Simple", category: "Business" },
+  { id: "casper", name: "Casper", category: "Business" },
+  { id: "corpo", name: "Corpo", category: "Business" },
+  { id: "boo", name: "Boo", category: "Retro" },
+  { id: "beans", name: "Beans", category: "Retro" },
+  { id: "plain", name: "Plain", category: "Business" },
+  { id: "capri", name: "Capri", category: "Retro" },
+  { id: "lowkey", name: "Lowkey", category: "Business" },
+  { id: "vinta", name: "Vinta", category: "Retro" },
+  { id: "slant", name: "Slant", category: "Retro" },
+  { id: "diego", name: "Diego", category: "Retro" },
+  { id: "yeet", name: "Yeet", category: "Social" },
+];
+
+export const subtitleStylePresets: Array<TextStylePreset & { category: string }> =
+  subtitleStyleCatalog.map((style, index) => {
+    const variant = subtitleStyleVariants[index % subtitleStyleVariants.length];
+    return {
+      id: style.id,
+      name: style.name,
+      category: style.category,
+      settings: variant.settings,
+      preview: {
+        text: style.name,
+        ...variant.preview,
+      },
+    };
+  });
 
 export const textFontFamilies = [
   "Roboto",

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type CSSProperties,
   type ChangeEvent,
   type DragEvent,
@@ -94,6 +95,7 @@ import {
   createDefaultTextSettings,
   createDefaultTextTransform,
   createDefaultTransform,
+  createSubtitleTransform,
   createDefaultVideoSettings,
   createFloatingMenuState,
   createTimelineContextMenuState,
@@ -115,6 +117,7 @@ import { getMediaMeta } from "./utils/media";
 
 import {
   noiseDataUrl,
+  subtitleStylePresets,
   textFontSizes,
   textPresetGroups,
   toolbarItems,
@@ -164,6 +167,54 @@ import type {
   StockVideoOrientation,
   StockVideoOrientationFilter,
 } from "./page-helpers";
+
+type SubtitleLanguageOption = {
+  code: string;
+  label: string;
+  detail: string;
+  region: string;
+};
+
+type SubtitleSegment = {
+  id: string;
+  clipId: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  sourceClipId: string | null;
+};
+
+type TimedEntry = {
+  start?: number;
+  end?: number;
+  word?: string;
+  text?: string;
+  speaker?: string;
+};
+
+type TimedSegmentEntry = TimedEntry & { words?: unknown };
+
+type TimedWord = {
+  start: number;
+  end: number;
+  word?: string;
+  text?: string;
+};
+
+type TimedSegment = {
+  start: number;
+  end: number;
+  text: string;
+  speaker?: string;
+};
+
+const subtitleLanguages: SubtitleLanguageOption[] = [
+  { code: "en", label: "English", detail: "English (US)", region: "US" },
+  { code: "es", label: "Spanish", detail: "Spanish (ES)", region: "ES" },
+  { code: "fr", label: "French", detail: "French (FR)", region: "FR" },
+  { code: "de", label: "German", detail: "German (DE)", region: "DE" },
+  { code: "pt", label: "Portuguese", detail: "Portuguese (BR)", region: "BR" },
+];
 
 export default function AdvancedEditorPage() {
   const textMinLayerSize = 24;
@@ -294,6 +345,8 @@ export default function AdvancedEditorPage() {
   const [clipSettings, setClipSettings] = useState<
     Record<string, VideoClipSettings>
   >({});
+  const clipSettingsRef = useRef(clipSettings);
+  clipSettingsRef.current = clipSettings;
   const [textSettings, setTextSettings] = useState<
     Record<string, TextClipSettings>
   >({});
@@ -382,6 +435,30 @@ export default function AdvancedEditorPage() {
     useState(false);
   const [textPanelStart, setTextPanelStart] = useState("00:00.0");
   const [textPanelEnd, setTextPanelEnd] = useState("00:05.0");
+  const [subtitleStatus, setSubtitleStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [subtitleError, setSubtitleError] = useState<string | null>(null);
+  const [subtitleSegments, setSubtitleSegments] = useState<SubtitleSegment[]>(
+    []
+  );
+  const [subtitleLanguage, setSubtitleLanguage] = useState(
+    subtitleLanguages[0]
+  );
+  const [subtitleSource, setSubtitleSource] = useState<"project" | string>(
+    "project"
+  );
+  const [subtitleActiveTab, setSubtitleActiveTab] = useState<
+    "style" | "edit"
+  >("style");
+  const [subtitleStyleFilter, setSubtitleStyleFilter] = useState("All");
+  const [subtitleStyleId, setSubtitleStyleId] = useState<string | null>(
+    subtitleStylePresets[0]?.id ?? null
+  );
+  const [detachedSubtitleIds, setDetachedSubtitleIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [, startTransition] = useTransition();
   const textPanelTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const stageTextEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const [editingTextClipId, setEditingTextClipId] = useState<string | null>(
@@ -414,6 +491,10 @@ export default function AdvancedEditorPage() {
   const replaceMediaInputRef = useRef<HTMLInputElement | null>(null);
   const assetsRef = useRef<MediaAsset[]>([]);
   const lanesRef = useRef<TimelineLane[]>([]);
+  const subtitleLaneIdRef = useRef<string | null>(null);
+  const subtitleGroupTransformsRef = useRef<Map<string, ClipTransform> | null>(
+    null
+  );
   const textSettingsRef = useRef<Record<string, TextClipSettings>>({});
   const loadedFontFamiliesRef = useRef<Set<string>>(new Set());
   const loadingFontFamiliesRef = useRef<Map<string, Promise<void>>>(new Map());
@@ -486,6 +567,8 @@ export default function AdvancedEditorPage() {
     scrollLeft: number;
     active: boolean;
   }>({ startX: 0, scrollLeft: 0, active: false });
+  const playbackTimeRef = useRef(currentTime);
+  const playbackUiTickRef = useRef(0);
   const keyboardEffectDeps = useRef<number[]>(
     Array.from({ length: 12 }, () => 0)
   );
@@ -505,6 +588,51 @@ export default function AdvancedEditorPage() {
   });
   const fallbackVideoSettings = useMemo(createDefaultVideoSettings, []);
   const fallbackTextSettings = useMemo(createDefaultTextSettings, []);
+  const getClipPlaybackRate = useCallback(
+    (clipId: string) => {
+      const settings = clipSettingsRef.current[clipId] ?? fallbackVideoSettings;
+      return clamp(settings.speed, 0.1, 4);
+    },
+    [fallbackVideoSettings]
+  );
+  const resolveClipAssetTime = useCallback(
+    (clip: TimelineClip, time: number) => {
+      const playbackRate = getClipPlaybackRate(clip.id);
+      const timelineOffset = time - clip.startTime;
+      const assetStart = clip.startOffset;
+      const assetEnd = assetStart + clip.duration * playbackRate;
+      return clamp(
+        assetStart + timelineOffset * playbackRate,
+        assetStart,
+        assetEnd
+      );
+    },
+    [getClipPlaybackRate]
+  );
+  const resolveTimelineTimeFromAssetTime = useCallback(
+    (clip: TimelineClip, assetTime: number) => {
+      const playbackRate = getClipPlaybackRate(clip.id);
+      const timelineStart = clip.startTime;
+      const timelineEnd = clip.startTime + clip.duration;
+      const timelineTime =
+        timelineStart + (assetTime - clip.startOffset) / playbackRate;
+      return clamp(timelineTime, timelineStart, timelineEnd);
+    },
+    [getClipPlaybackRate]
+  );
+  const subtitleBaseSettings = useMemo(() => {
+    const base = createDefaultTextSettings();
+    return {
+      ...base,
+      text: "",
+      fontFamily: "Inter",
+      fontSize: 40,
+      lineHeight: 1.2,
+      shadowEnabled: true,
+      shadowBlur: 10,
+      shadowOpacity: 30,
+    };
+  }, []);
   const hasSupabase =
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -622,14 +750,31 @@ export default function AdvancedEditorPage() {
     []
   );
 
+  // PERFORMANCE: Cache ref callbacks to prevent React from re-registering refs on every render
+  // This is critical for blob URL videos which are expensive to re-initialize
+  const videoRefCallbacksRef = useRef<Map<string, (node: HTMLVideoElement | null) => void>>(new Map());
+  
   const registerVideoRef = useCallback(
-    (clipId: string, assetId: string) => (node: HTMLVideoElement | null) => {
-      if (node) {
-        visualRefs.current.set(clipId, node);
-        updateVideoMetaFromElement(clipId, assetId, node);
-      } else {
-        visualRefs.current.delete(clipId);
+    (clipId: string, assetId: string) => {
+      // Return cached callback if it exists for this clipId
+      const existing = videoRefCallbacksRef.current.get(clipId);
+      if (existing) {
+        return existing;
       }
+      
+      // Create and cache new callback
+      const callback = (node: HTMLVideoElement | null) => {
+        if (node) {
+          visualRefs.current.set(clipId, node);
+          updateVideoMetaFromElement(clipId, assetId, node);
+        } else {
+          visualRefs.current.delete(clipId);
+          // Clean up cached callback when element unmounts
+          videoRefCallbacksRef.current.delete(clipId);
+        }
+      };
+      videoRefCallbacksRef.current.set(clipId, callback);
+      return callback;
     },
     [updateVideoMetaFromElement]
   );
@@ -729,6 +874,7 @@ export default function AdvancedEditorPage() {
   }, []);
 
   const createSnapshot = useCallback<() => EditorSnapshot>(() => {
+    const snapshotTime = playbackTimeRef.current;
     const clonedClipSettings: Record<string, VideoClipSettings> = {};
     Object.entries(clipSettings).forEach(([id, settings]) => {
       clonedClipSettings[id] = cloneVideoSettings(settings);
@@ -756,7 +902,7 @@ export default function AdvancedEditorPage() {
       clipOrder: { ...clipOrder },
       canvasBackground,
       videoBackground,
-      currentTime,
+      currentTime: snapshotTime,
       selectedClipId,
       selectedClipIds: [...selectedClipIds],
       activeAssetId,
@@ -773,7 +919,6 @@ export default function AdvancedEditorPage() {
     clipOrder,
     canvasBackground,
     videoBackground,
-    currentTime,
     selectedClipId,
     selectedClipIds,
     activeAssetId,
@@ -1683,13 +1828,14 @@ export default function AdvancedEditorPage() {
 
   const addTextClip = useCallback(
     (settings: TextClipSettings, label: string, startTime?: number) => {
+      const fallbackTime = playbackTimeRef.current;
       setIsBackgroundSelected(false);
       pushHistory();
       const asset = createTextAsset(label);
       const nextLanes = [...lanesRef.current];
       const laneId = createLaneId("text", nextLanes);
       const resolvedStart = resolveSnappedStartTime(
-        startTime ?? currentTime
+        startTime ?? fallbackTime
       );
       const clip = createClip(asset.id, laneId, resolvedStart, asset);
       setLanes(nextLanes);
@@ -1702,7 +1848,7 @@ export default function AdvancedEditorPage() {
       setActiveAssetId(asset.id);
       setActiveTool("text");
     },
-    [currentTime, pushHistory]
+    [pushHistory]
   );
 
   const handleTextPresetSelect = useCallback(
@@ -1763,29 +1909,55 @@ export default function AdvancedEditorPage() {
 
   const createLaneId = (type: LaneType, draft: TimelineLane[]) => {
     const lane = { id: crypto.randomUUID(), type };
-    // Maintain lane order: video lanes at top, text lanes in middle, audio lanes at bottom
-    if (type === "audio") {
-      // Audio always goes at the end (bottom)
-      draft.push(lane);
-    } else if (type === "text") {
-      // Text goes before audio lanes
-      const firstAudioIndex = draft.findIndex((l) => l.type === "audio");
+    // Lane order: text on top, video in the middle, audio on bottom.
+    if (type === "text") {
+      const firstNonTextIndex = draft.findIndex((item) => item.type !== "text");
+      if (firstNonTextIndex === -1) {
+        draft.push(lane);
+      } else {
+        draft.splice(firstNonTextIndex, 0, lane);
+      }
+    } else if (type === "video") {
+      const firstAudioIndex = draft.findIndex((item) => item.type === "audio");
       if (firstAudioIndex === -1) {
         draft.push(lane);
       } else {
         draft.splice(firstAudioIndex, 0, lane);
       }
     } else {
-      // Video goes before text and audio lanes
-      const firstNonVideoIndex = draft.findIndex((l) => l.type === "text" || l.type === "audio");
-      if (firstNonVideoIndex === -1) {
-        draft.push(lane);
-      } else {
-        draft.splice(firstNonVideoIndex, 0, lane);
-      }
+      draft.push(lane);
     }
     return lane.id;
   };
+
+  const sortLanesByType = useCallback((items: TimelineLane[]) => {
+    const priority: Record<LaneType, number> = {
+      text: 0,
+      video: 1,
+      audio: 2,
+    };
+    return items
+      .map((lane, index) => ({ lane, index }))
+      .sort((a, b) => {
+        const delta = priority[a.lane.type] - priority[b.lane.type];
+        if (delta !== 0) {
+          return delta;
+        }
+        return a.index - b.index;
+      })
+      .map((entry) => entry.lane);
+  }, []);
+
+  useEffect(() => {
+    if (lanes.length < 2) {
+      return;
+    }
+    const sorted = sortLanesByType(lanes);
+    const isSameOrder = sorted.every((lane, index) => lane.id === lanes[index]?.id);
+    if (!isSameOrder) {
+      setLanes(sorted);
+    }
+  }, [lanes, sortLanesByType]);
 
   const filteredAssets = useMemo(() => {
     if (assetFilter === "All") {
@@ -2048,6 +2220,27 @@ export default function AdvancedEditorPage() {
     return new Map(
       timelineLayout.map((entry) => [entry.clip.id, entry.asset.kind])
     );
+  }, [timelineLayout]);
+
+  const subtitleClipIdSet = useMemo(() => {
+    return new Set(subtitleSegments.map((segment) => segment.clipId));
+  }, [subtitleSegments]);
+
+  const visualTimelineEntries = useMemo(() => {
+    return timelineLayout.filter((entry) => entry.asset.kind !== "audio");
+  }, [timelineLayout]);
+
+  const visualEntries = useMemo(() => {
+    if (subtitleClipIdSet.size === 0) {
+      return visualTimelineEntries;
+    }
+    return visualTimelineEntries.filter(
+      (entry) => !subtitleClipIdSet.has(entry.clip.id)
+    );
+  }, [visualTimelineEntries, subtitleClipIdSet]);
+
+  const audioEntries = useMemo(() => {
+    return timelineLayout.filter((entry) => entry.asset.kind === "audio");
   }, [timelineLayout]);
 
   useEffect(() => {
@@ -2369,16 +2562,16 @@ export default function AdvancedEditorPage() {
 
   const getClipAtTime = useCallback(
     (time: number, kind: "visual" | "audio") => {
-      const candidates = timelineLayout.filter((entry) => {
-        const isAudio = entry.asset.kind === "audio";
-        if (kind === "visual" && isAudio) {
-          return false;
-        }
-        if (kind === "audio" && !isAudio) {
-          return false;
-        }
-        return time >= entry.left && time < entry.left + entry.clip.duration;
-      });
+      const entries =
+        kind === "audio"
+          ? audioEntries
+          : isPlaying
+            ? visualEntries
+            : visualTimelineEntries;
+      const candidates = entries.filter(
+        (entry) =>
+          time >= entry.left && time < entry.left + entry.clip.duration
+      );
       const pickTop = (items: TimelineLayoutEntry[]) =>
         items.reduce((top, entry) => {
           const entryIndex = laneIndexMap.get(entry.clip.laneId) ?? 0;
@@ -2395,14 +2588,7 @@ export default function AdvancedEditorPage() {
       }
       let nearest: TimelineLayoutEntry | null = null;
       let bestDistance = timelineClipEpsilon + 1;
-      timelineLayout.forEach((entry) => {
-        const isAudio = entry.asset.kind === "audio";
-        if (kind === "visual" && isAudio) {
-          return;
-        }
-        if (kind === "audio" && !isAudio) {
-          return;
-        }
+      entries.forEach((entry) => {
         const startDistance = Math.abs(entry.left - time);
         if (startDistance <= timelineClipEpsilon && startDistance < bestDistance) {
           bestDistance = startDistance;
@@ -2418,7 +2604,14 @@ export default function AdvancedEditorPage() {
       });
       return nearest;
     },
-    [timelineLayout, laneIndexMap, clipOrder]
+    [
+      audioEntries,
+      clipOrder,
+      isPlaying,
+      laneIndexMap,
+      visualEntries,
+      visualTimelineEntries,
+    ]
   );
 
   const firstClipEntry = useMemo(() => {
@@ -2717,12 +2910,82 @@ export default function AdvancedEditorPage() {
     };
   }, [stageSelection]);
 
-  const visualStack = useMemo(() => {
-    const visible = timelineLayout.filter(
+  useEffect(() => {
+    setDetachedSubtitleIds((prev) => {
+      if (subtitleSegments.length === 0) {
+        return prev.size === 0 ? prev : new Set();
+      }
+      const validIds = new Set(subtitleSegments.map((segment) => segment.clipId));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (validIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      if (!changed && next.size === prev.size) {
+        return prev;
+      }
+      return next;
+    });
+  }, [subtitleSegments]);
+
+  // Build a sorted list of subtitle clips with their actual timeline positions
+  // This uses the clip's real startTime/duration from the timeline, not cached segment times
+  const sortedSubtitleClips = useMemo(() => {
+    if (subtitleSegments.length === 0) {
+      return [];
+    }
+    const clipMap = new Map(timeline.map((clip) => [clip.id, clip]));
+    return subtitleSegments
+      .map((segment) => {
+        const clip = clipMap.get(segment.clipId);
+        if (!clip) return null;
+        return {
+          segment,
+          clip,
+          startTime: clip.startTime,
+          endTime: clip.startTime + clip.duration,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+      .sort((a, b) => a.startTime - b.startTime);
+  }, [subtitleSegments, timeline]);
+
+  // Subtitle segments with times synced to actual clip positions
+  // This is used for display in the sidebar to show accurate timestamps
+  const subtitleSegmentsWithClipTimes = useMemo(() => {
+    if (subtitleSegments.length === 0) {
+      return subtitleSegments;
+    }
+    const clipMap = new Map(timeline.map((clip) => [clip.id, clip]));
+    return subtitleSegments.map((segment) => {
+      const clip = clipMap.get(segment.clipId);
+      if (!clip) return segment;
+      return {
+        ...segment,
+        clip,
+        startTime: clip.startTime,
+        endTime: clip.startTime + clip.duration,
+      };
+    });
+  }, [subtitleSegments, timeline]);
+
+  // Direct DOM manipulation for subtitle rendering - bypasses React entirely during playback
+  // This is how professional video players render subtitles for smooth performance
+  const activeSubtitleIndexRef = useRef<number>(-1);
+  const lastRenderedSubtitleIdRef = useRef<string | null>(null);
+  const subtitleOverlayRef = useRef<HTMLDivElement>(null);
+  const subtitleTextRef = useRef<HTMLSpanElement>(null);
+
+  // Helper to compute visible clips - used by both stable and live visual stacks
+  const computeVisibleClips = useCallback((entries: typeof visualEntries, time: number) => {
+    const visible = entries.filter(
       (entry) =>
-        entry.asset.kind !== "audio" &&
-        currentTime + timelineClipEpsilon >= entry.left &&
-        currentTime - timelineClipEpsilon <= entry.left + entry.clip.duration
+        time + timelineClipEpsilon >= entry.left &&
+        time - timelineClipEpsilon <= entry.left + entry.clip.duration
     );
     return visible.sort((a, b) => {
       const aIndex = laneIndexMap.get(a.clip.laneId) ?? 0;
@@ -2737,17 +3000,42 @@ export default function AdvancedEditorPage() {
       }
       return a.left - b.left;
     });
-  }, [timelineLayout, currentTime, laneIndexMap, clipOrder]);
+  }, [laneIndexMap, clipOrder]);
 
+  // PERFORMANCE OPTIMIZATION: During playback, we use a "stable" visual stack
+  // that only updates when clips actually change visibility (enter/exit)
+  // This prevents React from re-rendering the entire canvas at 60fps
+  const stableVisualStackRef = useRef<typeof visualEntries>([]);
+  const stableVisualStackIdsRef = useRef<string>('');
+  
+  const visualStack = useMemo(() => {
+    const visible = computeVisibleClips(visualEntries, currentTime);
+    
+    // During playback, only update if the SET of visible clips changed
+    // This prevents re-renders when clips are just playing, not changing visibility
+    const newIds = visible.map(e => e.clip.id).join(',');
+    if (isPlaying && stableVisualStackIdsRef.current === newIds && stableVisualStackRef.current.length > 0) {
+      return stableVisualStackRef.current;
+    }
+    
+    // Cache for next comparison
+    stableVisualStackRef.current = visible;
+    stableVisualStackIdsRef.current = newIds;
+    return visible;
+  }, [visualEntries, currentTime, computeVisibleClips, isPlaying]);
+
+
+  // Same optimization for audio stack
+  const stableAudioStackRef = useRef<typeof audioEntries>([]);
+  const stableAudioStackIdsRef = useRef<string>('');
 
   const audioStack = useMemo(() => {
-    const visible = timelineLayout.filter(
+    const visible = audioEntries.filter(
       (entry) =>
-        entry.asset.kind === "audio" &&
         currentTime + timelineClipEpsilon >= entry.left &&
         currentTime - timelineClipEpsilon <= entry.left + entry.clip.duration
     );
-    return visible.sort((a, b) => {
+    const sorted = visible.sort((a, b) => {
       const aIndex = laneIndexMap.get(a.clip.laneId) ?? 0;
       const bIndex = laneIndexMap.get(b.clip.laneId) ?? 0;
       if (aIndex === bIndex) {
@@ -2755,21 +3043,225 @@ export default function AdvancedEditorPage() {
       }
       return aIndex - bIndex;
     });
-  }, [timelineLayout, currentTime, laneIndexMap]);
+    
+    // During playback, only update if the SET of visible clips changed
+    const newIds = sorted.map(e => e.clip.id).join(',');
+    if (isPlaying && stableAudioStackIdsRef.current === newIds && stableAudioStackRef.current.length > 0) {
+      return stableAudioStackRef.current;
+    }
+    
+    stableAudioStackRef.current = sorted;
+    stableAudioStackIdsRef.current = newIds;
+    return sorted;
+  }, [audioEntries, currentTime, laneIndexMap, isPlaying]);
+
+  const timelineLayoutMap = useMemo(() => {
+    return new Map(timelineLayout.map((entry) => [entry.clip.id, entry]));
+  }, [timelineLayout]);
+
+  // Cache for pre-computed subtitle styles - avoids recomputing on every frame
+  const subtitleStyleCacheRef = useRef<Map<string, { 
+    text: string; 
+    styles: ReturnType<typeof getTextRenderStyles>;
+    transform: ClipTransform;
+  }>>(new Map());
+  
+  // Pre-compute styles for all subtitles when they change
+  useEffect(() => {
+    const cache = new Map<string, { text: string; styles: ReturnType<typeof getTextRenderStyles>; transform: ClipTransform }>();
+    const aspectRatio = stageAspectRatioRef.current || 16 / 9;
+    
+    subtitleSegments.forEach(segment => {
+      const settings = textSettings[segment.clipId] ?? fallbackTextSettings;
+      const transform = clipTransforms[segment.clipId] ?? createSubtitleTransform(aspectRatio);
+      cache.set(segment.clipId, {
+        text: settings.text ?? segment.text,
+        styles: getTextRenderStyles(settings),
+        transform,
+      });
+    });
+    
+    subtitleStyleCacheRef.current = cache;
+    
+    // Reset tracking refs when subtitle data changes to avoid stale matches
+    activeSubtitleIndexRef.current = -1;
+    lastRenderedSubtitleIdRef.current = null;
+  }, [subtitleSegments, textSettings, fallbackTextSettings, clipTransforms]);
+
+  // Ultra-lightweight DOM update - just reads from cache
+  // Uses direct property assignment for maximum performance during playback
+  const updateSubtitleDOM = useCallback((clipId: string | null) => {
+    const overlay = subtitleOverlayRef.current;
+    const textEl = subtitleTextRef.current;
+    if (!overlay || !textEl) return;
+    
+    if (!clipId) {
+      overlay.style.opacity = '0';
+      overlay.style.visibility = 'hidden';
+      return;
+    }
+    
+    const cached = subtitleStyleCacheRef.current.get(clipId);
+    if (!cached) {
+      overlay.style.opacity = '0';
+      overlay.style.visibility = 'hidden';
+      return;
+    }
+    
+    // Apply position using direct property assignment (faster than cssText)
+    overlay.style.left = `${cached.transform.x * 100}%`;
+    overlay.style.top = `${cached.transform.y * 100}%`;
+    overlay.style.width = `${cached.transform.width * 100}%`;
+    overlay.style.height = `${cached.transform.height * 100}%`;
+    overlay.style.opacity = '1';
+    overlay.style.visibility = 'visible';
+    
+    // Update text content
+    textEl.textContent = cached.text;
+    
+    // Apply text styles efficiently
+    const s = cached.styles.textStyle;
+    textEl.style.fontFamily = s.fontFamily as string || '';
+    textEl.style.fontSize = typeof s.fontSize === 'number' ? `${s.fontSize}px` : (s.fontSize as string || '');
+    textEl.style.fontWeight = String(s.fontWeight || '');
+    textEl.style.fontStyle = s.fontStyle as string || '';
+    textEl.style.lineHeight = String(s.lineHeight || '');
+    textEl.style.letterSpacing = typeof s.letterSpacing === 'number' ? `${s.letterSpacing}px` : (s.letterSpacing as string || '');
+    textEl.style.color = s.color as string || '';
+    textEl.style.textShadow = s.textShadow as string || 'none';
+    textEl.style.textAlign = s.textAlign as string || 'center';
+    if (s.WebkitTextStrokeWidth) {
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeWidth = typeof s.WebkitTextStrokeWidth === 'number' ? `${s.WebkitTextStrokeWidth}px` : s.WebkitTextStrokeWidth;
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeColor = s.WebkitTextStrokeColor as string || '';
+    } else {
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeWidth = '';
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeColor = '';
+    }
+    // Background styles
+    if (s.backgroundColor) {
+      textEl.style.backgroundColor = s.backgroundColor as string;
+      textEl.style.padding = s.padding as string || '';
+      textEl.style.borderRadius = typeof s.borderRadius === 'number' ? `${s.borderRadius}px` : (s.borderRadius as string || '');
+    } else {
+      textEl.style.backgroundColor = '';
+      textEl.style.padding = '';
+      textEl.style.borderRadius = '';
+    }
+  }, []);
+
+  // Binary search for finding active subtitle - optimized for sequential playback
+  // Uses cache for O(1) sequential access, falls back to O(log n) binary search
+  const findActiveSubtitleIndex = useCallback((time: number): number => {
+    const clips = sortedSubtitleClips;
+    if (clips.length === 0) return -1;
+    
+    // Small epsilon to handle floating-point edge cases
+    const epsilon = 0.005;
+    
+    // Check cache first (O(1) for sequential playback - most common case)
+    const lastIdx = activeSubtitleIndexRef.current;
+    if (lastIdx >= 0 && lastIdx < clips.length) {
+      const entry = clips[lastIdx];
+      // Check if still in current subtitle
+      if (time >= entry.startTime - epsilon && time < entry.endTime + epsilon) {
+        return lastIdx;
+      }
+      // Check next subtitle (forward playback)
+      if (lastIdx + 1 < clips.length) {
+        const next = clips[lastIdx + 1];
+        if (time >= next.startTime - epsilon && time < next.endTime + epsilon) {
+          return lastIdx + 1;
+        }
+      }
+      // Check previous subtitle (reverse scrubbing)
+      if (lastIdx > 0) {
+        const prev = clips[lastIdx - 1];
+        if (time >= prev.startTime - epsilon && time < prev.endTime + epsilon) {
+          return lastIdx - 1;
+        }
+      }
+    }
+    
+    // Binary search O(log n) - for seeking or when cache misses
+    let low = 0, high = clips.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const entry = clips[mid];
+      if (time < entry.startTime - epsilon) {
+        high = mid - 1;
+      } else if (time >= entry.endTime + epsilon) {
+        low = mid + 1;
+      } else {
+        // Found a subtitle that contains this time
+        return mid;
+      }
+    }
+    return -1;
+  }, [sortedSubtitleClips]);
+
+  // Ref-based subtitle updater for use in the main playback loop
+  // This allows subtitle updates to be called from the RAF loop without recreating it
+  const updateSubtitleForTimeRef = useRef<(time: number) => void>(() => {});
+  
+  useEffect(() => {
+    updateSubtitleForTimeRef.current = (time: number) => {
+      if (sortedSubtitleClips.length === 0) {
+        if (lastRenderedSubtitleIdRef.current !== null) {
+          activeSubtitleIndexRef.current = -1;
+          lastRenderedSubtitleIdRef.current = null;
+          updateSubtitleDOM(null);
+        }
+        return;
+      }
+      
+      const idx = findActiveSubtitleIndex(time);
+      const newId = idx >= 0 ? sortedSubtitleClips[idx]?.segment.clipId : null;
+      
+      if (newId !== lastRenderedSubtitleIdRef.current) {
+        activeSubtitleIndexRef.current = idx;
+        lastRenderedSubtitleIdRef.current = newId;
+        updateSubtitleDOM(newId);
+      }
+    };
+  }, [sortedSubtitleClips, findActiveSubtitleIndex, updateSubtitleDOM]);
+  
+  // Force subtitle update when subtitle data changes (clips moved, edited, etc.)
+  // This ensures subtitles stay in sync after timeline edits
+  useEffect(() => {
+    // Reset cached state to force re-evaluation
+    activeSubtitleIndexRef.current = -1;
+    lastRenderedSubtitleIdRef.current = null;
+    // Update with current time
+    updateSubtitleForTimeRef.current(playbackTimeRef.current);
+  }, [sortedSubtitleClips]);
+  
+  // Update subtitles when paused/scrubbing (via currentTime changes)
+  useEffect(() => {
+    if (!isPlaying) {
+      updateSubtitleForTimeRef.current(currentTime);
+    }
+  }, [currentTime, isPlaying]);
 
   const wasPlayingRef = useRef(false);
   const timelineJumpRef = useRef(false);
   const lastTimelineTimeRef = useRef(currentTime);
+  // UI update cadence during playback.
+  const subtitleUiFrameSecondsRef = useRef(1 / 60);
 
   useEffect(() => {
+    if (isPlaying) {
+      timelineJumpRef.current = false;
+      lastTimelineTimeRef.current = currentTime;
+      return;
+    }
     const delta = Math.abs(currentTime - lastTimelineTimeRef.current);
     timelineJumpRef.current = delta > frameStepSeconds * 3;
     lastTimelineTimeRef.current = currentTime;
-  }, [currentTime]);
+  }, [currentTime, isPlaying]);
 
   const projectAspectRatio = useMemo<number>(() => {
     const visuals = timelineLayout.filter(
-      (entry) => entry.asset.kind !== "audio"
+      (entry) => entry.asset.kind === "video" || entry.asset.kind === "image"
     );
     if (visuals.length === 0) {
       return 16 / 9;
@@ -2998,6 +3490,1058 @@ export default function AdvancedEditorPage() {
     return 600;
   }, [timelineDuration]);
 
+  const subtitleSourceOptions = useMemo(() => {
+    const options = [
+      {
+        id: "project",
+        label: "Full project",
+        duration: timelineTotal,
+        kind: "project",
+      },
+    ];
+    timelineClips
+      .filter(
+        (entry) =>
+          entry.asset.kind === "audio" || entry.asset.kind === "video"
+      )
+      .sort((a, b) => a.clip.startTime - b.clip.startTime)
+      .forEach((entry, index) => {
+        options.push({
+          id: entry.clip.id,
+          label: entry.asset.name || `Clip ${index + 1}`,
+          duration: entry.clip.duration,
+          kind: entry.asset.kind,
+        });
+      });
+    return options;
+  }, [timelineClips, timelineTotal]);
+
+  useEffect(() => {
+    if (
+      subtitleSource !== "project" &&
+      !subtitleSourceOptions.some((option) => option.id === subtitleSource)
+    ) {
+      setSubtitleSource("project");
+    }
+  }, [subtitleSource, subtitleSourceOptions]);
+
+  const subtitleSourceClips = useMemo(() => {
+    return timelineClips.filter(
+      (entry) =>
+        entry.asset.kind === "audio" || entry.asset.kind === "video"
+    );
+  }, [timelineClips]);
+  const buildSubtitleSegmentsFromText = useCallback(
+    (text: string, duration: number, clipStartOffset: number) => {
+      const cleaned = text.trim();
+      if (!cleaned) {
+        return [];
+      }
+      const words = cleaned.split(/\s+/).filter(Boolean);
+      if (words.length === 0 || duration <= 0) {
+        return [];
+      }
+      const maxChars = 42;
+      const chunks: string[] = [];
+      let current = "";
+      words.forEach((word) => {
+        const next = current ? `${current} ${word}` : word;
+        if (next.length > maxChars && current) {
+          chunks.push(current);
+          current = word;
+        } else {
+          current = next;
+        }
+      });
+      if (current) {
+        chunks.push(current);
+      }
+      const chunkWordCounts = chunks.map((chunk) => chunk.split(/\s+/).length);
+      const totalWords = chunkWordCounts.reduce((sum, count) => sum + count, 0);
+      if (totalWords === 0) {
+        return [];
+      }
+      let cursor = 0;
+      return chunks.map((chunk, index) => {
+        const portion = chunkWordCounts[index] / totalWords;
+        const segmentDuration = duration * portion;
+        const start = cursor;
+        const end = index === chunks.length - 1 ? duration : cursor + segmentDuration;
+        cursor = end;
+        return {
+          start: clipStartOffset + start,
+          end: clipStartOffset + end,
+          text: chunk,
+        };
+      });
+    },
+    []
+  );
+
+  const buildSubtitleSegmentsFromWords = useCallback(
+    (
+      words: Array<{ start: number; end: number; word?: string; text?: string }>
+    ) => {
+      const segments: Array<{ start: number; end: number; text: string }> = [];
+      
+      // Lightning-fast subtitles that match exact speech timing
+      // NO artificial duration extensions - subtitles end exactly when words end
+      const maxChars = 35;           // Short lines for quick reading
+      const maxWords = 5;            // Few words per subtitle for fast turnover
+      const maxDuration = 2.0;       // Max time before forcing a break
+      const naturalPauseGap = 0.12;  // Detect natural pauses quickly
+      const longPauseGap = 0.25;     // Clear break between phrases
+      
+      let current: typeof words = [];
+      let currentText = "";
+      let segmentStart = 0;
+      
+      const flush = () => {
+        if (current.length === 0) {
+          return;
+        }
+        const start = current[0]?.start ?? segmentStart;
+        const end = current[current.length - 1]?.end ?? start;
+        const text = currentText.trim();
+        
+        // Use EXACT word timings - no artificial extension
+        // This ensures subtitles change at the precise moment speech changes
+        if (text && end > start) {
+          segments.push({ start, end, text });
+        }
+        current = [];
+        currentText = "";
+      };
+      
+      // Detect speech rate to adaptively adjust parameters
+      let totalWordsWithTiming = 0;
+      let totalDuration = 0;
+      words.forEach((entry, i) => {
+        if (Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start) {
+          totalWordsWithTiming++;
+          totalDuration += entry.end - entry.start;
+        }
+      });
+      const avgWordDuration = totalWordsWithTiming > 0 ? totalDuration / totalWordsWithTiming : 0.3;
+      
+      // Detect speech speed: fast < 200ms, very fast < 150ms per word
+      const isVeryFastSpeech = avgWordDuration < 0.15;
+      const isFastSpeech = avgWordDuration < 0.20;
+      
+      // Aggressive breaking for fast speech - fewer words per subtitle
+      const effectiveMaxWords = isVeryFastSpeech ? 3 : isFastSpeech ? 4 : maxWords;
+      const effectiveMaxDuration = isVeryFastSpeech ? 1.2 : isFastSpeech ? 1.5 : maxDuration;
+      const effectiveMaxChars = isVeryFastSpeech ? 25 : isFastSpeech ? 30 : maxChars;
+      
+      words.forEach((entry, index) => {
+        const token = (entry.word ?? entry.text ?? "").trim();
+        if (!token) {
+          return;
+        }
+        
+        const last = current[current.length - 1];
+        const gap = last && Number.isFinite(entry.start) && Number.isFinite(last.end)
+          ? entry.start - last.end
+          : 0;
+        
+        // Break on pauses (speech breaks)
+        if (last && gap > longPauseGap) {
+          flush();
+          segmentStart = entry.start;
+        }
+        
+        const nextText = currentText ? `${currentText} ${token}` : token;
+        const wordCount = current.length + 1;
+        const currentDuration = last 
+          ? (entry.end - (current[0]?.start ?? entry.start))
+          : 0;
+        
+        // Check if we should break based on various criteria
+        const shouldBreak = 
+          // Character limit exceeded (adaptive for speech speed)
+          (currentText && nextText.length > effectiveMaxChars) ||
+          // Word count limit (fewer words for fast speech)
+          (wordCount > effectiveMaxWords) ||
+          // Duration limit (shorter for fast speech)
+          (currentDuration > effectiveMaxDuration) ||
+          // Natural pause with content
+          (gap > naturalPauseGap && current.length >= 1);
+        
+        // Punctuation that suggests end of thought
+        const endsPunctuation = /[.!?,;:]$/.test(token);
+        const endsClause = /[,;:]$/.test(token);
+        
+        if (shouldBreak && currentText) {
+          flush();
+          segmentStart = entry.start;
+          current.push(entry);
+          currentText = token;
+          // If this word also ends a sentence, flush it too
+          if (endsPunctuation && !endsClause) {
+            flush();
+          }
+          return;
+        }
+        
+        current.push(entry);
+        currentText = nextText;
+        
+        // End of sentence - flush for natural subtitle breaks
+        if (endsPunctuation && !endsClause && current.length >= 2) {
+          flush();
+        }
+      });
+      
+      flush();
+      
+      // For fast speech, don't merge - keep subtitles short and responsive
+      // Only merge for normal speech when gaps are truly negligible
+      if (isFastSpeech || isVeryFastSpeech) {
+        // No merging for fast speech - return segments as-is
+        return segments;
+      }
+      
+      // Light merging only for normal speech
+      const merged: typeof segments = [];
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const prev = merged[merged.length - 1];
+        
+        // Only merge if gap is tiny and result is still short
+        const shouldMerge = 
+          prev &&
+          seg.start - prev.end < 0.03 && // 30ms gap max
+          prev.text.split(' ').length <= 2 &&
+          (prev.text + " " + seg.text).length <= effectiveMaxChars &&
+          seg.end - prev.start <= effectiveMaxDuration;
+          
+        if (shouldMerge) {
+          prev.end = seg.end;
+          prev.text = prev.text + " " + seg.text;
+        } else {
+          merged.push({ ...seg });
+        }
+      }
+      
+      return merged;
+    },
+    []
+  );
+
+  const splitSubtitleSegmentsByText = useCallback(
+    (segments: TimedSegment[]) => {
+      return segments.flatMap((segment) => {
+        const duration = Math.max(0, segment.end - segment.start);
+        const splits = buildSubtitleSegmentsFromText(
+          segment.text,
+          duration,
+          segment.start
+        );
+        if (splits.length === 0) {
+          return [];
+        }
+        return splits.map((entry) => ({ ...entry, speaker: segment.speaker }));
+      });
+    },
+    [buildSubtitleSegmentsFromText]
+  );
+
+  const resolveSubtitleSettings = useCallback(
+    (text: string) => {
+      const style =
+        subtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
+        null;
+      const preview = style?.preview;
+      return {
+        ...subtitleBaseSettings,
+        ...style?.settings,
+        fontFamily: preview?.fontFamily ?? subtitleBaseSettings.fontFamily,
+        fontSize: preview?.fontSize ?? subtitleBaseSettings.fontSize,
+        bold: preview?.bold ?? subtitleBaseSettings.bold,
+        italic: preview?.italic ?? subtitleBaseSettings.italic,
+        text,
+        // Disable auto-size for subtitles - we use a fixed transform that
+        // accommodates multi-line wrapped text. Auto-size would shrink the
+        // box to single-line height since measureTextBounds doesn't account
+        // for CSS text wrapping.
+        autoSize: false,
+      };
+    },
+    [subtitleBaseSettings, subtitleStyleId]
+  );
+
+  const applySubtitleStyle = useCallback(
+    (styleId: string) => {
+      setSubtitleStyleId(styleId);
+      const style = subtitleStylePresets.find((preset) => preset.id === styleId);
+      if (!style || subtitleSegments.length === 0) {
+        return;
+      }
+      const preview = style.preview;
+      setTextSettings((prev) => {
+        const next = { ...prev };
+        subtitleSegments.forEach((segment) => {
+          const current = next[segment.clipId] ?? subtitleBaseSettings;
+          next[segment.clipId] = {
+            ...current,
+            ...style.settings,
+            fontFamily: preview?.fontFamily ?? current.fontFamily,
+            fontSize: preview?.fontSize ?? current.fontSize,
+            bold: preview?.bold ?? current.bold,
+            italic: preview?.italic ?? current.italic,
+            // Keep autoSize disabled for subtitles
+            autoSize: false,
+          };
+        });
+        return next;
+      });
+    },
+    [subtitleSegments, subtitleBaseSettings]
+  );
+
+  const handleSubtitleTextUpdate = useCallback(
+    (segmentId: string, text: string) => {
+      setSubtitleSegments((prev) =>
+        prev.map((segment) =>
+          segment.id === segmentId ? { ...segment, text } : segment
+        )
+      );
+      const target = subtitleSegments.find(
+        (segment) => segment.id === segmentId
+      );
+      if (!target) {
+        return;
+      }
+      setTextSettings((prev) => {
+        const current = prev[target.clipId] ?? subtitleBaseSettings;
+        return {
+          ...prev,
+          [target.clipId]: {
+            ...current,
+            text,
+          },
+        };
+      });
+    },
+    [subtitleSegments, subtitleBaseSettings]
+  );
+
+  const handleSubtitleAddLine = useCallback(() => {
+    pushHistory();
+    const nextLanes = [...lanesRef.current];
+    const laneId =
+      subtitleLaneIdRef.current &&
+      nextLanes.some((lane) => lane.id === subtitleLaneIdRef.current)
+        ? subtitleLaneIdRef.current
+        : createLaneId("text", nextLanes);
+    subtitleLaneIdRef.current = laneId;
+    const lastSegment = subtitleSegments[subtitleSegments.length - 1];
+    const fallbackTime = playbackTimeRef.current;
+    const startTime = lastSegment
+      ? lastSegment.endTime + 0.2
+      : fallbackTime;
+    const duration = 2.4;
+    const asset = {
+      ...createTextAsset("Subtitle"),
+      duration,
+    };
+    const clip = createClip(asset.id, laneId, startTime, asset);
+    const segment: SubtitleSegment = {
+      id: crypto.randomUUID(),
+      clipId: clip.id,
+      text: "",
+      startTime,
+      endTime: startTime + duration,
+      sourceClipId: null,
+    };
+    setLanes(nextLanes);
+    setAssets((prev) => [asset, ...prev]);
+    setTimeline((prev) => [...prev, clip]);
+    setTextSettings((prev) => ({
+      ...prev,
+      [clip.id]: resolveSubtitleSettings(""),
+    }));
+    // Set the proper subtitle transform (bottom, wider, taller for multi-line)
+    setClipTransforms((prev) => ({
+      ...prev,
+      [clip.id]: createSubtitleTransform(stageAspectRatio),
+    }));
+    setSubtitleSegments((prev) => [...prev, segment]);
+    setSubtitleActiveTab("edit");
+  }, [resolveSubtitleSettings, subtitleSegments, pushHistory, stageAspectRatio]);
+
+  const handleSubtitleDelete = useCallback(
+    (segmentId: string) => {
+      const target = subtitleSegments.find((segment) => segment.id === segmentId);
+      if (!target) {
+        return;
+      }
+      pushHistory();
+      setSubtitleSegments((prev) =>
+        prev.filter((segment) => segment.id !== segmentId)
+      );
+      setTimeline((prev) => prev.filter((clip) => clip.id !== target.clipId));
+      setTextSettings((prev) => {
+        if (!prev[target.clipId]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[target.clipId];
+        return next;
+      });
+      setClipTransforms((prev) => {
+        if (!prev[target.clipId]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[target.clipId];
+        return next;
+      });
+      setDetachedSubtitleIds((prev) => {
+        if (!prev.has(target.clipId)) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(target.clipId);
+        return next;
+      });
+      if (selectedClipId === target.clipId) {
+        setSelectedClipId(null);
+        setSelectedClipIds([]);
+        setActiveAssetId(null);
+        setActiveCanvasClipId(null);
+      }
+    },
+    [pushHistory, selectedClipId, subtitleSegments]
+  );
+
+  const handleSubtitleDetachToggle = useCallback((clipId: string) => {
+    setDetachedSubtitleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(clipId)) {
+        next.delete(clipId);
+      } else {
+        next.add(clipId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSubtitleDeleteAll = useCallback(() => {
+    if (subtitleSegments.length === 0) {
+      return;
+    }
+    pushHistory();
+    const idsToRemove = new Set(subtitleSegments.map((segment) => segment.clipId));
+    setSubtitleSegments([]);
+    setTimeline((prev) => prev.filter((clip) => !idsToRemove.has(clip.id)));
+    setTextSettings((prev) => {
+      const next = { ...prev };
+      idsToRemove.forEach((id) => {
+        delete next[id];
+      });
+      return next;
+    });
+    setClipTransforms((prev) => {
+      const next = { ...prev };
+      idsToRemove.forEach((id) => {
+        delete next[id];
+      });
+      return next;
+    });
+    setDetachedSubtitleIds(new Set());
+    if (selectedClipId && idsToRemove.has(selectedClipId)) {
+      setSelectedClipId(null);
+      setSelectedClipIds([]);
+      setActiveAssetId(null);
+      setActiveCanvasClipId(null);
+    }
+  }, [pushHistory, selectedClipId, subtitleSegments]);
+
+  const handleSubtitleShiftAll = useCallback(
+    (offsetSeconds: number) => {
+      if (!Number.isFinite(offsetSeconds) || subtitleSegments.length === 0) {
+        return;
+      }
+      pushHistory();
+      const idsToShift = new Set(subtitleSegments.map((segment) => segment.clipId));
+      setTimeline((prev) =>
+        prev.map((clip) => {
+          if (!idsToShift.has(clip.id)) {
+            return clip;
+          }
+          return {
+            ...clip,
+            startTime: Math.max(0, clip.startTime + offsetSeconds),
+          };
+        })
+      );
+      setSubtitleSegments((prev) =>
+        prev.map((segment) => {
+          if (!idsToShift.has(segment.clipId)) {
+            return segment;
+          }
+          const nextStart = Math.max(0, segment.startTime + offsetSeconds);
+          const nextEnd = Math.max(0, segment.endTime + offsetSeconds);
+          return {
+            ...segment,
+            startTime: nextStart,
+            endTime: Math.max(nextStart, nextEnd),
+          };
+        })
+      );
+    },
+    [pushHistory, subtitleSegments]
+  );
+
+  const handleGenerateSubtitles = useCallback(async () => {
+    if (subtitleStatus === "loading") {
+      return;
+    }
+    const sourceEntries =
+      subtitleSource === "project"
+        ? subtitleSourceClips
+        : subtitleSourceClips.filter(
+            (entry) => entry.clip.id === subtitleSource
+          );
+    if (sourceEntries.length === 0) {
+      setSubtitleStatus("error");
+      setSubtitleError("Add an audio or video clip to transcribe.");
+      return;
+    }
+    setSubtitleStatus("loading");
+    setSubtitleError(null);
+    pushHistory();
+    try {
+      const nextLanes = [...lanesRef.current];
+      const laneId =
+        subtitleLaneIdRef.current &&
+        nextLanes.some((lane) => lane.id === subtitleLaneIdRef.current)
+          ? subtitleLaneIdRef.current
+          : createLaneId("text", nextLanes);
+      subtitleLaneIdRef.current = laneId;
+      const existingSubtitleClipIds = new Set(
+        subtitleSegments.map((segment) => segment.clipId)
+      );
+      const nextAssets: MediaAsset[] = [];
+      const nextClips: TimelineClip[] = [];
+      const nextTextSettings: Record<string, TextClipSettings> = {};
+      const nextClipTransforms: Record<string, ClipTransform> = {};
+      const nextSegments: SubtitleSegment[] = [];
+      // Pre-compute the subtitle transform once for all clips (same position/size)
+      const subtitleTransform = createSubtitleTransform(stageAspectRatio);
+      const sortedSources = [...sourceEntries].sort(
+        (a, b) => a.clip.startTime - b.clip.startTime
+      );
+      const requestTranscription = async (
+        file: File,
+        options: {
+          model: string;
+          responseFormat: string;
+          includeTimestampGranularities: boolean;
+          chunkingStrategy?: string;
+        }
+      ) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("model", options.model);
+        formData.append("response_format", options.responseFormat);
+        if (options.chunkingStrategy) {
+          formData.append("chunking_strategy", options.chunkingStrategy);
+        }
+        if (options.includeTimestampGranularities) {
+          formData.append("timestamp_granularities[]", "segment");
+          formData.append("timestamp_granularities[]", "word");
+        }
+        if (subtitleLanguage?.code) {
+          formData.append("language", subtitleLanguage.code);
+        }
+        const response = await fetch("/api/transcriptions", {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(
+            message || "Unable to generate subtitles for this clip."
+          );
+        }
+        return response.json();
+      };
+      const requestTranscriptionWithRetry = async (
+        file: File,
+        options: {
+          model: string;
+          responseFormat: string;
+          includeTimestampGranularities: boolean;
+          chunkingStrategy?: string;
+        }
+      ) => {
+        try {
+          return await requestTranscription(file, options);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          if (
+            options.includeTimestampGranularities &&
+            /timestamp|granularit/i.test(message)
+          ) {
+            return requestTranscription(file, {
+              ...options,
+              includeTimestampGranularities: false,
+            });
+          }
+          throw error;
+        }
+      };
+      const primaryTranscription = {
+        model: "gpt-4o-transcribe-diarize",
+        responseFormat: "diarized_json",
+        includeTimestampGranularities: true,
+        chunkingStrategy: "auto",
+      };
+      const fallbackTranscription = {
+        model: "whisper-1",
+        responseFormat: "verbose_json",
+        includeTimestampGranularities: true,
+      };
+      const normalizeWordEntries = (entries: TimedEntry[]): TimedWord[] =>
+        entries
+          .map((entry) => ({
+            start: Number(entry.start),
+            end: Number(entry.end),
+            word: typeof entry.word === "string" ? entry.word : undefined,
+            text: typeof entry.text === "string" ? entry.text : undefined,
+          }))
+          .filter(
+            (entry) =>
+              Number.isFinite(entry.start) &&
+              Number.isFinite(entry.end) &&
+              entry.end > entry.start &&
+              Boolean(entry.word || entry.text)
+          )
+          .sort((a, b) => a.start - b.start || a.end - b.end);
+      const normalizeSegmentEntries = (
+        entries: TimedEntry[]
+      ): TimedSegment[] =>
+        entries
+          .map((entry) => ({
+            start: Number(entry.start),
+            end: Number(entry.end),
+            text: String(entry.text ?? "").trim(),
+            speaker:
+              typeof entry.speaker === "string" && entry.speaker.trim()
+                ? entry.speaker.trim()
+                : undefined,
+          }))
+          .filter(
+            (entry) =>
+              Number.isFinite(entry.start) &&
+              Number.isFinite(entry.end) &&
+              entry.end > entry.start &&
+              entry.text.length > 0
+          )
+          .sort((a, b) => a.start - b.start || a.end - b.end);
+      const extractWordsFromSegments = (entries: TimedEntry[]) => {
+        const extracted: TimedEntry[] = [];
+        entries.forEach((entry) => {
+          const words = (entry as TimedSegmentEntry).words;
+          if (!Array.isArray(words)) {
+            return;
+          }
+          words.forEach((word) => {
+            if (word && typeof word === "object") {
+              const typed = word as TimedEntry;
+              extracted.push({
+                start: typed.start,
+                end: typed.end,
+                word: typed.word,
+                text: typed.text,
+              });
+            }
+          });
+        });
+        return extracted;
+      };
+      const MAX_TRANSCRIPTION_BYTES = 24_000_000;
+      type TranscriptionChunk = {
+        file: File;
+        chunkStartOffset: number;
+        chunkEndOffset: number;
+      };
+      const encodeWavChunk = (
+        buffer: AudioBuffer,
+        startSample: number,
+        endSample: number
+      ) => {
+        const channels = buffer.numberOfChannels;
+        const sampleRate = buffer.sampleRate;
+        const frameCount = Math.max(0, endSample - startSample);
+        const bytesPerSample = 2;
+        const blockAlign = channels * bytesPerSample;
+        const byteRate = sampleRate * blockAlign;
+        const dataSize = frameCount * blockAlign;
+        const arrayBuffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(arrayBuffer);
+        const writeString = (offset: number, value: string) => {
+          for (let i = 0; i < value.length; i += 1) {
+            view.setUint8(offset + i, value.charCodeAt(i));
+          }
+        };
+        writeString(0, "RIFF");
+        view.setUint32(4, 36 + dataSize, true);
+        writeString(8, "WAVE");
+        writeString(12, "fmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, channels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, 16, true);
+        writeString(36, "data");
+        view.setUint32(40, dataSize, true);
+        let offset = 44;
+        const channelData = Array.from({ length: channels }, (_, index) =>
+          buffer.getChannelData(index)
+        );
+        for (let i = 0; i < frameCount; i += 1) {
+          for (let channel = 0; channel < channels; channel += 1) {
+            const sample = channelData[channel][startSample + i] ?? 0;
+            const clamped = Math.max(-1, Math.min(1, sample));
+            const int16 =
+              clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+            view.setInt16(offset, int16, true);
+            offset += 2;
+          }
+        }
+        return new Blob([arrayBuffer], { type: "audio/wav" });
+      };
+      const buildTranscriptionChunks = async (
+        blob: Blob,
+        assetName: string,
+        clipStartOffset: number,
+        clipDuration: number,
+        playbackRate: number,
+        assetDuration: number,
+        extractAudio: boolean
+      ): Promise<{
+        chunks: TranscriptionChunk[];
+        assetDuration: number;
+        clipEndOffset: number;
+      }> => {
+        const shouldDecode = extractAudio || blob.size > MAX_TRANSCRIPTION_BYTES;
+        let resolvedAssetDuration =
+          Number.isFinite(assetDuration) && assetDuration > 0
+            ? assetDuration
+            : 0;
+        let audioBuffer: AudioBuffer | null = null;
+        if (shouldDecode) {
+          const audioContext = getAudioContext();
+          if (!audioContext) {
+            throw new Error("Audio context unavailable for transcription.");
+          }
+          try {
+            const buffer = await blob.arrayBuffer();
+            audioBuffer = await audioContext.decodeAudioData(buffer);
+            resolvedAssetDuration = audioBuffer.duration;
+          } catch (error) {
+            throw new Error(
+              extractAudio
+                ? "Unable to extract audio from this file. Try a different clip or format."
+                : "This file is too large and could not be decoded. Try a shorter clip or an audio-only file."
+            );
+          }
+        }
+        if (!resolvedAssetDuration) {
+          resolvedAssetDuration = clipStartOffset + clipDuration * playbackRate;
+        }
+        const clipAssetDuration = Math.min(
+          clipDuration * playbackRate,
+          Math.max(0, resolvedAssetDuration - clipStartOffset)
+        );
+        const clipEndOffset = clipStartOffset + clipAssetDuration;
+        const baseName = assetName.replace(/\.[^/.]+$/, "").trim() || "audio";
+        if (!audioBuffer) {
+          return {
+            chunks: [
+              {
+                file: new File([blob], `${baseName}.wav`, {
+                  type: blob.type || "audio/wav",
+                }),
+                chunkStartOffset: 0,
+                chunkEndOffset: resolvedAssetDuration,
+              },
+            ],
+            assetDuration: resolvedAssetDuration,
+            clipEndOffset,
+          };
+        }
+        const bytesPerSecond =
+          audioBuffer.sampleRate * audioBuffer.numberOfChannels * 2;
+        const startSample = Math.max(
+          0,
+          Math.floor(clipStartOffset * audioBuffer.sampleRate)
+        );
+        const endSample = Math.min(
+          audioBuffer.length,
+          Math.ceil(clipEndOffset * audioBuffer.sampleRate)
+        );
+        const clipBytes = Math.max(
+          0,
+          (endSample - startSample) * audioBuffer.numberOfChannels * 2
+        );
+        const needsChunking = clipBytes + 44 > MAX_TRANSCRIPTION_BYTES;
+        if (!needsChunking) {
+          const chunkBlob = encodeWavChunk(
+            audioBuffer,
+            startSample,
+            endSample
+          );
+          return {
+            chunks: [
+              {
+                file: new File([chunkBlob], `${baseName}.wav`, {
+                  type: "audio/wav",
+                }),
+                chunkStartOffset: clipStartOffset,
+                chunkEndOffset: clipEndOffset,
+              },
+            ],
+            assetDuration: resolvedAssetDuration,
+            clipEndOffset,
+          };
+        }
+        const maxChunkDuration = Math.max(
+          5,
+          Math.floor((MAX_TRANSCRIPTION_BYTES - 44) / bytesPerSecond)
+        );
+        const chunkSamples = Math.max(
+          1,
+          Math.floor(maxChunkDuration * audioBuffer.sampleRate)
+        );
+        const chunks: TranscriptionChunk[] = [];
+        let cursor = startSample;
+        let index = 0;
+        while (cursor < endSample) {
+          const nextCursor = Math.min(endSample, cursor + chunkSamples);
+          const chunkBlob = encodeWavChunk(audioBuffer, cursor, nextCursor);
+          const chunkStartOffset = cursor / audioBuffer.sampleRate;
+          const chunkEndOffset = nextCursor / audioBuffer.sampleRate;
+          index += 1;
+          chunks.push({
+            file: new File([chunkBlob], `${baseName}-chunk-${index}.wav`, {
+              type: "audio/wav",
+            }),
+            chunkStartOffset,
+            chunkEndOffset,
+          });
+          cursor = nextCursor;
+        }
+        return { chunks, assetDuration: resolvedAssetDuration, clipEndOffset };
+      };
+      for (const entry of sortedSources) {
+        const blob = await fetch(entry.asset.url).then((res) => res.blob());
+        const clipStartOffset = entry.clip.startOffset ?? 0;
+        const speedSetting = clipSettings[entry.clip.id]?.speed ?? 1;
+        const playbackRate = clamp(speedSetting, 0.1, 4);
+        const assetDuration = getAssetDurationSeconds(entry.asset);
+        const { chunks, clipEndOffset } = await buildTranscriptionChunks(
+          blob,
+          entry.asset.name || "transcription",
+          clipStartOffset,
+          entry.clip.duration,
+          playbackRate,
+          assetDuration,
+          entry.asset.kind === "video"
+        );
+        const clipSegments: TimedSegment[] = [];
+        for (const chunk of chunks) {
+          let data = await requestTranscriptionWithRetry(
+            chunk.file,
+            primaryTranscription
+          );
+          let segments: TimedEntry[] = Array.isArray(data?.segments)
+            ? (data.segments as TimedEntry[])
+            : [];
+          let words: TimedEntry[] = Array.isArray(data?.words)
+            ? (data.words as TimedEntry[])
+            : [];
+          let normalizedSegments = normalizeSegmentEntries(segments).map(
+            (segment) => ({
+              ...segment,
+              start: segment.start + chunk.chunkStartOffset,
+              end: segment.end + chunk.chunkStartOffset,
+            })
+          );
+          let normalizedWords = normalizeWordEntries(words).map((word) => ({
+            ...word,
+            start: word.start + chunk.chunkStartOffset,
+            end: word.end + chunk.chunkStartOffset,
+          }));
+          if (normalizedWords.length === 0 && segments.length > 0) {
+            const extractedWords = normalizeWordEntries(
+              extractWordsFromSegments(segments)
+            ).map((word) => ({
+              ...word,
+              start: word.start + chunk.chunkStartOffset,
+              end: word.end + chunk.chunkStartOffset,
+            }));
+            if (extractedWords.length > 0) {
+              normalizedWords = extractedWords;
+            }
+          }
+          if (normalizedSegments.length === 0 && normalizedWords.length === 0) {
+            data = await requestTranscriptionWithRetry(
+              chunk.file,
+              fallbackTranscription
+            );
+            segments = Array.isArray(data?.segments)
+              ? (data.segments as TimedEntry[])
+              : [];
+            words = Array.isArray(data?.words)
+              ? (data.words as TimedEntry[])
+              : [];
+            normalizedSegments = normalizeSegmentEntries(segments).map(
+              (segment) => ({
+                ...segment,
+                start: segment.start + chunk.chunkStartOffset,
+                end: segment.end + chunk.chunkStartOffset,
+              })
+            );
+            normalizedWords = normalizeWordEntries(words).map((word) => ({
+              ...word,
+              start: word.start + chunk.chunkStartOffset,
+              end: word.end + chunk.chunkStartOffset,
+            }));
+            if (normalizedWords.length === 0 && segments.length > 0) {
+              const extractedWords = normalizeWordEntries(
+                extractWordsFromSegments(segments)
+              ).map((word) => ({
+                ...word,
+                start: word.start + chunk.chunkStartOffset,
+                end: word.end + chunk.chunkStartOffset,
+              }));
+              if (extractedWords.length > 0) {
+                normalizedWords = extractedWords;
+              }
+            }
+          }
+          if (normalizedSegments.length === 0 && normalizedWords.length === 0) {
+            throw new Error(
+              "Transcription did not return timestamps. Try another model or check API response."
+            );
+          }
+          // Word-level timestamps are more precise for subtitle alignment
+          // Prefer them over segment-level timestamps when available
+          const wordSegments =
+            normalizedWords.length > 0
+              ? buildSubtitleSegmentsFromWords(normalizedWords)
+              : [];
+          const segmentSplits =
+            normalizedSegments.length > 0
+              ? splitSubtitleSegmentsByText(normalizedSegments)
+              : [];
+          // Priority: word-level > segment splits > raw segments
+          // Word-level gives precise alignment with speech
+          const computedSegments: TimedSegment[] =
+            wordSegments.length > 0
+              ? wordSegments
+              : segmentSplits.length > 0
+                ? segmentSplits
+                : normalizedSegments;
+          if (computedSegments.length === 0) {
+            continue;
+          }
+          clipSegments.push(...computedSegments);
+        }
+        clipSegments.sort((a, b) => a.start - b.start);
+        clipSegments.forEach((segment) => {
+          const rawText = String(segment.text ?? "").trim();
+          if (!rawText) {
+            return;
+          }
+          const cleanedText = rawText
+            .replace(/^(?:speaker|spk)\s*\d+[:\-]\s*/i, "")
+            .trim();
+          if (!cleanedText) {
+            return;
+          }
+          const start = Math.max(segment.start, clipStartOffset);
+          const end = Math.min(segment.end, clipEndOffset);
+          if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+            return;
+          }
+          const timelineStart =
+            entry.clip.startTime + (start - clipStartOffset) / playbackRate;
+          const timelineEnd =
+            entry.clip.startTime + (end - clipStartOffset) / playbackRate;
+          const asset = {
+            ...createTextAsset("Subtitle"),
+            duration: Math.max(0.01, timelineEnd - timelineStart),
+          };
+          const clip = createClip(asset.id, laneId, timelineStart, asset);
+          nextAssets.push(asset);
+          nextClips.push(clip);
+          nextTextSettings[clip.id] = resolveSubtitleSettings(cleanedText);
+          nextClipTransforms[clip.id] = subtitleTransform;
+          nextSegments.push({
+            id: crypto.randomUUID(),
+            clipId: clip.id,
+            text: cleanedText,
+            startTime: timelineStart,
+            endTime: timelineEnd,
+            sourceClipId: entry.clip.id,
+          });
+        });
+      }
+      setLanes(nextLanes);
+      setAssets((prev) => [...nextAssets, ...prev]);
+      setTimeline((prev) => {
+        const filtered = prev.filter(
+          (clip) => !existingSubtitleClipIds.has(clip.id)
+        );
+        return [...filtered, ...nextClips];
+      });
+      setTextSettings((prev) => {
+        const next = { ...prev };
+        existingSubtitleClipIds.forEach((clipId) => {
+          delete next[clipId];
+        });
+        return { ...next, ...nextTextSettings };
+      });
+      setClipTransforms((prev) => {
+        const next = { ...prev };
+        existingSubtitleClipIds.forEach((clipId) => {
+          delete next[clipId];
+        });
+        return { ...next, ...nextClipTransforms };
+      });
+      setSubtitleSegments(
+        nextSegments.sort((a, b) => a.startTime - b.startTime)
+      );
+      setSubtitleActiveTab("style");
+      setSubtitleStatus("ready");
+    } catch (error) {
+      setSubtitleStatus("error");
+      setSubtitleError(
+        error instanceof Error ? error.message : "Subtitle generation failed."
+      );
+    }
+  }, [
+    buildSubtitleSegmentsFromWords,
+    clipSettings,
+    subtitleLanguage,
+    subtitleSegments,
+    subtitleSource,
+    subtitleSourceClips,
+    subtitleStatus,
+    resolveSubtitleSettings,
+    splitSubtitleSegmentsByText,
+    getAudioContext,
+    pushHistory,
+    stageAspectRatio,
+  ]);
+
   const tickLabelStride = useMemo(() => {
     const minLabelPx = timelineDuration <= 60 ? 32 : 56;
     const pxPerTick = timelineScale * tickStep;
@@ -3189,14 +4733,26 @@ export default function AdvancedEditorPage() {
       return null;
     }
 
+    const firstRate = getClipPlaybackRate(firstClip.id);
+    const secondRate = getClipPlaybackRate(secondClip.id);
+    if (Math.abs(firstRate - secondRate) > 0.001) {
+      return null;
+    }
+
     // Must be continuous in source media (second clip starts where first ends in source)
-    const expectedOffset = firstClip.startOffset + firstClip.duration;
+    const expectedOffset = firstClip.startOffset + firstClip.duration * firstRate;
     if (Math.abs(secondClip.startOffset - expectedOffset) > 0.01) {
       return null;
     }
 
     return { first: firstClip, second: secondClip };
-  }, [selectedClipIds, selectedClipIdsSet, timelineLayout]);
+  }, [
+    clipSettings,
+    getClipPlaybackRate,
+    selectedClipIds,
+    selectedClipIdsSet,
+    timelineLayout,
+  ]);
 
   const canFuseClips = fusableClips !== null;
 
@@ -3351,11 +4907,7 @@ export default function AdvancedEditorPage() {
           entry.asset.kind === "audio"
             ? audioRefs.current.get(entry.clip.id)
             : visualRefs.current.get(entry.clip.id);
-        const clipTime = clamp(
-          clampedTime - entry.clip.startTime + entry.clip.startOffset,
-          entry.clip.startOffset,
-          entry.clip.startOffset + entry.clip.duration
-        );
+      const clipTime = resolveClipAssetTime(entry.clip, clampedTime);
         if (element) {
           element.currentTime = clipTime;
         }
@@ -3365,7 +4917,7 @@ export default function AdvancedEditorPage() {
       }
       setCurrentTime(clampedTime);
     },
-    [getClipAtTime, timelineDuration]
+    [getClipAtTime, resolveClipAssetTime, timelineDuration]
   );
 
   const handleScrubTo = (clientX: number) => {
@@ -3401,34 +4953,100 @@ export default function AdvancedEditorPage() {
     handleScrubTo(event.clientX);
   };
 
+  const getSubtitlePlaybackTime = useCallback(
+    (time: number) => {
+      const audioEntry = getClipAtTime(time, "audio");
+      const visualEntry = getClipAtTime(time, "visual");
+      const entry = audioEntry ?? visualEntry;
+      if (!entry || entry.asset.kind === "image") {
+        return time;
+      }
+      const element =
+        entry.asset.kind === "audio"
+          ? audioRefs.current.get(entry.clip.id)
+          : visualRefs.current.get(entry.clip.id);
+      if (!element || !Number.isFinite(element.currentTime)) {
+        return time;
+      }
+      return resolveTimelineTimeFromAssetTime(entry.clip, element.currentTime);
+    },
+    [getClipAtTime, resolveTimelineTimeFromAssetTime]
+  );
+
+  // Main playback RAF loop - CRITICAL: do NOT include currentTime in dependencies
+  // The loop uses playbackTimeRef internally and including currentTime would cause
+  // the effect to restart every UI update, breaking smooth playback
+  const playbackStartTimeRef = useRef(currentTime);
+  
   useEffect(() => {
     if (!isPlaying) {
       return;
     }
     let frameId = 0;
     let last = performance.now();
+    // Capture the current time at the moment playback starts
+    // This uses the ref which is kept in sync when not playing
+    const startTime = playbackTimeRef.current;
+    playbackStartTimeRef.current = startTime;
+    playbackUiTickRef.current = last;
+    
     const tick = (timestamp: number) => {
       const deltaSeconds = (timestamp - last) / 1000;
       last = timestamp;
-      setCurrentTime((prev) => {
-        const next = prev + deltaSeconds;
-        if (next >= timelineTotal) {
-          setIsPlaying(false);
-          return timelineTotal;
-        }
-        return next;
-      });
+      const rawNext = playbackTimeRef.current + deltaSeconds;
+      const subtitleTime = getSubtitlePlaybackTime(rawNext);
+      const drift = subtitleTime - rawNext;
+      const next =
+        Math.abs(drift) > 0.045
+          ? subtitleTime
+          : rawNext + drift * 0.2;
+      if (next >= timelineTotal) {
+        playbackTimeRef.current = timelineTotal;
+        startTransition(() => {
+          setCurrentTime(timelineTotal);
+        });
+        setIsPlaying(false);
+        // Final subtitle update at end
+        updateSubtitleForTimeRef.current(timelineTotal);
+        return;
+      }
+      playbackTimeRef.current = next;
+      
+      // Update subtitles every frame for perfect sync
+      updateSubtitleForTimeRef.current(next);
+      
+      const shouldUpdateUi =
+        timestamp - playbackUiTickRef.current >=
+        subtitleUiFrameSecondsRef.current * 1000;
+      if (shouldUpdateUi) {
+        playbackUiTickRef.current = timestamp;
+        startTransition(() => {
+          setCurrentTime(next);
+        });
+      }
       frameId = window.requestAnimationFrame(tick);
     };
+    // Initial subtitle update
+    updateSubtitleForTimeRef.current(getSubtitlePlaybackTime(startTime));
     frameId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frameId);
-  }, [isPlaying, timelineTotal]);
+  }, [getSubtitlePlaybackTime, isPlaying, startTransition, timelineTotal]);
 
+  useEffect(() => {
+    if (!isPlaying) {
+      playbackTimeRef.current = currentTime;
+    }
+  }, [currentTime, isPlaying]);
+
+  // Initial sync when playback starts - seeks all visible clips to correct position
+  // Uses playbackTimeRef which is kept in sync with currentTime when not playing
   useEffect(() => {
     if (!isPlaying || wasPlayingRef.current) {
       wasPlayingRef.current = isPlaying;
       return;
     }
+    // Use the ref value for time - it's always in sync
+    const time = playbackTimeRef.current;
     visualStack.forEach((entry) => {
       if (entry.asset.kind !== "video") {
         return;
@@ -3437,11 +5055,7 @@ export default function AdvancedEditorPage() {
       if (!element) {
         return;
       }
-      const clipTime = clamp(
-        currentTime - entry.clip.startTime + entry.clip.startOffset,
-        entry.clip.startOffset,
-        entry.clip.startOffset + entry.clip.duration
-      );
+      const clipTime = resolveClipAssetTime(entry.clip, time);
       element.currentTime = clipTime;
     });
     audioStack.forEach((entry) => {
@@ -3449,16 +5063,14 @@ export default function AdvancedEditorPage() {
       if (!element) {
         return;
       }
-      const clipTime = clamp(
-        currentTime - entry.clip.startTime + entry.clip.startOffset,
-        entry.clip.startOffset,
-        entry.clip.startOffset + entry.clip.duration
-      );
+      const clipTime = resolveClipAssetTime(entry.clip, time);
       element.currentTime = clipTime;
     });
     wasPlayingRef.current = true;
-  }, [isPlaying, visualStack, audioStack, currentTime]);
+  }, [audioStack, isPlaying, resolveClipAssetTime, visualStack]);
 
+  // Video playback control effect - handles play/pause state changes
+  // Includes readyState check for blob URLs which need time to buffer
   useEffect(() => {
     const visibleIds = new Set(visualStack.map((entry) => entry.clip.id));
     visualRefs.current.forEach((element, clipId) => {
@@ -3476,50 +5088,158 @@ export default function AdvancedEditorPage() {
         return;
       }
       const settings = clipSettings[entry.clip.id] ?? fallbackVideoSettings;
-      const baseVolume = clamp(settings.volume / 100, 0, 1);
-      const localTime = clamp(
-        currentTime - entry.clip.startTime,
-        0,
-        entry.clip.duration
-      );
-      let fadeGain = 1;
-      if (settings.fadeEnabled) {
-        const fadeIn = settings.fadeIn > 0 ? settings.fadeIn : 0;
-        const fadeOut = settings.fadeOut > 0 ? settings.fadeOut : 0;
-        const fadeInGain =
-          fadeIn > 0 ? clamp(localTime / fadeIn, 0, 1) : 1;
-        const fadeOutGain =
-          fadeOut > 0
-            ? clamp((entry.clip.duration - localTime) / fadeOut, 0, 1)
-            : 1;
-        fadeGain = Math.min(fadeInGain, fadeOutGain);
-      }
       element.playbackRate = clamp(settings.speed, 0.1, 4);
       element.muted = settings.muted;
-      element.volume = settings.muted ? 0 : baseVolume * fadeGain;
-      const clipTime = clamp(
-        currentTime - entry.clip.startTime + entry.clip.startOffset,
-        entry.clip.startOffset,
-        entry.clip.startOffset + entry.clip.duration
-      );
-      const shouldSeek =
-        !isPlaying || timelineJumpRef.current || element.paused;
-      if (shouldSeek && Math.abs(element.currentTime - clipTime) > 0.05) {
-        element.currentTime = clipTime;
-      }
+      
       if (isPlaying) {
         if (element.paused) {
-          const playPromise = element.play();
-          if (playPromise) {
-            playPromise.catch(() => setIsPlaying(false));
+          // Check if video is ready to play (important for blob URLs)
+          // readyState 3 = HAVE_FUTURE_DATA, 4 = HAVE_ENOUGH_DATA
+          if (element.readyState >= 3) {
+            const playPromise = element.play();
+            if (playPromise) {
+              playPromise.catch(() => setIsPlaying(false));
+            }
+          } else {
+            // Video not ready - wait for canplay event
+            const handleCanPlay = () => {
+              element.removeEventListener('canplay', handleCanPlay);
+              if (isPlaying && element.paused) {
+                const playPromise = element.play();
+                if (playPromise) {
+                  playPromise.catch(() => {});
+                }
+              }
+            };
+            element.addEventListener('canplay', handleCanPlay, { once: true });
           }
         }
       } else {
         element.pause();
       }
     });
-  }, [visualStack, currentTime, isPlaying, clipSettings, fallbackVideoSettings]);
+  }, [visualStack, isPlaying, clipSettings, fallbackVideoSettings]);
 
+  // Track last volume set per clip to avoid redundant updates
+  const lastVolumeRef = useRef<Map<string, number>>(new Map());
+  
+  // Video seeking effect - only runs when not playing or on specific updates
+  // Separated from volume to reduce overhead during playback
+  useEffect(() => {
+    // Skip during playback unless there's a jump - video elements play on their own
+    if (isPlaying && !timelineJumpRef.current) {
+      return;
+    }
+    
+    visualStack.forEach((entry) => {
+      if (entry.asset.kind !== "video") {
+        return;
+      }
+      const element = visualRefs.current.get(entry.clip.id);
+      if (!element) {
+        return;
+      }
+      
+      const clipTime = resolveClipAssetTime(entry.clip, currentTime);
+      
+      if (Math.abs(element.currentTime - clipTime) > 0.05) {
+        element.currentTime = clipTime;
+      }
+    });
+    
+    // Reset jump flag after processing
+    if (timelineJumpRef.current) {
+      timelineJumpRef.current = false;
+    }
+  }, [currentTime, isPlaying, resolveClipAssetTime, visualStack]);
+
+  // Ref to track clips with active fades for RAF-based volume updates
+  const activeFadeClipsRef = useRef<Set<string>>(new Set());
+  
+  // Check which clips have fades enabled
+  useEffect(() => {
+    const fadeClips = new Set<string>();
+    visualStack.forEach((entry) => {
+      if (entry.asset.kind !== "video") return;
+      const settings = clipSettings[entry.clip.id] ?? fallbackVideoSettings;
+      if (settings.fadeEnabled && (settings.fadeIn > 0 || settings.fadeOut > 0)) {
+        fadeClips.add(entry.clip.id);
+      }
+    });
+    activeFadeClipsRef.current = fadeClips;
+  }, [visualStack, clipSettings, fallbackVideoSettings]);
+
+  // Video volume effect - separate RAF loop for fade updates during playback
+  // This avoids React effect overhead for smooth fades
+  useEffect(() => {
+    if (!isPlaying) {
+      // When not playing, set volumes directly via effect
+      visualStack.forEach((entry) => {
+        if (entry.asset.kind !== "video") return;
+        const element = visualRefs.current.get(entry.clip.id);
+        if (!element) return;
+        const settings = clipSettings[entry.clip.id] ?? fallbackVideoSettings;
+        const targetVolume = settings.muted ? 0 : clamp(settings.volume / 100, 0, 1);
+        if (Math.abs(element.volume - targetVolume) > 0.01) {
+          element.volume = targetVolume;
+        }
+      });
+      return;
+    }
+    
+    // During playback, use RAF for smooth fade updates
+    let frameId = 0;
+    const hasFades = activeFadeClipsRef.current.size > 0;
+    
+    if (!hasFades) {
+      // No fades - just set volumes once
+      visualStack.forEach((entry) => {
+        if (entry.asset.kind !== "video") return;
+        const element = visualRefs.current.get(entry.clip.id);
+        if (!element) return;
+        const settings = clipSettingsRef.current[entry.clip.id] ?? fallbackVideoSettings;
+        element.volume = settings.muted ? 0 : clamp(settings.volume / 100, 0, 1);
+      });
+      return;
+    }
+    
+    // RAF loop for fade updates
+    const updateVolumes = () => {
+      const time = playbackTimeRef.current;
+      visualStack.forEach((entry) => {
+        if (entry.asset.kind !== "video") return;
+        const element = visualRefs.current.get(entry.clip.id);
+        if (!element) return;
+        
+        const settings = clipSettingsRef.current[entry.clip.id] ?? fallbackVideoSettings;
+        const baseVolume = clamp(settings.volume / 100, 0, 1);
+        
+        let fadeGain = 1;
+        if (settings.fadeEnabled) {
+          const localTime = clamp(time - entry.clip.startTime, 0, entry.clip.duration);
+          const fadeIn = settings.fadeIn > 0 ? settings.fadeIn : 0;
+          const fadeOut = settings.fadeOut > 0 ? settings.fadeOut : 0;
+          const fadeInGain = fadeIn > 0 ? clamp(localTime / fadeIn, 0, 1) : 1;
+          const fadeOutGain = fadeOut > 0 ? clamp((entry.clip.duration - localTime) / fadeOut, 0, 1) : 1;
+          fadeGain = Math.min(fadeInGain, fadeOutGain);
+        }
+        
+        const targetVolume = settings.muted ? 0 : baseVolume * fadeGain;
+        const lastVolume = lastVolumeRef.current.get(entry.clip.id) ?? -1;
+        
+        if (Math.abs(targetVolume - lastVolume) > 0.005) {
+          element.volume = targetVolume;
+          lastVolumeRef.current.set(entry.clip.id, targetVolume);
+        }
+      });
+      frameId = requestAnimationFrame(updateVolumes);
+    };
+    
+    frameId = requestAnimationFrame(updateVolumes);
+    return () => cancelAnimationFrame(frameId);
+  }, [visualStack, isPlaying, clipSettings, fallbackVideoSettings]);
+
+  // Audio playback control effect - handles play/pause state changes
   useEffect(() => {
     const visibleIds = new Set(audioStack.map((entry) => entry.clip.id));
     audioRefs.current.forEach((element, clipId) => {
@@ -3537,16 +5257,7 @@ export default function AdvancedEditorPage() {
       const baseVolume = clamp(settings.volume / 100, 0, 1);
       element.muted = settings.muted;
       element.volume = settings.muted ? 0 : baseVolume;
-      const clipTime = clamp(
-        currentTime - entry.clip.startTime + entry.clip.startOffset,
-        entry.clip.startOffset,
-        entry.clip.startOffset + entry.clip.duration
-      );
-      const shouldSeek =
-        !isPlaying || timelineJumpRef.current || element.paused;
-      if (shouldSeek && Math.abs(element.currentTime - clipTime) > 0.05) {
-        element.currentTime = clipTime;
-      }
+      
       if (isPlaying) {
         if (element.paused) {
           const playPromise = element.play();
@@ -3558,11 +5269,32 @@ export default function AdvancedEditorPage() {
         element.pause();
       }
     });
-  }, [audioStack, currentTime, isPlaying, clipSettings, fallbackVideoSettings]);
+  }, [audioStack, isPlaying, clipSettings, fallbackVideoSettings]);
 
-  const handleUploadClick = () => {
+  // Audio seeking effect - only runs when not playing or on jumps
+  // During playback, audio elements run on their own
+  useEffect(() => {
+    // Skip during playback unless there's a jump
+    if (isPlaying && !timelineJumpRef.current) {
+      return;
+    }
+    
+    audioStack.forEach((entry) => {
+      const element = audioRefs.current.get(entry.clip.id);
+      if (!element) {
+        return;
+      }
+      const clipTime = resolveClipAssetTime(entry.clip, currentTime);
+      
+      if (Math.abs(element.currentTime - clipTime) > 0.05) {
+        element.currentTime = clipTime;
+      }
+    });
+  }, [audioStack, currentTime, isPlaying, resolveClipAssetTime]);
+
+  const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
-  };
+  }, []);
 
   const buildAssetsFromFiles = async (files: File[]) =>
     Promise.all(
@@ -3766,7 +5498,7 @@ export default function AdvancedEditorPage() {
     setIsPlaying((prev) => !prev);
   };
 
-  const addToTimeline = (assetId: string) => {
+  const addToTimeline = useCallback((assetId: string) => {
     const asset = assetsRef.current.find((item) => item.id === assetId);
     if (!asset) {
       return;
@@ -3782,7 +5514,7 @@ export default function AdvancedEditorPage() {
       return [...prev, clip];
     });
     setActiveAssetId(assetId);
-  };
+  }, [pushHistory]);
 
   const addClipAtPosition = (
     assetId: string,
@@ -4262,6 +5994,7 @@ export default function AdvancedEditorPage() {
     ) {
       return;
     }
+    const playbackRate = getClipPlaybackRate(clip.id);
     const leftClip: TimelineClip = {
       ...clip,
       duration: splitPoint,
@@ -4270,7 +6003,7 @@ export default function AdvancedEditorPage() {
       ...clip,
       id: crypto.randomUUID(),
       duration: clip.duration - splitPoint,
-      startOffset: clip.startOffset + splitPoint,
+      startOffset: clip.startOffset + splitPoint * playbackRate,
       startTime: clip.startTime + splitPoint,
     };
     setTimeline((prev) => {
@@ -4441,29 +6174,29 @@ export default function AdvancedEditorPage() {
     [clipTransforms, stageAspectRatio]
   );
 
-  const updateClipSettings = (
-    clipId: string,
-    updater: (current: VideoClipSettings) => VideoClipSettings
-  ) => {
-    pushHistoryThrottled();
-    setClipSettings((prev) => {
-      const current = prev[clipId] ?? createDefaultVideoSettings();
-      const next = updater(current);
-      return { ...prev, [clipId]: next };
-    });
-  };
+  const updateClipSettings = useCallback(
+    (clipId: string, updater: (current: VideoClipSettings) => VideoClipSettings) => {
+      pushHistoryThrottled();
+      setClipSettings((prev) => {
+        const current = prev[clipId] ?? createDefaultVideoSettings();
+        const next = updater(current);
+        return { ...prev, [clipId]: next };
+      });
+    },
+    [pushHistoryThrottled]
+  );
 
-  const updateTextSettings = (
-    clipId: string,
-    updater: (current: TextClipSettings) => TextClipSettings
-  ) => {
-    pushHistoryThrottled();
-    setTextSettings((prev) => {
-      const current = prev[clipId] ?? createDefaultTextSettings();
-      const next = updater(current);
-      return { ...prev, [clipId]: next };
-    });
-  };
+  const updateTextSettings = useCallback(
+    (clipId: string, updater: (current: TextClipSettings) => TextClipSettings) => {
+      pushHistoryThrottled();
+      setTextSettings((prev) => {
+        const current = prev[clipId] ?? createDefaultTextSettings();
+        const next = updater(current);
+        return { ...prev, [clipId]: next };
+      });
+    },
+    [pushHistoryThrottled]
+  );
 
   const handleTextStylePresetSelect = useCallback(
     (preset: TextStylePreset) => {
@@ -4915,7 +6648,7 @@ export default function AdvancedEditorPage() {
     setIsBackgroundSelected(false);
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = useCallback(() => {
     if (!selectedClipId && selectedClipIds.length === 0) {
       return;
     }
@@ -4944,7 +6677,7 @@ export default function AdvancedEditorPage() {
       });
       return next;
     });
-  };
+  }, [pushHistory, selectedClipId, selectedClipIds]);
 
   keyboardStateRef.current = {
     currentTime,
@@ -4961,7 +6694,7 @@ export default function AdvancedEditorPage() {
     isEditableTarget,
   };
 
-  const handleDetachAudio = () => {
+  const handleDetachAudio = useCallback(() => {
     if (!selectedVideoEntry) {
       return;
     }
@@ -5003,49 +6736,50 @@ export default function AdvancedEditorPage() {
     setLanes(nextLanes);
     setAssets((prev) => [audioAsset, ...prev]);
     setTimeline((prev) => [...prev, audioClip]);
-  };
+  }, [pushHistory, selectedVideoEntry, timelineLayout, updateClipSettings]);
 
-  const handleReplaceVideo = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    if (!files.length || !selectedVideoEntry) {
-      event.target.value = "";
-      return;
-    }
-    const file = files[0];
-    if (!file) {
-      event.target.value = "";
-      return;
-    }
-    pushHistory();
-    setUploading(true);
-    try {
-      const url = URL.createObjectURL(file);
-      const meta = await getMediaMeta("video", url);
-      const resolvedAspectRatio =
-        meta.aspectRatio ??
-        (meta.width && meta.height ? meta.width / meta.height : undefined);
-      const newAsset: MediaAsset = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        kind: "video",
-        url,
-        size: file.size,
-        duration: meta.duration,
-        width: meta.width,
-        height: meta.height,
-        aspectRatio: resolvedAspectRatio,
-        createdAt: Date.now(),
-      };
-      setAssets((prev) => [newAsset, ...prev]);
+  const handleReplaceVideo = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files ?? []);
+      if (!files.length || !selectedVideoEntry) {
+        event.target.value = "";
+        return;
+      }
+      const file = files[0];
+      if (!file) {
+        event.target.value = "";
+        return;
+      }
+      pushHistory();
+      setUploading(true);
+      try {
+        const url = URL.createObjectURL(file);
+        const meta = await getMediaMeta("video", url);
+        const resolvedAspectRatio =
+          meta.aspectRatio ??
+          (meta.width && meta.height ? meta.width / meta.height : undefined);
+        const newAsset: MediaAsset = {
+          id: crypto.randomUUID(),
+          name: file.name,
+          kind: "video",
+          url,
+          size: file.size,
+          duration: meta.duration,
+          width: meta.width,
+          height: meta.height,
+          aspectRatio: resolvedAspectRatio,
+          createdAt: Date.now(),
+        };
+        setAssets((prev) => [newAsset, ...prev]);
+      const playbackRate = getClipPlaybackRate(selectedVideoEntry.clip.id);
+      const maxDuration =
+        getAssetDurationSeconds(newAsset) / playbackRate;
       setTimeline((prev) =>
         prev.map((clip) => {
           if (clip.id !== selectedVideoEntry.clip.id) {
             return clip;
           }
-          const nextDuration = Math.min(
-            clip.duration,
-            getAssetDurationSeconds(newAsset)
-          );
+          const nextDuration = Math.min(clip.duration, maxDuration);
           return {
             ...clip,
             assetId: newAsset.id,
@@ -5054,12 +6788,14 @@ export default function AdvancedEditorPage() {
           };
         })
       );
-      setActiveAssetId(newAsset.id);
-    } finally {
-      setUploading(false);
-      event.target.value = "";
-    }
-  };
+        setActiveAssetId(newAsset.id);
+      } finally {
+        setUploading(false);
+        event.target.value = "";
+      }
+    },
+    [getClipPlaybackRate, pushHistory, selectedVideoEntry]
+  );
 
   const handleReplaceMedia = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -5096,13 +6832,15 @@ export default function AdvancedEditorPage() {
       setAssets((prev) => [newAsset, ...prev]);
       
       // Replace the clip's asset while keeping position and timing
+      const playbackRate = getClipPlaybackRate(selectedEntry.clip.id);
+      const maxDuration =
+        getAssetMaxDurationSeconds(newAsset) / playbackRate;
       setTimeline((prev) =>
         prev.map((clip) => {
           if (clip.id !== selectedEntry.clip.id) {
             return clip;
           }
           // Keep the same duration, but cap it if new asset is shorter
-          const maxDuration = getAssetMaxDurationSeconds(newAsset);
           const nextDuration = Math.min(clip.duration, maxDuration);
           return {
             ...clip,
@@ -5127,9 +6865,10 @@ export default function AdvancedEditorPage() {
     pushHistory();
     const asset = assetsRef.current.find((item) => item.id === clip.assetId);
     const assetDuration = getAssetMaxDurationSeconds(asset);
+    const playbackRate = getClipPlaybackRate(clip.id);
     const maxDuration = Math.max(
-      minClipDuration,
-      assetDuration - clip.startOffset
+      0,
+      (assetDuration - clip.startOffset) / playbackRate
     );
     setTimeline((prev) =>
       prev.map((item) =>
@@ -5143,83 +6882,102 @@ export default function AdvancedEditorPage() {
     );
   };
 
-  const handleStartTimeCommit = (clip: TimelineClip, value: string) => {
-    const nextStart = parseTimeInput(value);
-    if (nextStart == null) {
-      return;
-    }
-    pushHistory();
-    setTimeline((prev) =>
-      prev.map((item) =>
-        item.id === clip.id
-          ? { ...item, startTime: Math.max(0, nextStart) }
-          : item
-      )
-    );
-  };
+  const handleStartTimeCommit = useCallback(
+    (clip: TimelineClip, value: string) => {
+      const nextStart = parseTimeInput(value);
+      if (nextStart == null) {
+        return;
+      }
+      pushHistory();
+      setTimeline((prev) =>
+        prev.map((item) =>
+          item.id === clip.id
+            ? { ...item, startTime: Math.max(0, nextStart) }
+            : item
+        )
+      );
+    },
+    [pushHistory]
+  );
 
-  const handleEndTimeCommit = (clip: TimelineClip, value: string) => {
-    const nextEnd = parseTimeInput(value);
-    if (nextEnd == null) {
-      return;
-    }
-    pushHistory();
-    const asset = assetsRef.current.find((item) => item.id === clip.assetId);
-    const assetDuration = getAssetMaxDurationSeconds(asset);
-    const maxDuration = Math.max(
-      minClipDuration,
-      assetDuration - clip.startOffset
-    );
-    setTimeline((prev) =>
-      prev.map((item) => {
-        if (item.id !== clip.id) {
-          return item;
-        }
-        const nextDuration = clamp(
-          nextEnd - item.startTime,
-          minClipDuration,
-          maxDuration
-        );
-        return { ...item, duration: nextDuration };
-      })
-    );
-  };
+  const handleEndTimeCommit = useCallback(
+    (clip: TimelineClip, value: string) => {
+      const nextEnd = parseTimeInput(value);
+      if (nextEnd == null) {
+        return;
+      }
+      pushHistory();
+      const asset = assetsRef.current.find((item) => item.id === clip.assetId);
+      const assetDuration = getAssetMaxDurationSeconds(asset);
+      const playbackRate = getClipPlaybackRate(clip.id);
+      const maxDuration = Math.max(
+        0,
+        (assetDuration - clip.startOffset) / playbackRate
+      );
+      setTimeline((prev) =>
+        prev.map((item) => {
+          if (item.id !== clip.id) {
+            return item;
+          }
+          const nextDuration = clamp(
+            nextEnd - item.startTime,
+            minClipDuration,
+            maxDuration
+          );
+          return { ...item, duration: nextDuration };
+        })
+      );
+    },
+    [getClipPlaybackRate, minClipDuration, pushHistory]
+  );
 
-  const handleSetStartAtPlayhead = (clip: TimelineClip) => {
-    pushHistory();
-    setTimeline((prev) =>
-      prev.map((item) =>
-        item.id === clip.id
-          ? { ...item, startTime: Math.max(0, currentTime) }
-          : item
-      )
-    );
-  };
+  const handleSetStartAtPlayhead = useCallback(
+    (clip: TimelineClip) => {
+      const time = playbackTimeRef.current;
+      pushHistory();
+      setTimeline((prev) =>
+        prev.map((item) =>
+          item.id === clip.id
+            ? { ...item, startTime: Math.max(0, time) }
+            : item
+        )
+      );
+    },
+    [pushHistory]
+  );
 
-  const handleSetEndAtPlayhead = (clip: TimelineClip) => {
-    const asset = assetsRef.current.find((item) => item.id === clip.assetId);
-    const assetDuration = getAssetMaxDurationSeconds(asset);
-    const maxDuration = Math.max(
-      minClipDuration,
-      assetDuration - clip.startOffset
-    );
-    pushHistory();
-    setTimeline((prev) =>
-      prev.map((item) => {
-        if (item.id !== clip.id) {
-          return item;
-        }
-        const nextDuration = clamp(
-          currentTime - item.startTime,
-          minClipDuration,
-          maxDuration
-        );
-        return { ...item, duration: nextDuration };
-      })
-    );
-  };
+  const handleSetEndAtPlayhead = useCallback(
+    (clip: TimelineClip) => {
+      const time = playbackTimeRef.current;
+      const asset = assetsRef.current.find((item) => item.id === clip.assetId);
+      const assetDuration = getAssetMaxDurationSeconds(asset);
+      const playbackRate = getClipPlaybackRate(clip.id);
+      const maxDuration = Math.max(
+        0,
+        (assetDuration - clip.startOffset) / playbackRate
+      );
+      pushHistory();
+      setTimeline((prev) =>
+        prev.map((item) => {
+          if (item.id !== clip.id) {
+            return item;
+          }
+          const nextDuration = clamp(
+            time - item.startTime,
+            minClipDuration,
+            maxDuration
+          );
+          return { ...item, duration: nextDuration };
+        })
+      );
+    },
+    [getClipPlaybackRate, minClipDuration, pushHistory]
+  );
 
-  const getVideoStyles = (settings: VideoClipSettings) => {
+  // PERFORMANCE: Memoized video styles cache to avoid recalculating on every render
+  const videoStylesCacheRef = useRef<Map<string, ReturnType<typeof computeVideoStyles>>>(new Map());
+  
+  const computeVideoStyles = useCallback((settings: VideoClipSettings) => {
     const radius = settings.roundCorners
       ? settings.cornerRadiusLinked
         ? {
@@ -5279,7 +7037,29 @@ export default function AdvancedEditorPage() {
         opacity: settings.vignette / 100,
       } as CSSProperties,
     };
-  };
+  }, []);
+
+  // Get video styles with caching - avoids recalculation during playback
+  const getVideoStyles = useCallback((clipId: string, settings: VideoClipSettings) => {
+    // Create a cache key from settings that affect visual output
+    const cacheKey = `${clipId}:${settings.roundCorners}:${settings.cornerRadius}:${settings.cornerRadiusLinked}:${settings.brightness}:${settings.contrast}:${settings.exposure}:${settings.saturation}:${settings.hue}:${settings.blur}:${settings.opacity}:${settings.flipH}:${settings.flipV}:${settings.rotation}:${settings.noise}:${settings.vignette}`;
+    
+    const cached = videoStylesCacheRef.current.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    const styles = computeVideoStyles(settings);
+    videoStylesCacheRef.current.set(cacheKey, styles);
+    
+    // Limit cache size to prevent memory leaks
+    if (videoStylesCacheRef.current.size > 100) {
+      const firstKey = videoStylesCacheRef.current.keys().next().value;
+      if (firstKey) videoStylesCacheRef.current.delete(firstKey);
+    }
+    
+    return styles;
+  }, [computeVideoStyles]);
 
   const handleStagePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -5328,6 +7108,32 @@ export default function AdvancedEditorPage() {
     setActiveCanvasClipId(entry.clip.id);
     if (entry.asset.kind === "text") {
       setActiveTool("text");
+    }
+    const isSubtitleClip =
+      entry.asset.kind === "text" && subtitleClipIdSet.has(entry.clip.id);
+    const isDetachedSubtitle = isSubtitleClip
+      ? detachedSubtitleIds.has(entry.clip.id)
+      : false;
+    if (isSubtitleClip && !isDetachedSubtitle) {
+      const groupTransforms = new Map<string, ClipTransform>();
+      subtitleSegments.forEach((segment) => {
+        if (detachedSubtitleIds.has(segment.clipId)) {
+          return;
+        }
+        const segmentEntry = timelineLayout.find(
+          (item) => item.clip.id === segment.clipId
+        );
+        if (!segmentEntry) {
+          return;
+        }
+        groupTransforms.set(
+          segment.clipId,
+          ensureClipTransform(segment.clipId, segmentEntry.asset)
+        );
+      });
+      subtitleGroupTransformsRef.current = groupTransforms;
+    } else {
+      subtitleGroupTransformsRef.current = null;
     }
     setDragTransformState({
       clipId: entry.clip.id,
@@ -5443,11 +7249,12 @@ export default function AdvancedEditorPage() {
             (item) => item.id === clip.assetId
           );
           const assetDuration = getAssetMaxDurationSeconds(asset);
+          const playbackRate = getClipPlaybackRate(clip.id);
           if (trimState.edge === "end") {
             const nextDuration = clamp(
               trimState.startDuration + deltaSeconds,
               minClipDuration,
-              assetDuration - trimState.startOffset
+              (assetDuration - trimState.startOffset) / playbackRate
             );
             return { ...clip, duration: nextDuration };
           }
@@ -5457,12 +7264,17 @@ export default function AdvancedEditorPage() {
             trimState.startTime + trimState.startDuration - minClipDuration
           );
           const appliedDelta = nextStartTime - trimState.startTime;
-          const nextStartOffset = clamp(
-            trimState.startOffset + appliedDelta,
+          const maxStartOffset = Math.max(
             0,
-            assetDuration - minClipDuration
+            assetDuration - minClipDuration * playbackRate
           );
-          const maxDuration = assetDuration - nextStartOffset;
+          const nextStartOffset = clamp(
+            trimState.startOffset + appliedDelta * playbackRate,
+            0,
+            maxStartOffset
+          );
+          const maxDuration =
+            (assetDuration - nextStartOffset) / playbackRate;
           const nextDuration = clamp(
             trimState.startDuration - appliedDelta,
             minClipDuration,
@@ -5487,7 +7299,7 @@ export default function AdvancedEditorPage() {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [trimState, timelineScale, pushHistory]);
+  }, [getClipPlaybackRate, minClipDuration, pushHistory, timelineScale, trimState]);
 
   useEffect(() => {
     setTimelineHeight((prev) =>
@@ -6266,16 +8078,55 @@ export default function AdvancedEditorPage() {
         minSize,
         clampOptions
       );
-      clipTransformTouchedRef.current.add(dragTransformState.clipId);
-      setClipTransforms((prev) => ({
-        ...prev,
-        [dragTransformState.clipId]: next,
-      }));
+      const groupTransforms = subtitleGroupTransformsRef.current;
+      const isSubtitleGroupDrag =
+        groupTransforms &&
+        groupTransforms.has(dragTransformState.clipId);
+      if (isSubtitleGroupDrag && groupTransforms) {
+        const deltaX = next.x - dragTransformState.startRect.x;
+        const deltaY = next.y - dragTransformState.startRect.y;
+        setClipTransforms((prev) => {
+          const nextTransforms = { ...prev };
+          groupTransforms.forEach((startTransform, clipId) => {
+            const draftGroupRect = {
+              ...startTransform,
+              x: startTransform.x + deltaX,
+              y: startTransform.y + deltaY,
+            };
+            const groupMinSize = getClipMinSize(clipId);
+            const groupAllowOverflow =
+              clipAssetKindMap.get(clipId) !== "text";
+            const groupClampOptions = groupAllowOverflow
+              ? {
+                  allowOverflow: true,
+                  maxScale: clipTransformMaxScale,
+                  minVisiblePx: groupMinSize,
+                }
+              : undefined;
+            const clamped = clampTransformToStage(
+              draftGroupRect,
+              { width: rect.width, height: rect.height },
+              groupMinSize,
+              groupClampOptions
+            );
+            clipTransformTouchedRef.current.add(clipId);
+            nextTransforms[clipId] = clamped;
+          });
+          return nextTransforms;
+        });
+      } else {
+        clipTransformTouchedRef.current.add(dragTransformState.clipId);
+        setClipTransforms((prev) => ({
+          ...prev,
+          [dragTransformState.clipId]: next,
+        }));
+      }
     };
     const handleUp = () => {
       setDragTransformState(null);
       setSnapGuides(null);
       dragTransformHistoryRef.current = false;
+      subtitleGroupTransformsRef.current = null;
     };
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
@@ -6697,13 +8548,13 @@ export default function AdvancedEditorPage() {
     };
   }, [rotateTransformState, pushHistory]);
 
-  const handleAssetDragStart = (
-    event: DragEvent<HTMLElement>,
-    assetId: string
-  ) => {
-    event.dataTransfer.setData("text/plain", assetId);
-    event.dataTransfer.effectAllowed = "copy";
-  };
+  const handleAssetDragStart = useCallback(
+    (event: DragEvent<HTMLElement>, assetId: string) => {
+      event.dataTransfer.setData("text/plain", assetId);
+      event.dataTransfer.effectAllowed = "copy";
+    },
+    []
+  );
 
   const handleCanvasDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -7229,6 +9080,10 @@ export default function AdvancedEditorPage() {
     setStockVideoCategory,
     setStockVideoOrientation,
     setStockVideoSearch,
+    setSubtitleActiveTab,
+    setSubtitleLanguage,
+    setSubtitleSource,
+    setSubtitleStyleFilter,
     setTextPanelAlign,
     setTextPanelBackgroundColor,
     setTextPanelBackgroundEnabled,
@@ -7280,6 +9135,25 @@ export default function AdvancedEditorPage() {
     stockVideoOrientation,
     stockVideoSearch,
     stockVideoStatus,
+    subtitleActiveTab,
+    subtitleError,
+    subtitleLanguage,
+    subtitleLanguageOptions: subtitleLanguages,
+    subtitleSegments: subtitleSegmentsWithClipTimes,
+    subtitleSource,
+    subtitleSourceOptions,
+    subtitleStatus,
+    subtitleStyleFilter,
+    subtitleStyleId,
+    detachedSubtitleIds,
+    applySubtitleStyle,
+    handleGenerateSubtitles,
+    handleSubtitleAddLine,
+    handleSubtitleDelete,
+    handleSubtitleDeleteAll,
+    handleSubtitleDetachToggle,
+    handleSubtitleShiftAll,
+    handleSubtitleTextUpdate,
     textFontSizeDisplay,
     textFontSizeOptions,
     textPanelAlign,
@@ -7439,12 +9313,18 @@ export default function AdvancedEditorPage() {
                     const resolvedTextValue =
                       textClipSettings?.text ?? entry.asset.name;
                     const videoStyles = videoSettings
-                      ? getVideoStyles(videoSettings)
+                      ? getVideoStyles(entry.clip.id, videoSettings)
                       : null;
                     const noiseLevel = videoSettings?.noise ?? 0;
                     const vignetteLevel = videoSettings?.vignette ?? 0;
                     const clipZ = index + 2;
                     const clipRotation = transform.rotation ?? 0;
+                    // ALWAYS skip rendering subtitle clips - they're shown via subtitle overlay system
+                    // This prevents double-rendering both during playback AND when paused
+                    const isSubtitleClip = subtitleClipIdSet.has(entry.clip.id);
+                    if (isSubtitleClip) {
+                      return null;
+                    }
                     return (
                       <div
                         key={entry.clip.id}
@@ -7550,11 +9430,20 @@ export default function AdvancedEditorPage() {
                           ) : (
                             <div
                               className="absolute inset-0 overflow-hidden"
-                              style={videoStyles?.frameStyle}
+                              style={{
+                                ...videoStyles?.frameStyle,
+                                // GPU acceleration hints for smooth playback
+                                contain: 'strict',
+                                willChange: isPlaying ? 'contents' : 'auto',
+                              }}
                             >
                               <div
                                 className="absolute inset-0"
-                                style={videoStyles?.mediaStyle}
+                                style={{
+                                  ...videoStyles?.mediaStyle,
+                                  // Force GPU layer for video
+                                  backfaceVisibility: 'hidden',
+                                }}
                               >
                                 {entry.asset.kind === "image" ? (
                                   <img
@@ -7562,6 +9451,7 @@ export default function AdvancedEditorPage() {
                                     alt={entry.asset.name}
                                     className="h-full w-full object-cover"
                                     draggable={false}
+                                    loading="eager"
                                   />
                                 ) : (
                                   <video
@@ -7573,7 +9463,9 @@ export default function AdvancedEditorPage() {
                                     src={entry.asset.url}
                                     className="h-full w-full object-cover"
                                     playsInline
-                                    preload="metadata"
+                                    preload="auto"
+                                    // Disable browser features that add overhead for blob URLs
+                                    disablePictureInPicture
                                     onLoadedMetadata={(event) =>
                                       updateVideoMetaFromElement(
                                         entry.clip.id,
@@ -7582,6 +9474,10 @@ export default function AdvancedEditorPage() {
                                       )
                                     }
                                     draggable={false}
+                                    style={{
+                                      // Force hardware acceleration for video element
+                                      transform: 'translateZ(0)',
+                                    }}
                                   />
                                 )}
                               </div>
@@ -7603,6 +9499,42 @@ export default function AdvancedEditorPage() {
                       </div>
                     );
                   })}
+                  {/* Direct DOM subtitle overlay - always rendered, updated via refs */}
+                  {/* This approach bypasses React re-renders for smooth subtitle display */}
+                  <div
+                    ref={subtitleOverlayRef}
+                    className="pointer-events-none"
+                    style={{
+                      position: 'absolute',
+                      zIndex: 999,
+                      opacity: 0,
+                      visibility: 'hidden',
+                      willChange: 'opacity, transform',
+                      contain: 'layout style',
+                    }}
+                  >
+                    <div 
+                      className="flex items-end justify-center px-3"
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        paddingBottom: '8%',
+                      }}
+                    >
+                      <div className="w-full text-center">
+                        <span
+                          ref={subtitleTextRef}
+                          className="inline-block max-w-full"
+                          style={{
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'break-word',
+                            textRendering: 'geometricPrecision',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : activeAsset?.kind === "audio" ? (
                 <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4">
@@ -9005,304 +10937,7 @@ export default function AdvancedEditorPage() {
                 className="relative flex flex-col"
                 style={{ gap: `${laneGap}px` }}
               >
-                {laneRows.map((lane) => {
-                  const laneClips = timelineLayout
-                    .filter((entry) => entry.clip.laneId === lane.id)
-                    .sort((a, b) => a.left - b.left);
-                  const laneClipInsetY =
-                    lane.type === "video"
-                      ? 0
-                      : Math.max(4, Math.round(lane.height * 0.12));
-                  const laneClipHeight =
-                    lane.type === "video"
-                      ? lane.height
-                      : Math.max(18, lane.height - laneClipInsetY * 2);
-                  return (
-                    <div
-                      key={lane.id}
-                      className="relative overflow-hidden rounded-xl border border-gray-100 bg-white/70"
-                      style={{ height: `${lane.height}px` }}
-                    >
-                      <div className="absolute left-2 top-2 text-[10px] uppercase tracking-[0.12em] text-gray-400">
-                        {lane.label}
-                      </div>
-                      {dragPreview && dragPreview.laneId === lane.id && (
-                        <div
-                          className="pointer-events-none absolute rounded-sm border-2 border-dashed border-amber-300/90 bg-amber-100/30"
-                          style={{
-                            left: `${dragPreview.startTime * timelineScale}px`,
-                            width: `${dragPreview.duration * timelineScale}px`,
-                            top: `${laneClipInsetY}px`,
-                            height: `${laneClipHeight}px`,
-                          }}
-                        />
-                      )}
-                      {laneClips.map(({ clip, asset, left }) => {
-                        const width = Math.max(
-                          1,
-                          clip.duration * timelineScale
-                        );
-                        const isSelected =
-                          selectedClipIdsSet.has(clip.id);
-                        const isDragging =
-                          dragClipState?.clipId === clip.id;
-                        const waveform =
-                          lane.type === "audio"
-                            ? getAudioClipWaveformBars(
-                                clip,
-                                asset,
-                                width
-                              )
-                            : null;
-                        const waveformHeight =
-                          lane.type === "audio"
-                            ? Math.max(8, laneClipHeight - 6)
-                            : 0;
-                        const waveformColumns = waveform?.length ?? 0;
-                        const thumbnailCount =
-                          lane.type === "video"
-                            ? getThumbnailCountForWidth(width)
-                            : 0;
-                        const thumbnailFrames =
-                          timelineThumbnails[clip.id]?.frames ?? [];
-                        const hasThumbnailFrames =
-                          asset.kind === "video" &&
-                          thumbnailFrames.length === thumbnailCount &&
-                          thumbnailFrames.some((frame) => Boolean(frame));
-                        const clipBorderClass = isSelected
-                          ? "border-[#335CFF]"
-                          : "border-transparent";
-                        const collisionHighlight =
-                          isDragging && timelineCollisionActive
-                            ? "shadow-[0_0_0_2px_rgba(251,191,36,0.65)]"
-                            : "";
-                        const dragLiftClass = isDragging
-                          ? "z-30 -translate-y-1"
-                          : "";
-                        const dragLiftShadow = isDragging
-                          ? "shadow-[0_18px_30px_rgba(15,23,42,0.25)] cursor-grabbing"
-                          : "";
-                        return (
-                          <div
-                            key={clip.id}
-                            className={`absolute ${dragLiftClass}`}
-                            style={{
-                              left: `${left * timelineScale}px`,
-                              width,
-                              top: `${laneClipInsetY}px`,
-                              height: `${laneClipHeight}px`,
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 bg-white p-0 text-left text-[10px] font-semibold shadow-sm transition ${isDragging ? "opacity-70" : ""
-                                } ${collisionHighlight} ${dragLiftShadow}`}
-                              data-timeline-clip="true"
-                              onContextMenu={(event) =>
-                                handleTimelineClipContextMenu(event, clip, asset)
-                              }
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                setActiveAssetId(asset.id);
-                                if (asset.kind === "text") {
-                                  setActiveTool("text");
-                                }
-                                if (event.shiftKey) {
-                                  setSelectedClipIds((prev) => {
-                                    if (prev.includes(clip.id)) {
-                                      const next = prev.filter(
-                                        (id) => id !== clip.id
-                                      );
-                                      setSelectedClipId(
-                                        next[0] ?? null
-                                      );
-                                      return next;
-                                    }
-                                    const next = [...prev, clip.id];
-                                    setSelectedClipId(clip.id);
-                                    return next;
-                                  });
-                                  return;
-                                }
-                                setSelectedClipIds([clip.id]);
-                                setSelectedClipId(clip.id);
-                                dragClipHistoryRef.current = false;
-                                const nextDragState = {
-                                  clipId: clip.id,
-                                  startX: event.clientX,
-                                  startLeft: left,
-                                  startLaneId: clip.laneId,
-                                  previewTime: left,
-                                  previewLaneId: clip.laneId,
-                                };
-                                dragClipStateRef.current = nextDragState;
-                                setDragClipState(nextDragState);
-                              }}
-                            >
-                              {lane.type === "video" && (
-                                <div
-                                  className="absolute inset-0 grid h-full w-full"
-                                  style={{
-                                    gridTemplateColumns: `repeat(${thumbnailCount}, minmax(0, 1fr))`,
-                                  }}
-                                >
-                                  {Array.from(
-                                    { length: thumbnailCount },
-                                    (_, index) => {
-                                      const frameTime = clamp(
-                                        clip.startOffset +
-                                          (clip.duration * (index + 0.5)) /
-                                            Math.max(1, thumbnailCount),
-                                        clip.startOffset,
-                                        clip.startOffset + clip.duration - 0.05
-                                      );
-                                      return (
-                                        <div
-                                          key={`${clip.id}-thumb-${index}`}
-                                          className="relative h-full w-full overflow-hidden border-r border-white/30 bg-slate-100 last:border-r-0"
-                                        >
-                                          {asset.kind === "image" ? (
-                                            <img
-                                              src={asset.url}
-                                              alt={asset.name}
-                                              className="h-full w-full object-cover"
-                                              draggable={false}
-                                            />
-                                          ) : hasThumbnailFrames &&
-                                            thumbnailFrames[index] ? (
-                                            <img
-                                              src={thumbnailFrames[index]}
-                                              alt={`${asset.name} frame ${index + 1}`}
-                                              className="h-full w-full object-cover"
-                                              draggable={false}
-                                            />
-                                          ) : (
-                                            <video
-                                              src={asset.url}
-                                              className="h-full w-full object-cover"
-                                              muted
-                                              playsInline
-                                              preload="auto"
-                                              tabIndex={-1}
-                                              onLoadedData={(event) => {
-                                                const target =
-                                                  event.currentTarget;
-                                                if (
-                                                  Math.abs(
-                                                    target.currentTime -
-                                                      frameTime
-                                                  ) > 0.01
-                                                ) {
-                                                  target.currentTime =
-                                                    frameTime;
-                                                }
-                                              }}
-                                            />
-                                          )}
-                                        </div>
-                                      );
-                                    }
-                                  )}
-                                </div>
-                              )}
-                              {lane.type === "audio" && (
-                                <div className="absolute inset-0 bg-[#EEF2FF]" />
-                              )}
-                              {lane.type === "text" && (
-                                <div className="absolute inset-0 bg-[#F8FAFF]" />
-                              )}
-                              {lane.type === "audio" && (
-                                <div className="absolute inset-0 px-2 py-2">
-                                  <span className="pointer-events-none absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-[#A5B4FC]/60" />
-                                  <div
-                                    className="grid h-full w-full items-center gap-[2px]"
-                                    style={
-                                      waveformColumns > 0
-                                        ? {
-                                            gridTemplateColumns: `repeat(${waveformColumns}, minmax(0, 1fr))`,
-                                          }
-                                        : undefined
-                                    }
-                                  >
-                                    {waveform?.map((value, index) => (
-                                      <span
-                                        key={`${clip.id}-wave-${index}`}
-                                        className="relative mx-auto w-full max-w-[4px] rounded-full bg-[#6E86FF]"
-                                        style={{
-                                          height: `${Math.max(
-                                            1,
-                                            Math.round(
-                                              value * waveformHeight
-                                            )
-                                          )}px`,
-                                          opacity: 0.75,
-                                        }}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              <div
-                                className={`pointer-events-none absolute inset-0 rounded-sm border-4 transition ${clipBorderClass}`}
-                              />
-                              <span className="absolute bottom-1 right-1 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                                {formatDuration(clip.duration)}
-                              </span>
-                              <span
-                                className="absolute left-0 top-0 h-full w-2 cursor-col-resize rounded-l-sm bg-black/5"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  trimHistoryRef.current = false;
-                                  setTrimState({
-                                    clipId: clip.id,
-                                    edge: "start",
-                                    startX: event.clientX,
-                                    startDuration: clip.duration,
-                                    startOffset: clip.startOffset,
-                                    startTime: clip.startTime,
-                                  });
-                                }}
-                              />
-                              <span
-                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize rounded-r-sm bg-black/5"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  trimHistoryRef.current = false;
-                                  setTrimState({
-                                    clipId: clip.id,
-                                    edge: "end",
-                                    startX: event.clientX,
-                                    startDuration: clip.duration,
-                                    startOffset: clip.startOffset,
-                                    startTime: clip.startTime,
-                                  });
-                                }}
-                              />
-                            </button>
-                          </div>
-                        );
-                      })}
-                      {lane.id === lastAudioLaneId && (
-                        <div
-                          className="absolute left-2 right-2 bottom-1 flex h-3 cursor-row-resize items-center justify-center opacity-70 hover:opacity-100"
-                          onPointerDown={handleAudioLaneResizeStart}
-                          aria-label="Resize audio lanes"
-                        >
-                          <span
-                            className={`h-0.5 w-16 rounded-full transition ${
-                              isResizingAudioLane
-                                ? "bg-[#335CFF]"
-                                : "bg-gray-300/80"
-                            }`}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {timelineLaneRows}
               </div>
             )}
           </div>
@@ -9536,6 +11171,296 @@ export default function AdvancedEditorPage() {
       </div>
     </div>
   );
+
+  const timelineLaneRows = useMemo(() => {
+    return laneRows.map((lane) => {
+      const laneClips = timelineLayout
+        .filter((entry) => entry.clip.laneId === lane.id)
+        .sort((a, b) => a.left - b.left);
+      const laneClipInsetY =
+        lane.type === "video" ? 0 : Math.max(4, Math.round(lane.height * 0.12));
+      const laneClipHeight =
+        lane.type === "video"
+          ? lane.height
+          : Math.max(18, lane.height - laneClipInsetY * 2);
+      return (
+        <div
+          key={lane.id}
+          className="relative overflow-hidden rounded-xl border border-gray-100 bg-white/70"
+          style={{ height: `${lane.height}px` }}
+        >
+          <div className="absolute left-2 top-2 text-[10px] uppercase tracking-[0.12em] text-gray-400">
+            {lane.label}
+          </div>
+          {dragPreview && dragPreview.laneId === lane.id && (
+            <div
+              className="pointer-events-none absolute rounded-sm border-2 border-dashed border-amber-300/90 bg-amber-100/30"
+              style={{
+                left: `${dragPreview.startTime * timelineScale}px`,
+                width: `${dragPreview.duration * timelineScale}px`,
+                top: `${laneClipInsetY}px`,
+                height: `${laneClipHeight}px`,
+              }}
+            />
+          )}
+          {laneClips.map(({ clip, asset, left }) => {
+            const width = Math.max(1, clip.duration * timelineScale);
+            const isSelected = selectedClipIdsSet.has(clip.id);
+            const isDragging = dragClipState?.clipId === clip.id;
+            const waveform =
+              lane.type === "audio"
+                ? getAudioClipWaveformBars(clip, asset, width)
+                : null;
+            const waveformHeight =
+              lane.type === "audio" ? Math.max(8, laneClipHeight - 6) : 0;
+            const waveformColumns = waveform?.length ?? 0;
+            const thumbnailCount =
+              lane.type === "video" ? getThumbnailCountForWidth(width) : 0;
+            const thumbnailFrames = timelineThumbnails[clip.id]?.frames ?? [];
+            const hasThumbnailFrames =
+              asset.kind === "video" &&
+              thumbnailFrames.length === thumbnailCount &&
+              thumbnailFrames.some((frame) => Boolean(frame));
+            const clipBorderClass = isSelected
+              ? "border-[#335CFF]"
+              : "border-transparent";
+            const collisionHighlight =
+              isDragging && timelineCollisionActive
+                ? "shadow-[0_0_0_2px_rgba(251,191,36,0.65)]"
+                : "";
+            const dragLiftClass = isDragging ? "z-30 -translate-y-1" : "";
+            const dragLiftShadow = isDragging
+              ? "shadow-[0_18px_30px_rgba(15,23,42,0.25)] cursor-grabbing"
+              : "";
+            return (
+              <div
+                key={clip.id}
+                className={`absolute ${dragLiftClass}`}
+                style={{
+                  left: `${left * timelineScale}px`,
+                  width,
+                  top: `${laneClipInsetY}px`,
+                  height: `${laneClipHeight}px`,
+                }}
+              >
+                <button
+                  type="button"
+                  className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 bg-white p-0 text-left text-[10px] font-semibold shadow-sm transition ${isDragging ? "opacity-70" : ""} ${collisionHighlight} ${dragLiftShadow}`}
+                  data-timeline-clip="true"
+                  onContextMenu={(event) =>
+                    handleTimelineClipContextMenu(event, clip, asset)
+                  }
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setActiveAssetId(asset.id);
+                    if (asset.kind === "text") {
+                      setActiveTool("text");
+                    }
+                    if (event.shiftKey) {
+                      setSelectedClipIds((prev) => {
+                        if (prev.includes(clip.id)) {
+                          const next = prev.filter((id) => id !== clip.id);
+                          setSelectedClipId(next[0] ?? null);
+                          return next;
+                        }
+                        const next = [...prev, clip.id];
+                        setSelectedClipId(clip.id);
+                        return next;
+                      });
+                      return;
+                    }
+                    setSelectedClipIds([clip.id]);
+                    setSelectedClipId(clip.id);
+                    dragClipHistoryRef.current = false;
+                    const nextDragState = {
+                      clipId: clip.id,
+                      startX: event.clientX,
+                      startLeft: left,
+                      startLaneId: clip.laneId,
+                      previewTime: left,
+                      previewLaneId: clip.laneId,
+                    };
+                    dragClipStateRef.current = nextDragState;
+                    setDragClipState(nextDragState);
+                  }}
+                >
+                  {lane.type === "video" && (
+                    <div
+                      className="absolute inset-0 grid h-full w-full"
+                      style={{
+                        gridTemplateColumns: `repeat(${thumbnailCount}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {Array.from({ length: thumbnailCount }, (_, index) => {
+                        const frameTime = clamp(
+                          clip.startOffset +
+                            (clip.duration * (index + 0.5)) /
+                              Math.max(1, thumbnailCount),
+                          clip.startOffset,
+                          clip.startOffset + clip.duration - 0.05
+                        );
+                        return (
+                          <div
+                            key={`${clip.id}-thumb-${index}`}
+                            className="relative h-full w-full overflow-hidden border-r border-white/30 bg-slate-100 last:border-r-0"
+                          >
+                            {asset.kind === "image" ? (
+                              <img
+                                src={asset.url}
+                                alt={asset.name}
+                                className="h-full w-full object-cover"
+                                draggable={false}
+                              />
+                            ) : hasThumbnailFrames && thumbnailFrames[index] ? (
+                              <img
+                                src={thumbnailFrames[index]}
+                                alt={`${asset.name} frame ${index + 1}`}
+                                className="h-full w-full object-cover"
+                                draggable={false}
+                              />
+                            ) : (
+                              <video
+                                src={asset.url}
+                                className="h-full w-full object-cover"
+                                muted
+                                playsInline
+                                preload="auto"
+                                tabIndex={-1}
+                                onLoadedData={(event) => {
+                                  const target = event.currentTarget;
+                                  if (
+                                    Math.abs(
+                                      target.currentTime - frameTime
+                                    ) < 0.02
+                                  ) {
+                                    return;
+                                  }
+                                  try {
+                                    target.currentTime = frameTime;
+                                  } catch (error) {
+                                    console.warn(
+                                      "Failed to load thumbnail frame.",
+                                      error
+                                    );
+                                  }
+                                }}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {lane.type === "audio" && (
+                    <div className="absolute inset-0 bg-[#EEF2FF]" />
+                  )}
+                  {lane.type === "text" && (
+                    <div className="absolute inset-0 bg-[#F8FAFF]" />
+                  )}
+                  {lane.type === "audio" && (
+                    <div className="absolute inset-0 px-2 py-2">
+                      <span className="pointer-events-none absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-[#A5B4FC]/60" />
+                      <div
+                        className="grid h-full w-full items-center gap-[2px]"
+                        style={
+                          waveformColumns > 0
+                            ? {
+                                gridTemplateColumns: `repeat(${waveformColumns}, minmax(0, 1fr))`,
+                              }
+                            : undefined
+                        }
+                      >
+                        {waveform?.map((value, index) => (
+                          <span
+                            key={`${clip.id}-wave-${index}`}
+                            className="relative mx-auto w-full max-w-[4px] rounded-full bg-[#6E86FF]"
+                            style={{
+                              height: `${Math.max(
+                                1,
+                                Math.round(value * waveformHeight)
+                              )}px`,
+                              opacity: 0.75,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={`pointer-events-none absolute inset-0 rounded-sm border-4 transition ${clipBorderClass}`}
+                  />
+                  <span className="absolute bottom-1 right-1 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                    {formatDuration(clip.duration)}
+                  </span>
+                  <span
+                    className="absolute left-0 top-0 h-full w-2 cursor-col-resize rounded-l-sm bg-black/5"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      trimHistoryRef.current = false;
+                      setTrimState({
+                        clipId: clip.id,
+                        edge: "start",
+                        startX: event.clientX,
+                        startDuration: clip.duration,
+                        startOffset: clip.startOffset,
+                        startTime: clip.startTime,
+                      });
+                    }}
+                  />
+                  <span
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize rounded-r-sm bg-black/5"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      trimHistoryRef.current = false;
+                      setTrimState({
+                        clipId: clip.id,
+                        edge: "end",
+                        startX: event.clientX,
+                        startDuration: clip.duration,
+                        startOffset: clip.startOffset,
+                        startTime: clip.startTime,
+                      });
+                    }}
+                  />
+                </button>
+              </div>
+            );
+          })}
+          {lane.id === lastAudioLaneId && (
+            <div
+              className="absolute left-2 right-2 bottom-1 flex h-3 cursor-row-resize items-center justify-center opacity-70 hover:opacity-100"
+              onPointerDown={handleAudioLaneResizeStart}
+              aria-label="Resize audio lanes"
+            >
+              <span
+                className={`h-0.5 w-16 rounded-full transition ${
+                  isResizingAudioLane ? "bg-[#335CFF]" : "bg-gray-300/80"
+                }`}
+              />
+            </div>
+          )}
+        </div>
+      );
+    });
+  }, [
+    dragClipState,
+    dragPreview,
+    getAudioClipWaveformBars,
+    getThumbnailCountForWidth,
+    handleAudioLaneResizeStart,
+    handleTimelineClipContextMenu,
+    isResizingAudioLane,
+    laneRows,
+    lastAudioLaneId,
+    selectedClipIdsSet,
+    timelineCollisionActive,
+    timelineLayout,
+    timelineScale,
+    timelineThumbnails,
+  ]);
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-[#F2F4FA] text-[#0E121B]">

@@ -201,6 +201,25 @@ export const createDefaultTextTransform = (stageAspectRatio: number): ClipTransf
   };
 };
 
+// Subtitle-specific transform: wider, taller, positioned at bottom of screen
+// Ensures two-line subtitles render fully without manual resizing
+export const createSubtitleTransform = (stageAspectRatio: number): ClipTransform => {
+  // Wide enough for long sentences, positioned at bottom
+  const width = 0.95;
+  // Height sufficient for 3-4 lines of text at typical subtitle sizes
+  // This ensures wrapped text always has room to display
+  // Taller for portrait videos where text needs more vertical space
+  const height = stageAspectRatio > 1.4 ? 0.30 : 0.40;
+  // Position at bottom with small padding (3% from bottom)
+  const bottomPadding = 0.03;
+  return {
+    x: (1 - width) / 2,
+    y: 1 - height - bottomPadding,
+    width,
+    height,
+  };
+};
+
 export const clampTransformToStage = (
   rect: ClipTransform,
   stage: { width: number; height: number },

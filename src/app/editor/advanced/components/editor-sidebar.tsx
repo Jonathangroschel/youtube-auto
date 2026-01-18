@@ -1,10 +1,21 @@
 "use client";
 
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+
 import { panelButtonClass, panelCardClass, speedPresets } from "../constants";
 
 import {
   backgroundSwatches,
   mediaFilters,
+  subtitleStylePresets,
+  subtitleStyleFilters,
   textFontFamilies,
   textLetterSpacingOptions,
   textLineHeightOptions,
@@ -12,7 +23,7 @@ import {
   textStylePresets,
 } from "../data";
 
-import { clamp, formatDuration, formatSize } from "../utils";
+import { clamp, formatDuration, formatSize, formatTimeWithTenths } from "../utils";
 
 import {
   getPresetPreviewFontSize,
@@ -24,6 +35,8 @@ import {
   toRgba,
 } from "../page-helpers";
 
+import type { TextClipSettings } from "../types";
+
 import { GiphyLogo } from "./giphy-logo";
 import { SliderField } from "./slider-field";
 import { StockVideoCard } from "./stock-video-card";
@@ -31,13 +44,12 @@ import { ToggleSwitch } from "./toggle-switch";
 
 type EditorSidebarProps = Record<string, any>;
 
-export const EditorSidebar = (props: EditorSidebarProps) => {
-
-
+export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const {
     activeAssetId,
     activeTool,
     activeToolLabel,
+    applySubtitleStyle,
     addTextClip,
     addToTimeline,
     assetFilter,
@@ -65,10 +77,17 @@ export const EditorSidebar = (props: EditorSidebarProps) => {
     handleDetachAudio,
     handleEndTimeCommit,
     handleGifTrendingRetry,
+    handleGenerateSubtitles,
     handleReplaceVideo,
     handleSetEndAtPlayhead,
     handleSetStartAtPlayhead,
     handleStartTimeCommit,
+    handleSubtitleAddLine,
+    handleSubtitleDelete,
+    handleSubtitleDeleteAll,
+    handleSubtitleDetachToggle,
+    handleSubtitleShiftAll,
+    handleSubtitleTextUpdate,
     handleStickerTrendingRetry,
     handleStockMusicRetry,
     handleStockPreviewToggle,
@@ -149,6 +168,10 @@ export const EditorSidebar = (props: EditorSidebarProps) => {
     setTextPanelStylesOpen,
     setTextPanelTag,
     setTextPanelView,
+    setSubtitleActiveTab,
+    setSubtitleLanguage,
+    setSubtitleSource,
+    setSubtitleStyleFilter,
     setVideoBackground,
     setVideoPanelView,
     showAllStockTags,
@@ -171,6 +194,17 @@ export const EditorSidebar = (props: EditorSidebarProps) => {
     stockVideoOrientation,
     stockVideoSearch,
     stockVideoStatus,
+    subtitleActiveTab,
+    subtitleError,
+    subtitleLanguage,
+    subtitleLanguageOptions,
+    subtitleSegments,
+    subtitleSource,
+    subtitleSourceOptions,
+    subtitleStatus,
+    subtitleStyleFilter,
+    subtitleStyleId,
+    detachedSubtitleIds,
     textFontSizeDisplay,
     textFontSizeOptions,
     textPanelAlign,
@@ -214,9 +248,155 @@ export const EditorSidebar = (props: EditorSidebarProps) => {
     visibleTextPresetGroups,
   } = props;
 
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
+  const rowMenuRef = useRef<HTMLDivElement | null>(null);
+  const [subtitleProgress, setSubtitleProgress] = useState(0);
+  const [subtitleSettingsOpen, setSubtitleSettingsOpen] = useState(false);
+  const [subtitleRowMenu, setSubtitleRowMenu] = useState<{
+    open: boolean;
+    segmentId: string | null;
+    x: number;
+    y: number;
+  }>({
+    open: false,
+    segmentId: null,
+    x: 0,
+    y: 0,
+  });
+  const [showSubtitleTimings, setShowSubtitleTimings] = useState(false);
+  const [shiftTimingsOpen, setShiftTimingsOpen] = useState(false);
+  const [shiftSeconds, setShiftSeconds] = useState("0.0");
+
+  useEffect(() => {
+    if (subtitleStatus !== "loading") {
+      setSubtitleProgress(0);
+      return;
+    }
+    setSubtitleProgress(0.12);
+    const interval = window.setInterval(() => {
+      setSubtitleProgress((prev) => {
+        const next = prev + (1 - prev) * 0.16;
+        return next > 0.95 ? 0.95 : next;
+      });
+    }, 240);
+    return () => window.clearInterval(interval);
+  }, [subtitleStatus]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (subtitleSettingsOpen) {
+        const menu = settingsMenuRef.current;
+        const button = settingsButtonRef.current;
+        if (menu?.contains(target) || button?.contains(target)) {
+          return;
+        }
+        setSubtitleSettingsOpen(false);
+      }
+      if (subtitleRowMenu.open) {
+        const menu = rowMenuRef.current;
+        if (menu?.contains(target)) {
+          return;
+        }
+        setSubtitleRowMenu((prev) =>
+          prev.open
+            ? { ...prev, open: false, segmentId: null }
+            : prev
+        );
+      }
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [subtitleRowMenu.open, subtitleSettingsOpen]);
+
+  const openSubtitleRowMenu = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    segmentId: string
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 200;
+    const menuHeight = 150;
+    const nextX = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12);
+    const nextY = Math.min(rect.bottom + 8, window.innerHeight - menuHeight - 12);
+    setSubtitleSettingsOpen(false);
+    setSubtitleRowMenu({
+      open: true,
+      segmentId,
+      x: Math.max(12, nextX),
+      y: Math.max(12, nextY),
+    });
+  };
+
+  const handleShiftSubmit = () => {
+    const value = Number(shiftSeconds);
+    if (!Number.isFinite(value)) {
+      return;
+    }
+    handleSubtitleShiftAll(value);
+    setShiftTimingsOpen(false);
+  };
+
+  const recentStylePreset =
+    subtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
+    subtitleStylePresets[0];
+  const recentStylePreview = useMemo(() => {
+    if (!recentStylePreset) {
+      return null;
+    }
+    const previewSettings: TextClipSettings = {
+      ...fallbackTextSettings,
+      ...recentStylePreset.settings,
+      fontFamily: recentStylePreset.preview?.fontFamily ?? "Inter",
+      fontSize: recentStylePreset.preview?.fontSize ?? 22,
+      bold: recentStylePreset.preview?.bold ?? true,
+      italic: recentStylePreset.preview?.italic ?? false,
+      text: recentStylePreset.preview?.text ?? "Recent style",
+      align: "center",
+    };
+    return getTextRenderStyles(previewSettings);
+  }, [fallbackTextSettings, recentStylePreset]);
+
+  const activeSubtitleMenuSegment = subtitleRowMenu.segmentId
+    ? subtitleSegments.find(
+        (segment: { id: string }) => segment.id === subtitleRowMenu.segmentId
+      ) ?? null
+    : null;
+  const isSubtitleMenuDetached = activeSubtitleMenuSegment
+    ? detachedSubtitleIds?.has(activeSubtitleMenuSegment.clipId)
+    : false;
+
 
   const isAudioTool = activeTool === "audio";
   const useAudioLibraryLayout = isAudioTool && !isAssetLibraryExpanded;
+  const [isSubtitleSourceOpen, setIsSubtitleSourceOpen] = useState(false);
+  const [isSubtitleLanguageOpen, setIsSubtitleLanguageOpen] = useState(false);
+  const resolvedSubtitleSource = useMemo(() => {
+    if (!Array.isArray(subtitleSourceOptions) || subtitleSourceOptions.length === 0) {
+      return {
+        id: "project",
+        label: "Full project",
+        duration: 0,
+        kind: "project",
+      };
+    }
+    return (
+      subtitleSourceOptions.find((option: any) => option.id === subtitleSource) ??
+      subtitleSourceOptions[0]
+    );
+  }, [subtitleSource, subtitleSourceOptions]);
+  const filteredSubtitleStyles = useMemo(() => {
+    const styles = subtitleStylePresets as Array<
+      typeof subtitleStylePresets[number] & { category?: string }
+    >;
+    if (subtitleStyleFilter === "All") {
+      return styles;
+    }
+    return styles.filter((style) => style.category === subtitleStyleFilter);
+  }, [subtitleStyleFilter]);
+  const hasSubtitleResults = subtitleSegments?.length > 0;
 
   return (
     <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
@@ -1005,7 +1185,208 @@ export const EditorSidebar = (props: EditorSidebarProps) => {
             className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" ? "px-6 py-6" : "px-5 py-5"
               }`}
           >
-            {activeTool === "text" ? (
+            {activeTool === "subtitles" ? (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                      Subtitles
+                    </h2>
+                  </div>
+                  <div id="subtitles-extra-header-root" />
+                </div>
+                {hasSubtitleResults && (
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+                    >
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-gray-100 text-[10px] font-semibold text-gray-600">
+                        {subtitleLanguage?.region ?? "US"}
+                      </span>
+                      <span className="text-sm font-semibold">
+                        {subtitleLanguage?.label ?? "English"}
+                      </span>
+                      <svg viewBox="0 0 16 16" className="h-3 w-3 text-gray-400">
+                        <path
+                          d="m4 6 4 4 4-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <button
+                          ref={settingsButtonRef}
+                          type="button"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-100 bg-white text-gray-500 shadow-sm transition hover:bg-gray-50"
+                          aria-label="Subtitle settings"
+                          aria-expanded={subtitleSettingsOpen}
+                          data-testid="@editor/subtitles/settings-cog"
+                          onClick={() => {
+                            setSubtitleRowMenu((prev) =>
+                              prev.open
+                                ? { ...prev, open: false, segmentId: null }
+                                : prev
+                            );
+                            setSubtitleSettingsOpen((prev) => !prev);
+                          }}
+                        >
+                          <svg viewBox="0 0 16 16" className="h-4 w-4">
+                            <path
+                              d="M10 5.333a2 2 0 1 0 4 0 2 2 0 0 0-4 0Zm0 0H2.667M6 10.667a2 2 0 1 0-4 0 2 2 0 0 0 4 0Zm0 0h7.333"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        {subtitleSettingsOpen && (
+                          <div
+                            ref={settingsMenuRef}
+                            data-testid="@context-menu/container/editor/subtitles/settings-dropdown"
+                            className="absolute right-0 z-30 mt-2 w-56 rounded-xl border border-gray-100 bg-white p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
+                          >
+                            <button
+                              type="button"
+                              data-testid="@editor/subtitles/settings-cog/shift-all"
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                              onClick={() => {
+                                setShiftSeconds("0.0");
+                                setShiftTimingsOpen(true);
+                                setSubtitleSettingsOpen(false);
+                              }}
+                            >
+                              <svg
+                                viewBox="0 0 16 16"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M13 9H7a4 4 0 0 1-4-4V3m10 6-3-3m3 3-3 3" />
+                              </svg>
+                              Shift all timings
+                            </button>
+                            <div className="my-1 h-px bg-gray-100" />
+                            <button
+                              type="button"
+                              data-testid="@editor/subtitles/settings-cog/timings"
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                              onClick={() => {
+                                setShowSubtitleTimings((prev) => !prev);
+                                setSubtitleActiveTab("edit");
+                                setSubtitleSettingsOpen(false);
+                              }}
+                            >
+                              <svg
+                                viewBox="0 0 16 16"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M8 2.667a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 0V1.334m0 4v3.333m2 0H8m2-7.333H6" />
+                              </svg>
+                              {showSubtitleTimings ? "Hide timings" : "Show timings"}
+                            </button>
+                            <div className="my-1 h-px bg-gray-100" />
+                            <button
+                              type="button"
+                              data-testid="@editor/subtitles/settings-cog/delete-all"
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                              onClick={() => {
+                                handleSubtitleDeleteAll();
+                                setSubtitleSettingsOpen(false);
+                              }}
+                            >
+                              <svg
+                                viewBox="0 0 16 16"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M6.4 7.2V12m3.2-4.8V12M1.6 4h12.8m-1.6 0-.694 9.714A1.6 1.6 0 0 1 11.31 15.2H4.69a1.6 1.6 0 0 1-1.596-1.486L2.4 4m3.2 0V1.6a.8.8 0 0 1 .8-.8h3.2a.8.8 0 0 1 .8.8V4" />
+                              </svg>
+                              Delete all
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative inline-flex h-10 items-center justify-center rounded-xl bg-gray-50 p-1">
+                        <span
+                          className="pointer-events-none absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-white shadow-sm transition-all"
+                          style={{
+                            left:
+                              subtitleActiveTab === "style"
+                                ? "4px"
+                                : "calc(50% + 2px)",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className={`relative z-10 inline-flex h-8 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition ${
+                            subtitleActiveTab === "style"
+                              ? "text-gray-900"
+                              : "text-gray-400 hover:text-gray-600"
+                          }`}
+                          onClick={() => setSubtitleActiveTab("style")}
+                        >
+                          <svg viewBox="0 0 16 16" className="h-4 w-4">
+                            <path
+                              d="M13.25 10.105h-2.917c-.724 0-1.166.487-1.166 1.243 0 .829.583 1.04.583 1.877C9.75 14.31 8.987 15 8 15c-3.866 0-7-2.661-7-6.696C1 4.27 4.134 1 8 1s7 3.27 7 7.304c0 1.046-.583 1.826-1.75 1.8Z"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.2"
+                              strokeLinecap="round"
+                            />
+                            <path
+                              d="M3.75 9.75a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Zm0-3.5a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Zm3-2a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Zm3.5 1a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                          Style
+                        </button>
+                        <button
+                          type="button"
+                          className={`relative z-10 inline-flex h-8 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition ${
+                            subtitleActiveTab === "edit"
+                              ? "text-gray-900"
+                              : "text-gray-400 hover:text-gray-600"
+                          }`}
+                          onClick={() => setSubtitleActiveTab("edit")}
+                        >
+                          <svg viewBox="0 0 16 16" className="h-4 w-4">
+                            <path
+                              d="M8 2.77v10m0-10L5 1.25m3 1.52 3-1.52M8 12.77l-3 1.98m3-1.98 3 1.98m-5-7h4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : activeTool === "text" ? (
               <div className="flex flex-col gap-4">
                 {textPanelView === "library" ? (
                   <>
@@ -1851,6 +2232,623 @@ export const EditorSidebar = (props: EditorSidebarProps) => {
                   </div>
                 )}
               </div>
+            </div>
+          ) : activeTool === "subtitles" ? (
+            <div className="flex min-h-full flex-col bg-white">
+              {subtitleStatus === "loading" ? (
+                <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+                  <div className="h-2 w-44 overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#5B6CFF] via-[#7B89FF] to-[#5B6CFF] transition-[width] duration-300 ease-out"
+                      style={{ width: `${Math.max(8, subtitleProgress * 100)}%` }}
+                    />
+                  </div>
+                  <h3 className="mt-6 text-lg font-semibold text-gray-900">
+                    Generating Subtitles...
+                  </h3>
+                  <p className="mt-2 text-sm text-gray-500">
+                    ...go and grab yourself a snack, or continue editing this project.
+                  </p>
+                </div>
+              ) : !hasSubtitleResults ? (
+                <div className="flex flex-1 flex-col px-6 py-6">
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm font-semibold text-gray-900">
+                        What do you want to transcribe?
+                      </div>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-gray-50 px-3 text-sm font-semibold text-gray-800 shadow-sm transition focus:border-[#5B6CFF] focus:outline-none"
+                          onClick={() =>
+                            setIsSubtitleSourceOpen((prev) => !prev)
+                          }
+                          aria-expanded={isSubtitleSourceOpen}
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate">
+                              {resolvedSubtitleSource.label}
+                            </span>
+                            <span className="text-xs font-semibold text-gray-400">
+                              {resolvedSubtitleSource.duration
+                                ? formatDuration(resolvedSubtitleSource.duration)
+                                : "--:--"}
+                            </span>
+                          </div>
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                            <path
+                              d="M5 10.936 8 14l3-3.064m0-5.872L8 2 5 5.064"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        {isSubtitleSourceOpen && (
+                          <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-100 bg-white py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                            {subtitleSourceOptions.map((option: any) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                onClick={() => {
+                                  setSubtitleSource(option.id);
+                                  setIsSubtitleSourceOpen(false);
+                                }}
+                              >
+                                <span className="truncate">{option.label}</span>
+                                <span className="text-xs text-gray-400">
+                                  {option.duration
+                                    ? formatDuration(option.duration)
+                                    : "--:--"}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm font-semibold text-gray-900">
+                        What language is being spoken?
+                      </div>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-gray-50 px-3 text-sm font-semibold text-gray-800 shadow-sm transition focus:border-[#5B6CFF] focus:outline-none"
+                          onClick={() =>
+                            setIsSubtitleLanguageOpen((prev) => !prev)
+                          }
+                          aria-expanded={isSubtitleLanguageOpen}
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate">
+                              {subtitleLanguage?.label ?? "English"}
+                            </span>
+                            <span className="text-xs font-semibold text-gray-400">
+                              {subtitleLanguage?.detail ?? "English (US)"}
+                            </span>
+                            <span className="flex h-6 w-8 items-center justify-center rounded-md bg-gray-200 text-[11px] font-semibold text-gray-700">
+                              {subtitleLanguage?.region ?? "US"}
+                            </span>
+                          </div>
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                            <path
+                              d="M5 10.936 8 14l3-3.064m0-5.872L8 2 5 5.064"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        {isSubtitleLanguageOpen && (
+                          <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-100 bg-white py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                            {subtitleLanguageOptions.map((option: any) => (
+                              <button
+                                key={option.code}
+                                type="button"
+                                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                onClick={() => {
+                                  setSubtitleLanguage(option);
+                                  setIsSubtitleLanguageOpen(false);
+                                }}
+                              >
+                                <span className="truncate">{option.label}</span>
+                                <span className="text-xs text-gray-400">
+                                  {option.detail}
+                                </span>
+                                <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                                  {option.region}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {subtitleError && (
+                      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                        {subtitleError}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#5B6CFF] px-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(91,108,255,0.28)] transition hover:bg-[#4B5BEE]"
+                      onClick={handleGenerateSubtitles}
+                    >
+                      <svg viewBox="0 0 17 16" className="h-4 w-4">
+                        <path
+                          d="M4.43848 11L12.4385 11M6.43848 9L8.43848 4.00004C8.43848 4.00004 10.2087 8.4749 10.4385 9M7.07317 7.73063H9.81833M3.98393 14H12.893C14.5039 14 15.4385 13.0991 15.4385 11.6V4.4C15.4385 2.90094 14.5039 2 12.893 2H3.98393C2.3731 2 1.43848 2.90094 1.43848 4.4V11.6C1.43848 13.0991 2.3731 14 3.98393 14Z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      Add Subtitles with AI
+                    </button>
+
+                    <div className="-mx-6 border-b border-gray-100" />
+
+                    <div className="flex flex-col gap-3">
+                      <div className="text-sm font-semibold text-gray-900">
+                        More Options
+                      </div>
+                      <button
+                        type="button"
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                        onClick={handleSubtitleAddLine}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="M4 7h4.5m-1 2.5H12M10.5 7H12M4 9.5h1.5M3.545 13h8.91C13.86 13 15 11.88 15 10.5v-5C15 4.12 13.86 3 12.454 3H3.545C2.14 3 1 4.12 1 5.5v5C1 11.88 2.14 13 3.545 13"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        Transcribe Manually
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col">
+                  <div className="border-b border-gray-100 px-6 py-3">
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                      {subtitleStyleFilters.map((filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${
+                            subtitleStyleFilter === filter
+                              ? "bg-gray-100 text-gray-900"
+                              : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                          }`}
+                          onClick={() => setSubtitleStyleFilter(filter)}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {subtitleActiveTab === "style" ? (
+                    <div className="flex-1 px-6 py-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-[0_16px_28px_rgba(15,23,42,0.12)]">
+                          <div className="relative h-20 overflow-hidden rounded-t-xl bg-gradient-to-br from-slate-400/80 via-slate-500/70 to-slate-700/70">
+                            <div className="absolute left-2 top-2 z-10 flex items-center gap-1">
+                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 shadow-sm">
+                                <svg viewBox="0 0 12 12" className="h-3.5 w-3.5">
+                                  <path
+                                    d="M6 3V6L7.5 7.5M11 6C11 8.76142 8.76142 11 6 11C3.23858 11 1 8.76142 1 6C1 3.23858 3.23858 1 6 1C8.76142 1 11 3.23858 11 6Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </div>
+                            </div>
+                            <div className="flex h-full items-center justify-center px-2 text-center text-white">
+                              <span
+                                className="max-h-10 overflow-hidden text-xs font-semibold leading-snug"
+                                style={recentStylePreview?.textStyle}
+                              >
+                                {recentStylePreset?.preview?.text ?? "Recent style"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between px-3 py-2">
+                            <span className="text-sm font-medium text-gray-700">
+                              Recent style
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 rounded-md bg-[#5B6CFF] px-2 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#4B5BEE]"
+                              >
+                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/20">
+                                  <svg viewBox="0 0 8 12" className="h-3 w-3">
+                                    <path
+                                      d="M4.941 5.4h2.588c.364 0 .59.336.406.602L3.935 11.802c-.243.352-.876.206-.876-.202V6.6H.471c-.364 0-.59-.336-.406-.602L4.065.198c.243-.352.876-.206.876.202V5.4Z"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </span>
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-200"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        {filteredSubtitleStyles.map((preset) => {
+                          const previewSettings: TextClipSettings = {
+                            ...fallbackTextSettings,
+                            ...preset.settings,
+                            fontFamily:
+                              preset.preview?.fontFamily ?? "Inter",
+                            fontSize: preset.preview?.fontSize ?? 22,
+                            bold: preset.preview?.bold ?? true,
+                            italic: preset.preview?.italic ?? false,
+                            text: preset.preview?.text ?? "Everything and I love",
+                            align: "center",
+                          };
+                          const previewStyles = getTextRenderStyles(
+                            previewSettings
+                          );
+                          const isSelected = subtitleStyleId === preset.id;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              className={`group overflow-hidden rounded-xl border text-left shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 ${
+                                isSelected
+                                  ? "border-[#5B6CFF] ring-1 ring-[#5B6CFF]/30"
+                                  : "border-gray-200 hover:border-gray-300"
+                              }`}
+                              onClick={() => applySubtitleStyle(preset.id)}
+                            >
+                              <div className="relative flex h-20 items-center justify-center bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70">
+                                <span
+                                  className="max-h-10 overflow-hidden text-center text-xs font-semibold leading-snug"
+                                  style={previewStyles.textStyle}
+                                >
+                                  {preset.preview?.text ?? "Sample"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between px-3 py-2">
+                                <span
+                                  className={`text-sm font-medium ${
+                                    isSelected ? "text-[#5B6CFF]" : "text-gray-700"
+                                  }`}
+                                >
+                                  {preset.name}
+                                </span>
+                                <span className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 opacity-0 transition group-hover:opacity-100">
+                                  Edit
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 px-6 py-4">
+                      <div className="space-y-3">
+                        {subtitleSegments.map((segment) => {
+                          const clip = segment.clip ?? null;
+                          const startTime = clip
+                            ? clip.startTime
+                            : segment.startTime;
+                          const endTime = clip
+                            ? clip.startTime + clip.duration
+                            : segment.endTime;
+                          const isDetached = detachedSubtitleIds?.has(
+                            segment.clipId
+                          );
+                          return (
+                            <div
+                              key={segment.id}
+                              className={`rounded-xl border px-3 py-3 shadow-sm transition ${
+                                isDetached
+                                  ? "border-amber-200 bg-amber-50/50"
+                                  : "border-gray-100 bg-white"
+                              }`}
+                            >
+                              <div className="grid grid-cols-[1fr_auto] gap-3">
+                                <textarea
+                                  value={segment.text}
+                                  onChange={(event) =>
+                                    handleSubtitleTextUpdate(
+                                      segment.id,
+                                      event.target.value
+                                    )
+                                  }
+                                  rows={2}
+                                  className="min-h-[52px] w-full resize-none rounded-lg border border-transparent bg-transparent text-sm font-medium text-gray-700 outline-none focus:border-[#5B6CFF] focus:bg-white"
+                                />
+                                <div className="flex flex-col items-end gap-2">
+                                  {showSubtitleTimings && clip && (
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          className="flex h-7 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                                          onClick={() =>
+                                            handleSetStartAtPlayhead(clip)
+                                          }
+                                        >
+                                          <svg
+                                            viewBox="0 0 16 16"
+                                            className="h-3 w-3"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="1.3"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M8 2.667a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 0V1.334m0 4v3.333m2 0H8m2-7.333H6" />
+                                          </svg>
+                                          In
+                                        </button>
+                                        <input
+                                          key={`${segment.id}-start-${startTime}`}
+                                          defaultValue={formatTimeWithTenths(
+                                            startTime
+                                          )}
+                                          onBlur={(event) =>
+                                            handleStartTimeCommit(
+                                              clip,
+                                              event.target.value
+                                            )
+                                          }
+                                          className="h-7 w-20 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          className="flex h-7 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                                          onClick={() =>
+                                            handleSetEndAtPlayhead(clip)
+                                          }
+                                        >
+                                          <svg
+                                            viewBox="0 0 16 16"
+                                            className="h-3 w-3"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="1.3"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <path d="M8 2.667a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 0V1.334m0 4v3.333m2 0H8m2-7.333H6" />
+                                          </svg>
+                                          Out
+                                        </button>
+                                        <input
+                                          key={`${segment.id}-end-${endTime}`}
+                                          defaultValue={formatTimeWithTenths(
+                                            endTime
+                                          )}
+                                          onBlur={(event) =>
+                                            handleEndTimeCommit(
+                                              clip,
+                                              event.target.value
+                                            )
+                                          }
+                                          className="h-7 w-20 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-100 bg-white text-gray-400 shadow-sm transition hover:text-gray-600"
+                                    onClick={(event) =>
+                                      openSubtitleRowMenu(
+                                        event,
+                                        segment.id
+                                      )
+                                    }
+                                  >
+                                    <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                      <path
+                                        d="M8 6.75a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5M8 12a1.25 1.25 0 1 1 0 2.5A1.25 1.25 0 0 1 8 12M8 1.5A1.25 1.25 0 1 1 8 4a1.25 1.25 0 0 1 0-2.5"
+                                        fill="currentColor"
+                                      />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                        onClick={handleSubtitleAddLine}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-4 w-4">
+                          <path
+                            d="M3 8h10M8 3v10"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        Add New Subtitles Line
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {subtitleRowMenu.open && activeSubtitleMenuSegment && (
+                <div
+                  ref={rowMenuRef}
+                  data-testid="@context-menu/container"
+                  className="fixed z-50"
+                  style={{
+                    left: `${subtitleRowMenu.x}px`,
+                    top: `${subtitleRowMenu.y}px`,
+                  }}
+                >
+                  <div className="w-48 rounded-xl border border-gray-100 bg-white p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]">
+                    <button
+                      type="button"
+                      data-testid="@editor/subtitles/subtitles-editor/row/options/style-scope-toggle"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      onClick={() => {
+                        if (activeSubtitleMenuSegment?.clipId) {
+                          handleSubtitleDetachToggle(
+                            activeSubtitleMenuSegment.clipId
+                          );
+                        }
+                        setSubtitleRowMenu((prev) => ({
+                          ...prev,
+                          open: false,
+                          segmentId: null,
+                        }));
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="m8.943 11.771-1.414 1.414a3.333 3.333 0 0 1-4.714-4.714l1.414-1.414M7.057 4.23l1.414-1.414a3.333 3.333 0 0 1 4.714 4.714l-1.414 1.414" />
+                      </svg>
+                      {isSubtitleMenuDetached ? "Attach" : "Detach"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="@editor/subtitles/subtitles-editor/row/options/delete"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      onClick={() => {
+                        handleSubtitleDelete(activeSubtitleMenuSegment.id);
+                        setSubtitleRowMenu((prev) => ({
+                          ...prev,
+                          open: false,
+                          segmentId: null,
+                        }));
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M6.4 7.2V12m3.2-4.8V12M1.6 4h12.8m-1.6 0-.694 9.714A1.6 1.6 0 0 1 11.31 15.2H4.69a1.6 1.6 0 0 1-1.596-1.486L2.4 4m3.2 0V1.6a.8.8 0 0 1 .8-.8h3.2a.8.8 0 0 1 .8.8V4" />
+                      </svg>
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="@editor/subtitles/settings-cog/timings"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      onClick={() => {
+                        setShowSubtitleTimings((prev) => !prev);
+                        setSubtitleActiveTab("edit");
+                        setSubtitleRowMenu((prev) => ({
+                          ...prev,
+                          open: false,
+                          segmentId: null,
+                        }));
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M8 2.667a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 0V1.334m0 4v3.333m2 0H8m2-7.333H6" />
+                      </svg>
+                      {showSubtitleTimings ? "Hide timings" : "Show timings"}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {shiftTimingsOpen && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+                  onClick={() => setShiftTimingsOpen(false)}
+                >
+                  <div
+                    className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.25)]"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Shift all subtitles
+                    </h2>
+                    <div className="mt-4 space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                        Seconds
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={shiftSeconds}
+                        onChange={(event) => setShiftSeconds(event.target.value)}
+                        className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-800 shadow-sm focus:border-[#5B6CFF] focus:outline-none"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Enter a negative number to shift subtitles forward
+                        (eg. -0.5).
+                      </p>
+                    </div>
+                    <div className="mt-5 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg bg-[#5B6CFF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#4B5BEE]"
+                        onClick={handleShiftSubmit}
+                      >
+                        Shift
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+                        onClick={() => setShiftTimingsOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div
@@ -3985,4 +4983,6 @@ export const EditorSidebar = (props: EditorSidebarProps) => {
     </aside>
   );
   
-};
+});
+
+EditorSidebar.displayName = "EditorSidebar";
