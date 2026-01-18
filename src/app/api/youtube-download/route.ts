@@ -228,6 +228,13 @@ export async function POST(request: Request) {
     const startTime = Date.now();
     let runStatus = await client.run(run.id).get();
 
+    if (!runStatus) {
+      return NextResponse.json(
+        { error: "Failed to get actor run status." },
+        { status: 502 }
+      );
+    }
+
     while (runStatus.status !== "SUCCEEDED" && Date.now() - startTime < maxWaitTime) {
       if (runStatus.status === "FAILED" || runStatus.status === "ABORTED") {
         return NextResponse.json(
@@ -236,7 +243,14 @@ export async function POST(request: Request) {
         );
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      runStatus = await client.run(run.id).get();
+      const updatedStatus = await client.run(run.id).get();
+      if (!updatedStatus) {
+        return NextResponse.json(
+          { error: "Failed to get actor run status during polling." },
+          { status: 502 }
+        );
+      }
+      runStatus = updatedStatus;
     }
 
     if (runStatus.status !== "SUCCEEDED") {
