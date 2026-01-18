@@ -1,11 +1,14 @@
 "use client";
 
+import type { IGif } from "@giphy/js-types";
+
 import {
   memo,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
@@ -33,9 +36,17 @@ import {
   stockMusicRootPrefix,
   stockVideoRootPrefix,
   toRgba,
+  type StockAudioTrack,
+  type StockVideoItem,
 } from "../page-helpers";
 
-import type { TextClipSettings, VideoClipSettings } from "../types";
+import type {
+  MediaAsset,
+  TextClipSettings,
+  TextPresetGroup,
+  TimelineClip,
+  VideoClipSettings,
+} from "../types";
 
 import { GiphyLogo } from "./giphy-logo";
 import { SliderField } from "./slider-field";
@@ -52,6 +63,15 @@ type EditorSidebarProps = {
     updater: (current: TextClipSettings) => TextClipSettings
   ) => void;
 } & Record<string, any>;
+
+type SubtitleSegmentEntry = {
+  id: string;
+  clipId: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  clip?: TimelineClip;
+};
 
 export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const {
@@ -1656,7 +1676,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
-                    {stickerGridItems.map((sticker) => {
+                    {stickerGridItems.map((sticker: IGif) => {
                       const previewUrl = resolveGiphyPreviewUrl(sticker);
                       const title = sticker.title?.trim() || "Sticker";
                       return (
@@ -1796,7 +1816,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
-                    {gifGridItems.map((gif) => {
+                    {gifGridItems.map((gif: IGif) => {
                       const previewUrl = resolveGiphyPreviewUrl(gif);
                       const title = gif.title?.trim() || "GIF";
                       return (
@@ -1916,7 +1936,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {viewAllAssets.map((asset) => (
+                    {viewAllAssets.map((asset: MediaAsset) => (
                       <div
                         key={asset.id}
                         className="group flex flex-col gap-2"
@@ -2135,7 +2155,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   >
                     All
                   </button>
-                  {visibleStockVideoTags.map((category) => (
+                  {visibleStockVideoTags.map((category: string) => (
                     <button
                       key={category}
                       type="button"
@@ -2153,7 +2173,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
                       onClick={() =>
-                        setShowAllStockVideoTags((prev) => !prev)
+                        setShowAllStockVideoTags((prev: boolean) => !prev)
                       }
                       aria-label={
                         showAllStockVideoTags
@@ -2209,7 +2229,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 ) : (
                   <div className="space-y-8">
-                    {groupedStockVideos.map((group) => (
+                    {groupedStockVideos.map(
+                      (group: { category: string; videos: StockVideoItem[] }) => (
                       <div key={group.category} className="space-y-3">
                         <div className="flex items-center justify-between">
                           <h3 className="text-sm font-semibold text-gray-900">
@@ -2563,7 +2584,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   ) : (
                     <div className="flex-1 px-6 py-4">
                       <div className="space-y-3">
-                        {subtitleSegments.map((segment) => {
+                        {subtitleSegments.map((segment: SubtitleSegmentEntry) => {
                           const clip = segment.clip ?? null;
                           const startTime = clip
                             ? clip.startTime
@@ -2872,7 +2893,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               {activeTool === "text" ? (
                 textPanelView === "library" ? (
                   <div className="space-y-12">
-                    {visibleTextPresetGroups.map((group) => {
+                    {visibleTextPresetGroups.map((group: TextPresetGroup) => {
                       const isExpanded = expandedTextGroupId === group.id;
                       const canExpand =
                         group.presets.length > textPresetPreviewCount;
@@ -3048,7 +3069,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               }
                             }}
                           >
-                            {textFontSizeOptions.map((size) => (
+                            {textFontSizeOptions.map((size: number) => (
                               <option key={size} value={size}>
                                 {size}px
                               </option>
@@ -3079,7 +3100,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               : "hover:bg-gray-50"
                               }`}
                             onClick={() => {
-                              setTextPanelBold((prev) => {
+                              setTextPanelBold((prev: boolean) => {
                                 const next = !prev;
                                 if (selectedTextEntry) {
                                   updateTextSettings(
@@ -3113,7 +3134,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               : "hover:bg-gray-50"
                               }`}
                             onClick={() => {
-                              setTextPanelItalic((prev) => {
+                              setTextPanelItalic((prev: boolean) => {
                                 const next = !prev;
                                 if (selectedTextEntry) {
                                   updateTextSettings(
@@ -3239,7 +3260,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           className="ml-auto flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
                           aria-expanded={textPanelSpacingOpen}
                           onClick={() =>
-                            setTextPanelSpacingOpen((prev) => !prev)
+                            setTextPanelSpacingOpen((prev: boolean) => !prev)
                           }
                         >
                           <svg viewBox="0 0 16 16" className="h-4 w-4">
@@ -3331,7 +3352,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         type="button"
                         className="flex w-full items-center justify-between text-left"
                         onClick={() =>
-                          setTextPanelStylesOpen((prev) => !prev)
+                          setTextPanelStylesOpen((prev: boolean) => !prev)
                         }
                         aria-expanded={textPanelStylesOpen}
                       >
@@ -4004,7 +4025,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     aria-label="Shadow advanced settings"
                                     onClick={() =>
                                       setTextPanelShadowAdvancedOpen(
-                                        (prev) => !prev
+                                        (prev: boolean) => !prev
                                       )
                                     }
                                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50"
@@ -4298,7 +4319,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                     ) : (
                       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {filteredAssets.map((asset) => (
+                        {filteredAssets.map((asset: MediaAsset) => (
                           <div key={asset.id} className="space-y-2">
                             <button
                               type="button"
@@ -4506,7 +4527,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             >
                               All
                             </button>
-                            {visibleStockTags.map((category) => (
+                            {visibleStockTags.map((category: string) => (
                               <button
                                 key={category}
                                 type="button"
@@ -4524,7 +4545,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 type="button"
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
                                 onClick={() =>
-                                  setShowAllStockTags((prev) => !prev)
+                                  setShowAllStockTags((prev: boolean) => !prev)
                                 }
                                 aria-label={
                                   showAllStockTags
@@ -4579,7 +4600,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </div>
                         ) : (
                           <div className="space-y-8">
-                            {groupedStockMusic.map((group) => (
+                            {groupedStockMusic.map(
+                              (group: { category: string; tracks: StockAudioTrack[] }) => (
                               <div key={group.category} className="space-y-3">
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-sm font-semibold text-gray-900">
@@ -4755,7 +4777,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </div>
                         ) : (
                           <div className="grid h-[384px] grid-cols-2 gap-3 auto-rows-[0px] grid-rows-3 md:h-[142px] md:grid-cols-4 md:grid-rows-1 lg:h-[180px] lg:grid-cols-3 lg:grid-rows-2">
-                            {gifPreviewItems.map((gif) => {
+                            {gifPreviewItems.map((gif: IGif) => {
                               const previewUrl = resolveGiphyPreviewUrl(gif);
                               const title = gif.title?.trim() || "GIF";
                               return (
@@ -4857,7 +4879,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </div>
                         ) : (
                           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                            {previewStockVideos.map((video) => {
+                            {previewStockVideos.map((video: StockVideoItem) => {
                               const durationLabel =
                                 video.duration != null
                                   ? formatDuration(video.duration)
@@ -4948,7 +4970,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       ) : (
                         <div className="grid h-[384px] grid-cols-2 gap-3 auto-rows-[0px] grid-rows-3 md:h-[142px] md:grid-cols-4 md:grid-rows-1 lg:h-[180px] lg:grid-cols-3 lg:grid-rows-2">
-                          {stickerPreviewItems.map((sticker) => {
+                          {stickerPreviewItems.map((sticker: IGif) => {
                             const previewUrl = resolveGiphyPreviewUrl(sticker);
                             const title = sticker.title?.trim() || "Sticker";
                             return (
