@@ -35,14 +35,23 @@ import {
   toRgba,
 } from "../page-helpers";
 
-import type { TextClipSettings } from "../types";
+import type { TextClipSettings, VideoClipSettings } from "../types";
 
 import { GiphyLogo } from "./giphy-logo";
 import { SliderField } from "./slider-field";
 import { StockVideoCard } from "./stock-video-card";
 import { ToggleSwitch } from "./toggle-switch";
 
-type EditorSidebarProps = Record<string, any>;
+type EditorSidebarProps = {
+  updateClipSettings: (
+    clipId: string,
+    updater: (current: VideoClipSettings) => VideoClipSettings
+  ) => void;
+  updateTextSettings: (
+    clipId: string,
+    updater: (current: TextClipSettings) => TextClipSettings
+  ) => void;
+} & Record<string, any>;
 
 export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const {
