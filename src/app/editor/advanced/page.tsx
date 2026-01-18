@@ -779,6 +779,7 @@ export default function AdvancedEditorPage() {
       }
       const width = element.videoWidth;
       const height = element.videoHeight;
+      const videoDuration = Number.isFinite(element.duration) ? element.duration : null;
       if (!width || !height) {
         return;
       }
@@ -789,10 +790,14 @@ export default function AdvancedEditorPage() {
           return prev;
         }
         const current = prev[index];
+        // Check if we need to update duration (only if current duration is missing or fallback)
+        const shouldUpdateDuration = videoDuration != null && 
+          (current.duration == null || current.duration === 8);
         if (
           current.width === width &&
           current.height === height &&
-          current.aspectRatio === aspectRatio
+          current.aspectRatio === aspectRatio &&
+          !shouldUpdateDuration
         ) {
           return prev;
         }
@@ -802,9 +807,35 @@ export default function AdvancedEditorPage() {
           width,
           height,
           aspectRatio,
+          ...(shouldUpdateDuration ? { duration: videoDuration } : {}),
         };
         return next;
       });
+      // Also update the clip duration if it was based on fallback duration
+      if (videoDuration != null) {
+        setTimeline((prev) => {
+          const clipIndex = prev.findIndex((clip) => clip.id === clipId);
+          if (clipIndex < 0) {
+            return prev;
+          }
+          const clip = prev[clipIndex];
+          const asset = assetsRef.current.find((a) => a.id === assetId);
+          // Only update if current clip duration seems to be using fallback (8 seconds or less)
+          // and the video is actually longer
+          if (asset?.duration == null || asset.duration <= 8) {
+            const newDuration = Math.max(0, videoDuration - clip.startOffset);
+            if (Math.abs(clip.duration - newDuration) > 0.1) {
+              const next = [...prev];
+              next[clipIndex] = {
+                ...clip,
+                duration: newDuration,
+              };
+              return next;
+            }
+          }
+          return prev;
+        });
+      }
       if (clipTransformTouchedRef.current.has(clipId)) {
         return;
       }
