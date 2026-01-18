@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
+import { ApifyClient } from "apify-client";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 const SUPABASE_BUCKET = "youtube-downloads";
 
-// Cobalt API endpoint (free, handles YouTube blocking)
-const COBALT_API = "https://api.cobalt.tools/api/json";
-
-type CobaltResponse = {
-  status: "stream" | "redirect" | "picker" | "error";
+type ApifyResultItem = {
+  title?: string;
+  videoId?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  downloadUrl?: string;
+  videoUrl?: string;
+  fileUrl?: string;
   url?: string;
-  urls?: string[];
-  text?: string;
-  picker?: Array<{ url: string; type: string }>;
+  quality?: string;
+  [key: string]: unknown;
 };
 
 // Upload video buffer to Supabase storage
@@ -44,7 +48,7 @@ const uploadToSupabase = async (
 // Extract video ID from YouTube URL
 const extractVideoId = (url: string): string | null => {
   const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/,
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/shorts\/)([^&\n?#]+)/,
     /^([a-zA-Z0-9_-]{11})$/,
   ];
   for (const pattern of patterns) {
@@ -69,8 +73,107 @@ const getVideoInfo = async (url: string): Promise<{ title: string } | null> => {
   return null;
 };
 
+const getString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+// Find download URL from actor result
+const findDownloadUrl = (item: ApifyResultItem): string | null => {
+  // Check common field names for download URL
+  const urlFields = [
+    "downloadUrl",
+    "videoUrl", 
+    "fileUrl",
+    "url",
+    "video_url",
+    "download_url",
+    "file_url",
+    "streamUrl",
+    "stream_url",
+  ];
+  
+  for (const field of urlFields) {
+    const value = getString(item[field]);
+    if (value && (value.startsWith("http://") || value.startsWith("https://"))) {
+      return value;
+    }
+  }
+  
+  return null;
+};
+
+// Add token to Apify URLs if needed
+const addApifyToken = (videoUrl: string, apiToken: string): string => {
+  try {
+    const parsedUrl = new URL(videoUrl);
+    if (
+      parsedUrl.hostname.endsWith("apify.com") &&
+      !parsedUrl.searchParams.has("token")
+    ) {
+      parsedUrl.searchParams.set("token", apiToken);
+      return parsedUrl.toString();
+    }
+  } catch {
+    // Ignore malformed URLs
+  }
+  return videoUrl;
+};
+
+// Read dataset items with retries
+const readDatasetItems = async (
+  client: ApifyClient,
+  datasetId: string
+): Promise<ApifyResultItem[]> => {
+  const retries = [0, 500, 1000, 2000];
+  for (const delay of retries) {
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    const { items } = await client.dataset(datasetId).listItems({ limit: 10 });
+    if (Array.isArray(items) && items.length > 0) {
+      return items as ApifyResultItem[];
+    }
+  }
+  return [];
+};
+
+// Try to get video from key-value store
+const tryGetKeyValueStoreVideo = async (
+  runId: string,
+  apiToken: string
+): Promise<{ url: string; contentType: string | null } | null> => {
+  const possibleKeys = ["OUTPUT", "video", "VIDEO", "output", "file", "download", "result"];
+  
+  for (const key of possibleKeys) {
+    try {
+      const kvStoreUrl = `https://api.apify.com/v2/actor-runs/${runId}/key-value-store/records/${key}?token=${apiToken}`;
+      const headResponse = await fetch(kvStoreUrl, { method: "HEAD" });
+      if (headResponse.ok) {
+        const contentType = headResponse.headers.get("content-type");
+        if (contentType?.includes("video") || contentType?.includes("octet-stream")) {
+          return { url: kvStoreUrl, contentType };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+};
+
 export async function POST(request: Request) {
-  let payload: { url?: string } | null = null;
+  const apiToken =
+    process.env.APIFY_API_TOKEN ||
+    process.env.APIFY_TOKEN ||
+    process.env.APIFY_KEY;
+    
+  if (!apiToken) {
+    return NextResponse.json(
+      { error: "Missing APIFY_API_TOKEN." },
+      { status: 500 }
+    );
+  }
+
+  let payload: { url?: string; quality?: string } | null = null;
   try {
     payload = await request.json();
   } catch {
@@ -83,70 +186,80 @@ export async function POST(request: Request) {
   }
 
   const videoId = extractVideoId(url);
-  
+  const quality = payload?.quality || "1080p";
+
   try {
-    // Get video title via oEmbed
+    // Get video title via oEmbed first
     const videoInfo = await getVideoInfo(url);
     const title = videoInfo?.title ?? "YouTube video";
 
-    // Call Cobalt API to get download URL
-    const cobaltResponse = await fetch(COBALT_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify({
-        url,
-        vQuality: "1080",
-        filenamePattern: "basic",
-        isAudioOnly: false,
-        disableMetadata: true,
-      }),
+    const client = new ApifyClient({ token: apiToken });
+    
+    // Run the YouTube downloader actor
+    console.log("Starting Apify actor for URL:", url);
+    const run = await client.actor("bamrx68ppJrF5TyOv").call({
+      video_url: url,
+      video_quality: quality,
     });
 
-    if (!cobaltResponse.ok) {
-      const errorText = await cobaltResponse.text();
-      console.error("Cobalt API error:", cobaltResponse.status, errorText);
+    if (!run?.defaultDatasetId) {
       return NextResponse.json(
-        { error: `Download service error: ${cobaltResponse.status}` },
+        { error: "Downloader did not return dataset results." },
         { status: 502 }
       );
     }
 
-    const cobaltData: CobaltResponse = await cobaltResponse.json();
+    console.log("Actor run completed, dataset:", run.defaultDatasetId);
 
-    // Handle different response types
+    // Get results from dataset
+    const items = await readDatasetItems(client, run.defaultDatasetId);
+    console.log("Dataset items:", JSON.stringify(items, null, 2));
+
     let downloadUrl: string | null = null;
-    
-    if (cobaltData.status === "error") {
-      return NextResponse.json(
-        { error: cobaltData.text || "Unable to process this video." },
-        { status: 502 }
-      );
+    let downloadResponse: Response | null = null;
+
+    // Strategy 1: Check dataset for download URL
+    for (const item of items) {
+      const itemUrl = findDownloadUrl(item);
+      if (itemUrl) {
+        const urlWithToken = addApifyToken(itemUrl, apiToken);
+        try {
+          const response = await fetch(urlWithToken);
+          if (response.ok && response.body) {
+            downloadUrl = urlWithToken;
+            downloadResponse = response;
+            console.log("Found download URL in dataset:", downloadUrl);
+            break;
+          }
+        } catch (err) {
+          console.error("Failed to fetch from dataset URL:", err);
+        }
+      }
     }
 
-    if (cobaltData.status === "stream" || cobaltData.status === "redirect") {
-      downloadUrl = cobaltData.url || null;
-    } else if (cobaltData.status === "picker" && cobaltData.picker?.length) {
-      // Pick the first video option
-      const videoOption = cobaltData.picker.find(p => p.type === "video") || cobaltData.picker[0];
-      downloadUrl = videoOption?.url || null;
+    // Strategy 2: Check key-value store for video file
+    if (!downloadResponse && run.id) {
+      console.log("Checking key-value store...");
+      const kvResult = await tryGetKeyValueStoreVideo(run.id, apiToken);
+      if (kvResult) {
+        try {
+          const response = await fetch(kvResult.url);
+          if (response.ok && response.body) {
+            downloadUrl = kvResult.url;
+            downloadResponse = response;
+            console.log("Found video in key-value store:", downloadUrl);
+          }
+        } catch (err) {
+          console.error("Failed to fetch from KV store:", err);
+        }
+      }
     }
 
-    if (!downloadUrl) {
+    if (!downloadResponse || !downloadUrl) {
+      // Log what we got for debugging
+      console.error("No downloadable video found. Items received:", items);
       return NextResponse.json(
-        { error: "No download URL returned from service." },
-        { status: 502 }
-      );
-    }
-
-    // Download the video
-    const downloadResponse = await fetch(downloadUrl);
-    
-    if (!downloadResponse.ok) {
-      return NextResponse.json(
-        { error: `Failed to download video: ${downloadResponse.status}` },
+        { error: "No downloadable video URL found in actor results." },
         { status: 502 }
       );
     }
@@ -162,10 +275,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Determine extension from content type
+    // Determine extension
     let extension = "mp4";
     if (contentType.includes("webm")) extension = "webm";
-    else if (contentType.includes("mp4")) extension = "mp4";
 
     // Upload to Supabase
     const baseName = videoId ? `yt-${videoId}` : `yt-${Date.now()}`;
@@ -180,16 +292,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // Get metadata from first item if available
+    const firstItem = items[0] || {};
+
     return NextResponse.json({
-      title,
+      title: getString(firstItem.title) || title,
       videoId: videoId ?? null,
       downloadUrl,
       assetUrl: publicUrl,
-      durationSeconds: null,
-      width: null,
-      height: null,
+      durationSeconds: typeof firstItem.duration === "number" ? firstItem.duration : null,
+      width: typeof firstItem.width === "number" ? firstItem.width : null,
+      height: typeof firstItem.height === "number" ? firstItem.height : null,
       size: fileSize,
-      qualityLabel: "1080p",
+      qualityLabel: getString(firstItem.quality) || quality,
     });
   } catch (error) {
     const message =
