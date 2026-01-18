@@ -6,6 +6,9 @@ export const runtime = "nodejs";
 
 const SUPABASE_BUCKET = "youtube-downloads";
 
+// Timeout for Apify actor (2 minutes to be safe)
+const ACTOR_TIMEOUT_SECS = 120;
+
 type ApifyResultItem = {
   title?: string;
   videoId?: string;
@@ -89,6 +92,7 @@ const findDownloadUrl = (item: ApifyResultItem): string | null => {
     "file_url",
     "streamUrl",
     "stream_url",
+    "videoFileUrl",
   ];
   
   for (const field of urlFields) {
@@ -123,7 +127,7 @@ const readDatasetItems = async (
   client: ApifyClient,
   datasetId: string
 ): Promise<ApifyResultItem[]> => {
-  const retries = [0, 500, 1000, 2000];
+  const retries = [0, 1000, 2000, 4000];
   for (const delay of retries) {
     if (delay > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -186,10 +190,15 @@ export async function POST(request: Request) {
   }
 
   const videoId = extractVideoId(url);
-  // Valid quality options: "high", "medium", "low", "metadata"
-  const validQualities = ["high", "medium", "low", "metadata"];
+  
+  // Map quality names to resolution numbers
+  const qualityMap: Record<string, string> = {
+    high: "1080",
+    medium: "720",
+    low: "480",
+  };
   const requestedQuality = payload?.quality?.toLowerCase() || "medium";
-  const quality = validQualities.includes(requestedQuality) ? requestedQuality : "medium";
+  const quality = qualityMap[requestedQuality] || "1080";
 
   try {
     // Get video title via oEmbed first
@@ -198,12 +207,18 @@ export async function POST(request: Request) {
 
     const client = new ApifyClient({ token: apiToken });
     
-    // Run the YouTube downloader actor
-    console.log("Starting Apify actor for URL:", url);
-    const run = await client.actor("bamrx68ppJrF5TyOv").call({
-      video_url: url,
-      video_quality: quality,
-    });
+    // Run the YouTube downloader actor (z4hUd9qNTetQtzEcK)
+    console.log("Starting Apify actor for URL:", url, "Quality:", quality);
+    const run = await client.actor("z4hUd9qNTetQtzEcK").call(
+      {
+        urls: [{ url }],
+        quality,
+        proxy: { useApifyProxy: true },
+      },
+      {
+        timeoutSecs: ACTOR_TIMEOUT_SECS,
+      }
+    );
 
     if (!run?.defaultDatasetId) {
       return NextResponse.json(
@@ -307,7 +322,7 @@ export async function POST(request: Request) {
       width: typeof firstItem.width === "number" ? firstItem.width : null,
       height: typeof firstItem.height === "number" ? firstItem.height : null,
       size: fileSize,
-      qualityLabel: getString(firstItem.quality) || quality,
+      qualityLabel: getString(firstItem.quality) || quality + "p",
     });
   } catch (error) {
     const message =
