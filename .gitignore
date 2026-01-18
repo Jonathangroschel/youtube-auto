@@ -17,6 +17,10 @@
 /.next/
 /out/
 
+# local downloads
+/public/youtube-cache/
+/public/tiktok-cache/
+
 # production
 /build
 

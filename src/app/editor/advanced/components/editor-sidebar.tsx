@@ -33,6 +33,7 @@ import {
   getTextRenderStyles,
   resolveFontFamily,
   resolveGiphyPreviewUrl,
+  soundFxRootPrefix,
   stockMusicRootPrefix,
   stockVideoRootPrefix,
   toRgba,
@@ -96,12 +97,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     gifSearch,
     gifTrendingError,
     gifTrendingStatus,
+    groupedSoundFx,
     groupedStockMusic,
     groupedStockVideos,
     handleAddGif,
     handleAddSticker,
     handleAddStockAudio,
     handleAddStockVideo,
+    handleAddYoutubeVideo,
+    handleAddTiktokVideo,
     handleAssetDragStart,
     handleDeleteSelected,
     handleDetachAudio,
@@ -120,6 +124,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleSubtitleStyleUpdate,
     handleSubtitleTextUpdate,
     handleStickerTrendingRetry,
+    handleSoundFxRetry,
     handleStockMusicRetry,
     handleStockPreviewToggle,
     handleStockVideoPreviewStart,
@@ -129,6 +134,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleTextStylePresetSelect,
     handleUploadClick,
     hasGiphy,
+    hasMoreSoundFxTags,
     hasMoreStockTags,
     hasMoreStockVideoTags,
     hasMoreStockVideos,
@@ -163,9 +169,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     setIsStockVideoExpanded,
     setSelectedClipId,
     setSelectedClipIds,
+    setShowAllSoundFxTags,
     setShowAllStockTags,
     setShowAllStockVideoTags,
     setStickerSearch,
+    setSoundFxCategory,
+    setSoundFxSearch,
     setStockCategory,
     setStockSearch,
     setStockVideoCategory,
@@ -207,6 +216,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     setSubtitleMoveTogether,
     setVideoBackground,
     setVideoPanelView,
+    showAllSoundFxTags,
     showAllStockTags,
     showAllStockVideoTags,
     showAudioPanel,
@@ -218,6 +228,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     stickerSearch,
     stickerTrendingError,
     stickerTrendingStatus,
+    soundFxCategory,
+    soundFxError,
+    soundFxSearch,
+    soundFxStatus,
     stockCategory,
     stockMusicError,
     stockMusicStatus,
@@ -278,6 +292,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     videoBackground,
     videoPanelView,
     viewAllAssets,
+    visibleSoundFxTags,
     visibleStockTags,
     visibleStockVideoTags,
     visibleTextPresetGroups,
@@ -309,6 +324,142 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [subtitleStyleDraft, setSubtitleStyleDraft] = useState<TextClipSettings | null>(
     null
   );
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeClipStart, setYoutubeClipStart] = useState("");
+  const [youtubeClipEnd, setYoutubeClipEnd] = useState("");
+  const [youtubeLocation, setYoutubeLocation] = useState("US");
+  const [youtubeError, setYoutubeError] = useState<string | null>(null);
+  const [youtubeLoading, setYoutubeLoading] = useState(false);
+  const [tiktokUrl, setTiktokUrl] = useState("");
+  const [tiktokClipStart, setTiktokClipStart] = useState("");
+  const [tiktokClipEnd, setTiktokClipEnd] = useState("");
+  const [tiktokError, setTiktokError] = useState<string | null>(null);
+  const [tiktokLoading, setTiktokLoading] = useState(false);
+
+  const parseTimestamp = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+      const seconds = Number.parseFloat(trimmed);
+      return Number.isFinite(seconds) ? seconds : null;
+    }
+    const parts = trimmed.split(":").map((part) => part.trim());
+    if (parts.length < 2 || parts.length > 3) {
+      return null;
+    }
+    const numbers = parts.map((part) => Number.parseFloat(part));
+    if (numbers.some((num) => !Number.isFinite(num) || num < 0)) {
+      return null;
+    }
+    if (numbers.length === 2) {
+      const [minutes, seconds] = numbers;
+      return minutes * 60 + seconds;
+    }
+    const [hours, minutes, seconds] = numbers;
+    return hours * 3600 + minutes * 60 + seconds;
+  };
+
+  const handleYoutubeSubmit = async () => {
+    if (typeof handleAddYoutubeVideo !== "function") {
+      return;
+    }
+    const trimmedUrl = youtubeUrl.trim();
+    if (!trimmedUrl) {
+      setYoutubeError("Paste a YouTube link.");
+      return;
+    }
+    const startSeconds =
+      youtubeClipStart.trim().length > 0 ? parseTimestamp(youtubeClipStart) : null;
+    if (youtubeClipStart.trim().length > 0 && startSeconds == null) {
+      setYoutubeError("Start time format is invalid.");
+      return;
+    }
+    const endSeconds =
+      youtubeClipEnd.trim().length > 0 ? parseTimestamp(youtubeClipEnd) : null;
+    if (youtubeClipEnd.trim().length > 0 && endSeconds == null) {
+      setYoutubeError("End time format is invalid.");
+      return;
+    }
+    if (
+      startSeconds != null &&
+      endSeconds != null &&
+      endSeconds <= startSeconds
+    ) {
+      setYoutubeError("End time must be after start time.");
+      return;
+    }
+    setYoutubeError(null);
+    setYoutubeLoading(true);
+    try {
+      const location = youtubeLocation.trim().toUpperCase();
+      await handleAddYoutubeVideo({
+        url: trimmedUrl,
+        startSeconds,
+        endSeconds,
+        location: location.length > 0 ? location : undefined,
+      });
+      setYoutubeUrl("");
+      setYoutubeClipStart("");
+      setYoutubeClipEnd("");
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Unable to download video.";
+      setYoutubeError(message);
+    } finally {
+      setYoutubeLoading(false);
+    }
+  };
+
+  const handleTiktokSubmit = async () => {
+    if (typeof handleAddTiktokVideo !== "function") {
+      return;
+    }
+    const trimmedUrl = tiktokUrl.trim();
+    if (!trimmedUrl) {
+      setTiktokError("Paste a TikTok link.");
+      return;
+    }
+    const startSeconds =
+      tiktokClipStart.trim().length > 0 ? parseTimestamp(tiktokClipStart) : null;
+    if (tiktokClipStart.trim().length > 0 && startSeconds == null) {
+      setTiktokError("Start time format is invalid.");
+      return;
+    }
+    const endSeconds =
+      tiktokClipEnd.trim().length > 0 ? parseTimestamp(tiktokClipEnd) : null;
+    if (tiktokClipEnd.trim().length > 0 && endSeconds == null) {
+      setTiktokError("End time format is invalid.");
+      return;
+    }
+    if (startSeconds != null && endSeconds != null && endSeconds <= startSeconds) {
+      setTiktokError("End time must be after start time.");
+      return;
+    }
+    setTiktokError(null);
+    setTiktokLoading(true);
+    try {
+      await handleAddTiktokVideo({
+        url: trimmedUrl,
+        startSeconds,
+        endSeconds,
+      });
+      setTiktokUrl("");
+      setTiktokClipStart("");
+      setTiktokClipEnd("");
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Unable to download video.";
+      setTiktokError(message);
+    } finally {
+      setTiktokLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (subtitleStatus !== "loading") {
@@ -383,8 +534,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
   const subtitleStyleSampleText = "The quick brown";
   const recentStylePreset =
-    subtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
-    subtitleStylePresets[0];
+    subtitleStylePresets.find(
+      (preset: { id: string }) => preset.id === subtitleStyleId
+    ) ?? subtitleStylePresets[0];
   const recentStylePreview = useMemo(() => {
     if (!recentStylePreset) {
       return null;
@@ -415,8 +567,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       return null;
     }
     return (
-      subtitleStylePresets.find((preset) => preset.id === subtitleStyleEditorId) ??
-      null
+      subtitleStylePresets.find(
+        (preset: { id: string }) => preset.id === subtitleStyleEditorId
+      ) ?? null
     );
   }, [subtitleStyleEditorId, subtitleStylePresets]);
 
@@ -490,7 +643,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     if (!selectedClipId) {
       return null;
     }
-    return subtitleSegments.some((segment) => segment.clipId === selectedClipId)
+    return subtitleSegments.some(
+      (segment: { clipId: string }) => segment.clipId === selectedClipId
+    )
       ? selectedClipId
       : null;
   }, [selectedClipId, subtitleSegments]);
@@ -4856,260 +5011,519 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
 
                   {activeTool === "audio" && (
-                    <div className="flex flex-col rounded-2xl border border-gray-100 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
-                      <div className="rounded-t-2xl border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
-                        <div className="flex flex-col gap-6">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EEF2FF]">
-                              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                                <path
-                                  d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                                  fill="#335CFF"
-                                />
-                                <path
-                                  fill="url(#audio_header_b)"
-                                  fillOpacity="0.2"
-                                  d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                                />
-                                <path
-                                  fill="#fff"
-                                  d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
-                                />
-                                <defs>
-                                  <linearGradient
-                                    id="audio_header_b"
-                                    x1="12"
-                                    x2="12"
-                                    y1="0"
-                                    y2="24"
-                                    gradientUnits="userSpaceOnUse"
-                                  >
-                                    <stop stopColor="#fff" />
-                                    <stop offset="1" stopColor="#fff" stopOpacity="0" />
-                                  </linearGradient>
-                                </defs>
-                              </svg>
-                            </div>
-                            <h2 className="text-lg font-semibold text-gray-900">
-                              Stock Music
-                            </h2>
-                          </div>
-                          <div className="flex w-full flex-col gap-2">
-                            <div className="relative">
-                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                                <svg viewBox="0 0 16 16" className="h-4 w-4">
+                    <div className="space-y-6">
+                      <div className="flex flex-col rounded-2xl border border-gray-100 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
+                        <div className="rounded-t-2xl border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
+                          <div className="flex flex-col gap-6">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EEF2FF]">
+                                <svg viewBox="0 0 24 24" className="h-4 w-4">
                                   <path
-                                    d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
+                                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                    fill="#335CFF"
                                   />
+                                  <path
+                                    fill="url(#sound_fx_header_b)"
+                                    fillOpacity="0.2"
+                                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                  />
+                                  <path
+                                    fill="#fff"
+                                    d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
+                                  />
+                                  <defs>
+                                    <linearGradient
+                                      id="sound_fx_header_b"
+                                      x1="12"
+                                      x2="12"
+                                      y1="0"
+                                      y2="24"
+                                      gradientUnits="userSpaceOnUse"
+                                    >
+                                      <stop stopColor="#fff" />
+                                      <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                                    </linearGradient>
+                                  </defs>
                                 </svg>
-                              </span>
-                              <input
-                                className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
-                                placeholder="Search..."
-                                value={stockSearch}
-                                onChange={(event) =>
-                                  setStockSearch(event.target.value)
-                                }
-                              />
+                              </div>
+                              <h2 className="text-lg font-semibold text-gray-900">
+                                Sound Effects
+                              </h2>
                             </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === "All"
-                                ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                                : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
-                                }`}
-                              onClick={() => setStockCategory("All")}
-                            >
-                              All
-                            </button>
-                            {visibleStockTags.map((category: string) => (
+                            <div className="flex w-full flex-col gap-2">
+                              <div className="relative">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                    <path
+                                      d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </span>
+                                <input
+                                  className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                                  placeholder="Search..."
+                                  value={soundFxSearch}
+                                  onChange={(event) =>
+                                    setSoundFxSearch(event.target.value)
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
                               <button
-                                key={category}
                                 type="button"
-                                className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === category
+                                className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${soundFxCategory === "All"
                                   ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
                                   : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
                                   }`}
-                                onClick={() => setStockCategory(category)}
+                                onClick={() => setSoundFxCategory("All")}
                               >
-                                {category}
+                                All
                               </button>
-                            ))}
-                            {hasMoreStockTags && (
-                              <button
-                                type="button"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
-                                onClick={() =>
-                                  setShowAllStockTags((prev: boolean) => !prev)
-                                }
-                                aria-label={
-                                  showAllStockTags
-                                    ? "Show fewer categories"
-                                    : "Show more categories"
-                                }
-                              >
-                                <svg viewBox="0 0 16 16" className="h-4 w-4">
-                                  <path
-                                    d="M6.75 8a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0M12 8a1.25 1.25 0 1 1 2.5 0A1.25 1.25 0 0 1 12 8M1.5 8A1.25 1.25 0 1 1 4 8a1.25 1.25 0 0 1-2.5 0"
-                                    fill="currentColor"
-                                  />
-                                </svg>
-                              </button>
-                            )}
+                              {visibleSoundFxTags.map((category: string) => (
+                                <button
+                                  key={category}
+                                  type="button"
+                                  className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${soundFxCategory === category
+                                    ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                    : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                    }`}
+                                  onClick={() => setSoundFxCategory(category)}
+                                >
+                                  {category}
+                                </button>
+                              ))}
+                              {hasMoreSoundFxTags && (
+                                <button
+                                  type="button"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                                  onClick={() =>
+                                    setShowAllSoundFxTags((prev: boolean) => !prev)
+                                  }
+                                  aria-label={
+                                    showAllSoundFxTags
+                                      ? "Show fewer categories"
+                                      : "Show more categories"
+                                  }
+                                >
+                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                    <path
+                                      d="M6.75 8a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0M12 8a1.25 1.25 0 1 1 2.5 0A1.25 1.25 0 0 1 12 8M1.5 8A1.25 1.25 0 1 1 4 8a1.25 1.25 0 0 1-2.5 0"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="px-6 pb-6 pt-5">
-                        {!hasSupabase ? (
-                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
-                            Connect Supabase to load stock music.
-                          </div>
-                        ) : stockMusicStatus === "loading" ||
-                          stockMusicStatus === "idle" ? (
-                          <div className="space-y-3">
-                            {Array.from({ length: 4 }).map((_, index) => (
-                              <div
-                                key={`stock-skeleton-${index}`}
-                                className="h-16 rounded-2xl bg-gray-100/80 animate-pulse"
-                              />
-                            ))}
-                          </div>
-                        ) : stockMusicStatus === "error" ? (
-                          <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
-                            <p>{stockMusicError ?? "Unable to load stock music."}</p>
-                            <button
-                              type="button"
-                              className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
-                              onClick={handleStockMusicRetry}
-                            >
-                              Retry
-                            </button>
-                          </div>
-                        ) : groupedStockMusic.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
-                            {stockSearch.trim()
-                              ? "No tracks match your search."
-                              : stockMusicRootPrefix
-                                ? `No stock music found under "${stockMusicRootPrefix}".`
-                                : "No stock music found."}
-                          </div>
-                        ) : (
-                          <div className="space-y-8">
-                            {groupedStockMusic.map(
-                              (group: { category: string; tracks: StockAudioTrack[] }) => (
-                              <div key={group.category} className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <h3 className="text-sm font-semibold text-gray-900">
-                                    {group.category}
-                                  </h3>
-                                </div>
-                                <div className="space-y-3">
-                                  {group.tracks.map((track) => {
-                                    const isActive =
-                                      previewTrackId === track.id;
-                                    const isPlaying =
-                                      isActive && isPreviewPlaying;
-                                    const durationLabel =
-                                      track.duration != null
-                                        ? formatDuration(track.duration)
-                                        : "--:--";
-                                    return (
-                                      <div
-                                        key={track.id}
-                                        className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
-                                        onMouseEnter={() =>
-                                          requestStockAudioDuration(track)
-                                        }
-                                      >
-                                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                                          <button
-                                            type="button"
-                                            className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-white text-[#335CFF] shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition ${isPlaying
-                                              ? "ring-2 ring-[#335CFF]/30"
-                                              : "hover:shadow-[0_10px_18px_rgba(15,23,42,0.16)]"
-                                              }`}
-                                            onClick={() =>
-                                              handleStockPreviewToggle(track)
-                                            }
-                                            onFocus={() =>
-                                              requestStockAudioDuration(track)
-                                            }
-                                            aria-label={
-                                              isPlaying
-                                                ? "Pause preview"
-                                                : "Play preview"
-                                            }
-                                          >
-                                            <span
-                                              className={`absolute inset-0 rounded-full bg-gradient-to-br from-white via-[#E0E7FF] to-[#C7D2FE] transition ${isPlaying ? "opacity-100" : "opacity-80"
+                        <div className="px-6 pb-6 pt-5">
+                          {!hasSupabase ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              Connect Supabase to load sound effects.
+                            </div>
+                          ) : soundFxStatus === "loading" ||
+                            soundFxStatus === "idle" ? (
+                            <div className="space-y-3">
+                              {Array.from({ length: 4 }).map((_, index) => (
+                                <div
+                                  key={`sound-fx-skeleton-${index}`}
+                                  className="h-16 rounded-2xl bg-gray-100/80 animate-pulse"
+                                />
+                              ))}
+                            </div>
+                          ) : soundFxStatus === "error" ? (
+                            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                              <p>{soundFxError ?? "Unable to load sound effects."}</p>
+                              <button
+                                type="button"
+                                className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                                onClick={handleSoundFxRetry}
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ) : groupedSoundFx.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              {soundFxSearch.trim()
+                                ? "No tracks match your search."
+                                : soundFxRootPrefix
+                                  ? `No sound effects found under "${soundFxRootPrefix}".`
+                                  : "No sound effects found."}
+                            </div>
+                          ) : (
+                            <div className="space-y-8">
+                              {groupedSoundFx.map(
+                                (group: { category: string; tracks: StockAudioTrack[] }) => (
+                                <div key={group.category} className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-gray-900">
+                                      {group.category}
+                                    </h3>
+                                  </div>
+                                  <div className="space-y-3">
+                                    {group.tracks.map((track) => {
+                                      const isActive =
+                                        previewTrackId === track.id;
+                                      const isPlaying =
+                                        isActive && isPreviewPlaying;
+                                      const durationLabel =
+                                        track.duration != null
+                                          ? formatDuration(track.duration)
+                                          : "--:--";
+                                      return (
+                                        <div
+                                          key={track.id}
+                                          className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+                                          onMouseEnter={() =>
+                                            requestStockAudioDuration(track)
+                                          }
+                                        >
+                                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                                            <button
+                                              type="button"
+                                              className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-white text-[#335CFF] shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition ${isPlaying
+                                                ? "ring-2 ring-[#335CFF]/30"
+                                                : "hover:shadow-[0_10px_18px_rgba(15,23,42,0.16)]"
                                                 }`}
-                                            />
-                                            <span
-                                              className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition ${isPlaying
-                                                ? "bg-[#335CFF] text-white"
-                                                : "bg-white text-gray-700"
-                                                }`}
+                                              onClick={() =>
+                                                handleStockPreviewToggle(track)
+                                              }
+                                              onFocus={() =>
+                                                requestStockAudioDuration(track)
+                                              }
+                                              aria-label={
+                                                isPlaying
+                                                  ? "Pause preview"
+                                                  : "Play preview"
+                                              }
                                             >
-                                              {isPlaying ? (
-                                                <svg viewBox="0 0 16 16" className="h-4 w-4">
-                                                  <path
-                                                    d="M5.2 3.5h2.1v9H5.2zm3.5 0h2.1v9H8.7z"
-                                                    fill="currentColor"
-                                                  />
-                                                </svg>
-                                              ) : (
-                                                <svg viewBox="0 0 16 16" className="h-4 w-4">
-                                                  <path
-                                                    d="M3 1.91a.5.5 0 0 1 .768-.421l9.57 6.09a.5.5 0 0 1 0 .843l-9.57 6.089A.5.5 0 0 1 3 14.089z"
-                                                    fill="currentColor"
-                                                  />
-                                                </svg>
-                                              )}
-                                            </span>
-                                          </button>
-                                          <div className="min-w-0 flex-1">
-                                            <div className="truncate text-sm font-semibold text-gray-900">
-                                              {track.name}
-                                            </div>
-                                            <div className="text-xs font-medium text-gray-400">
-                                              {durationLabel}
+                                              <span
+                                                className={`absolute inset-0 rounded-full bg-gradient-to-br from-white via-[#E0E7FF] to-[#C7D2FE] transition ${isPlaying ? "opacity-100" : "opacity-80"
+                                                  }`}
+                                              />
+                                              <span
+                                                className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition ${isPlaying
+                                                  ? "bg-[#335CFF] text-white"
+                                                  : "bg-white text-gray-700"
+                                                  }`}
+                                              >
+                                                {isPlaying ? (
+                                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                    <path
+                                                      d="M5.2 3.5h2.1v9H5.2zm3.5 0h2.1v9H8.7z"
+                                                      fill="currentColor"
+                                                    />
+                                                  </svg>
+                                                ) : (
+                                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                    <path
+                                                      d="M3 1.91a.5.5 0 0 1 .768-.421l9.57 6.09a.5.5 0 0 1 0 .843l-9.57 6.089A.5.5 0 0 1 3 14.089z"
+                                                      fill="currentColor"
+                                                    />
+                                                  </svg>
+                                                )}
+                                              </span>
+                                            </button>
+                                            <div className="min-w-0 flex-1">
+                                              <div className="truncate text-sm font-semibold text-gray-900">
+                                                {track.name}
+                                              </div>
+                                              <div className="text-xs font-medium text-gray-400">
+                                                {durationLabel}
+                                              </div>
                                             </div>
                                           </div>
+                                          <button
+                                            type="button"
+                                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#335CFF] text-white shadow-[0_8px_18px_rgba(51,92,255,0.25)] transition hover:bg-[#2E52E6]"
+                                            onClick={() =>
+                                              handleAddStockAudio(track)
+                                            }
+                                            aria-label={`Add ${track.name}`}
+                                          >
+                                            <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                              <path
+                                                d="M3 8h10M8 3v10"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                            </svg>
+                                          </button>
                                         </div>
-                                        <button
-                                          type="button"
-                                          className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#335CFF] text-white shadow-[0_8px_18px_rgba(51,92,255,0.25)] transition hover:bg-[#2E52E6]"
-                                          onClick={() =>
-                                            handleAddStockAudio(track)
-                                          }
-                                          aria-label={`Add ${track.name}`}
-                                        >
-                                          <svg viewBox="0 0 16 16" className="h-4 w-4">
-                                            <path
-                                              d="M3 8h10M8 3v10"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              strokeWidth="1.5"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            />
-                                          </svg>
-                                        </button>
-                                      </div>
-                                    );
-                                  })}
+                                      );
+                                    })}
+                                  </div>
                                 </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col rounded-2xl border border-gray-100 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
+                        <div className="rounded-t-2xl border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
+                          <div className="flex flex-col gap-6">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EEF2FF]">
+                                <svg viewBox="0 0 24 24" className="h-4 w-4">
+                                  <path
+                                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                    fill="#335CFF"
+                                  />
+                                  <path
+                                    fill="url(#audio_header_b)"
+                                    fillOpacity="0.2"
+                                    d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
+                                  />
+                                  <path
+                                    fill="#fff"
+                                    d="M13 16.507V8.893a1 1 0 0 1 .876-.992l2.248-.28A1 1 0 0 0 17 6.627V5.1a1 1 0 0 0-1.085-.996l-2.912.247a2 2 0 0 0-1.83 2.057l.24 7.456a3 3 0 1 0 1.586 2.724l.001-.073z"
+                                  />
+                                  <defs>
+                                    <linearGradient
+                                      id="audio_header_b"
+                                      x1="12"
+                                      x2="12"
+                                      y1="0"
+                                      y2="24"
+                                      gradientUnits="userSpaceOnUse"
+                                    >
+                                      <stop stopColor="#fff" />
+                                      <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                                    </linearGradient>
+                                  </defs>
+                                </svg>
                               </div>
-                            ))}
+                              <h2 className="text-lg font-semibold text-gray-900">
+                                Stock Music
+                              </h2>
+                            </div>
+                            <div className="flex w-full flex-col gap-2">
+                              <div className="relative">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                    <path
+                                      d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </span>
+                                <input
+                                  className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                                  placeholder="Search..."
+                                  value={stockSearch}
+                                  onChange={(event) =>
+                                    setStockSearch(event.target.value)
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === "All"
+                                  ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                  : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                  }`}
+                                onClick={() => setStockCategory("All")}
+                              >
+                                All
+                              </button>
+                              {visibleStockTags.map((category: string) => (
+                                <button
+                                  key={category}
+                                  type="button"
+                                  className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === category
+                                    ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                    : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                    }`}
+                                  onClick={() => setStockCategory(category)}
+                                >
+                                  {category}
+                                </button>
+                              ))}
+                              {hasMoreStockTags && (
+                                <button
+                                  type="button"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                                  onClick={() =>
+                                    setShowAllStockTags((prev: boolean) => !prev)
+                                  }
+                                  aria-label={
+                                    showAllStockTags
+                                      ? "Show fewer categories"
+                                      : "Show more categories"
+                                  }
+                                >
+                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                    <path
+                                      d="M6.75 8a1.25 1.25 0 1 1 2.5 0 1.25 1.25 0 0 1-2.5 0M12 8a1.25 1.25 0 1 1 2.5 0A1.25 1.25 0 0 1 12 8M1.5 8A1.25 1.25 0 1 1 4 8a1.25 1.25 0 0 1-2.5 0"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        )}
+                        </div>
+                        <div className="px-6 pb-6 pt-5">
+                          {!hasSupabase ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              Connect Supabase to load stock music.
+                            </div>
+                          ) : stockMusicStatus === "loading" ||
+                            stockMusicStatus === "idle" ? (
+                            <div className="space-y-3">
+                              {Array.from({ length: 4 }).map((_, index) => (
+                                <div
+                                  key={`stock-skeleton-${index}`}
+                                  className="h-16 rounded-2xl bg-gray-100/80 animate-pulse"
+                                />
+                              ))}
+                            </div>
+                          ) : stockMusicStatus === "error" ? (
+                            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                              <p>{stockMusicError ?? "Unable to load stock music."}</p>
+                              <button
+                                type="button"
+                                className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                                onClick={handleStockMusicRetry}
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          ) : groupedStockMusic.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                              {stockSearch.trim()
+                                ? "No tracks match your search."
+                                : stockMusicRootPrefix
+                                  ? `No stock music found under "${stockMusicRootPrefix}".`
+                                  : "No stock music found."}
+                            </div>
+                          ) : (
+                            <div className="space-y-8">
+                              {groupedStockMusic.map(
+                                (group: { category: string; tracks: StockAudioTrack[] }) => (
+                                <div key={group.category} className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-gray-900">
+                                      {group.category}
+                                    </h3>
+                                  </div>
+                                  <div className="space-y-3">
+                                    {group.tracks.map((track) => {
+                                      const isActive =
+                                        previewTrackId === track.id;
+                                      const isPlaying =
+                                        isActive && isPreviewPlaying;
+                                      const durationLabel =
+                                        track.duration != null
+                                          ? formatDuration(track.duration)
+                                          : "--:--";
+                                      return (
+                                        <div
+                                          key={track.id}
+                                          className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+                                          onMouseEnter={() =>
+                                            requestStockAudioDuration(track)
+                                          }
+                                        >
+                                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                                            <button
+                                              type="button"
+                                              className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-white text-[#335CFF] shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition ${isPlaying
+                                                ? "ring-2 ring-[#335CFF]/30"
+                                                : "hover:shadow-[0_10px_18px_rgba(15,23,42,0.16)]"
+                                                }`}
+                                              onClick={() =>
+                                                handleStockPreviewToggle(track)
+                                              }
+                                              onFocus={() =>
+                                                requestStockAudioDuration(track)
+                                              }
+                                              aria-label={
+                                                isPlaying
+                                                  ? "Pause preview"
+                                                  : "Play preview"
+                                              }
+                                            >
+                                              <span
+                                                className={`absolute inset-0 rounded-full bg-gradient-to-br from-white via-[#E0E7FF] to-[#C7D2FE] transition ${isPlaying ? "opacity-100" : "opacity-80"
+                                                  }`}
+                                              />
+                                              <span
+                                                className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition ${isPlaying
+                                                  ? "bg-[#335CFF] text-white"
+                                                  : "bg-white text-gray-700"
+                                                  }`}
+                                              >
+                                                {isPlaying ? (
+                                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                    <path
+                                                      d="M5.2 3.5h2.1v9H5.2zm3.5 0h2.1v9H8.7z"
+                                                      fill="currentColor"
+                                                    />
+                                                  </svg>
+                                                ) : (
+                                                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                    <path
+                                                      d="M3 1.91a.5.5 0 0 1 .768-.421l9.57 6.09a.5.5 0 0 1 0 .843l-9.57 6.089A.5.5 0 0 1 3 14.089z"
+                                                      fill="currentColor"
+                                                    />
+                                                  </svg>
+                                                )}
+                                              </span>
+                                            </button>
+                                            <div className="min-w-0 flex-1">
+                                              <div className="truncate text-sm font-semibold text-gray-900">
+                                                {track.name}
+                                              </div>
+                                              <div className="text-xs font-medium text-gray-400">
+                                                {durationLabel}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#335CFF] text-white shadow-[0_8px_18px_rgba(51,92,255,0.25)] transition hover:bg-[#2E52E6]"
+                                            onClick={() =>
+                                              handleAddStockAudio(track)
+                                            }
+                                            aria-label={`Add ${track.name}`}
+                                          >
+                                            <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                              <path
+                                                d="M3 8h10M8 3v10"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -5205,6 +5619,206 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </button>
                               );
                             })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTool === "video" && (
+                    <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                      <div className="flex items-start gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[#2E3440]">
+                            YouTube Downloader
+                          </h3>
+                          <p className="mt-1 text-xs text-[#7A8699]">
+                            Paste a link and an optional clip range.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        <div className="relative">
+                          <input
+                            className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                            placeholder="https://youtube.com/watch?v=..."
+                            value={youtubeUrl}
+                            onChange={(event) => {
+                              setYoutubeUrl(event.target.value);
+                              setYoutubeError(null);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleYoutubeSubmit();
+                              }
+                            }}
+                            aria-label="YouTube link"
+                            disabled={youtubeLoading}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-[#7A8699]">
+                              Start
+                            </label>
+                            <input
+                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                              placeholder="0:00"
+                              value={youtubeClipStart}
+                              onChange={(event) => {
+                                setYoutubeClipStart(event.target.value);
+                                setYoutubeError(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  handleYoutubeSubmit();
+                                }
+                              }}
+                              aria-label="Clip start time"
+                              disabled={youtubeLoading}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-[#7A8699]">
+                              End
+                            </label>
+                            <input
+                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                              placeholder="0:30"
+                              value={youtubeClipEnd}
+                              onChange={(event) => {
+                                setYoutubeClipEnd(event.target.value);
+                                setYoutubeError(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  handleYoutubeSubmit();
+                                }
+                              }}
+                              aria-label="Clip end time"
+                              disabled={youtubeLoading}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end">
+                          <button
+                            type="button"
+                            className={`rounded-full px-4 py-2 text-xs font-semibold transition ${youtubeLoading
+                              ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
+                              : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
+                              }`}
+                            onClick={handleYoutubeSubmit}
+                            disabled={youtubeLoading}
+                          >
+                            {youtubeLoading ? "Fetching..." : "Download"}
+                          </button>
+                        </div>
+                        {youtubeError && (
+                          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                            {youtubeError}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTool === "video" && (
+                    <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                      <div className="flex items-start gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-[#2E3440]">
+                            TikTok Downloader
+                          </h3>
+                          <p className="mt-1 text-xs text-[#7A8699]">
+                            Paste a link and an optional clip range.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        <div className="relative">
+                          <input
+                            className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                            placeholder="https://www.tiktok.com/@..."
+                            value={tiktokUrl}
+                            onChange={(event) => {
+                              setTiktokUrl(event.target.value);
+                              setTiktokError(null);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleTiktokSubmit();
+                              }
+                            }}
+                            aria-label="TikTok link"
+                            disabled={tiktokLoading}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-[#7A8699]">
+                              Start
+                            </label>
+                            <input
+                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                              placeholder="0:00"
+                              value={tiktokClipStart}
+                              onChange={(event) => {
+                                setTiktokClipStart(event.target.value);
+                                setTiktokError(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  handleTiktokSubmit();
+                                }
+                              }}
+                              aria-label="Clip start time"
+                              disabled={tiktokLoading}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-[#7A8699]">
+                              End
+                            </label>
+                            <input
+                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                              placeholder="0:30"
+                              value={tiktokClipEnd}
+                              onChange={(event) => {
+                                setTiktokClipEnd(event.target.value);
+                                setTiktokError(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  handleTiktokSubmit();
+                                }
+                              }}
+                              aria-label="Clip end time"
+                              disabled={tiktokLoading}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end">
+                          <button
+                            type="button"
+                            className={`rounded-full px-4 py-2 text-xs font-semibold transition ${tiktokLoading
+                              ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
+                              : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
+                              }`}
+                            onClick={handleTiktokSubmit}
+                            disabled={tiktokLoading}
+                          >
+                            {tiktokLoading ? "Fetching..." : "Download"}
+                          </button>
+                        </div>
+                        {tiktokError && (
+                          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                            {tiktokError}
                           </div>
                         )}
                       </div>

@@ -150,6 +150,8 @@ import {
   resolveStockVideoOrientationFromMeta,
   resolveStockVideoOrientationFromPath,
   resolveStockVideoPosterPath,
+  soundFxBucketName,
+  soundFxRootPrefix,
   stockMusicBucketName,
   stockMusicRootPrefix,
   stockVideoBucketName,
@@ -328,6 +330,15 @@ export default function AdvancedEditorPage() {
   >("idle");
   const [stockMusicError, setStockMusicError] = useState<string | null>(null);
   const [stockMusicReloadKey, setStockMusicReloadKey] = useState(0);
+  const [soundFxSearch, setSoundFxSearch] = useState("");
+  const [soundFxCategory, setSoundFxCategory] = useState("All");
+  const [soundFx, setSoundFx] = useState<StockAudioTrack[]>([]);
+  const [soundFxStatus, setSoundFxStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [soundFxError, setSoundFxError] = useState<string | null>(null);
+  const [soundFxReloadKey, setSoundFxReloadKey] = useState(0);
+  const [showAllSoundFxTags, setShowAllSoundFxTags] = useState(false);
   const [showAllStockTags, setShowAllStockTags] = useState(false);
   const [stockVideoSearch, setStockVideoSearch] = useState("");
   const [stockVideoCategory, setStockVideoCategory] = useState("All");
@@ -599,6 +610,8 @@ export default function AdvancedEditorPage() {
   const stockAudioMetaLoadingRef = useRef<Set<string>>(new Set());
   const stockMusicLoadTimeoutRef = useRef<number | null>(null);
   const stockMusicLoadIdRef = useRef(0);
+  const soundFxLoadTimeoutRef = useRef<number | null>(null);
+  const soundFxLoadIdRef = useRef(0);
   const stockVideoMetaCacheRef = useRef<
     Map<
       string,
@@ -1355,6 +1368,177 @@ export default function AdvancedEditorPage() {
       cancelled = true;
     };
   }, [activeTool, hasSupabase, stockMusicReloadKey]);
+
+  useEffect(() => {
+    if (activeTool !== "audio" || !hasSupabase) {
+      return;
+    }
+    let cancelled = false;
+    const loadId = soundFxLoadIdRef.current + 1;
+    soundFxLoadIdRef.current = loadId;
+    const loadSoundFx = async () => {
+      setSoundFxStatus("loading");
+      setSoundFxError(null);
+      if (soundFxLoadTimeoutRef.current) {
+        window.clearTimeout(soundFxLoadTimeoutRef.current);
+      }
+      soundFxLoadTimeoutRef.current = window.setTimeout(() => {
+        setSoundFxStatus((current) =>
+          current === "loading" ? "error" : current
+        );
+        setSoundFxError(
+          "Sound effects request timed out. Check storage list access."
+        );
+      }, 15000);
+      try {
+        const { supabaseBrowser } = await import("@/lib/supabase/browser");
+        const bucket = supabaseBrowser.storage.from(soundFxBucketName);
+        console.log("[sound-fx] bucket", {
+          bucket: soundFxBucketName,
+          root: soundFxRootPrefix || "(root)",
+        });
+        const listWithTimeout = async (path: string) => {
+          let timeoutId: number | null = null;
+          const timeoutPromise = new Promise<{
+            data: null;
+            error: Error;
+          }>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+              reject(new Error("Sound effects request timed out."));
+            }, 10000);
+          });
+          const result = (await Promise.race([
+            bucket.list(path, {
+              limit: 1000,
+              sortBy: { column: "name", order: "asc" },
+            }),
+            timeoutPromise,
+          ])) as {
+            data: Array<{
+              id?: string | null;
+              name: string;
+              metadata?: { size?: number; mimetype?: string | null } | null;
+            }> | null;
+            error: Error | null;
+          };
+          if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+          }
+          if (result.error) {
+            console.error("[sound-fx] list error", path, result.error);
+          } else {
+            console.log("[sound-fx] list ok", path, {
+              count: result.data?.length ?? 0,
+            });
+          }
+          return result;
+        };
+        const tracks: StockAudioTrack[] = [];
+        const pushFiles = (
+          items: Array<{
+            id?: string | null;
+            name: string;
+            metadata?: { size?: number; mimetype?: string | null } | null;
+          }>,
+          category: string,
+          prefix: string
+        ) => {
+          items.forEach((item) => {
+            const mimeType = item.metadata?.mimetype ?? null;
+            if (!isAudioFile(item.name, mimeType)) {
+              return;
+            }
+            const path = prefix ? `${prefix}/${item.name}` : item.name;
+            const { data } = bucket.getPublicUrl(path);
+            if (!data?.publicUrl) {
+              return;
+            }
+            tracks.push({
+              id: path,
+              name: formatStockLabel(item.name),
+              category,
+              url: data.publicUrl,
+              path,
+              size: Number(item.metadata?.size ?? 0),
+            });
+          });
+        };
+        const isFileEntry = (item: {
+          id?: string | null;
+          name: string;
+          metadata?: { size?: number; mimetype?: string | null } | null;
+        }) =>
+          Boolean(item.id) ||
+          Boolean(item.metadata) ||
+          isAudioFile(item.name, item.metadata?.mimetype ?? null);
+        const collectTracks = async (path: string) => {
+          console.log("[sound-fx] collect", path || "(root)");
+          const { data, error } = await listWithTimeout(path);
+          if (error) {
+            throw error;
+          }
+          const entries = data ?? [];
+          const files = entries.filter(isFileEntry);
+          console.log("[sound-fx] entries", path || "(root)", {
+            entries: entries.length,
+            files: files.length,
+          });
+          if (files.length > 0) {
+            const label = path
+              ? formatStockLabel(path.split("/").pop() ?? "General")
+              : "General";
+            pushFiles(files, label, path);
+          }
+          const folders = entries.filter((item) => !isFileEntry(item));
+          if (folders.length > 0) {
+            console.log(
+              "[sound-fx] folders",
+              path || "(root)",
+              folders.map((folder) => folder.name)
+            );
+          }
+          await Promise.all(
+            folders.map((folder) => {
+              const nextPath = path ? `${path}/${folder.name}` : folder.name;
+              return collectTracks(nextPath);
+            })
+          );
+        };
+        await collectTracks(soundFxRootPrefix);
+        if (cancelled || loadId !== soundFxLoadIdRef.current) {
+          return;
+        }
+        tracks.sort((a, b) => a.name.localeCompare(b.name));
+        console.log("[sound-fx] tracks", tracks.length);
+        setSoundFx(tracks);
+        setSoundFxStatus("ready");
+      } catch (error) {
+        if (cancelled || loadId !== soundFxLoadIdRef.current) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to load sound effects from Supabase.";
+        console.error("[sound-fx] load failed", error);
+        setSoundFxError(message);
+        setSoundFxStatus("error");
+      } finally {
+        if (soundFxLoadTimeoutRef.current) {
+          window.clearTimeout(soundFxLoadTimeoutRef.current);
+          soundFxLoadTimeoutRef.current = null;
+        }
+      }
+    };
+    loadSoundFx();
+    return () => {
+      if (soundFxLoadTimeoutRef.current) {
+        window.clearTimeout(soundFxLoadTimeoutRef.current);
+        soundFxLoadTimeoutRef.current = null;
+      }
+      cancelled = true;
+    };
+  }, [activeTool, hasSupabase, soundFxReloadKey]);
 
   useEffect(() => {
     if (activeTool !== "video" || !hasSupabase) {
@@ -2204,6 +2388,67 @@ export default function AdvancedEditorPage() {
       setStockCategory("All");
     }
   }, [stockCategories, stockCategory]);
+
+  const soundFxCategories = useMemo(() => {
+    const categories = Array.from(
+      new Set(soundFx.map((track) => track.category))
+    ).sort((a, b) => a.localeCompare(b));
+    return ["All", ...categories];
+  }, [soundFx]);
+
+  const filteredSoundFx = useMemo(() => {
+    const query = soundFxSearch.trim().toLowerCase();
+    return soundFx.filter((track) => {
+      const matchesCategory =
+        soundFxCategory === "All" || track.category === soundFxCategory;
+      if (!matchesCategory) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return (
+        track.name.toLowerCase().includes(query) ||
+        track.category.toLowerCase().includes(query)
+      );
+    });
+  }, [soundFxCategory, soundFx, soundFxSearch]);
+
+  const groupedSoundFx = useMemo(() => {
+    const groupMap = new Map<string, StockAudioTrack[]>();
+    filteredSoundFx.forEach((track) => {
+      if (!groupMap.has(track.category)) {
+        groupMap.set(track.category, []);
+      }
+      groupMap.get(track.category)?.push(track);
+    });
+    const order =
+      soundFxCategory === "All"
+        ? soundFxCategories.slice(1)
+        : [soundFxCategory];
+    return order
+      .filter((category) => groupMap.has(category))
+      .map((category) => ({
+        category,
+        tracks: groupMap.get(category) ?? [],
+      }));
+  }, [filteredSoundFx, soundFxCategories, soundFxCategory]);
+
+  const soundFxTagCandidates = soundFxCategories.slice(1);
+  const maxSoundFxTagCount = 4;
+  const visibleSoundFxTags = showAllSoundFxTags
+    ? soundFxTagCandidates
+    : soundFxTagCandidates.slice(0, maxSoundFxTagCount);
+  const hasMoreSoundFxTags = soundFxTagCandidates.length > maxSoundFxTagCount;
+
+  useEffect(() => {
+    if (
+      soundFxCategory !== "All" &&
+      !soundFxCategories.includes(soundFxCategory)
+    ) {
+      setSoundFxCategory("All");
+    }
+  }, [soundFxCategories, soundFxCategory]);
 
   const stockVideoCategories = useMemo(() => {
     const categories = Array.from(
@@ -4864,7 +5109,16 @@ export default function AdvancedEditorPage() {
                     text: word.text,
                   };
                 })
-                .filter((word): word is TimedWord => word !== null)
+                .filter(
+                  (
+                    word
+                  ): word is {
+                    start: number;
+                    end: number;
+                    word: string | undefined;
+                    text: string | undefined;
+                  } => word !== null
+                )
             : undefined;
           const asset = {
             ...createTextAsset("Subtitle"),
@@ -5943,13 +6197,26 @@ export default function AdvancedEditorPage() {
       if (duration == null) {
         return;
       }
-      setStockMusic((prev) =>
-        prev.map((track) =>
+      setStockMusic((prev) => {
+        if (!prev.some((track) => track.id === trackId && track.duration == null)) {
+          return prev;
+        }
+        return prev.map((track) =>
           track.id === trackId && track.duration == null
             ? { ...track, duration }
             : track
-        )
-      );
+        );
+      });
+      setSoundFx((prev) => {
+        if (!prev.some((track) => track.id === trackId && track.duration == null)) {
+          return prev;
+        }
+        return prev.map((track) =>
+          track.id === trackId && track.duration == null
+            ? { ...track, duration }
+            : track
+        );
+      });
     },
     []
   );
@@ -6210,6 +6477,273 @@ export default function AdvancedEditorPage() {
     [addToTimeline, createClip, pushHistory]
   );
 
+  const handleAddYoutubeVideo = useCallback(
+    async ({
+      url,
+      startSeconds,
+      endSeconds,
+      location,
+    }: {
+      url: string;
+      startSeconds?: number | null;
+      endSeconds?: number | null;
+      location?: string;
+    }) => {
+      const response = await fetch("/api/youtube-download", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url,
+          location,
+        }),
+      });
+
+      let payload: Record<string, unknown> | null = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof payload?.error === "string"
+            ? payload.error
+            : "Unable to download video.";
+        throw new Error(message);
+      }
+
+      const downloadUrl =
+        typeof payload?.downloadUrl === "string" ? payload.downloadUrl : "";
+      const assetUrl =
+        typeof payload?.assetUrl === "string" && payload.assetUrl.length > 0
+          ? payload.assetUrl
+          : downloadUrl;
+      if (!assetUrl) {
+        throw new Error("No downloadable format found.");
+      }
+
+      const title =
+        typeof payload?.title === "string" && payload.title.trim().length > 0
+          ? payload.title.trim()
+          : "YouTube video";
+      const durationSeconds =
+        typeof payload?.durationSeconds === "number" &&
+        Number.isFinite(payload.durationSeconds)
+          ? payload.durationSeconds
+          : undefined;
+      const width =
+        typeof payload?.width === "number" && Number.isFinite(payload.width)
+          ? payload.width
+          : undefined;
+      const height =
+        typeof payload?.height === "number" && Number.isFinite(payload.height)
+          ? payload.height
+          : undefined;
+      const size =
+        typeof payload?.size === "number" && Number.isFinite(payload.size)
+          ? payload.size
+          : 0;
+
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "video" && asset.url === assetUrl
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        return;
+      }
+
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const aspectRatio =
+        width && height ? width / height : undefined;
+      const videoAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name: title,
+        kind: "video",
+        url: assetUrl,
+        size,
+        duration: durationSeconds ?? undefined,
+        width,
+        height,
+        aspectRatio,
+        createdAt: Date.now(),
+      };
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes);
+      const resolvedStartOffset =
+        typeof startSeconds === "number" && Number.isFinite(startSeconds)
+          ? Math.max(0, startSeconds)
+          : 0;
+      const resolvedEndSeconds =
+        typeof endSeconds === "number" && Number.isFinite(endSeconds)
+          ? Math.max(0, endSeconds)
+          : null;
+      const baseDuration = getAssetDurationSeconds(videoAsset);
+      const adjustedStartOffset =
+        resolvedStartOffset >= baseDuration ? 0 : resolvedStartOffset;
+      let clipDuration = Math.max(0, baseDuration - adjustedStartOffset);
+      if (
+        resolvedEndSeconds != null &&
+        resolvedEndSeconds > adjustedStartOffset
+      ) {
+        clipDuration = Math.min(
+          clipDuration,
+          resolvedEndSeconds - adjustedStartOffset
+        );
+      }
+      if (clipDuration <= 0) {
+        clipDuration = baseDuration;
+      }
+      const clip = {
+        id: crypto.randomUUID(),
+        assetId: videoAsset.id,
+        duration: clipDuration,
+        startOffset: adjustedStartOffset,
+        startTime: 0,
+        laneId,
+      };
+      setLanes(nextLanes);
+      setAssets((prev) => [videoAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(videoAsset.id);
+    },
+    [addToTimeline, pushHistory]
+  );
+
+  const handleAddTiktokVideo = useCallback(
+    async ({
+      url,
+      startSeconds,
+      endSeconds,
+    }: {
+      url: string;
+      startSeconds?: number | null;
+      endSeconds?: number | null;
+    }) => {
+      const response = await fetch("/api/tiktok-download", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url }),
+      });
+
+      let payload: Record<string, unknown> | null = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof payload?.error === "string"
+            ? payload.error
+            : "Unable to download video.";
+        throw new Error(message);
+      }
+
+      const downloadUrl =
+        typeof payload?.downloadUrl === "string" ? payload.downloadUrl : "";
+      const assetUrl =
+        typeof payload?.assetUrl === "string" && payload.assetUrl.length > 0
+          ? payload.assetUrl
+          : downloadUrl;
+      if (!assetUrl) {
+        throw new Error("No downloadable format found.");
+      }
+
+      const title =
+        typeof payload?.title === "string" && payload.title.trim().length > 0
+          ? payload.title.trim()
+          : "TikTok video";
+      const durationSeconds =
+        typeof payload?.durationSeconds === "number" &&
+        Number.isFinite(payload.durationSeconds)
+          ? payload.durationSeconds
+          : undefined;
+      const width =
+        typeof payload?.width === "number" && Number.isFinite(payload.width)
+          ? payload.width
+          : undefined;
+      const height =
+        typeof payload?.height === "number" && Number.isFinite(payload.height)
+          ? payload.height
+          : undefined;
+      const size =
+        typeof payload?.size === "number" && Number.isFinite(payload.size)
+          ? payload.size
+          : 0;
+
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "video" && asset.url === assetUrl
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        return;
+      }
+
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const aspectRatio =
+        width && height ? width / height : undefined;
+      const videoAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name: title,
+        kind: "video",
+        url: assetUrl,
+        size,
+        duration: durationSeconds ?? undefined,
+        width,
+        height,
+        aspectRatio,
+        createdAt: Date.now(),
+      };
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes);
+      const resolvedStartOffset =
+        typeof startSeconds === "number" && Number.isFinite(startSeconds)
+          ? Math.max(0, startSeconds)
+          : 0;
+      const resolvedEndSeconds =
+        typeof endSeconds === "number" && Number.isFinite(endSeconds)
+          ? Math.max(0, endSeconds)
+          : null;
+      const baseDuration = getAssetDurationSeconds(videoAsset);
+      const adjustedStartOffset =
+        resolvedStartOffset >= baseDuration ? 0 : resolvedStartOffset;
+      let clipDuration = Math.max(0, baseDuration - adjustedStartOffset);
+      if (
+        resolvedEndSeconds != null &&
+        resolvedEndSeconds > adjustedStartOffset
+      ) {
+        clipDuration = Math.min(
+          clipDuration,
+          resolvedEndSeconds - adjustedStartOffset
+        );
+      }
+      if (clipDuration <= 0) {
+        clipDuration = baseDuration;
+      }
+      const clip = {
+        id: crypto.randomUUID(),
+        assetId: videoAsset.id,
+        duration: clipDuration,
+        startOffset: adjustedStartOffset,
+        startTime: 0,
+        laneId,
+      };
+      setLanes(nextLanes);
+      setAssets((prev) => [videoAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(videoAsset.id);
+    },
+    [addToTimeline, pushHistory]
+  );
+
   const handleAddStockAudio = useCallback(
     async (track: StockAudioTrack) => {
       const existing = assetsRef.current.find(
@@ -6363,6 +6897,13 @@ export default function AdvancedEditorPage() {
     setStockMusicError(null);
     setStockMusic([]);
     setStockMusicReloadKey((prev) => prev + 1);
+  }, []);
+
+  const handleSoundFxRetry = useCallback(() => {
+    setSoundFxStatus("idle");
+    setSoundFxError(null);
+    setSoundFx([]);
+    setSoundFxReloadKey((prev) => prev + 1);
   }, []);
 
   const handleSplitClip = () => {
@@ -9786,12 +10327,15 @@ export default function AdvancedEditorPage() {
     gifSearch,
     gifTrendingError,
     gifTrendingStatus,
+    groupedSoundFx,
     groupedStockMusic,
     groupedStockVideos,
     handleAddGif,
     handleAddSticker,
     handleAddStockAudio,
     handleAddStockVideo,
+    handleAddYoutubeVideo,
+    handleAddTiktokVideo,
     handleAssetDragStart,
     handleDeleteSelected,
     handleDetachAudio,
@@ -9802,6 +10346,7 @@ export default function AdvancedEditorPage() {
     handleSetStartAtPlayhead,
     handleStartTimeCommit,
     handleStickerTrendingRetry,
+    handleSoundFxRetry,
     handleStockMusicRetry,
     handleStockPreviewToggle,
     handleStockVideoPreviewStart,
@@ -9811,6 +10356,7 @@ export default function AdvancedEditorPage() {
     handleTextStylePresetSelect,
     handleUploadClick,
     hasGiphy,
+    hasMoreSoundFxTags,
     hasMoreStockTags,
     hasMoreStockVideoTags,
     hasMoreStockVideos,
@@ -9845,9 +10391,12 @@ export default function AdvancedEditorPage() {
     setIsStockVideoExpanded,
     setSelectedClipId,
     setSelectedClipIds,
+    setShowAllSoundFxTags,
     setShowAllStockTags,
     setShowAllStockVideoTags,
     setStickerSearch,
+    setSoundFxCategory,
+    setSoundFxSearch,
     setStockCategory,
     setStockSearch,
     setStockVideoCategory,
@@ -9888,6 +10437,7 @@ export default function AdvancedEditorPage() {
     setTextPanelView,
     setVideoBackground,
     setVideoPanelView,
+    showAllSoundFxTags,
     showAllStockTags,
     showAllStockVideoTags,
     showAudioPanel,
@@ -9899,6 +10449,10 @@ export default function AdvancedEditorPage() {
     stickerSearch,
     stickerTrendingError,
     stickerTrendingStatus,
+    soundFxCategory,
+    soundFxError,
+    soundFxSearch,
+    soundFxStatus,
     stockCategory,
     stockMusicError,
     stockMusicStatus,
@@ -9969,6 +10523,7 @@ export default function AdvancedEditorPage() {
     videoBackground,
     videoPanelView,
     viewAllAssets,
+    visibleSoundFxTags,
     visibleStockTags,
     visibleStockVideoTags,
     visibleTextPresetGroups,

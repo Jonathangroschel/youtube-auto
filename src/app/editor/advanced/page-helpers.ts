@@ -273,6 +273,11 @@ const stockMusicBucketName =
   process.env.NEXT_PUBLIC_STOCK_MUSIC_BUCKET ?? "stock-music";
 const stockMusicRootPrefix =
   process.env.NEXT_PUBLIC_STOCK_MUSIC_ROOT?.replace(/^\/+|\/+$/g, "") ?? "";
+const soundFxBucketName =
+  process.env.NEXT_PUBLIC_SOUND_FX_BUCKET ?? stockMusicBucketName;
+const soundFxRootPrefix =
+  process.env.NEXT_PUBLIC_SOUND_FX_ROOT?.replace(/^\/+|\/+$/g, "") ??
+  "sounds fx";
 const stockVideoBucketName =
   process.env.NEXT_PUBLIC_STOCK_VIDEO_BUCKET ?? "video-stock-footage";
 const stockVideoRootPrefix =
@@ -650,6 +655,8 @@ export {
   textResizeMaxFontSize,
   stockMusicBucketName,
   stockMusicRootPrefix,
+  soundFxBucketName,
+  soundFxRootPrefix,
   stockVideoBucketName,
   stockVideoRootPrefix,
   giphyApiKey,
