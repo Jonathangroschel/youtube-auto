@@ -1,11 +1,6 @@
-import { createWriteStream } from "fs";
-import { mkdir, stat } from "fs/promises";
-import path from "path";
-import { Readable } from "stream";
-import { pipeline } from "stream/promises";
-
 import { NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
+import { supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -33,6 +28,10 @@ type YoutubeResultItem = {
   status?: string;
   videoId?: string;
   videoInfo?: YoutubeVideoInfo;
+  videoFileUrl?: string;
+  downloadUrl?: string;
+  videoUrl?: string;
+  url?: string;
 };
 
 const normalizeNumber = (value: unknown) => {
@@ -143,6 +142,95 @@ const readDatasetItem = async (
   return null;
 };
 
+const getString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+// Check for pre-stored video URLs (Apify storage or other CDN)
+const resolveStoredVideoUrl = (item: YoutubeResultItem): string | null => {
+  const candidates = [
+    item.videoFileUrl,
+    item.downloadUrl,
+    item.videoUrl,
+    item.url,
+  ];
+  for (const candidate of candidates) {
+    const resolved = getString(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return null;
+};
+
+// Try to get video from key-value store
+const tryGetKeyValueStoreVideo = async (
+  client: ApifyClient,
+  runId: string,
+  apiToken: string
+): Promise<{ url: string; contentType: string | null } | null> => {
+  const possibleKeys = ["OUTPUT", "video", "VIDEO", "output", "file", "download"];
+  
+  for (const key of possibleKeys) {
+    try {
+      const kvStoreUrl = `https://api.apify.com/v2/actor-runs/${runId}/key-value-store/records/${key}?token=${apiToken}`;
+      const headResponse = await fetch(kvStoreUrl, { method: "HEAD" });
+      if (headResponse.ok) {
+        const contentType = headResponse.headers.get("content-type");
+        if (contentType?.includes("video") || contentType?.includes("octet-stream")) {
+          return { url: kvStoreUrl, contentType };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+};
+
+const SUPABASE_BUCKET = "youtube-downloads";
+
+// Upload video buffer to Supabase storage
+const uploadToSupabase = async (
+  buffer: ArrayBuffer,
+  fileName: string,
+  contentType: string
+): Promise<string | null> => {
+  const { data, error } = await supabaseServer.storage
+    .from(SUPABASE_BUCKET)
+    .upload(fileName, buffer, {
+      contentType,
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("Supabase upload error:", error);
+    return null;
+  }
+
+  const { data: publicUrlData } = supabaseServer.storage
+    .from(SUPABASE_BUCKET)
+    .getPublicUrl(data.path);
+
+  return publicUrlData.publicUrl;
+};
+
+// Add token to Apify URLs if needed
+const addApifyToken = (videoUrl: string, apiToken: string): string => {
+  try {
+    const parsedUrl = new URL(videoUrl);
+    if (
+      parsedUrl.hostname.endsWith("apify.com") &&
+      !parsedUrl.searchParams.has("token")
+    ) {
+      parsedUrl.searchParams.set("token", apiToken);
+      return parsedUrl.toString();
+    }
+  } catch {
+    // Ignore malformed URLs
+  }
+  return videoUrl;
+};
+
 const fetchYoutubeStream = async (url: string) =>
   fetch(url, {
     headers: {
@@ -195,6 +283,7 @@ export async function POST(request: Request) {
       .call({
         urls: [{ url }],
         location,
+        downloadVideo: true, // Request the actor to download and store the video
       });
 
     if (!run?.defaultDatasetId) {
@@ -223,90 +312,129 @@ export async function POST(request: Request) {
         { status: 502 }
       );
     }
-    const formats = Array.isArray(videoInfo.formats) ? videoInfo.formats : [];
-    const adaptiveFormats = Array.isArray(videoInfo.adaptiveFormats)
-      ? videoInfo.adaptiveFormats
-      : [];
-
-    const candidates = buildFormatCandidates(formats, adaptiveFormats);
-    if (candidates.length === 0) {
-      return NextResponse.json(
-        { error: "No downloadable video format found." },
-        { status: 502 }
-      );
-    }
-
-    let selected: YoutubeFormat | null = null;
-    let downloadResponse: Response | null = null;
-    let lastStatus: number | null = null;
-    for (const format of candidates) {
-      const url = format.url;
-      if (!url) {
-        continue;
-      }
-      try {
-        const response = await fetchYoutubeStream(url);
-        lastStatus = response.status;
-        if (!response.ok || !response.body) {
-          continue;
-        }
-        selected = format;
-        downloadResponse = response;
-        break;
-      } catch {
-        continue;
-      }
-    }
-
-    if (!selected || !downloadResponse) {
-      const suffix = lastStatus ? ` (status ${lastStatus})` : "";
-      return NextResponse.json(
-        { error: `Unable to download video file${suffix}.` },
-        { status: 502 }
-      );
-    }
 
     const durationSeconds =
       normalizeNumber(videoInfo.lengthSeconds) ??
-      (normalizeNumber(selected.approxDurationMs)
-        ? (normalizeNumber(selected.approxDurationMs) as number) / 1000
-        : null);
-    const size =
-      normalizeNumber(selected.contentLength) != null
-        ? Math.max(0, normalizeNumber(selected.contentLength) as number)
-        : 0;
+      null;
 
-    const extension = resolveExtension(
-      selected,
-      downloadResponse.headers.get("content-type")
-    );
-    const downloadsDir = path.join(
-      process.cwd(),
-      "public",
-      "youtube-cache"
-    );
-    await mkdir(downloadsDir, { recursive: true });
+    // Strategy 1: Check if the actor returned a stored video URL (Apify storage)
+    let downloadResponse: Response | null = null;
+    let finalVideoUrl: string | null = null;
+    let selectedFormat: YoutubeFormat | null = null;
+
+    const storedUrl = resolveStoredVideoUrl(item);
+    if (storedUrl) {
+      const urlWithToken = addApifyToken(storedUrl, apiToken);
+      try {
+        const response = await fetch(urlWithToken);
+        if (response.ok && response.body) {
+          downloadResponse = response;
+          finalVideoUrl = urlWithToken;
+        }
+      } catch {
+        // Continue to other strategies
+      }
+    }
+
+    // Strategy 2: Check key-value store for stored video file
+    if (!downloadResponse && run.id) {
+      const kvResult = await tryGetKeyValueStoreVideo(client, run.id, apiToken);
+      if (kvResult) {
+        try {
+          const response = await fetch(kvResult.url);
+          if (response.ok && response.body) {
+            downloadResponse = response;
+            finalVideoUrl = kvResult.url;
+          }
+        } catch {
+          // Continue to next strategy
+        }
+      }
+    }
+
+    // Strategy 3: Try direct YouTube URLs (may not work on cloud servers)
+    if (!downloadResponse) {
+      const formats = Array.isArray(videoInfo.formats) ? videoInfo.formats : [];
+      const adaptiveFormats = Array.isArray(videoInfo.adaptiveFormats)
+        ? videoInfo.adaptiveFormats
+        : [];
+
+      const candidates = buildFormatCandidates(formats, adaptiveFormats);
+      
+      let lastStatus: number | null = null;
+      for (const format of candidates) {
+        const formatUrl = format.url;
+        if (!formatUrl) {
+          continue;
+        }
+        try {
+          const response = await fetchYoutubeStream(formatUrl);
+          lastStatus = response.status;
+          if (!response.ok || !response.body) {
+            continue;
+          }
+          selectedFormat = format;
+          downloadResponse = response;
+          finalVideoUrl = formatUrl;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!downloadResponse) {
+        const suffix = lastStatus ? ` (status ${lastStatus})` : "";
+        return NextResponse.json(
+          { error: `Unable to download video file${suffix}. YouTube blocks cloud server IPs.` },
+          { status: 502 }
+        );
+      }
+    }
+
+    if (!downloadResponse) {
+      return NextResponse.json(
+        { error: "Unable to download video file." },
+        { status: 502 }
+      );
+    }
+
+    const contentType = downloadResponse.headers.get("content-type") || "video/mp4";
+    const extension = resolveExtension(selectedFormat, contentType);
+    
+    // Download video to buffer
+    const videoBuffer = await downloadResponse.arrayBuffer();
+    const fileSize = videoBuffer.byteLength;
+    
+    if (fileSize === 0) {
+      return NextResponse.json(
+        { error: "Downloaded video file is empty." },
+        { status: 502 }
+      );
+    }
+
+    // Upload to Supabase
     const baseName = item.videoId ? `yt-${item.videoId}` : `yt-${Date.now()}`;
     const fileName = `${baseName}-${Date.now()}.${extension}`;
-    const filePath = path.join(downloadsDir, fileName);
-    const nodeStream = Readable.fromWeb(downloadResponse.body as any);
-    await pipeline(nodeStream, createWriteStream(filePath));
-    const fileStats = await stat(filePath);
-    const fileSize =
-      Number(downloadResponse.headers.get("content-length")) ||
-      fileStats.size ||
-      size;
+    
+    const publicUrl = await uploadToSupabase(videoBuffer, fileName, contentType);
+    
+    if (!publicUrl) {
+      return NextResponse.json(
+        { error: "Failed to upload video to storage." },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({
       title: videoInfo.title ?? "YouTube video",
       videoId: item.videoId ?? null,
-      downloadUrl: selected.url,
-      assetUrl: `/youtube-cache/${fileName}`,
+      downloadUrl: finalVideoUrl,
+      assetUrl: publicUrl,
       durationSeconds: durationSeconds ?? null,
-      width: selected.width ?? null,
-      height: selected.height ?? null,
+      width: selectedFormat?.width ?? null,
+      height: selectedFormat?.height ?? null,
       size: fileSize,
-      qualityLabel: selected.qualityLabel ?? selected.quality ?? null,
+      qualityLabel: selectedFormat?.qualityLabel ?? selectedFormat?.quality ?? null,
     });
   } catch (error) {
     const message =

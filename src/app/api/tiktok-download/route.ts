@@ -1,13 +1,35 @@
-import { createWriteStream } from "fs";
-import { mkdir, stat } from "fs/promises";
-import path from "path";
-import { Readable } from "stream";
-import { pipeline } from "stream/promises";
-
 import { NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
+import { supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+
+const SUPABASE_BUCKET = "tiktok-downloads";
+
+// Upload video buffer to Supabase storage
+const uploadToSupabase = async (
+  buffer: ArrayBuffer,
+  fileName: string,
+  contentType: string
+): Promise<string | null> => {
+  const { data, error } = await supabaseServer.storage
+    .from(SUPABASE_BUCKET)
+    .upload(fileName, buffer, {
+      contentType,
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("Supabase upload error:", error);
+    return null;
+  }
+
+  const { data: publicUrlData } = supabaseServer.storage
+    .from(SUPABASE_BUCKET)
+    .getPublicUrl(data.path);
+
+  return publicUrlData.publicUrl;
+};
 
 type TikTokVideoInfo = {
   width?: number;
@@ -210,25 +232,30 @@ export async function POST(request: Request) {
       );
     }
 
-    const extension = resolveExtension(
-      videoUrl,
-      downloadResponse.headers.get("content-type")
-    );
-    const downloadsDir = path.join(
-      process.cwd(),
-      "public",
-      "tiktok-cache"
-    );
-    await mkdir(downloadsDir, { recursive: true });
+    const contentType = downloadResponse.headers.get("content-type") || "video/mp4";
+    const extension = resolveExtension(videoUrl, contentType);
+    
+    // Download video to buffer
+    const videoBuffer = await downloadResponse.arrayBuffer();
+    const fileSize = videoBuffer.byteLength;
+    
+    if (fileSize === 0) {
+      return NextResponse.json(
+        { error: "Downloaded video file is empty." },
+        { status: 502 }
+      );
+    }
+
+    // Upload to Supabase
     const fileName = `tt-${Date.now()}.${extension}`;
-    const filePath = path.join(downloadsDir, fileName);
-    const nodeStream = Readable.fromWeb(downloadResponse.body as any);
-    await pipeline(nodeStream, createWriteStream(filePath));
-    const fileStats = await stat(filePath);
-    const fileSize =
-      Number(downloadResponse.headers.get("content-length")) ||
-      fileStats.size ||
-      0;
+    const publicUrl = await uploadToSupabase(videoBuffer, fileName, contentType);
+    
+    if (!publicUrl) {
+      return NextResponse.json(
+        { error: "Failed to upload video to storage." },
+        { status: 502 }
+      );
+    }
 
     const width =
       normalizeNumber(item.video?.width) ??
@@ -249,7 +276,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       title: resolveTikTokTitle(item),
       downloadUrl: videoUrl,
-      assetUrl: `/tiktok-cache/${fileName}`,
+      assetUrl: publicUrl,
       durationSeconds,
       width,
       height,
