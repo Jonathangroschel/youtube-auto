@@ -25,11 +25,11 @@ export const EditorHeader = ({
       <div className="flex w-full items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#C7D2FE] bg-white text-[12px] font-semibold text-[#335CFF]"
+            className="flex h-10 w-10 items-center justify-center"
             type="button"
             aria-label="Home"
           >
-            YA
+            <img src="/icon.svg" alt="Home" className="h-9 w-9" />
           </button>
           <div className="flex h-10 items-center gap-2 rounded-full bg-gray-100/80 px-3.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">

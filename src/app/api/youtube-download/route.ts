@@ -60,40 +60,65 @@ const hasAudioTrack = (format: YoutubeFormat) => {
   return false;
 };
 
-const selectBestFormat = (
+const maxPreferredHeight = 1080;
+
+const isMp4Format = (format: YoutubeFormat) =>
+  typeof format.mimeType === "string" && format.mimeType.includes("mp4");
+
+const buildFormatCandidates = (
   formats: YoutubeFormat[],
-  options?: { requireAudio?: boolean }
+  adaptiveFormats: YoutubeFormat[]
 ) => {
-  const candidates = formats.filter((format) => {
-    if (!isVideoFormat(format)) {
-      return false;
-    }
-    if (typeof format.url !== "string" || format.url.length === 0) {
-      return false;
-    }
-    if (options?.requireAudio && !hasAudioTrack(format)) {
-      return false;
-    }
-    return true;
+  const all = [...formats, ...adaptiveFormats].filter((format) => {
+    return (
+      isVideoFormat(format) &&
+      typeof format.url === "string" &&
+      format.url.length > 0
+    );
   });
-  if (candidates.length === 0) {
-    return null;
-  }
-  const sorted = [...candidates].sort((a, b) => {
-    const widthDiff = (b.width ?? 0) - (a.width ?? 0);
-    if (widthDiff !== 0) {
-      return widthDiff;
-    }
-    const heightDiff = (b.height ?? 0) - (a.height ?? 0);
-    if (heightDiff !== 0) {
-      return heightDiff;
-    }
-    return (b.bitrate ?? 0) - (a.bitrate ?? 0);
-  });
-  return sorted[0];
+  const withAudio = all.filter((format) => hasAudioTrack(format));
+  const withoutAudio = all.filter((format) => !hasAudioTrack(format));
+  const sortByPreference = (items: YoutubeFormat[]) =>
+    [...items].sort((a, b) => {
+      const aHeight = a.height ?? 0;
+      const bHeight = b.height ?? 0;
+      const aOver = aHeight > maxPreferredHeight;
+      const bOver = bHeight > maxPreferredHeight;
+      if (aOver !== bOver) {
+        return aOver ? 1 : -1;
+      }
+      if (aHeight !== bHeight) {
+        return bHeight - aHeight;
+      }
+      const aMp4 = isMp4Format(a);
+      const bMp4 = isMp4Format(b);
+      if (aMp4 !== bMp4) {
+        return aMp4 ? -1 : 1;
+      }
+      const aSize =
+        normalizeNumber(a.contentLength) ?? Number.POSITIVE_INFINITY;
+      const bSize =
+        normalizeNumber(b.contentLength) ?? Number.POSITIVE_INFINITY;
+      if (aSize !== bSize) {
+        return aSize - bSize;
+      }
+      return (b.bitrate ?? 0) - (a.bitrate ?? 0);
+    });
+  return [...sortByPreference(withAudio), ...sortByPreference(withoutAudio)];
 };
 
-const resolveExtension = (format?: YoutubeFormat | null) => {
+const resolveExtension = (
+  format?: YoutubeFormat | null,
+  contentType?: string | null
+) => {
+  const resolvedType = contentType ?? format?.mimeType ?? "";
+  const lowered = resolvedType.toLowerCase();
+  if (lowered.includes("webm")) {
+    return "webm";
+  }
+  if (lowered.includes("mp4")) {
+    return "mp4";
+  }
   const mimeType = format?.mimeType ?? "";
   if (mimeType.includes("webm")) {
     return "webm";
@@ -117,6 +142,19 @@ const readDatasetItem = async (
   }
   return null;
 };
+
+const fetchYoutubeStream = async (url: string) =>
+  fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      Accept: "*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: "https://www.youtube.com/",
+      Origin: "https://www.youtube.com",
+      Range: "bytes=0-",
+    },
+  });
 
 export async function POST(request: Request) {
   const apiToken =
@@ -190,15 +228,40 @@ export async function POST(request: Request) {
       ? videoInfo.adaptiveFormats
       : [];
 
-    const selected =
-      selectBestFormat(formats, { requireAudio: true }) ??
-      selectBestFormat(formats) ??
-      selectBestFormat(adaptiveFormats, { requireAudio: true }) ??
-      selectBestFormat(adaptiveFormats);
-
-    if (!selected?.url) {
+    const candidates = buildFormatCandidates(formats, adaptiveFormats);
+    if (candidates.length === 0) {
       return NextResponse.json(
         { error: "No downloadable video format found." },
+        { status: 502 }
+      );
+    }
+
+    let selected: YoutubeFormat | null = null;
+    let downloadResponse: Response | null = null;
+    let lastStatus: number | null = null;
+    for (const format of candidates) {
+      const url = format.url;
+      if (!url) {
+        continue;
+      }
+      try {
+        const response = await fetchYoutubeStream(url);
+        lastStatus = response.status;
+        if (!response.ok || !response.body) {
+          continue;
+        }
+        selected = format;
+        downloadResponse = response;
+        break;
+      } catch {
+        continue;
+      }
+    }
+
+    if (!selected || !downloadResponse) {
+      const suffix = lastStatus ? ` (status ${lastStatus})` : "";
+      return NextResponse.json(
+        { error: `Unable to download video file${suffix}.` },
         { status: 502 }
       );
     }
@@ -213,14 +276,10 @@ export async function POST(request: Request) {
         ? Math.max(0, normalizeNumber(selected.contentLength) as number)
         : 0;
 
-    const extension = resolveExtension(selected);
-    const downloadResponse = await fetch(selected.url);
-    if (!downloadResponse.ok || !downloadResponse.body) {
-      return NextResponse.json(
-        { error: "Unable to download video file." },
-        { status: 502 }
-      );
-    }
+    const extension = resolveExtension(
+      selected,
+      downloadResponse.headers.get("content-type")
+    );
     const downloadsDir = path.join(
       process.cwd(),
       "public",
