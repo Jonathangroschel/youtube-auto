@@ -377,7 +377,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
         src="/loading-state.lottie"
         autoplay
         loop
-        className="h-24 w-24"
+        className="block h-24 w-24"
       />
       <span className="sr-only">Downloading...</span>
     </div>
