@@ -212,6 +212,14 @@ type TimedSegment = {
   words?: TimedWord[];
 };
 
+type GifDragPayload = {
+  url: string;
+  title?: string;
+  width?: number;
+  height?: number;
+  size?: number;
+};
+
 type ProjectSizeOption = {
   id: string;
   label: string;
@@ -331,6 +339,20 @@ const findActiveWordIndex = (
   return -1;
 };
 
+const buildGifPayload = (gif: IGif): GifDragPayload | null => {
+  const assetImage = resolveGiphyAssetImage(gif);
+  if (!assetImage) {
+    return null;
+  }
+  return {
+    url: assetImage.url,
+    width: assetImage.width,
+    height: assetImage.height,
+    size: assetImage.size,
+    title: gif.title?.trim() || "GIF",
+  };
+};
+
 const subtitleLanguages: SubtitleLanguageOption[] = [
   { code: "en", label: "English", detail: "English (US)", region: "US" },
   { code: "es", label: "Spanish", detail: "Spanish (ES)", region: "ES" },
@@ -345,6 +367,7 @@ export default function AdvancedEditorPage() {
   const gifPreviewCount = 6;
   const gifSearchLimit = 30;
   const gifPreviewIntervalMs = 15000;
+  const gifDragType = "application/x-gif-asset";
   const [activeTool, setActiveTool] = useState("video");
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
@@ -1705,7 +1728,7 @@ export default function AdvancedEditorPage() {
         setStockVideoError(
           "Stock video request timed out. Check storage list access."
         );
-      }, 15000);
+      }, 30000);
       try {
         const { supabaseBrowser } = await import("@/lib/supabase/browser");
         const bucket = supabaseBrowser.storage.from(stockVideoBucketName);
@@ -1721,7 +1744,7 @@ export default function AdvancedEditorPage() {
           }>((_, reject) => {
             timeoutId = window.setTimeout(() => {
               reject(new Error("Stock video request timed out."));
-            }, 10000);
+            }, 20000);
           });
           const result = (await Promise.race([
             bucket.list(path, {
@@ -3574,7 +3597,12 @@ export default function AdvancedEditorPage() {
     });
     
     // During playback, only update if the SET of visible clips changed
-    const newIds = sorted.map(e => e.clip.id).join(',');
+    const newIds = sorted
+      .map(
+        (entry) =>
+          `${entry.clip.id}:${entry.clip.startTime}:${entry.clip.duration}:${entry.clip.startOffset ?? 0}`
+      )
+      .join(",");
     if (isPlaying && stableAudioStackIdsRef.current === newIds && stableAudioStackRef.current.length > 0) {
       return stableAudioStackRef.current;
     }
@@ -4979,7 +5007,8 @@ export default function AdvancedEditorPage() {
         });
         return extracted;
       };
-      const MAX_TRANSCRIPTION_BYTES = 24_000_000;
+      // Keep chunks under Vercel's function payload limit (~4.5 MB).
+      const MAX_TRANSCRIPTION_BYTES = 4_000_000;
       type TranscriptionChunk = {
         file: File;
         chunkStartOffset: number;
@@ -7001,14 +7030,32 @@ export default function AdvancedEditorPage() {
     [addToTimeline, createClip, pushHistory]
   );
 
+  const createGifAsset = useCallback((payload: GifDragPayload): MediaAsset => {
+    const aspectRatio =
+      payload.width && payload.height
+        ? payload.width / payload.height
+        : undefined;
+    return {
+      id: crypto.randomUUID(),
+      name: payload.title?.trim() || "GIF",
+      kind: "image",
+      url: payload.url,
+      size: payload.size ?? 0,
+      width: payload.width,
+      height: payload.height,
+      aspectRatio,
+      createdAt: Date.now(),
+    };
+  }, []);
+
   const handleAddGif = useCallback(
     (gif: IGif) => {
-      const assetImage = resolveGiphyAssetImage(gif);
-      if (!assetImage) {
+      const payload = buildGifPayload(gif);
+      if (!payload) {
         return;
       }
       const existing = assetsRef.current.find(
-        (asset) => asset.kind === "image" && asset.url === assetImage.url
+        (asset) => asset.kind === "image" && asset.url === payload.url
       );
       if (existing) {
         addToTimeline(existing.id);
@@ -7016,22 +7063,7 @@ export default function AdvancedEditorPage() {
       }
       setIsBackgroundSelected(false);
       pushHistory();
-      const name = gif.title?.trim() || "GIF";
-      const aspectRatio =
-        assetImage.width && assetImage.height
-          ? assetImage.width / assetImage.height
-          : undefined;
-      const gifAsset: MediaAsset = {
-        id: crypto.randomUUID(),
-        name,
-        kind: "image",
-        url: assetImage.url,
-        size: assetImage.size,
-        width: assetImage.width,
-        height: assetImage.height,
-        aspectRatio,
-        createdAt: Date.now(),
-      };
+      const gifAsset = createGifAsset(payload);
       const nextLanes = [...lanesRef.current];
       const laneId = createLaneId("video", nextLanes);
       const clip = createClip(gifAsset.id, laneId, 0, gifAsset);
@@ -7040,7 +7072,7 @@ export default function AdvancedEditorPage() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(gifAsset.id);
     },
-    [addToTimeline, createClip, pushHistory]
+    [addToTimeline, createClip, createGifAsset, pushHistory]
   );
 
   const handleAddSticker = useCallback(
@@ -7919,6 +7951,101 @@ export default function AdvancedEditorPage() {
       return next;
     });
   }, [pushHistory, selectedClipId, selectedClipIds, subtitleSegments]);
+
+  const handleDeleteAsset = useCallback(
+    (assetId: string) => {
+      const asset = assetsRef.current.find((item) => item.id === assetId);
+      if (!asset) {
+        return;
+      }
+      pushHistory();
+      const clipIdsForAsset = timeline
+        .filter((clip) => clip.assetId === assetId)
+        .map((clip) => clip.id);
+      const subtitleClipIdsToRemove = new Set<string>();
+      const sourceIdsToRemove = new Set(clipIdsForAsset);
+      subtitleSegments.forEach((segment) => {
+        if (segment.sourceClipId && sourceIdsToRemove.has(segment.sourceClipId)) {
+          subtitleClipIdsToRemove.add(segment.clipId);
+        }
+        if (sourceIdsToRemove.has(segment.clipId)) {
+          subtitleClipIdsToRemove.add(segment.clipId);
+        }
+      });
+      const idsToRemove = new Set([
+        ...clipIdsForAsset,
+        ...subtitleClipIdsToRemove,
+      ]);
+      const nextTimeline = timeline.filter((clip) => !idsToRemove.has(clip.id));
+      const nextAssets = assetsRef.current.filter(
+        (item) => item.id !== assetId
+      );
+      const selectedIds =
+        selectedClipIds.length > 0
+          ? selectedClipIds
+          : selectedClipId
+            ? [selectedClipId]
+            : [];
+      const remainingSelection = selectedIds.filter(
+        (id) => !idsToRemove.has(id)
+      );
+      const nextSelectedId =
+        remainingSelection[0] ?? nextTimeline[0]?.id ?? null;
+      const nextSelectedIds =
+        remainingSelection.length > 0
+          ? remainingSelection
+          : nextSelectedId
+            ? [nextSelectedId]
+            : [];
+      const nextActiveAssetId = nextSelectedId
+        ? nextTimeline.find((clip) => clip.id === nextSelectedId)?.assetId ??
+          null
+        : activeAssetId === assetId
+          ? nextAssets[0]?.id ?? null
+          : activeAssetId;
+      setTimeline(nextTimeline);
+      setSelectedClipId(nextSelectedId);
+      setSelectedClipIds(nextSelectedIds);
+      setActiveAssetId(nextActiveAssetId);
+      setSubtitleSegments((prev) =>
+        prev.filter((segment) => !subtitleClipIdsToRemove.has(segment.clipId))
+      );
+      setTextSettings((prev) => {
+        const next = { ...prev };
+        idsToRemove.forEach((id) => {
+          delete next[id];
+        });
+        return next;
+      });
+      setClipTransforms((prev) => {
+        const next = { ...prev };
+        idsToRemove.forEach((id) => {
+          delete next[id];
+        });
+        return next;
+      });
+      setDetachedSubtitleIds((prev) => {
+        if (prev.size === 0) {
+          return prev;
+        }
+        const next = new Set(prev);
+        idsToRemove.forEach((id) => next.delete(id));
+        return next;
+      });
+      setAssets(nextAssets);
+      if (asset.url.startsWith("blob:")) {
+        URL.revokeObjectURL(asset.url);
+      }
+    },
+    [
+      activeAssetId,
+      pushHistory,
+      selectedClipId,
+      selectedClipIds,
+      subtitleSegments,
+      timeline,
+    ]
+  );
 
   keyboardStateRef.current = {
     currentTime,
@@ -10097,11 +10224,180 @@ export default function AdvancedEditorPage() {
     []
   );
 
+  const parseGifDragPayload = (raw: string): GifDragPayload | null => {
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as {
+        payload?: Partial<GifDragPayload>;
+      } & Partial<GifDragPayload>;
+      const payload = parsed.payload ?? parsed;
+      if (!payload || typeof payload.url !== "string") {
+        return null;
+      }
+      return {
+        url: payload.url,
+        title: typeof payload.title === "string" ? payload.title : undefined,
+        width:
+          typeof payload.width === "number" && Number.isFinite(payload.width)
+            ? payload.width
+            : undefined,
+        height:
+          typeof payload.height === "number" && Number.isFinite(payload.height)
+            ? payload.height
+            : undefined,
+        size:
+          typeof payload.size === "number" && Number.isFinite(payload.size)
+            ? payload.size
+            : undefined,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const handleGifDragStart = useCallback(
+    (event: DragEvent<HTMLElement>, gif: IGif) => {
+      const payload = buildGifPayload(gif);
+      if (!payload) {
+        return;
+      }
+      const encoded = JSON.stringify(payload);
+      event.dataTransfer.setData(gifDragType, encoded);
+      event.dataTransfer.setData("text/plain", encoded);
+      event.dataTransfer.effectAllowed = "copy";
+    },
+    [gifDragType]
+  );
+
+  const addAssetToTimelineFromDrop = (
+    asset: MediaAsset,
+    event: DragEvent<HTMLDivElement>
+  ) => {
+    const track = timelineTrackRef.current;
+    if (!track) {
+      return;
+    }
+    const laneType = getLaneType(asset);
+    const nextLanes = [...lanesRef.current];
+    const rect = track.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left - timelinePadding;
+    const offsetY = event.clientY - rect.top - timelinePadding;
+    let laneId: string | null = null;
+    let foundLaneIndex = -1;
+    let cursor = 0;
+    if (laneRows.length > 0) {
+      // Calculate section boundaries for proper lane ordering
+      let videoSectionEnd = 0;
+      let audioSectionStart = -1;
+      let sectionCursor = 0;
+      for (let i = 0; i < laneRows.length; i++) {
+        const lane = laneRows[i];
+        if (lane.type !== "audio") {
+          videoSectionEnd = sectionCursor + lane.height + laneGap;
+        } else if (audioSectionStart === -1) {
+          audioSectionStart = sectionCursor;
+        }
+        sectionCursor += lane.height + laneGap;
+      }
+      const totalHeight = sectionCursor - laneGap;
+
+      if (offsetY < 0) {
+        // Dragging above all lanes - create new lane
+        laneId = createLaneId(laneType, nextLanes);
+      } else if (offsetY > totalHeight + laneGap) {
+        // Dragging below all lanes - create new lane (will be positioned correctly)
+        laneId = createLaneId(laneType, nextLanes);
+      } else {
+        // Find which lane we're hovering over
+        for (let i = 0; i < laneRows.length; i++) {
+          const lane = laneRows[i];
+          const laneTop = cursor;
+          const laneBottom = cursor + lane.height + laneGap;
+          if (offsetY >= laneTop && offsetY <= laneBottom) {
+            laneId = lane.id;
+            foundLaneIndex = i;
+            break;
+          }
+          cursor += lane.height + laneGap;
+        }
+
+        // Check if in gap between video and audio section
+        if (!laneId && laneType !== "audio" && audioSectionStart > 0) {
+          if (offsetY >= videoSectionEnd && offsetY < audioSectionStart) {
+            laneId = createLaneId(laneType, nextLanes);
+          }
+        }
+      }
+    }
+    // Check lane type compatibility - enforce lane ordering rules
+    // Audio lanes stay at bottom, video/text lanes stay above audio
+    if (laneId && foundLaneIndex >= 0) {
+      const foundLane = laneRows[foundLaneIndex];
+      if (foundLane && foundLane.type !== laneType) {
+        // Lane type mismatch - find compatible lane or create new one
+        let compatibleLaneId: string | null = null;
+
+        if (laneType === "audio") {
+          // Audio clips can only go to audio lanes (at bottom) - search below only
+          for (let i = foundLaneIndex + 1; i < laneRows.length; i++) {
+            if (laneRows[i].type === "audio") {
+              compatibleLaneId = laneRows[i].id;
+              break;
+            }
+          }
+        } else {
+          // Video/text dragged onto audio - create new lane above audio
+          // Don't search for existing, just create new (user wants new track)
+        }
+
+        // If no compatible lane found, create a new one (will be inserted at correct position)
+        if (!compatibleLaneId) {
+          compatibleLaneId = createLaneId(laneType, nextLanes);
+        }
+
+        laneId = compatibleLaneId;
+      }
+    }
+    if (!laneId) {
+      laneId = createLaneId(laneType, nextLanes);
+    }
+    setLanes(nextLanes);
+    const startTime = offsetX / timelineScale;
+    addClipAtPosition(asset.id, laneId, startTime, asset);
+  };
+
   const handleCanvasDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const droppedFiles = Array.from(event.dataTransfer.files ?? []);
     if (droppedFiles.length > 0) {
       await handleDroppedFiles(droppedFiles, { target: "canvas" });
+      setDragOverCanvas(false);
+      return;
+    }
+    const gifPayload =
+      parseGifDragPayload(event.dataTransfer.getData(gifDragType)) ??
+      parseGifDragPayload(event.dataTransfer.getData("text/plain"));
+    if (gifPayload) {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "image" && asset.url === gifPayload.url
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        setDragOverCanvas(false);
+        return;
+      }
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const gifAsset = createGifAsset(gifPayload);
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes);
+      const clip = createClip(gifAsset.id, laneId, 0, gifAsset);
+      setLanes(nextLanes);
+      setAssets((prev) => [gifAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(gifAsset.id);
       setDragOverCanvas(false);
       return;
     }
@@ -10125,104 +10421,32 @@ export default function AdvancedEditorPage() {
       setDragOverTimeline(false);
       return;
     }
+    const gifPayload =
+      parseGifDragPayload(event.dataTransfer.getData(gifDragType)) ??
+      parseGifDragPayload(event.dataTransfer.getData("text/plain"));
+    if (gifPayload) {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "image" && asset.url === gifPayload.url
+      );
+      const gifAsset = existing ?? createGifAsset(gifPayload);
+      if (!existing) {
+        setAssets((prev) => [gifAsset, ...prev]);
+      }
+      addAssetToTimelineFromDrop(gifAsset, event);
+      setDragOverTimeline(false);
+      return;
+    }
     const assetId = event.dataTransfer.getData("text/plain");
     if (assetId) {
       const assetExists = assetsRef.current.some(
         (asset) => asset.id === assetId
       );
-      const track = timelineTrackRef.current;
-      if (assetExists && track) {
+      if (assetExists) {
         const asset = assetsRef.current.find((item) => item.id === assetId);
         if (!asset) {
           return;
         }
-        const laneType = getLaneType(asset);
-        const nextLanes = [...lanesRef.current];
-        const rect = track.getBoundingClientRect();
-        const offsetX = event.clientX - rect.left - timelinePadding;
-        const offsetY = event.clientY - rect.top - timelinePadding;
-        let laneId: string | null = null;
-        let foundLaneIndex = -1;
-        let cursor = 0;
-        if (laneRows.length > 0) {
-          // Calculate section boundaries for proper lane ordering
-          let videoSectionEnd = 0;
-          let audioSectionStart = -1;
-          let sectionCursor = 0;
-          for (let i = 0; i < laneRows.length; i++) {
-            const lane = laneRows[i];
-            if (lane.type !== "audio") {
-              videoSectionEnd = sectionCursor + lane.height + laneGap;
-            } else if (audioSectionStart === -1) {
-              audioSectionStart = sectionCursor;
-            }
-            sectionCursor += lane.height + laneGap;
-          }
-          const totalHeight = sectionCursor - laneGap;
-
-          if (offsetY < 0) {
-            // Dragging above all lanes - create new lane
-            laneId = createLaneId(laneType, nextLanes);
-          } else if (offsetY > totalHeight + laneGap) {
-            // Dragging below all lanes - create new lane (will be positioned correctly)
-            laneId = createLaneId(laneType, nextLanes);
-          } else {
-            // Find which lane we're hovering over
-            for (let i = 0; i < laneRows.length; i++) {
-              const lane = laneRows[i];
-              const laneTop = cursor;
-              const laneBottom = cursor + lane.height + laneGap;
-              if (offsetY >= laneTop && offsetY <= laneBottom) {
-                laneId = lane.id;
-                foundLaneIndex = i;
-                break;
-              }
-              cursor += lane.height + laneGap;
-            }
-            
-            // Check if in gap between video and audio section
-            if (!laneId && laneType !== "audio" && audioSectionStart > 0) {
-              if (offsetY >= videoSectionEnd && offsetY < audioSectionStart) {
-                laneId = createLaneId(laneType, nextLanes);
-              }
-            }
-          }
-        }
-        // Check lane type compatibility - enforce lane ordering rules
-        // Audio lanes stay at bottom, video/text lanes stay above audio
-        if (laneId && foundLaneIndex >= 0) {
-          const foundLane = laneRows[foundLaneIndex];
-          if (foundLane && foundLane.type !== laneType) {
-            // Lane type mismatch - find compatible lane or create new one
-            let compatibleLaneId: string | null = null;
-            
-            if (laneType === "audio") {
-              // Audio clips can only go to audio lanes (at bottom) - search below only
-              for (let i = foundLaneIndex + 1; i < laneRows.length; i++) {
-                if (laneRows[i].type === "audio") {
-                  compatibleLaneId = laneRows[i].id;
-                  break;
-                }
-              }
-            } else {
-              // Video/text dragged onto audio - create new lane above audio
-              // Don't search for existing, just create new (user wants new track)
-            }
-            
-            // If no compatible lane found, create a new one (will be inserted at correct position)
-            if (!compatibleLaneId) {
-              compatibleLaneId = createLaneId(laneType, nextLanes);
-            }
-            
-            laneId = compatibleLaneId;
-          }
-        }
-        if (!laneId) {
-          laneId = createLaneId(laneType, nextLanes);
-        }
-        setLanes(nextLanes);
-        const startTime = offsetX / timelineScale;
-        addClipAtPosition(assetId, laneId, startTime, asset);
+        addAssetToTimelineFromDrop(asset, event);
       }
     }
     setDragOverTimeline(false);
@@ -10567,7 +10791,9 @@ export default function AdvancedEditorPage() {
     handleAddYoutubeVideo,
     handleAddTiktokVideo,
     handleAssetDragStart,
+    handleGifDragStart,
     handleDeleteSelected,
+    handleDeleteAsset,
     handleDetachAudio,
     handleEndTimeCommit,
     handleGifTrendingRetry,

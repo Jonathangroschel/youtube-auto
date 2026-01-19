@@ -118,7 +118,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleAddYoutubeVideo,
     handleAddTiktokVideo,
     handleAssetDragStart,
+    handleGifDragStart,
     handleDeleteSelected,
+    handleDeleteAsset,
     handleDetachAudio,
     handleEndTimeCommit,
     handleGifTrendingRetry,
@@ -2226,6 +2228,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           type="button"
                           className="group relative h-24 w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
                           onClick={() => handleAddGif(gif)}
+                          draggable
+                          onDragStart={(event) => handleGifDragStart(event, gif)}
                           aria-label={`Add ${title}`}
                         >
                           {previewUrl ? (
@@ -2340,7 +2344,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     {viewAllAssets.map((asset: MediaAsset) => (
                       <div
                         key={asset.id}
-                        className="group flex flex-col gap-2"
+                        className="group relative flex flex-col gap-2"
                       >
                         <button
                           type="button"
@@ -2466,6 +2470,27 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <div className="truncate text-xs font-medium text-gray-700">
                             {asset.name}
                           </div>
+                        </button>
+                        <button
+                          type="button"
+                          className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-white hover:text-gray-700"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleDeleteAsset(asset.id);
+                          }}
+                          aria-label={`Delete ${asset.name}`}
+                        >
+                          <svg viewBox="0 0 16 16" className="h-3 w-3">
+                            <path
+                              d="M12 4 4 12M4 4l8 8"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                         </button>
                       </div>
                     ))}
@@ -5363,10 +5388,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     ) : (
                       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                         {filteredAssets.map((asset: MediaAsset) => (
-                          <div key={asset.id} className="space-y-2">
+                          <div
+                            key={asset.id}
+                            className="group relative space-y-2"
+                          >
                             <button
                               type="button"
-                              className={`group relative h-24 w-full overflow-hidden rounded-2xl border transition ${asset.id === activeAssetId
+                              className={`relative h-24 w-full overflow-hidden rounded-2xl border transition ${asset.id === activeAssetId
                                 ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
                                 : "border-gray-200 hover:border-gray-300"
                                 }`}
@@ -5483,6 +5511,27 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   {formatDuration(asset.duration)}
                                 </span>
                               )}
+                            </button>
+                            <button
+                              type="button"
+                              className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-white hover:text-gray-700"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleDeleteAsset(asset.id);
+                              }}
+                              aria-label={`Delete ${asset.name}`}
+                            >
+                              <svg viewBox="0 0 16 16" className="h-3 w-3">
+                                <path
+                                  d="M12 4 4 12M4 4l8 8"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.6"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
                             </button>
                             <div className="flex items-center justify-between text-[11px] text-gray-500">
                               <span className="truncate font-medium text-gray-700">
@@ -6088,6 +6137,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   type="button"
                                   className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
                                   onClick={() => handleAddGif(gif)}
+                                  draggable
+                                  onDragStart={(event) =>
+                                    handleGifDragStart(event, gif)
+                                  }
                                   aria-label={`Add ${title}`}
                                 >
                                   {previewUrl ? (
