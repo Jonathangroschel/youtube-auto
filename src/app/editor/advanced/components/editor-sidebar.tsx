@@ -4,6 +4,7 @@ import type { IGif } from "@giphy/js-types";
 
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -26,7 +27,13 @@ import {
   textStylePresets,
 } from "../data";
 
-import { clamp, formatDuration, formatSize, formatTimeWithTenths } from "../utils";
+import {
+  clamp,
+  formatDuration,
+  formatSize,
+  formatTimeWithTenths,
+  parseTimeInput,
+} from "../utils";
 
 import {
   getPresetPreviewFontSize,
@@ -64,6 +71,8 @@ type EditorSidebarProps = {
     updater: (current: TextClipSettings) => TextClipSettings
   ) => void;
   selectedClipId: string | null;
+  handleSubtitlePreview: (segment: SubtitleSegmentEntry) => void;
+  setActiveTool: (tool: string) => void;
 } & Record<string, any>;
 
 type SubtitleSegmentEntry = {
@@ -80,6 +89,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     activeAssetId,
     activeTool,
     activeToolLabel,
+    contentAspectRatio,
+    contentTimelineTotal,
     applySubtitleStyle,
     addTextClip,
     addToTimeline,
@@ -117,6 +128,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleSetStartAtPlayhead,
     handleStartTimeCommit,
     handleSubtitleAddLine,
+    handleSubtitlePreview,
     handleSubtitleDelete,
     handleSubtitleDeleteAll,
     handleSubtitleDetachToggle,
@@ -133,6 +145,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleTextPresetSelect,
     handleTextStylePresetSelect,
     handleUploadClick,
+    handleProjectBackgroundImageChange,
+    handleProjectBackgroundImageClear,
     hasGiphy,
     hasMoreSoundFxTags,
     hasMoreStockTags,
@@ -159,6 +173,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     selectedVideoEntry,
     selectedVideoSettings,
     setActiveCanvasClipId,
+    setActiveTool,
     setAssetFilter,
     setAssetSearch,
     setExpandedTextGroupId,
@@ -180,6 +195,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     setStockVideoCategory,
     setStockVideoOrientation,
     setStockVideoSearch,
+    setProjectBackgroundMode,
+    setProjectDurationMode,
+    setProjectDurationSeconds,
+    setProjectSizeId,
     setTextPanelAlign,
     setTextPanelBackgroundColor,
     setTextPanelBackgroundEnabled,
@@ -254,6 +273,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     subtitleStylePresets,
     detachedSubtitleIds,
     subtitleMoveTogether,
+    projectAspectRatio,
+    projectBackgroundImage,
+    projectBackgroundMode,
+    projectDurationMode,
+    projectDurationSeconds,
+    projectSizeId,
+    projectSizeOptions,
     textFontSizeDisplay,
     textFontSizeOptions,
     textPanelAlign,
@@ -301,8 +327,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsMenuRef = useRef<HTMLDivElement | null>(null);
   const rowMenuRef = useRef<HTMLDivElement | null>(null);
+  const settingsSizeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const settingsSizeMenuRef = useRef<HTMLDivElement | null>(null);
+  const backgroundImageInputRef = useRef<HTMLInputElement | null>(null);
   const [subtitleProgress, setSubtitleProgress] = useState(0);
   const [subtitleSettingsOpen, setSubtitleSettingsOpen] = useState(false);
+  const [settingsSizeOpen, setSettingsSizeOpen] = useState(false);
+  const [durationDraft, setDurationDraft] = useState(() =>
+    formatTimeWithTenths(projectDurationSeconds ?? 0)
+  );
+  const [isDurationEditing, setIsDurationEditing] = useState(false);
+  const [backgroundHexDraft, setBackgroundHexDraft] = useState(videoBackground);
   const [subtitleRowMenu, setSubtitleRowMenu] = useState<{
     open: boolean;
     segmentId: string | null;
@@ -325,42 +360,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     null
   );
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [youtubeClipStart, setYoutubeClipStart] = useState("");
-  const [youtubeClipEnd, setYoutubeClipEnd] = useState("");
   const [youtubeLocation, setYoutubeLocation] = useState("US");
-  const [youtubeQuality, setYoutubeQuality] = useState<"high" | "medium" | "low">("medium");
   const [youtubeError, setYoutubeError] = useState<string | null>(null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [tiktokUrl, setTiktokUrl] = useState("");
-  const [tiktokClipStart, setTiktokClipStart] = useState("");
-  const [tiktokClipEnd, setTiktokClipEnd] = useState("");
   const [tiktokError, setTiktokError] = useState<string | null>(null);
   const [tiktokLoading, setTiktokLoading] = useState(false);
-
-  const parseTimestamp = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return null;
-    }
-    if (/^\d+(\.\d+)?$/.test(trimmed)) {
-      const seconds = Number.parseFloat(trimmed);
-      return Number.isFinite(seconds) ? seconds : null;
-    }
-    const parts = trimmed.split(":").map((part) => part.trim());
-    if (parts.length < 2 || parts.length > 3) {
-      return null;
-    }
-    const numbers = parts.map((part) => Number.parseFloat(part));
-    if (numbers.some((num) => !Number.isFinite(num) || num < 0)) {
-      return null;
-    }
-    if (numbers.length === 2) {
-      const [minutes, seconds] = numbers;
-      return minutes * 60 + seconds;
-    }
-    const [hours, minutes, seconds] = numbers;
-    return hours * 3600 + minutes * 60 + seconds;
-  };
 
   const handleYoutubeSubmit = async () => {
     if (typeof handleAddYoutubeVideo !== "function") {
@@ -371,40 +376,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       setYoutubeError("Paste a YouTube link.");
       return;
     }
-    const startSeconds =
-      youtubeClipStart.trim().length > 0 ? parseTimestamp(youtubeClipStart) : null;
-    if (youtubeClipStart.trim().length > 0 && startSeconds == null) {
-      setYoutubeError("Start time format is invalid.");
-      return;
-    }
-    const endSeconds =
-      youtubeClipEnd.trim().length > 0 ? parseTimestamp(youtubeClipEnd) : null;
-    if (youtubeClipEnd.trim().length > 0 && endSeconds == null) {
-      setYoutubeError("End time format is invalid.");
-      return;
-    }
-    if (
-      startSeconds != null &&
-      endSeconds != null &&
-      endSeconds <= startSeconds
-    ) {
-      setYoutubeError("End time must be after start time.");
-      return;
-    }
     setYoutubeError(null);
     setYoutubeLoading(true);
     try {
       const location = youtubeLocation.trim().toUpperCase();
       await handleAddYoutubeVideo({
         url: trimmedUrl,
-        startSeconds,
-        endSeconds,
         location: location.length > 0 ? location : undefined,
-        quality: youtubeQuality,
       });
       setYoutubeUrl("");
-      setYoutubeClipStart("");
-      setYoutubeClipEnd("");
     } catch (error) {
       const message =
         error instanceof Error && error.message
@@ -425,33 +405,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       setTiktokError("Paste a TikTok link.");
       return;
     }
-    const startSeconds =
-      tiktokClipStart.trim().length > 0 ? parseTimestamp(tiktokClipStart) : null;
-    if (tiktokClipStart.trim().length > 0 && startSeconds == null) {
-      setTiktokError("Start time format is invalid.");
-      return;
-    }
-    const endSeconds =
-      tiktokClipEnd.trim().length > 0 ? parseTimestamp(tiktokClipEnd) : null;
-    if (tiktokClipEnd.trim().length > 0 && endSeconds == null) {
-      setTiktokError("End time format is invalid.");
-      return;
-    }
-    if (startSeconds != null && endSeconds != null && endSeconds <= startSeconds) {
-      setTiktokError("End time must be after start time.");
-      return;
-    }
     setTiktokError(null);
     setTiktokLoading(true);
     try {
       await handleAddTiktokVideo({
         url: trimmedUrl,
-        startSeconds,
-        endSeconds,
       });
       setTiktokUrl("");
-      setTiktokClipStart("");
-      setTiktokClipEnd("");
     } catch (error) {
       const message =
         error instanceof Error && error.message
@@ -504,6 +464,37 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     window.addEventListener("mousedown", handlePointerDown);
     return () => window.removeEventListener("mousedown", handlePointerDown);
   }, [subtitleRowMenu.open, subtitleSettingsOpen]);
+
+  useEffect(() => {
+    if (!settingsSizeOpen) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      const menu = settingsSizeMenuRef.current;
+      const button = settingsSizeButtonRef.current;
+      if (menu?.contains(target) || button?.contains(target)) {
+        return;
+      }
+      setSettingsSizeOpen(false);
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [settingsSizeOpen]);
+
+  useEffect(() => {
+    if (isDurationEditing) {
+      return;
+    }
+    const nextValue = Number.isFinite(projectDurationSeconds)
+      ? projectDurationSeconds
+      : 0;
+    setDurationDraft(formatTimeWithTenths(nextValue));
+  }, [isDurationEditing, projectDurationSeconds]);
+
+  useEffect(() => {
+    setBackgroundHexDraft(videoBackground);
+  }, [videoBackground]);
 
   const openSubtitleRowMenu = (
     event: ReactMouseEvent<HTMLButtonElement>,
@@ -671,8 +662,136 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     setSubtitleMoveTogether(next);
   };
 
+  const isSelectedSubtitleClip = useMemo(() => {
+    if (!selectedTextEntry) {
+      return false;
+    }
+    return subtitleSegments.some(
+      (segment: { clipId: string }) => segment.clipId === selectedTextEntry.clip.id
+    );
+  }, [selectedTextEntry, subtitleSegments]);
+
+  const formatAspectRatioLabel = useCallback((ratio?: number | null) => {
+    if (!Number.isFinite(ratio) || (ratio ?? 0) <= 0) {
+      return "--";
+    }
+    const candidates = [
+      { label: "9:16", value: 9 / 16 },
+      { label: "16:9", value: 16 / 9 },
+      { label: "1:1", value: 1 },
+      { label: "4:5", value: 4 / 5 },
+      { label: "5:4", value: 5 / 4 },
+      { label: "3:4", value: 3 / 4 },
+      { label: "4:3", value: 4 / 3 },
+      { label: "3:2", value: 3 / 2 },
+      { label: "2:3", value: 2 / 3 },
+      { label: "21:9", value: 21 / 9 },
+      { label: "9:21", value: 9 / 21 },
+    ];
+    const ratioValue = ratio ?? 0;
+    const best = candidates.reduce((winner, candidate) => {
+      return Math.abs(candidate.value - ratioValue) <
+        Math.abs(winner.value - ratioValue)
+        ? candidate
+        : winner;
+    });
+    if (Math.abs(best.value - ratioValue) < 0.02) {
+      return best.label;
+    }
+    if (ratioValue >= 1) {
+      return `${ratioValue.toFixed(2)}:1`;
+    }
+    return `1:${(1 / ratioValue).toFixed(2)}`;
+  }, []);
+
+  const resolvedProjectSize = useMemo(() => {
+    if (!Array.isArray(projectSizeOptions) || projectSizeOptions.length === 0) {
+      return null;
+    }
+    return (
+      projectSizeOptions.find((option: { id: string }) => option.id === projectSizeId) ??
+      projectSizeOptions[0]
+    );
+  }, [projectSizeId, projectSizeOptions]);
+
+  const selectedSizeRatioLabel = useMemo(() => {
+    if (!resolvedProjectSize) {
+      return formatAspectRatioLabel(contentAspectRatio);
+    }
+    if (resolvedProjectSize.id === "original") {
+      return formatAspectRatioLabel(contentAspectRatio);
+    }
+    return formatAspectRatioLabel(resolvedProjectSize.aspectRatio ?? projectAspectRatio);
+  }, [
+    contentAspectRatio,
+    formatAspectRatioLabel,
+    projectAspectRatio,
+    resolvedProjectSize,
+  ]);
+
+  const isFixedDurationShort = useMemo(() => {
+    if (projectDurationMode !== "fixed") {
+      return false;
+    }
+    if (!Number.isFinite(projectDurationSeconds) || projectDurationSeconds <= 0) {
+      return false;
+    }
+    return projectDurationSeconds < contentTimelineTotal - 0.05;
+  }, [contentTimelineTotal, projectDurationMode, projectDurationSeconds]);
+  const isBackgroundColorMode = projectBackgroundMode === "color";
+  const isBackgroundImageMode = projectBackgroundMode === "image";
+
+  const normalizeHexColor = useCallback((value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const normalized = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+    if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized)) {
+      return normalized.toUpperCase();
+    }
+    return null;
+  }, []);
+
+  const commitDurationDraft = useCallback(
+    (value: string) => {
+      const parsed = parseTimeInput(value);
+      if (parsed == null) {
+        const fallback = Number.isFinite(projectDurationSeconds)
+          ? projectDurationSeconds
+          : 0;
+        setDurationDraft(formatTimeWithTenths(fallback));
+        return;
+      }
+      const next = Math.max(0.1, parsed);
+      setProjectDurationSeconds(next);
+      setDurationDraft(formatTimeWithTenths(next));
+    },
+    [projectDurationSeconds, setProjectDurationSeconds]
+  );
+
+  const handleDurationModeChange = useCallback(
+    (mode: "automatic" | "fixed") => {
+      if (mode === "fixed") {
+        const currentValue =
+          Number.isFinite(projectDurationSeconds) && projectDurationSeconds > 0
+            ? projectDurationSeconds
+            : Math.max(1, contentTimelineTotal);
+        setProjectDurationSeconds(currentValue);
+        setDurationDraft(formatTimeWithTenths(currentValue));
+      }
+      setProjectDurationMode(mode);
+    },
+    [
+      contentTimelineTotal,
+      projectDurationSeconds,
+      setProjectDurationMode,
+      setProjectDurationSeconds,
+    ]
+  );
 
   const isAudioTool = activeTool === "audio";
+  const isSettingsTool = activeTool === "settings";
   const useAudioLibraryLayout = isAudioTool && !isAssetLibraryExpanded;
   const [isSubtitleSourceOpen, setIsSubtitleSourceOpen] = useState(false);
   const [isSubtitleLanguageOpen, setIsSubtitleLanguageOpen] = useState(false);
@@ -1485,10 +1604,19 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
           !(isGifLibraryExpanded && activeTool === "image") &&
           !(isStickerLibraryExpanded && activeTool === "elements") && (
           <div
-            className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" ? "px-6 py-6" : "px-5 py-5"
+            className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" || activeTool === "settings" ? "px-6 py-6" : "px-5 py-5"
               }`}
           >
-            {activeTool === "subtitles" ? (
+            {activeTool === "settings" ? (
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                  Settings
+                </h2>
+                <p className="text-xs font-medium text-gray-500">
+                  Project-wide controls
+                </p>
+              </div>
+            ) : activeTool === "subtitles" ? (
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1712,7 +1840,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
                       type="button"
                       aria-label="Go back"
-                      onClick={() => setTextPanelView("library")}
+                      onClick={() => {
+                        if (isSelectedSubtitleClip) {
+                          setActiveTool("subtitles");
+                          return;
+                        }
+                        setTextPanelView("library");
+                      }}
                     >
                       <svg viewBox="0 0 16 16" className="h-5 w-5">
                         <path
@@ -1790,7 +1924,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         aria-label="Video background color"
                         value={videoBackground}
                         onChange={(event) =>
-                          setVideoBackground(event.target.value)
+                          {
+                            setProjectBackgroundMode("color");
+                            setVideoBackground(event.target.value);
+                          }
                         }
                         className="h-7 w-7 cursor-pointer rounded-full border border-gray-200 bg-transparent"
                       />
@@ -1805,7 +1942,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             : "border-gray-200"
                             }`}
                           style={{ backgroundColor: swatch }}
-                          onClick={() => setVideoBackground(swatch)}
+                          onClick={() => {
+                            setProjectBackgroundMode("color");
+                            setVideoBackground(swatch);
+                          }}
                           aria-label={`Set video background to ${swatch}`}
                         />
                       ))}
@@ -1818,7 +1958,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
         )}
 
         <div
-          className={`flex-1 min-h-0 overflow-y-auto ${activeTool === "text"
+          className={`flex-1 min-h-0 overflow-y-auto ${activeTool === "text" || isSettingsTool
             ? "bg-white"
             : isAudioTool
               ? "bg-gray-50"
@@ -2524,6 +2664,340 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 )}
               </div>
             </div>
+          ) : activeTool === "settings" ? (
+            <div className="flex min-h-full flex-col bg-white">
+              <div className="flex-1 px-6">
+                <div className="border-b border-gray-100 py-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                    Size
+                  </h4>
+                  <div className="relative mt-3" data-testid="@editor/settings/size">
+                    <button
+                      ref={settingsSizeButtonRef}
+                      type="button"
+                      className="flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30"
+                      onClick={() => setSettingsSizeOpen((prev) => !prev)}
+                      aria-expanded={settingsSizeOpen}
+                    >
+                      <div
+                        className="flex min-w-0 items-center gap-2"
+                        data-testid="@editor/settings/video-size"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          fill="none"
+                          viewBox="0 0 16 16"
+                          className="overflow-visible text-gray-500"
+                        >
+                          <rect
+                            width="8"
+                            height="14"
+                            x="4"
+                            y="1"
+                            stroke="currentColor"
+                            strokeLinecap="round"
+                            rx="1"
+                          />
+                        </svg>
+                        <span className="truncate">
+                          {resolvedProjectSize?.label ?? "Original"}
+                        </span>
+                        <span className="text-xs font-semibold text-gray-400">
+                          ({selectedSizeRatioLabel})
+                        </span>
+                      </div>
+                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                        <path
+                          d="m4 6 4 4 4-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    {settingsSizeOpen && (
+                      <div
+                        ref={settingsSizeMenuRef}
+                        className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-gray-100 bg-white p-1 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
+                      >
+                        {(projectSizeOptions ?? []).map((option: any) => {
+                          const ratioLabel =
+                            option.id === "original"
+                              ? formatAspectRatioLabel(contentAspectRatio)
+                              : formatAspectRatioLabel(
+                                  option.aspectRatio ?? projectAspectRatio
+                                );
+                          const isSelected = option.id === projectSizeId;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                                isSelected
+                                  ? "bg-[#EEF2FF] text-[#335CFF]"
+                                  : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                              onClick={() => {
+                                setProjectSizeId(option.id);
+                                setSettingsSizeOpen(false);
+                              }}
+                            >
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="truncate">{option.label}</span>
+                                <span className="text-xs text-gray-400">
+                                  ({ratioLabel})
+                                </span>
+                              </div>
+                              {option.width && option.height && (
+                                <span className="text-[11px] font-semibold text-gray-400">
+                                  {option.width}x{option.height}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-400">
+                    Pick the frame size you want to export.
+                  </p>
+                </div>
+
+                <div className="border-b border-gray-100 py-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                    Background
+                  </h4>
+                  <div className="mt-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                        <input
+                          type="radio"
+                          name="project-background"
+                          value="color"
+                          checked={isBackgroundColorMode}
+                          onChange={() => setProjectBackgroundMode("color")}
+                        />
+                        <span>Color</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          data-testid="@editor/color-hex-input"
+                          type="text"
+                          value={backgroundHexDraft}
+                          disabled={!isBackgroundColorMode}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setBackgroundHexDraft(nextValue);
+                            const normalized = normalizeHexColor(nextValue);
+                            if (normalized) {
+                              setVideoBackground(normalized);
+                            }
+                          }}
+                          onBlur={() => {
+                            const normalized = normalizeHexColor(backgroundHexDraft);
+                            if (normalized) {
+                              setVideoBackground(normalized);
+                              setBackgroundHexDraft(normalized);
+                              return;
+                            }
+                            setBackgroundHexDraft(videoBackground);
+                          }}
+                          className="h-10 w-28 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                        />
+                        <input
+                          data-testid="@editor/color-picker-btn"
+                          type="color"
+                          value={videoBackground}
+                          disabled={!isBackgroundColorMode}
+                          onChange={(event) => {
+                            setVideoBackground(event.target.value);
+                            setBackgroundHexDraft(event.target.value);
+                          }}
+                          className="h-10 w-10 cursor-pointer rounded-lg border border-gray-200 bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div className="h-px bg-gray-100" />
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                        <input
+                          type="radio"
+                          name="project-background"
+                          value="image"
+                          checked={isBackgroundImageMode}
+                          onChange={() => setProjectBackgroundMode("image")}
+                        />
+                        <span>Image</span>
+                      </label>
+                      <div
+                        className={`rounded-xl border px-3 py-3 ${
+                          isBackgroundImageMode
+                            ? "border-gray-200 bg-gray-50"
+                            : "border-gray-100 bg-gray-50/70 opacity-70"
+                        }`}
+                      >
+                        {projectBackgroundImage ? (
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="h-12 w-12 rounded-lg bg-cover bg-center"
+                              style={{
+                                backgroundImage: `url(${projectBackgroundImage.url})`,
+                              }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-xs font-semibold text-gray-700">
+                                {projectBackgroundImage.name}
+                              </div>
+                              <div className="text-[11px] text-gray-400">
+                                {formatSize(projectBackgroundImage.size)}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => backgroundImageInputRef.current?.click()}
+                              disabled={!isBackgroundImageMode}
+                            >
+                              Replace
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={handleProjectBackgroundImageClear}
+                              disabled={!isBackgroundImageMode}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:border-gray-400"
+                            onClick={() => {
+                              setProjectBackgroundMode("image");
+                              backgroundImageInputRef.current?.click();
+                            }}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="18"
+                              height="16"
+                              fill="none"
+                              viewBox="0 0 16 16"
+                            >
+                              <path
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M5 13.5h-.005a4.001 4.001 0 1 1 .13-7.998 4.002 4.002 0 1 1 7.716 2.117A3.001 3.001 0 0 1 12 13.5h-1M8 8l-2.5 2.5M8 8l2.5 2.5M8 8v5.6"
+                              />
+                            </svg>
+                            Upload
+                          </button>
+                        )}
+                        <input
+                          ref={backgroundImageInputRef}
+                          accept="image/*,.jpg,.jpeg,.png,.webp"
+                          type="file"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            if (file) {
+                              handleProjectBackgroundImageChange(file);
+                              setProjectBackgroundMode("image");
+                            }
+                            if (event.target.value) {
+                              event.target.value = "";
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-b border-gray-100 py-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                    Duration
+                  </h4>
+                  <div className="mt-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <label
+                        className="flex items-center gap-2 text-sm font-semibold text-gray-700"
+                        data-testid="@project-settings/automatic-project-duration-button"
+                      >
+                        <input
+                          type="radio"
+                          name="project-duration"
+                          value="automatic"
+                          checked={projectDurationMode === "automatic"}
+                          onChange={() => handleDurationModeChange("automatic")}
+                        />
+                        <span>Automatic</span>
+                      </label>
+                      <span className="text-xs font-semibold text-gray-400">
+                        {formatTimeWithTenths(contentTimelineTotal ?? 0)}
+                      </span>
+                    </div>
+                    <div className="h-px bg-gray-100" />
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                        <input
+                          type="radio"
+                          name="project-duration"
+                          value="fixed"
+                          checked={projectDurationMode === "fixed"}
+                          onChange={() => handleDurationModeChange("fixed")}
+                        />
+                        <span>Fixed</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={durationDraft}
+                        disabled={projectDurationMode !== "fixed"}
+                        onFocus={() => setIsDurationEditing(true)}
+                        onBlur={() => {
+                          setIsDurationEditing(false);
+                          commitDurationDraft(durationDraft);
+                        }}
+                        onChange={(event) => setDurationDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            setIsDurationEditing(false);
+                            commitDurationDraft(durationDraft);
+                          }
+                        }}
+                        className="h-10 w-24 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                      />
+                    </div>
+                    {isFixedDurationShort && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                        Some clips extend beyond this duration.
+                        <button
+                          type="button"
+                          className="ml-2 font-semibold text-amber-800 underline"
+                          onClick={() => {
+                            const next = Math.max(1, contentTimelineTotal);
+                            setProjectDurationSeconds(next);
+                            setDurationDraft(formatTimeWithTenths(next));
+                          }}
+                        >
+                          Set to timeline length
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                
+              </div>
+            </div>
           ) : activeTool === "subtitles" ? (
             <div className="flex min-h-full flex-col bg-white">
               {subtitleStatus === "loading" ? (
@@ -3184,14 +3658,23 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           const isDetached = detachedSubtitleIds?.has(
                             segment.clipId
                           );
+                          const isSelected = selectedClipId === segment.clipId;
+                          const rowBaseClass = isDetached
+                            ? "border-amber-200 bg-amber-50/50"
+                            : "border-gray-100 bg-white";
+                          const rowSelectedClass = isSelected
+                            ? isDetached
+                              ? "border-[#5B6CFF] ring-2 ring-[#5B6CFF]/10"
+                              : "border-[#5B6CFF] bg-[#EEF2FF]/60 shadow-[0_12px_24px_rgba(91,108,255,0.12)]"
+                            : "";
+                          const handlePreview = () => {
+                            handleSubtitlePreview(segment);
+                          };
                           return (
                             <div
                               key={segment.id}
-                              className={`rounded-xl border px-3 py-3 shadow-sm transition ${
-                                isDetached
-                                  ? "border-amber-200 bg-amber-50/50"
-                                  : "border-gray-100 bg-white"
-                              }`}
+                              className={`rounded-xl border px-3 py-3 shadow-sm transition ${rowBaseClass} ${rowSelectedClass}`}
+                              onClick={handlePreview}
                             >
                               <div className="grid grid-cols-[1fr_auto] gap-3">
                                 <textarea
@@ -3202,6 +3685,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       event.target.value
                                     )
                                   }
+                                  onFocus={handlePreview}
                                   rows={2}
                                   className="min-h-[52px] w-full resize-none rounded-lg border border-transparent bg-transparent text-sm font-medium text-gray-700 outline-none focus:border-[#5B6CFF] focus:bg-white"
                                 />
@@ -5635,7 +6119,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             YouTube Downloader
                           </h3>
                           <p className="mt-1 text-xs text-[#7A8699]">
-                            Paste a link and an optional clip range.
+                            Paste a link to download.
                           </p>
                         </div>
                       </div>
@@ -5658,74 +6142,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             aria-label="YouTube link"
                             disabled={youtubeLoading}
                           />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-[#7A8699]">
-                              Start
-                            </label>
-                            <input
-                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
-                              placeholder="0:00"
-                              value={youtubeClipStart}
-                              onChange={(event) => {
-                                setYoutubeClipStart(event.target.value);
-                                setYoutubeError(null);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  handleYoutubeSubmit();
-                                }
-                              }}
-                              aria-label="Clip start time"
-                              disabled={youtubeLoading}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-[#7A8699]">
-                              End
-                            </label>
-                            <input
-                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
-                              placeholder="0:30"
-                              value={youtubeClipEnd}
-                              onChange={(event) => {
-                                setYoutubeClipEnd(event.target.value);
-                                setYoutubeError(null);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  handleYoutubeSubmit();
-                                }
-                              }}
-                              aria-label="Clip end time"
-                              disabled={youtubeLoading}
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[11px] font-semibold text-[#7A8699]">
-                            Quality
-                          </label>
-                          <div className="flex gap-1">
-                            {(["high", "medium", "low"] as const).map((q) => (
-                              <button
-                                key={q}
-                                type="button"
-                                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                                  youtubeQuality === q
-                                    ? "bg-[#5E81AC] text-white"
-                                    : "border border-[#E2E8F0] bg-white text-[#64748B] hover:border-[#5E81AC] hover:text-[#5E81AC]"
-                                }`}
-                                onClick={() => setYoutubeQuality(q)}
-                                disabled={youtubeLoading}
-                              >
-                                {q.charAt(0).toUpperCase() + q.slice(1)}
-                              </button>
-                            ))}
-                          </div>
                         </div>
                         <div className="flex items-center justify-end">
                           <button
@@ -5757,7 +6173,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             TikTok Downloader
                           </h3>
                           <p className="mt-1 text-xs text-[#7A8699]">
-                            Paste a link and an optional clip range.
+                            Paste a link to download.
                           </p>
                         </div>
                       </div>
@@ -5780,52 +6196,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             aria-label="TikTok link"
                             disabled={tiktokLoading}
                           />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-[#7A8699]">
-                              Start
-                            </label>
-                            <input
-                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
-                              placeholder="0:00"
-                              value={tiktokClipStart}
-                              onChange={(event) => {
-                                setTiktokClipStart(event.target.value);
-                                setTiktokError(null);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  handleTiktokSubmit();
-                                }
-                              }}
-                              aria-label="Clip start time"
-                              disabled={tiktokLoading}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-[#7A8699]">
-                              End
-                            </label>
-                            <input
-                              className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-semibold text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
-                              placeholder="0:30"
-                              value={tiktokClipEnd}
-                              onChange={(event) => {
-                                setTiktokClipEnd(event.target.value);
-                                setTiktokError(null);
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  handleTiktokSubmit();
-                                }
-                              }}
-                              aria-label="Clip end time"
-                              disabled={tiktokLoading}
-                            />
-                          </div>
                         </div>
                         <div className="flex items-center justify-end">
                           <button

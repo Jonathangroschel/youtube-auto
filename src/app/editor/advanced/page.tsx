@@ -212,6 +212,70 @@ type TimedSegment = {
   words?: TimedWord[];
 };
 
+type ProjectSizeOption = {
+  id: string;
+  label: string;
+  width?: number;
+  height?: number;
+  aspectRatio?: number | null;
+};
+
+type ProjectBackgroundImage = {
+  url: string;
+  name: string;
+  size: number;
+};
+
+const projectSizeOptions: ProjectSizeOption[] = [
+  {
+    id: "original",
+    label: "Original",
+    aspectRatio: null,
+  },
+  {
+    id: "9:16",
+    label: "Reels / TikTok",
+    width: 1080,
+    height: 1920,
+    aspectRatio: 9 / 16,
+  },
+  {
+    id: "1:1",
+    label: "Square",
+    width: 1080,
+    height: 1080,
+    aspectRatio: 1,
+  },
+  {
+    id: "16:9",
+    label: "YouTube",
+    width: 1920,
+    height: 1080,
+    aspectRatio: 16 / 9,
+  },
+  {
+    id: "4:5",
+    label: "Instagram Portrait",
+    width: 1080,
+    height: 1350,
+    aspectRatio: 4 / 5,
+  },
+  {
+    id: "4:3",
+    label: "Classic 4:3",
+    width: 1440,
+    height: 1080,
+    aspectRatio: 4 / 3,
+  },
+  {
+    id: "21:9",
+    label: "Cinematic",
+    width: 2560,
+    height: 1080,
+    aspectRatio: 21 / 9,
+  },
+];
+
 const escapeSubtitleHtml = (value: string) =>
   value.replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -358,6 +422,24 @@ export default function AdvancedEditorPage() {
     useState<RangeSelectionState | null>(null);
   const [uploading, setUploading] = useState(false);
   const [projectName, setProjectName] = useState("Untitled Project");
+  const [projectSizeId, setProjectSizeId] = useState("original");
+  const [projectDurationMode, setProjectDurationMode] = useState<
+    "automatic" | "fixed"
+  >("automatic");
+  const [projectDurationSeconds, setProjectDurationSeconds] = useState(10);
+  const [projectBackgroundMode, setProjectBackgroundMode] = useState<
+    "color" | "image"
+  >("color");
+  const [projectBackgroundImage, setProjectBackgroundImage] =
+    useState<ProjectBackgroundImage | null>(null);
+  const resolvedProjectSize = useMemo(
+    () =>
+      projectSizeOptions.find((option) => option.id === projectSizeId) ??
+      projectSizeOptions[0],
+    [projectSizeId]
+  );
+  const projectAspectRatioOverride = resolvedProjectSize?.aspectRatio ?? null;
+  const projectBackgroundUrlRef = useRef<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [canvasBackground, setCanvasBackground] = useState("#f2f3fa");
@@ -579,6 +661,38 @@ export default function AdvancedEditorPage() {
     null
   );
   const textSettingsRef = useRef<Record<string, TextClipSettings>>({});
+  const handleProjectBackgroundImageChange = useCallback((file: File | null) => {
+    if (!file) {
+      setProjectBackgroundImage(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setProjectBackgroundImage({
+      url,
+      name: file.name,
+      size: file.size,
+    });
+  }, []);
+  const handleProjectBackgroundImageClear = useCallback(() => {
+    setProjectBackgroundImage(null);
+  }, []);
+  useEffect(() => {
+    const nextUrl = projectBackgroundImage?.url ?? null;
+    if (
+      projectBackgroundUrlRef.current &&
+      projectBackgroundUrlRef.current !== nextUrl
+    ) {
+      URL.revokeObjectURL(projectBackgroundUrlRef.current);
+    }
+    projectBackgroundUrlRef.current = nextUrl;
+  }, [projectBackgroundImage?.url]);
+  useEffect(() => {
+    return () => {
+      if (projectBackgroundUrlRef.current) {
+        URL.revokeObjectURL(projectBackgroundUrlRef.current);
+      }
+    };
+  }, []);
   const loadedFontFamiliesRef = useRef<Set<string>>(new Set());
   const loadingFontFamiliesRef = useRef<Map<string, Promise<void>>>(new Map());
   const fontStylesheetPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
@@ -3265,7 +3379,9 @@ export default function AdvancedEditorPage() {
   const showVideoPanel =
     activeTool === "video" &&
     Boolean(selectedVideoEntry && selectedVideoSettings);
-  const showAudioPanel = Boolean(selectedAudioEntry && selectedAudioSettings);
+  const showAudioPanel =
+    activeTool !== "settings" &&
+    Boolean(selectedAudioEntry && selectedAudioSettings);
   const floatingSubmenuSide = useMemo(() => {
     if (!stageSize.width) {
       return "right";
@@ -3768,7 +3884,7 @@ export default function AdvancedEditorPage() {
     lastTimelineTimeRef.current = currentTime;
   }, [currentTime, isPlaying]);
 
-  const projectAspectRatio = useMemo<number>(() => {
+  const contentAspectRatio = useMemo<number>(() => {
     const visuals = timelineLayout.filter(
       (entry) => entry.asset.kind === "video" || entry.asset.kind === "image"
     );
@@ -3785,6 +3901,16 @@ export default function AdvancedEditorPage() {
     });
     return sorted[0].asset.aspectRatio ?? 16 / 9;
   }, [timelineLayout, laneIndexMap]);
+
+  const projectAspectRatio = useMemo<number>(() => {
+    if (
+      Number.isFinite(projectAspectRatioOverride) &&
+      (projectAspectRatioOverride ?? 0) > 0
+    ) {
+      return projectAspectRatioOverride ?? 16 / 9;
+    }
+    return contentAspectRatio;
+  }, [contentAspectRatio, projectAspectRatioOverride]);
 
   const stageDisplay = useMemo(() => {
     if (stageViewport.width === 0 || stageViewport.height === 0) {
@@ -3968,7 +4094,7 @@ export default function AdvancedEditorPage() {
     timelineLayout,
   ]);
 
-  const timelineTotal = useMemo(() => {
+  const contentTimelineTotal = useMemo(() => {
     return timeline.reduce(
       (max, clip) =>
         Math.max(max, (clip.startTime ?? 0) + clip.duration),
@@ -3976,9 +4102,25 @@ export default function AdvancedEditorPage() {
     );
   }, [timeline]);
 
+  const projectDuration = useMemo(() => {
+    if (
+      projectDurationMode === "fixed" &&
+      Number.isFinite(projectDurationSeconds) &&
+      projectDurationSeconds > 0
+    ) {
+      return projectDurationSeconds;
+    }
+    return contentTimelineTotal;
+  }, [contentTimelineTotal, projectDurationMode, projectDurationSeconds]);
+
+  const timelineSpan = useMemo(
+    () => Math.max(contentTimelineTotal, projectDuration),
+    [contentTimelineTotal, projectDuration]
+  );
+
   const timelineDuration = useMemo(() => {
-    return Math.max(10, Math.ceil(timelineTotal + 1));
-  }, [timelineTotal]);
+    return Math.max(10, Math.ceil(timelineSpan + 1));
+  }, [timelineSpan]);
 
   const tickStep = useMemo(() => {
     if (timelineDuration <= 60) {
@@ -4004,7 +4146,7 @@ export default function AdvancedEditorPage() {
       {
         id: "project",
         label: "Full project",
-        duration: timelineTotal,
+        duration: projectDuration,
         kind: "project",
       },
     ];
@@ -4023,7 +4165,7 @@ export default function AdvancedEditorPage() {
         });
       });
     return options;
-  }, [timelineClips, timelineTotal]);
+  }, [projectDuration, timelineClips]);
 
   useEffect(() => {
     if (
@@ -4449,7 +4591,26 @@ export default function AdvancedEditorPage() {
     [subtitleSegments, subtitleBaseSettings]
   );
 
-  const handleSubtitleAddLine = useCallback(() => {
+  const handleSubtitlePreview = useCallback(
+    (segment: { clipId: string; startTime: number; clip?: TimelineClip }) => {
+      const baseStart = segment.clip?.startTime ?? segment.startTime;
+      const safeStart = Number.isFinite(baseStart) ? Math.max(0, baseStart) : 0;
+      if (isPlaying) {
+        setIsPlaying(false);
+      }
+      setCurrentTime(safeStart);
+      setSelectedClipId(segment.clipId);
+      setSelectedClipIds([segment.clipId]);
+      setActiveCanvasClipId(segment.clipId);
+    },
+    [isPlaying]
+  );
+
+  const handleSubtitleAddLine = useCallback((options?: {
+    startTime?: number;
+    endTime?: number;
+    text?: string;
+  }) => {
     pushHistory();
     const nextLanes = [...lanesRef.current];
     const laneId =
@@ -4460,21 +4621,30 @@ export default function AdvancedEditorPage() {
     subtitleLaneIdRef.current = laneId;
     const lastSegment = subtitleSegments[subtitleSegments.length - 1];
     const fallbackTime = playbackTimeRef.current;
-    const startTime = lastSegment
-      ? lastSegment.endTime + 0.2
-      : fallbackTime;
-    const duration = 2.4;
+    const explicitStart = options?.startTime;
+    const explicitEnd = options?.endTime;
+    const baseStart = Number.isFinite(explicitStart)
+      ? Math.max(0, explicitStart as number)
+      : lastSegment
+        ? lastSegment.endTime + 0.2
+        : fallbackTime;
+    const defaultDuration = 2.4;
+    const baseEnd = Number.isFinite(explicitEnd)
+      ? (explicitEnd as number)
+      : baseStart + defaultDuration;
+    const duration = Math.max(minClipDuration, baseEnd - baseStart);
+    const subtitleText = options?.text ?? "";
     const asset = {
       ...createTextAsset("Subtitle"),
       duration,
     };
-    const clip = createClip(asset.id, laneId, startTime, asset);
+    const clip = createClip(asset.id, laneId, baseStart, asset);
     const segment: SubtitleSegment = {
       id: crypto.randomUUID(),
       clipId: clip.id,
-      text: "",
-      startTime,
-      endTime: startTime + duration,
+      text: subtitleText,
+      startTime: baseStart,
+      endTime: baseStart + duration,
       sourceClipId: null,
       words: undefined,
     };
@@ -4483,7 +4653,7 @@ export default function AdvancedEditorPage() {
     setTimeline((prev) => [...prev, clip]);
     setTextSettings((prev) => ({
       ...prev,
-      [clip.id]: resolveSubtitleSettings(""),
+      [clip.id]: resolveSubtitleSettings(subtitleText),
     }));
     // Set the proper subtitle transform (bottom, wider, taller for multi-line)
     setClipTransforms((prev) => ({
@@ -4492,7 +4662,20 @@ export default function AdvancedEditorPage() {
     }));
     setSubtitleSegments((prev) => [...prev, segment]);
     setSubtitleActiveTab("edit");
-  }, [resolveSubtitleSettings, subtitleSegments, pushHistory, stageAspectRatio]);
+    if (isPlaying) {
+      setIsPlaying(false);
+    }
+    setSelectedClipId(clip.id);
+    setSelectedClipIds([clip.id]);
+    setActiveCanvasClipId(clip.id);
+    setCurrentTime(baseStart);
+  }, [
+    resolveSubtitleSettings,
+    subtitleSegments,
+    pushHistory,
+    stageAspectRatio,
+    isPlaying,
+  ]);
 
   const handleSubtitleDelete = useCallback(
     (segmentId: string) => {
@@ -5677,14 +5860,14 @@ export default function AdvancedEditorPage() {
         Math.abs(drift) > 0.045
           ? subtitleTime
           : rawNext + drift * 0.2;
-      if (next >= timelineTotal) {
-        playbackTimeRef.current = timelineTotal;
+      if (next >= projectDuration) {
+        playbackTimeRef.current = projectDuration;
         startTransition(() => {
-          setCurrentTime(timelineTotal);
+          setCurrentTime(projectDuration);
         });
         setIsPlaying(false);
         // Final subtitle update at end
-        updateSubtitleForTimeRef.current(timelineTotal);
+        updateSubtitleForTimeRef.current(projectDuration);
         return;
       }
       playbackTimeRef.current = next;
@@ -5707,7 +5890,7 @@ export default function AdvancedEditorPage() {
     updateSubtitleForTimeRef.current(getSubtitlePlaybackTime(startTime));
     frameId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frameId);
-  }, [getSubtitlePlaybackTime, isPlaying, startTransition, timelineTotal]);
+  }, [getSubtitlePlaybackTime, isPlaying, projectDuration, startTransition]);
 
   useEffect(() => {
     if (!isPlaying) {
@@ -6514,13 +6697,11 @@ export default function AdvancedEditorPage() {
       startSeconds,
       endSeconds,
       location,
-      quality,
     }: {
       url: string;
       startSeconds?: number | null;
       endSeconds?: number | null;
       location?: string;
-      quality?: "high" | "medium" | "low";
     }) => {
       const response = await fetch("/api/youtube-download", {
         method: "POST",
@@ -6530,7 +6711,7 @@ export default function AdvancedEditorPage() {
         body: JSON.stringify({
           url,
           location,
-          quality: quality || "medium",
+          format: "1080",
         }),
       });
 
@@ -7162,6 +7343,19 @@ export default function AdvancedEditorPage() {
         const isSubtitleClip = subtitleSegments.some(
           (segment) => segment.clipId === clipId
         );
+        if (
+          isSubtitleClip &&
+          typeof next.text === "string" &&
+          next.text !== current.text
+        ) {
+          setSubtitleSegments((segments) =>
+            segments.map((segment) =>
+              segment.clipId === clipId
+                ? { ...segment, text: next.text, words: undefined }
+                : segment
+            )
+          );
+        }
         if (!isSubtitleClip || !subtitleMoveTogether) {
           return { ...prev, [clipId]: next };
         }
@@ -10345,6 +10539,8 @@ export default function AdvancedEditorPage() {
     activeAssetId,
     activeTool,
     activeToolLabel,
+    contentAspectRatio,
+    contentTimelineTotal,
     addTextClip,
     addToTimeline,
     assetFilter,
@@ -10417,6 +10613,7 @@ export default function AdvancedEditorPage() {
     setActiveCanvasClipId,
     setAssetFilter,
     setAssetSearch,
+    setActiveTool,
     setExpandedTextGroupId,
     setGifSearch,
     setIsAssetLibraryExpanded,
@@ -10440,6 +10637,12 @@ export default function AdvancedEditorPage() {
     setSubtitleLanguage,
     setSubtitleSource,
     setSubtitleStyleFilter,
+    setProjectBackgroundMode,
+    setProjectDurationMode,
+    setProjectDurationSeconds,
+    setProjectSizeId,
+    handleProjectBackgroundImageChange,
+    handleProjectBackgroundImageClear,
     setTextPanelAlign,
     setTextPanelBackgroundColor,
     setTextPanelBackgroundEnabled,
@@ -10509,9 +10712,17 @@ export default function AdvancedEditorPage() {
     subtitleStylePresets: resolvedSubtitleStylePresets,
     detachedSubtitleIds,
     subtitleMoveTogether,
+    projectAspectRatio,
+    projectBackgroundImage,
+    projectBackgroundMode,
+    projectDurationMode,
+    projectDurationSeconds,
+    projectSizeId,
+    projectSizeOptions,
     applySubtitleStyle,
     handleGenerateSubtitles,
     handleSubtitleAddLine,
+    handleSubtitlePreview,
     handleSubtitleDelete,
     handleSubtitleDeleteAll,
     handleSubtitleDetachToggle,
@@ -10622,6 +10833,14 @@ export default function AdvancedEditorPage() {
                     width: `${baseBackgroundTransform.width * 100}%`,
                     height: `${baseBackgroundTransform.height * 100}%`,
                     backgroundColor: videoBackground,
+                    backgroundImage:
+                      projectBackgroundMode === "image" &&
+                      projectBackgroundImage?.url
+                        ? `url(${projectBackgroundImage.url})`
+                        : undefined,
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                    backgroundSize: "cover",
                     zIndex: 1,
                   }}
                 />
