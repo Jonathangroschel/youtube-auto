@@ -152,10 +152,15 @@ function LoginContent() {
     setError(null);
 
     try {
+      // Always use the canonical production URL for OAuth callback
+      const redirectUrl = process.env.NODE_ENV === "development"
+        ? `${window.location.origin}/auth/callback`
+        : "https://saturaai.com/auth/callback";
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: redirectUrl,
         },
       });
 
