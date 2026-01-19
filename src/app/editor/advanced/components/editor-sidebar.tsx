@@ -62,13 +62,7 @@ import { SliderField } from "./slider-field";
 import { StockVideoCard } from "./stock-video-card";
 import { ToggleSwitch } from "./toggle-switch";
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      "dotlottie-player": any;
-    }
-  }
-}
+const DotLottiePlayer = "dotlottie-player" as any;
 
 type EditorSidebarProps = {
   updateClipSettings: (
@@ -379,7 +373,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [tiktokLoading, setTiktokLoading] = useState(false);
   const downloadLoader = (
     <div className="flex items-center justify-center py-6">
-      <dotlottie-player
+      <DotLottiePlayer
         src="/loading-state.lottie"
         autoplay
         loop
