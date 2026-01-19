@@ -373,7 +373,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       <div className="relative h-16 w-16">
         <div className="absolute inset-0 rounded-full border-2 border-gray-200/70" />
         <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[#5E81AC] border-r-[#5E81AC]" />
-        <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#5E81AC] animate-pulse" />
       </div>
       <span className="sr-only">Downloading...</span>
     </div>
