@@ -375,8 +375,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     <div className="flex items-center justify-center py-6">
       <DotLottiePlayer
         src="/loading-state.lottie"
-        autoplay
-        loop
+        autoplay="true"
+        loop="true"
         className="block h-24 w-24"
       />
       <span className="sr-only">Downloading...</span>
@@ -842,6 +842,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
         src="https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs"
         type="module"
         strategy="afterInteractive"
+        crossOrigin="anonymous"
       />
       {showVideoPanel && selectedVideoEntry && selectedVideoSettings ? (
       <div className="flex h-full flex-col">
