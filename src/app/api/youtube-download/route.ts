@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { ApifyClient } from "apify-client";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 const SUPABASE_BUCKET = "youtube-downloads";
+const YOUTUBE_DOWNLOADER_STANDBY_URL =
+  process.env.APIFY_YOUTUBE_DOWNLOADER_STANDBY_URL ||
+  "https://youtube-download-api--youtube-video-downloader.apify.actor";
 
 type ApifyResultItem = {
   title?: string;
@@ -12,6 +14,7 @@ type ApifyResultItem = {
   duration?: number;
   width?: number;
   height?: number;
+  filename?: string;
   downloadUrl?: string;
   videoUrl?: string;
   fileUrl?: string;
@@ -76,12 +79,38 @@ const getVideoInfo = async (url: string): Promise<{ title: string } | null> => {
 const getString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 
+const resolveFormat = (formatValue: unknown, qualityValue: unknown): string => {
+  const allowedFormats = new Set([
+    "1080",
+    "720",
+    "480",
+    "360",
+    "240",
+    "144",
+    "mp3",
+  ]);
+  const normalizedFormat =
+    typeof formatValue === "string" ? formatValue.trim().toLowerCase() : "";
+  if (allowedFormats.has(normalizedFormat)) {
+    return normalizedFormat;
+  }
+
+  const qualityMap: Record<string, string> = {
+    high: "1080",
+    medium: "720",
+    low: "480",
+  };
+  const normalizedQuality =
+    typeof qualityValue === "string" ? qualityValue.trim().toLowerCase() : "";
+  return qualityMap[normalizedQuality] || "1080";
+};
+
 // Find download URL from actor result
 const findDownloadUrl = (item: ApifyResultItem): string | null => {
   // Check common field names for download URL
   const urlFields = [
     "downloadUrl",
-    "videoUrl", 
+    "videoUrl",
     "fileUrl",
     "url",
     "video_url",
@@ -102,6 +131,118 @@ const findDownloadUrl = (item: ApifyResultItem): string | null => {
   return null;
 };
 
+const resolveFilename = (value: unknown): string | null => {
+  const resolved = getString(value);
+  return resolved?.includes("/") ? resolved.split("/").pop() ?? null : resolved;
+};
+
+const resolveExtension = (
+  downloadUrl: string,
+  contentType: string | null,
+  filename: string | null
+): string => {
+  const loweredType = (contentType ?? "").toLowerCase();
+  if (loweredType.includes("audio/mpeg") || loweredType.includes("audio/mp3")) {
+    return "mp3";
+  }
+  if (loweredType.includes("audio/")) {
+    return "mp3";
+  }
+  if (loweredType.includes("webm")) {
+    return "webm";
+  }
+  if (loweredType.includes("mp4")) {
+    return "mp4";
+  }
+
+  const candidate = filename ?? downloadUrl;
+  try {
+    const pathname = candidate.startsWith("http")
+      ? new URL(candidate).pathname
+      : candidate;
+    const lowerPath = pathname.toLowerCase();
+    if (lowerPath.endsWith(".mp3")) {
+      return "mp3";
+    }
+    if (lowerPath.endsWith(".webm")) {
+      return "webm";
+    }
+    if (lowerPath.endsWith(".mp4")) {
+      return "mp4";
+    }
+    if (lowerPath.endsWith(".mov")) {
+      return "mov";
+    }
+  } catch {
+    // Ignore malformed URLs and fall back to mp4.
+  }
+  return "mp4";
+};
+
+const normalizeActorItems = (data: unknown): ApifyResultItem[] => {
+  if (Array.isArray(data)) {
+    return data.filter((item) => item && typeof item === "object") as ApifyResultItem[];
+  }
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    if (Array.isArray(record.items)) {
+      return record.items.filter((item) => item && typeof item === "object") as ApifyResultItem[];
+    }
+    if (record.data && typeof record.data === "object") {
+      const nested = record.data as Record<string, unknown>;
+      if (Array.isArray(nested.items)) {
+        return nested.items.filter((item) => item && typeof item === "object") as ApifyResultItem[];
+      }
+      return [nested as ApifyResultItem];
+    }
+    return [record as ApifyResultItem];
+  }
+  return [];
+};
+
+const requestStandbyItems = async (
+  standbyUrl: string,
+  url: string,
+  format: string
+): Promise<{ items: ApifyResultItem[]; error?: string }> => {
+  const actorResponse = await fetch(standbyUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ url, format }),
+  });
+
+  if (!actorResponse.ok) {
+    let errorDetail = `Downloader request failed (${actorResponse.status}).`;
+    try {
+      const errorPayload = await actorResponse.json();
+      errorDetail =
+        getString((errorPayload as Record<string, unknown>)?.error) ||
+        getString((errorPayload as Record<string, unknown>)?.message) ||
+        getString((errorPayload as Record<string, unknown>)?.detail) ||
+        errorDetail;
+    } catch {
+      // Ignore JSON parse errors and fall back to status message.
+    }
+    return { items: [], error: errorDetail };
+  }
+
+  let actorPayload: unknown = null;
+  try {
+    actorPayload = await actorResponse.json();
+  } catch {
+    return { items: [], error: "Downloader response was not valid JSON." };
+  }
+
+  const items = normalizeActorItems(actorPayload);
+  if (items.length === 0) {
+    return { items: [], error: "Downloader returned no results." };
+  }
+
+  return { items };
+};
+
 // Add token to Apify URLs if needed
 const addApifyToken = (videoUrl: string, apiToken: string): string => {
   try {
@@ -119,48 +260,6 @@ const addApifyToken = (videoUrl: string, apiToken: string): string => {
   return videoUrl;
 };
 
-// Read dataset items with retries
-const readDatasetItems = async (
-  client: ApifyClient,
-  datasetId: string
-): Promise<ApifyResultItem[]> => {
-  const retries = [0, 1000, 2000, 4000];
-  for (const delay of retries) {
-    if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-    const { items } = await client.dataset(datasetId).listItems({ limit: 10 });
-    if (Array.isArray(items) && items.length > 0) {
-      return items as ApifyResultItem[];
-    }
-  }
-  return [];
-};
-
-// Try to get video from key-value store
-const tryGetKeyValueStoreVideo = async (
-  runId: string,
-  apiToken: string
-): Promise<{ url: string; contentType: string | null } | null> => {
-  const possibleKeys = ["OUTPUT", "video", "VIDEO", "output", "file", "download", "result"];
-  
-  for (const key of possibleKeys) {
-    try {
-      const kvStoreUrl = `https://api.apify.com/v2/actor-runs/${runId}/key-value-store/records/${key}?token=${apiToken}`;
-      const headResponse = await fetch(kvStoreUrl, { method: "HEAD" });
-      if (headResponse.ok) {
-        const contentType = headResponse.headers.get("content-type");
-        if (contentType?.includes("video") || contentType?.includes("octet-stream")) {
-          return { url: kvStoreUrl, contentType };
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-};
-
 export async function POST(request: Request) {
   const apiToken =
     process.env.APIFY_API_TOKEN ||
@@ -174,7 +273,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let payload: { url?: string; quality?: string } | null = null;
+  let payload: { url?: string; quality?: string; format?: string } | null = null;
   try {
     payload = await request.json();
   } catch {
@@ -187,137 +286,85 @@ export async function POST(request: Request) {
   }
 
   const videoId = extractVideoId(url);
-  
-  // Map quality names to resolution numbers
-  const qualityMap: Record<string, string> = {
-    high: "1080",
-    medium: "720",
-    low: "480",
-  };
-  const requestedQuality = payload?.quality?.toLowerCase() || "medium";
-  const quality = qualityMap[requestedQuality] || "1080";
+  const requestedFormat = resolveFormat(payload?.format, payload?.quality);
 
   try {
     // Get video title via oEmbed first
     const videoInfo = await getVideoInfo(url);
     const title = videoInfo?.title ?? "YouTube video";
 
-    const client = new ApifyClient({ token: apiToken });
-    
-    // Start the YouTube downloader actor (z4hUd9qNTetQtzEcK)
-    // Use start() instead of call() to avoid Vercel timeout issues
-    console.log("Starting Apify actor for URL:", url, "Quality:", quality);
-    const run = await client.actor("z4hUd9qNTetQtzEcK").start({
-      urls: [{ url }],
-      quality,
-      proxy: { useApifyProxy: true },
-    });
-
-    if (!run?.id) {
-      return NextResponse.json(
-        { error: "Failed to start downloader actor." },
-        { status: 502 }
-      );
+    const standbyUrl = new URL(YOUTUBE_DOWNLOADER_STANDBY_URL);
+    if (!standbyUrl.searchParams.has("token")) {
+      standbyUrl.searchParams.set("token", apiToken);
     }
 
-    console.log("Actor run started, ID:", run.id);
+    console.log("Calling YouTube downloader standby actor:", standbyUrl.origin);
 
-    // Poll for completion (max 2 minutes, check every 2 seconds)
-    const maxWaitTime = 120000; // 2 minutes
-    const pollInterval = 2000; // 2 seconds
-    const startTime = Date.now();
-    let runStatus = await client.run(run.id).get();
-
-    if (!runStatus) {
-      return NextResponse.json(
-        { error: "Failed to get actor run status." },
-        { status: 502 }
-      );
-    }
-
-    while (runStatus.status !== "SUCCEEDED" && Date.now() - startTime < maxWaitTime) {
-      if (runStatus.status === "FAILED" || runStatus.status === "ABORTED") {
-        return NextResponse.json(
-          { error: `Actor run ${runStatus.status.toLowerCase()}.` },
-          { status: 502 }
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      const updatedStatus = await client.run(run.id).get();
-      if (!updatedStatus) {
-        return NextResponse.json(
-          { error: "Failed to get actor run status during polling." },
-          { status: 502 }
-        );
-      }
-      runStatus = updatedStatus;
-    }
-
-    if (runStatus.status !== "SUCCEEDED") {
-      return NextResponse.json(
-        { error: "Actor run timed out or did not complete." },
-        { status: 502 }
-      );
-    }
-
-    if (!runStatus.defaultDatasetId) {
-      return NextResponse.json(
-        { error: "Downloader did not return dataset results." },
-        { status: 502 }
-      );
-    }
-
-    console.log("Actor run completed, dataset:", runStatus.defaultDatasetId);
-
-    // Get results from dataset
-    const items = await readDatasetItems(client, runStatus.defaultDatasetId);
-    console.log("Dataset items:", JSON.stringify(items, null, 2));
+    const videoFormatOrder = ["1080", "720", "480", "360", "240", "144"];
+    const formatCandidates =
+      requestedFormat === "mp3"
+        ? ["mp3"]
+        : (() => {
+            const startIndex = videoFormatOrder.indexOf(requestedFormat);
+            return startIndex >= 0
+              ? videoFormatOrder.slice(startIndex)
+              : videoFormatOrder;
+          })();
 
     let downloadUrl: string | null = null;
     let downloadResponse: Response | null = null;
+    let items: ApifyResultItem[] = [];
+    let resolvedFormat = requestedFormat;
+    let lastError = "Downloader returned no results.";
 
-    // Strategy 1: Check dataset for download URL
-    for (const item of items) {
-      const itemUrl = findDownloadUrl(item);
-      if (itemUrl) {
-        const urlWithToken = addApifyToken(itemUrl, apiToken);
-        try {
-          const response = await fetch(urlWithToken);
-          if (response.ok && response.body) {
-            downloadUrl = urlWithToken;
-            downloadResponse = response;
-            console.log("Found download URL in dataset:", downloadUrl);
-            break;
+    for (const candidateFormat of formatCandidates) {
+      const result = await requestStandbyItems(
+        standbyUrl.toString(),
+        url,
+        candidateFormat
+      );
+      if (!result.items.length) {
+        if (result.error) {
+          lastError = result.error;
+        }
+        continue;
+      }
+
+      // Check actor response for download URL
+      for (const item of result.items) {
+        const itemUrl = findDownloadUrl(item);
+        if (itemUrl) {
+          const urlWithToken = addApifyToken(itemUrl, apiToken);
+          try {
+            const response = await fetch(urlWithToken);
+            if (response.ok && response.body) {
+              downloadUrl = urlWithToken;
+              downloadResponse = response;
+              items = result.items;
+              resolvedFormat = candidateFormat;
+              console.log("Found download URL in actor response:", downloadUrl);
+              break;
+            }
+          } catch (err) {
+            console.error("Failed to fetch from actor URL:", err);
           }
-        } catch (err) {
-          console.error("Failed to fetch from dataset URL:", err);
         }
       }
-    }
 
-    // Strategy 2: Check key-value store for video file
-    if (!downloadResponse && runStatus.id) {
-      console.log("Checking key-value store...");
-      const kvResult = await tryGetKeyValueStoreVideo(runStatus.id, apiToken);
-      if (kvResult) {
-        try {
-          const response = await fetch(kvResult.url);
-          if (response.ok && response.body) {
-            downloadUrl = kvResult.url;
-            downloadResponse = response;
-            console.log("Found video in key-value store:", downloadUrl);
-          }
-        } catch (err) {
-          console.error("Failed to fetch from KV store:", err);
-        }
+      if (downloadResponse && downloadUrl) {
+        break;
       }
+
+      lastError = "No downloadable video URL found in actor results.";
     }
 
-    if (!downloadResponse || !downloadUrl) {
+    if (!downloadResponse || !downloadUrl || items.length === 0) {
       // Log what we got for debugging
-      console.error("No downloadable video found. Items received:", items);
+      if (items.length > 0) {
+        console.error("No downloadable video found. Items received:", items);
+      }
       return NextResponse.json(
-        { error: "No downloadable video URL found in actor results." },
+        { error: lastError },
         { status: 502 }
       );
     }
@@ -333,9 +380,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Determine extension
-    let extension = "mp4";
-    if (contentType.includes("webm")) extension = "webm";
+    const firstItem = items[0] || {};
+    const resolvedFilename = resolveFilename(firstItem.filename);
+    const extension = resolveExtension(downloadUrl, contentType, resolvedFilename);
 
     // Upload to Supabase
     const baseName = videoId ? `yt-${videoId}` : `yt-${Date.now()}`;
@@ -351,7 +398,6 @@ export async function POST(request: Request) {
     }
 
     // Get metadata from first item if available
-    const firstItem = items[0] || {};
 
     return NextResponse.json({
       title: getString(firstItem.title) || title,
@@ -362,7 +408,9 @@ export async function POST(request: Request) {
       width: typeof firstItem.width === "number" ? firstItem.width : null,
       height: typeof firstItem.height === "number" ? firstItem.height : null,
       size: fileSize,
-      qualityLabel: getString(firstItem.quality) || quality + "p",
+      qualityLabel:
+        getString(firstItem.quality) ||
+        (resolvedFormat === "mp3" ? "mp3" : `${resolvedFormat}p`),
     });
   } catch (error) {
     const message =

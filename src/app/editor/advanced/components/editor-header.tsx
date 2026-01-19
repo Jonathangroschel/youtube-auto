@@ -29,7 +29,7 @@ export const EditorHeader = ({
             type="button"
             aria-label="Home"
           >
-            <img src="/icon.svg" alt="Home" className="h-9 w-9 -ml-1" />
+            <img src="/icon.svg" alt="Home" className="h-9 w-9 ml-[-2px]" />
           </button>
           <div className="flex h-10 items-center gap-2 rounded-full bg-gray-100/80 px-3.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
