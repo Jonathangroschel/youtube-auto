@@ -61,8 +61,6 @@ import { SliderField } from "./slider-field";
 import { StockVideoCard } from "./stock-video-card";
 import { ToggleSwitch } from "./toggle-switch";
 
-const DotLottiePlayer = "dotlottie-player" as any;
-
 type EditorSidebarProps = {
   updateClipSettings: (
     clipId: string,
@@ -372,13 +370,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [tiktokLoading, setTiktokLoading] = useState(false);
   const downloadLoader = (
     <div className="flex items-center justify-center py-6">
-      <DotLottiePlayer
-        src="/loading-state.lottie"
-        autoplay="true"
-        loop="true"
-        className="block h-24 w-24"
-        style={{ width: 96, height: 96 }}
-      />
+      <div className="relative h-16 w-16">
+        <div className="absolute inset-0 rounded-full border-2 border-gray-200/70" />
+        <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[#5E81AC] border-r-[#5E81AC]" />
+        <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#5E81AC] animate-pulse" />
+      </div>
       <span className="sr-only">Downloading...</span>
     </div>
   );
@@ -438,31 +434,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       setTiktokLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (customElements.get("dotlottie-player")) {
-      return;
-    }
-    const existing = document.querySelector(
-      'script[data-dotlottie-player="true"]'
-    );
-    if (existing) {
-      return;
-    }
-    const script = document.createElement("script");
-    script.src =
-      "https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs";
-    script.type = "module";
-    script.crossOrigin = "anonymous";
-    script.dataset.dotlottiePlayer = "true";
-    document.head.appendChild(script);
-    return () => {
-      script.remove();
-    };
-  }, []);
 
   useEffect(() => {
     if (subtitleStatus !== "loading") {
