@@ -2,6 +2,9 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { signOut } from "@/app/login/actions";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 type NavItem = {
   label: string;
@@ -369,12 +372,37 @@ export default function DashboardPage() {
     opacity: 0,
   });
   const [indicatorReady, setIndicatorReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const navContainerRef = useRef<HTMLDivElement | null>(null);
   const navItemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const activeNavIndex = navItems.findIndex((item) => item.active);
   const resolvedNavIndex =
     hoveredNavIndex ?? (activeNavIndex >= 0 ? activeNavIndex : 0);
+
+  // Fetch user on mount
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+    } catch {
+      setIsLoggingOut(false);
+    }
+  };
+
+  // Get user display info
+  const userEmail = user?.email ?? "";
+  const userName = user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? userEmail.split("@")[0] ?? "User";
+  const userAvatar = user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? null;
+  const userInitials = userName.slice(0, 2).toUpperCase();
 
   const updateIndicator = useCallback((index: number) => {
     const container = navContainerRef.current;
@@ -560,18 +588,24 @@ export default function DashboardPage() {
             >
               <div className="p-3">
                 <div className="flex items-center space-x-3">
-                  <img
-                    src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
-                    alt="Profile"
-                    className="h-10 w-10 rounded-full object-cover"
-                    draggable="false"
-                  />
+                  {userAvatar ? (
+                    <img
+                      src={userAvatar}
+                      alt="Profile"
+                      className="h-10 w-10 rounded-full object-cover"
+                      draggable="false"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-sm font-semibold text-white">
+                      {userInitials}
+                    </div>
+                  )}
                   <div className="flex-1">
                     <p className="text-sm font-medium text-gray-900">
-                      Jonathan Groschel
+                      {userName}
                     </p>
                     <p className="text-xs text-gray-500">
-                      jonathangroschel5@gmail.com
+                      {userEmail}
                     </p>
                   </div>
                 </div>
@@ -642,27 +676,38 @@ export default function DashboardPage() {
               </div>
 
               <div className="p-2">
-                {mobileFooterActions.map((action) => (
-                  <a
-                    key={action.label}
-                    href={action.href}
-                    className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      action.tone === "danger"
-                        ? "text-red-600 hover:bg-red-50"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {action.label}
-                  </a>
-                ))}
+                {mobileFooterActions.map((action) =>
+                  action.label === "Log Out" ? (
+                    <button
+                      key={action.label}
+                      className="mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                      onClick={handleSignOut}
+                      disabled={isLoggingOut}
+                    >
+                      {isLoggingOut ? "Logging out..." : action.label}
+                    </button>
+                  ) : (
+                    <a
+                      key={action.label}
+                      href={action.href}
+                      className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        action.tone === "danger"
+                          ? "text-red-600 hover:bg-red-50"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      {action.label}
+                    </a>
+                  )
+                )}
               </div>
             </div>
           </div>
 
           <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
             <p className="text-lg font-semibold text-black">
-              Welcome back, Jonathan 👋
+              Welcome back, {userName.split(" ")[0]} 👋
             </p>
             <div className="relative" ref={profileMenuRef}>
               <button
@@ -673,12 +718,18 @@ export default function DashboardPage() {
                 aria-controls="dashboard-profile-menu"
                 onClick={() => setProfileMenuOpen((open) => !open)}
               >
-                <img
-                  src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
-                  alt="Profile"
-                  className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
-                  draggable="false"
-                />
+                {userAvatar ? (
+                  <img
+                    src={userAvatar}
+                    alt="Profile"
+                    className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                    draggable="false"
+                  />
+                ) : (
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                    {userInitials}
+                  </div>
+                )}
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
@@ -701,16 +752,22 @@ export default function DashboardPage() {
                 }`}
               >
                 <div className="flex flex-row items-center space-x-2 px-3 py-2">
-                  <img
-                    src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
-                    alt="Profile"
-                    className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
-                    draggable="false"
-                  />
+                  {userAvatar ? (
+                    <img
+                      src={userAvatar}
+                      alt="Profile"
+                      className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                      draggable="false"
+                    />
+                  ) : (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                      {userInitials}
+                    </div>
+                  )}
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium">Jonathan Groschel</p>
+                    <p className="text-base font-medium">{userName}</p>
                     <p className="text-xs text-gray-500">
-                      jonathangroschel5@gmail.com
+                      {userEmail}
                     </p>
                   </div>
                 </div>
@@ -736,11 +793,12 @@ export default function DashboardPage() {
                   24/7 Support
                 </button>
                 <button
-                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 disabled:opacity-50 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
-                  onClick={() => setProfileMenuOpen(false)}
+                  onClick={handleSignOut}
+                  disabled={isLoggingOut}
                 >
-                  Log Out
+                  {isLoggingOut ? "Logging out..." : "Log Out"}
                 </button>
               </div>
             </div>
