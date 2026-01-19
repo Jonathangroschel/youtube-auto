@@ -13,7 +13,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import Script from "next/script";
 
 import { panelButtonClass, panelCardClass, speedPresets } from "../constants";
 
@@ -378,6 +377,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
         autoplay="true"
         loop="true"
         className="block h-24 w-24"
+        style={{ width: 96, height: 96 }}
       />
       <span className="sr-only">Downloading...</span>
     </div>
@@ -438,6 +438,31 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       setTiktokLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (customElements.get("dotlottie-player")) {
+      return;
+    }
+    const existing = document.querySelector(
+      'script[data-dotlottie-player="true"]'
+    );
+    if (existing) {
+      return;
+    }
+    const script = document.createElement("script");
+    script.src =
+      "https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs";
+    script.type = "module";
+    script.crossOrigin = "anonymous";
+    script.dataset.dotlottiePlayer = "true";
+    document.head.appendChild(script);
+    return () => {
+      script.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (subtitleStatus !== "loading") {
@@ -838,12 +863,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
   return (
     <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
-      <Script
-        src="https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs"
-        type="module"
-        strategy="afterInteractive"
-        crossOrigin="anonymous"
-      />
       {showVideoPanel && selectedVideoEntry && selectedVideoSettings ? (
       <div className="flex h-full flex-col">
         {/* Minimal Header */}
