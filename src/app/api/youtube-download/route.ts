@@ -243,6 +243,37 @@ const requestStandbyItems = async (
   return { items };
 };
 
+const fetchDownloadBuffer = async (
+  downloadUrl: string
+): Promise<{ buffer: ArrayBuffer; contentType: string | null } | null> => {
+  const retries = [0, 800, 1600, 2600];
+  for (const delay of retries) {
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    let response: Response | null = null;
+    try {
+      response = await fetch(downloadUrl);
+    } catch (error) {
+      console.warn("Download fetch failed:", error);
+      continue;
+    }
+    if (!response.ok || !response.body) {
+      continue;
+    }
+    const contentLength = response.headers.get("content-length");
+    if (contentLength === "0") {
+      continue;
+    }
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength === 0) {
+      continue;
+    }
+    return { buffer, contentType: response.headers.get("content-type") };
+  }
+  return null;
+};
+
 // Add token to Apify URLs if needed
 const addApifyToken = (videoUrl: string, apiToken: string): string => {
   try {
@@ -312,7 +343,8 @@ export async function POST(request: Request) {
           })();
 
     let downloadUrl: string | null = null;
-    let downloadResponse: Response | null = null;
+    let downloadBuffer: ArrayBuffer | null = null;
+    let downloadContentType: string | null = null;
     let items: ApifyResultItem[] = [];
     let resolvedFormat = requestedFormat;
     let lastError = "Downloader returned no results.";
@@ -335,30 +367,27 @@ export async function POST(request: Request) {
         const itemUrl = findDownloadUrl(item);
         if (itemUrl) {
           const urlWithToken = addApifyToken(itemUrl, apiToken);
-          try {
-            const response = await fetch(urlWithToken);
-            if (response.ok && response.body) {
-              downloadUrl = urlWithToken;
-              downloadResponse = response;
-              items = result.items;
-              resolvedFormat = candidateFormat;
-              console.log("Found download URL in actor response:", downloadUrl);
-              break;
-            }
-          } catch (err) {
-            console.error("Failed to fetch from actor URL:", err);
+          const downloadResult = await fetchDownloadBuffer(urlWithToken);
+          if (downloadResult) {
+            downloadUrl = urlWithToken;
+            downloadBuffer = downloadResult.buffer;
+            downloadContentType = downloadResult.contentType;
+            items = result.items;
+            resolvedFormat = candidateFormat;
+            console.log("Found download URL in actor response:", downloadUrl);
+            break;
           }
         }
       }
 
-      if (downloadResponse && downloadUrl) {
+      if (downloadBuffer && downloadUrl) {
         break;
       }
 
       lastError = "No downloadable video URL found in actor results.";
     }
 
-    if (!downloadResponse || !downloadUrl || items.length === 0) {
+    if (!downloadBuffer || !downloadUrl || items.length === 0) {
       // Log what we got for debugging
       if (items.length > 0) {
         console.error("No downloadable video found. Items received:", items);
@@ -369,8 +398,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const contentType = downloadResponse.headers.get("content-type") || "video/mp4";
-    const videoBuffer = await downloadResponse.arrayBuffer();
+    const contentType = downloadContentType || "video/mp4";
+    const videoBuffer = downloadBuffer;
     const fileSize = videoBuffer.byteLength;
 
     if (fileSize === 0) {
