@@ -62,6 +62,14 @@ import { SliderField } from "./slider-field";
 import { StockVideoCard } from "./stock-video-card";
 import { ToggleSwitch } from "./toggle-switch";
 
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      "dotlottie-player": any;
+    }
+  }
+}
+
 type EditorSidebarProps = {
   updateClipSettings: (
     clipId: string,
