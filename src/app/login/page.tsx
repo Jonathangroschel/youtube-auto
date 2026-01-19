@@ -137,9 +137,8 @@ function LoginContent() {
       const result = isSignUp ? await signup(formData) : await login(formData);
       if (result && "error" in result && result.error) {
         setError(result.error);
-      } else if (result && "success" in result && result.success) {
-        setSuccess(result.success);
       }
+      // If no error, user will be redirected by the server action
     } catch {
       setError("An unexpected error occurred");
     } finally {

@@ -37,7 +37,7 @@ export async function signup(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  return { success: "Check your email to confirm your account!" };
+  redirect("/dashboard");
 }
 
 export async function signOut() {
