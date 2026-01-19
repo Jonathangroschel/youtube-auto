@@ -5,6 +5,8 @@ import { supabaseServer } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 const SUPABASE_BUCKET = "tiktok-downloads";
+const TIKTOK_ACTOR_ID = "cheapget/tiktok-video-downloader";
+const DEFAULT_TIKTOK_QUALITY = "high";
 
 // Upload video buffer to Supabase storage
 const uploadToSupabase = async (
@@ -45,6 +47,12 @@ type TikTokResultItem = Record<string, unknown> & {
   videoUrlNoWatermark?: string;
   videoFileUrl?: string;
   downloadUrl?: string;
+  video_url?: string;
+  title?: string;
+  duration?: number | string;
+  width?: number;
+  height?: number;
+  filesize_kb?: number;
   desc?: string;
   description?: string;
   text?: string;
@@ -71,6 +79,7 @@ const getString = (value: unknown) =>
 
 const resolveTikTokVideoUrl = (item: TikTokResultItem) => {
   const candidates = [
+    item.video_url,
     item.videoFileUrl,
     item.videoUrl,
     item.videoUrlNoWatermark,
@@ -111,6 +120,7 @@ const resolveTikTokVideoUrl = (item: TikTokResultItem) => {
 
 const resolveTikTokTitle = (item: TikTokResultItem) => {
   return (
+    getString(item.title) ??
     getString(item.videoTitle) ??
     getString(item.desc) ??
     getString(item.description) ??
@@ -158,6 +168,37 @@ const readDatasetItem = async (client: ApifyClient, datasetId: string) => {
   return null;
 };
 
+const fetchDownloadBuffer = async (
+  downloadUrl: string
+): Promise<{ buffer: ArrayBuffer; contentType: string | null } | null> => {
+  const retries = [0, 800, 1600, 2600];
+  for (const delay of retries) {
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    let response: Response | null = null;
+    try {
+      response = await fetch(downloadUrl);
+    } catch (error) {
+      console.warn("Download fetch failed:", error);
+      continue;
+    }
+    if (!response.ok || !response.body) {
+      continue;
+    }
+    const contentLength = response.headers.get("content-length");
+    if (contentLength === "0") {
+      continue;
+    }
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength === 0) {
+      continue;
+    }
+    return { buffer, contentType: response.headers.get("content-type") };
+  }
+  return null;
+};
+
 export async function POST(request: Request) {
   const apiToken =
     process.env.APIFY_API_TOKEN ||
@@ -184,67 +225,71 @@ export async function POST(request: Request) {
 
   try {
     const client = new ApifyClient({ token: apiToken });
-    const run = await client.actor("S7Wmy78pIjTe01iEq").call({
-      urls: [url],
-    });
+    const qualityCandidates = Array.from(
+      new Set([DEFAULT_TIKTOK_QUALITY, "medium", "low"])
+    );
+    let item: TikTokResultItem | null = null;
+    let videoUrl: string | null = null;
+    let downloadBuffer: ArrayBuffer | null = null;
+    let downloadContentType: string | null = null;
+    let lastError = "Downloader returned no results.";
 
-    if (!run?.defaultDatasetId) {
-      return NextResponse.json(
-        { error: "Downloader did not return dataset results." },
-        { status: 502 }
-      );
-    }
+    for (const candidate of qualityCandidates) {
+      const run = await client.actor(TIKTOK_ACTOR_ID).call({
+        video_url: url,
+        video_quality: candidate,
+      });
 
-    const item = await readDatasetItem(client, run.defaultDatasetId);
-    if (!item) {
-      return NextResponse.json(
-        { error: "Downloader returned no results." },
-        { status: 502 }
-      );
-    }
-
-    let videoUrl = resolveTikTokVideoUrl(item);
-    if (!videoUrl) {
-      return NextResponse.json(
-        { error: "No downloadable video file found." },
-        { status: 502 }
-      );
-    }
-
-    try {
-      const parsedUrl = new URL(videoUrl);
-      if (
-        parsedUrl.hostname.endsWith("apify.com") &&
-        !parsedUrl.searchParams.has("token")
-      ) {
-        parsedUrl.searchParams.set("token", apiToken);
-        videoUrl = parsedUrl.toString();
+      if (!run?.defaultDatasetId) {
+        lastError = "Downloader did not return dataset results.";
+        continue;
       }
-    } catch {
-      // Ignore malformed URLs and attempt to fetch as-is.
+
+      item = await readDatasetItem(client, run.defaultDatasetId);
+      if (!item) {
+        lastError = "Downloader returned no results.";
+        continue;
+      }
+
+      videoUrl = resolveTikTokVideoUrl(item);
+      if (!videoUrl) {
+        lastError = "No downloadable video file found.";
+        continue;
+      }
+
+      try {
+        const parsedUrl = new URL(videoUrl);
+        if (
+          parsedUrl.hostname.endsWith("apify.com") &&
+          !parsedUrl.searchParams.has("token")
+        ) {
+          parsedUrl.searchParams.set("token", apiToken);
+          videoUrl = parsedUrl.toString();
+        }
+      } catch {
+        // Ignore malformed URLs and attempt to fetch as-is.
+      }
+
+      const downloadResult = await fetchDownloadBuffer(videoUrl);
+      if (downloadResult) {
+        downloadBuffer = downloadResult.buffer;
+        downloadContentType = downloadResult.contentType;
+        break;
+      }
+
+      lastError = "Unable to download video file.";
     }
 
-    const downloadResponse = await fetch(videoUrl);
-    if (!downloadResponse.ok || !downloadResponse.body) {
-      return NextResponse.json(
-        { error: "Unable to download video file." },
-        { status: 502 }
-      );
+    if (!item || !videoUrl || !downloadBuffer) {
+      return NextResponse.json({ error: lastError }, { status: 502 });
     }
 
-    const contentType = downloadResponse.headers.get("content-type") || "video/mp4";
+    const contentType = downloadContentType || "video/mp4";
     const extension = resolveExtension(videoUrl, contentType);
     
     // Download video to buffer
-    const videoBuffer = await downloadResponse.arrayBuffer();
+    const videoBuffer = downloadBuffer;
     const fileSize = videoBuffer.byteLength;
-    
-    if (fileSize === 0) {
-      return NextResponse.json(
-        { error: "Downloaded video file is empty." },
-        { status: 502 }
-      );
-    }
 
     // Upload to Supabase
     const fileName = `tt-${Date.now()}.${extension}`;
