@@ -4913,6 +4913,17 @@ export default function AdvancedEditorPage() {
         }
         return response.json();
       };
+      const primaryTranscription = {
+        model: "gpt-4o-transcribe-diarize",
+        responseFormat: "diarized_json",
+        includeTimestampGranularities: true,
+        chunkingStrategy: "auto",
+      };
+      const fallbackTranscription = {
+        model: "whisper-1",
+        responseFormat: "verbose_json",
+        includeTimestampGranularities: true,
+      };
       const requestTranscriptionWithRetry = async (
         file: File,
         options: {
@@ -4935,19 +4946,19 @@ export default function AdvancedEditorPage() {
               includeTimestampGranularities: false,
             });
           }
+          if (/internal_error|internal server error/i.test(message)) {
+            try {
+              await new Promise((resolve) => window.setTimeout(resolve, 800));
+              return await requestTranscription(file, options);
+            } catch (retryError) {
+              if (options.model !== fallbackTranscription.model) {
+                return requestTranscription(file, fallbackTranscription);
+              }
+              throw retryError;
+            }
+          }
           throw error;
         }
-      };
-      const primaryTranscription = {
-        model: "gpt-4o-transcribe-diarize",
-        responseFormat: "diarized_json",
-        includeTimestampGranularities: true,
-        chunkingStrategy: "auto",
-      };
-      const fallbackTranscription = {
-        model: "whisper-1",
-        responseFormat: "verbose_json",
-        includeTimestampGranularities: true,
       };
       const normalizeWordEntries = (entries: TimedEntry[]): TimedWord[] =>
         entries

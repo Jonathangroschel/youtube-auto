@@ -13,6 +13,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import Script from "next/script";
 
 import { panelButtonClass, panelCardClass, speedPresets } from "../constants";
 
@@ -368,6 +369,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [tiktokUrl, setTiktokUrl] = useState("");
   const [tiktokError, setTiktokError] = useState<string | null>(null);
   const [tiktokLoading, setTiktokLoading] = useState(false);
+  const downloadLoader = (
+    <div className="flex items-center justify-center py-6">
+      <dotlottie-player
+        src="/loading-state.lottie"
+        autoplay
+        loop
+        className="h-24 w-24"
+      />
+      <span className="sr-only">Downloading...</span>
+    </div>
+  );
 
   const handleYoutubeSubmit = async () => {
     if (typeof handleAddYoutubeVideo !== "function") {
@@ -824,7 +836,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
   return (
     <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
-    {showVideoPanel && selectedVideoEntry && selectedVideoSettings ? (
+      <Script
+        src="https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs"
+        type="module"
+        strategy="afterInteractive"
+      />
+      {showVideoPanel && selectedVideoEntry && selectedVideoSettings ? (
       <div className="flex h-full flex-col">
         {/* Minimal Header */}
         <div className="border-b border-gray-100/80 bg-white/80 px-4 py-4 backdrop-blur">
@@ -2088,6 +2105,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           type="button"
                           className="group relative h-24 w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
                           onClick={() => handleAddSticker(sticker)}
+                          draggable
+                          onDragStart={(event) =>
+                            handleGifDragStart(event, sticker)
+                          }
                           aria-label={`Add ${title}`}
                         >
                           {previewUrl ? (
@@ -3037,7 +3058,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     Generating Subtitles...
                   </h3>
                   <p className="mt-2 text-sm text-gray-500">
-                    ...go and grab yourself a snack, or continue editing this project.
+                    ...go and grab yourself a snack, this could take a minute or two.
                   </p>
                 </div>
               ) : !hasSubtitleResults ? (
@@ -6166,109 +6187,121 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
                   {activeTool === "video" && (
                     <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                      <div className="flex items-start gap-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[#2E3440]">
-                            YouTube Downloader
-                          </h3>
-                          <p className="mt-1 text-xs text-[#7A8699]">
-                            Paste a link to download.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-3 space-y-3">
-                        <div className="relative">
-                          <input
-                            className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
-                            placeholder="https://youtube.com/watch?v=..."
-                            value={youtubeUrl}
-                            onChange={(event) => {
-                              setYoutubeUrl(event.target.value);
-                              setYoutubeError(null);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                handleYoutubeSubmit();
-                              }
-                            }}
-                            aria-label="YouTube link"
-                            disabled={youtubeLoading}
-                          />
-                        </div>
-                        <div className="flex items-center justify-end">
-                          <button
-                            type="button"
-                            className={`rounded-full px-4 py-2 text-xs font-semibold transition ${youtubeLoading
-                              ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
-                              : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
-                              }`}
-                            onClick={handleYoutubeSubmit}
-                            disabled={youtubeLoading}
-                          >
-                            {youtubeLoading ? "Fetching..." : "Download"}
-                          </button>
-                        </div>
-                        {youtubeError && (
-                          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-                            {youtubeError}
+                      {youtubeLoading ? (
+                        downloadLoader
+                      ) : (
+                        <>
+                          <div className="flex items-start gap-3">
+                            <div>
+                              <h3 className="text-sm font-semibold text-[#2E3440]">
+                                YouTube Downloader
+                              </h3>
+                              <p className="mt-1 text-xs text-[#7A8699]">
+                                Paste a link to download.
+                              </p>
+                            </div>
                           </div>
-                        )}
-                      </div>
+                          <div className="mt-3 space-y-3">
+                            <div className="relative">
+                              <input
+                                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                                placeholder="https://youtube.com/watch?v=..."
+                                value={youtubeUrl}
+                                onChange={(event) => {
+                                  setYoutubeUrl(event.target.value);
+                                  setYoutubeError(null);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    handleYoutubeSubmit();
+                                  }
+                                }}
+                                aria-label="YouTube link"
+                                disabled={youtubeLoading}
+                              />
+                            </div>
+                            <div className="flex items-center justify-end">
+                              <button
+                                type="button"
+                                className={`rounded-full px-4 py-2 text-xs font-semibold transition ${youtubeLoading
+                                  ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
+                                  : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
+                                  }`}
+                                onClick={handleYoutubeSubmit}
+                                disabled={youtubeLoading}
+                              >
+                                {youtubeLoading ? "Downloading..." : "Download"}
+                              </button>
+                            </div>
+                            {youtubeError && (
+                              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                                {youtubeError}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
                   {activeTool === "video" && (
                     <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                      <div className="flex items-start gap-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[#2E3440]">
-                            TikTok Downloader
-                          </h3>
-                          <p className="mt-1 text-xs text-[#7A8699]">
-                            Paste a link to download.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-3 space-y-3">
-                        <div className="relative">
-                          <input
-                            className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
-                            placeholder="https://www.tiktok.com/@..."
-                            value={tiktokUrl}
-                            onChange={(event) => {
-                              setTiktokUrl(event.target.value);
-                              setTiktokError(null);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                handleTiktokSubmit();
-                              }
-                            }}
-                            aria-label="TikTok link"
-                            disabled={tiktokLoading}
-                          />
-                        </div>
-                        <div className="flex items-center justify-end">
-                          <button
-                            type="button"
-                            className={`rounded-full px-4 py-2 text-xs font-semibold transition ${tiktokLoading
-                              ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
-                              : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
-                              }`}
-                            onClick={handleTiktokSubmit}
-                            disabled={tiktokLoading}
-                          >
-                            {tiktokLoading ? "Fetching..." : "Download"}
-                          </button>
-                        </div>
-                        {tiktokError && (
-                          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-                            {tiktokError}
+                      {tiktokLoading ? (
+                        downloadLoader
+                      ) : (
+                        <>
+                          <div className="flex items-start gap-3">
+                            <div>
+                              <h3 className="text-sm font-semibold text-[#2E3440]">
+                                TikTok Downloader
+                              </h3>
+                              <p className="mt-1 text-xs text-[#7A8699]">
+                                Paste a link to download.
+                              </p>
+                            </div>
                           </div>
-                        )}
-                      </div>
+                          <div className="mt-3 space-y-3">
+                            <div className="relative">
+                              <input
+                                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                                placeholder="https://www.tiktok.com/@..."
+                                value={tiktokUrl}
+                                onChange={(event) => {
+                                  setTiktokUrl(event.target.value);
+                                  setTiktokError(null);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    handleTiktokSubmit();
+                                  }
+                                }}
+                                aria-label="TikTok link"
+                                disabled={tiktokLoading}
+                              />
+                            </div>
+                            <div className="flex items-center justify-end">
+                              <button
+                                type="button"
+                                className={`rounded-full px-4 py-2 text-xs font-semibold transition ${tiktokLoading
+                                  ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
+                                  : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
+                                  }`}
+                                onClick={handleTiktokSubmit}
+                                disabled={tiktokLoading}
+                              >
+                                {tiktokLoading ? "Downloading..." : "Download"}
+                              </button>
+                            </div>
+                            {tiktokError && (
+                              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                                {tiktokError}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -6442,6 +6475,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 type="button"
                                 className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
                                 onClick={() => handleAddSticker(sticker)}
+                                draggable
+                                onDragStart={(event) =>
+                                  handleGifDragStart(event, sticker)
+                                }
                                 aria-label={`Add ${title}`}
                               >
                                 {previewUrl ? (
