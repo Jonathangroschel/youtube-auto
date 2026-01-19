@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { login, signup } from "./actions";
+import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 
 // Slideshow data for the right panel
@@ -96,6 +97,7 @@ const SLIDE_DURATION = 6000; // 6 seconds per slide
 
 function LoginContent() {
   const searchParams = useSearchParams();
+  const supabase = createClient();
   
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slideProgress, setSlideProgress] = useState(0);
@@ -141,6 +143,29 @@ function LoginContent() {
     } catch {
       setError("An unexpected error occurred");
     } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+        setIsLoading(false);
+      }
+      // If successful, user will be redirected to Google
+    } catch {
+      setError("Failed to initiate Google sign-in");
       setIsLoading(false);
     }
   };
@@ -192,10 +217,11 @@ function LoginContent() {
               <button 
                 type="button" 
                 className="login-oauth-btn"
+                onClick={handleGoogleSignIn}
                 disabled={isLoading}
               >
                 <GoogleIcon />
-                Continue with Google
+                {isLoading ? "Loading..." : "Continue with Google"}
               </button>
 
               <div className="login-divider">
@@ -206,6 +232,7 @@ function LoginContent() {
                 type="button" 
                 className="login-oauth-btn"
                 onClick={() => setShowEmailForm(true)}
+                disabled={isLoading}
               >
                 <EmailIcon />
                 Continue with Email
