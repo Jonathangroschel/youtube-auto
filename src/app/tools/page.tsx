@@ -226,7 +226,7 @@ const quickTools: QuickTool[] = [
   {
     title: "Youtube Downloader",
     description: "Download Youtube videos",
-    href: "/tools/youtube-downloader",
+    href: "/editor/advanced",
     icon: (
       <svg
         aria-hidden="true"
@@ -241,7 +241,7 @@ const quickTools: QuickTool[] = [
   {
     title: "Tiktok Downloader",
     description: "Download TikTok videos",
-    href: "/tools/tiktok-downloader",
+    href: "/editor/advanced",
     icon: (
       <svg
         aria-hidden="true"
@@ -415,10 +415,15 @@ export default function ToolsPage() {
               }}
             />
             <a
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E7EDFF] text-lg font-semibold text-[#335CFF]"
+              className="flex h-12 w-12 items-center justify-center rounded-2xl"
               href="/dashboard"
+              aria-label="Dashboard"
             >
-              YA
+              <img
+                src="/icon.svg"
+                alt="Youtube Auto"
+                className="h-7 w-7 scale-[1.5] origin-center"
+              />
             </a>
             <div className="h-px w-10 bg-gray-200" />
             <nav
@@ -473,11 +478,15 @@ export default function ToolsPage() {
         <main className="flex min-h-[100dvh] w-full flex-1 flex-col px-4 pb-16 pt-3 md:px-6 md:py-6">
           <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
             <a
-              className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#E7EDFF] text-base font-semibold text-[#335CFF]"
+              className="flex h-10 w-10 items-center justify-center rounded-2xl"
               href="/dashboard"
               aria-label="Dashboard"
             >
-              YA
+              <img
+                src="/icon.svg"
+                alt="Youtube Auto"
+                className="h-6 w-6 scale-[1.5] origin-center"
+              />
             </a>
             <button
               className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white transition-colors hover:bg-gray-50"

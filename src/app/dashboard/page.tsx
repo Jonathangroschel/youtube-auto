@@ -123,6 +123,7 @@ type MainAction = {
   subtitle: string;
   tone: "primary" | "neutral";
   icon: ReactNode;
+  href?: string;
   highlight?: string;
   suffix?: string;
 };
@@ -132,6 +133,7 @@ const mainActions: MainAction[] = [
     title: "Create new project in editor",
     subtitle: "Start from scratch now",
     tone: "primary",
+    href: "/editor/advanced",
     icon: (
       <svg
         aria-hidden="true"
@@ -292,7 +294,7 @@ const toolCards: ToolCard[] = [
   },
   {
     label: "YouTube Downloader",
-    href: "/tools/youtube-downloader",
+    href: "/editor/advanced",
     icon: (
       <svg
         aria-hidden="true"
@@ -520,10 +522,15 @@ export default function DashboardPage() {
               }}
             />
             <a
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E7EDFF] text-lg font-semibold text-[#335CFF]"
+              className="flex h-12 w-12 items-center justify-center rounded-2xl"
               href="/dashboard"
+              aria-label="Dashboard"
             >
-              YA
+              <img
+                src="/icon.svg"
+                alt="Youtube Auto"
+                className="h-7 w-7 scale-[1.5] origin-center"
+              />
             </a>
             <div className="h-px w-10 bg-gray-200" />
             <nav
@@ -578,11 +585,15 @@ export default function DashboardPage() {
         <main className="flex min-h-[100dvh] w-full flex-1 flex-col px-4 pb-16 pt-3 md:px-10 md:py-6">
           <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
             <a
-              className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#E7EDFF] text-base font-semibold text-[#335CFF]"
+              className="flex h-10 w-10 items-center justify-center rounded-2xl"
               href="/dashboard"
               aria-label="Dashboard"
             >
-              YA
+              <img
+                src="/icon.svg"
+                alt="Youtube Auto"
+                className="h-6 w-6 scale-[1.5] origin-center"
+              />
             </a>
             <button
               className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white transition-colors hover:bg-gray-50"
@@ -844,80 +855,101 @@ export default function DashboardPage() {
 
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
-              {mainActions.map((action) => (
-                <div
-                  key={action.title}
-                  className={`flex flex-col gap-4 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${
-                    action.tone === "primary"
-                      ? "bg-[#335CFF] text-white"
-                      : "border border-[#E1E4EA] bg-[#F5F7FA]"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
+              {mainActions.map((action) => {
+                const content = (
+                  <>
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
+                          action.tone === "primary"
+                            ? "bg-[#6895FF]"
+                            : "bg-[#335CFF]"
+                        }`}
+                      >
+                        {action.icon}
+                      </div>
+                      <div>
+                        <h2
+                          className={`text-sm font-semibold sm:text-base md:text-lg lg:text-xl ${
+                            action.tone === "primary"
+                              ? "text-white"
+                              : "text-black"
+                          }`}
+                        >
+                          {action.highlight ? (
+                            <>
+                              {action.title}{" "}
+                              <span className="text-[#335CFF]">
+                                {action.highlight}
+                              </span>{" "}
+                              {action.suffix}
+                            </>
+                          ) : (
+                            action.title
+                          )}
+                        </h2>
+                        <p
+                          className={`text-[11px] sm:text-xs ${
+                            action.tone === "primary"
+                              ? "text-blue-100"
+                              : "text-gray-600"
+                          }`}
+                        >
+                          {action.subtitle}
+                        </p>
+                      </div>
+                    </div>
                     <div
-                      className={`flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
+                      className={`flex h-8 w-8 items-center justify-center rounded-xl self-end sm:h-10 sm:w-10 sm:self-auto ${
                         action.tone === "primary"
                           ? "bg-[#6895FF]"
-                          : "bg-[#335CFF]"
+                          : "bg-white"
                       }`}
                     >
-                      {action.icon}
-                    </div>
-                    <div>
-                      <h2
-                        className={`text-sm font-semibold sm:text-base md:text-lg lg:text-xl ${
-                          action.tone === "primary" ? "text-white" : "text-black"
-                        }`}
-                      >
-                        {action.highlight ? (
-                          <>
-                            {action.title}{" "}
-                            <span className="text-[#335CFF]">
-                              {action.highlight}
-                            </span>{" "}
-                            {action.suffix}
-                          </>
-                        ) : (
-                          action.title
-                        )}
-                      </h2>
-                      <p
-                        className={`text-[11px] sm:text-xs ${
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className={`h-5 w-5 ${
                           action.tone === "primary"
-                            ? "text-blue-100"
-                            : "text-gray-600"
+                            ? "text-white"
+                            : "text-[#525866]"
                         }`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                       >
-                        {action.subtitle}
-                      </p>
+                        <path d="m9 18 6-6-6-6" />
+                      </svg>
                     </div>
-                  </div>
-                  <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl self-end sm:h-10 sm:w-10 sm:self-auto ${
-                      action.tone === "primary"
-                        ? "bg-[#6895FF]"
-                        : "bg-white"
-                    }`}
-                  >
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      className={`h-5 w-5 ${
-                        action.tone === "primary"
-                          ? "text-white"
-                          : "text-[#525866]"
-                      }`}
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+                  </>
+                );
+
+                const className = `flex flex-col gap-4 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${
+                  action.tone === "primary"
+                    ? "bg-[#335CFF] text-white"
+                    : "border border-[#E1E4EA] bg-[#F5F7FA]"
+                }`;
+
+                if (action.href) {
+                  return (
+                    <a
+                      key={action.title}
+                      className={className}
+                      href={action.href}
                     >
-                      <path d="m9 18 6-6-6-6" />
-                    </svg>
+                      {content}
+                    </a>
+                  );
+                }
+
+                return (
+                  <div key={action.title} className={className}>
+                    {content}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

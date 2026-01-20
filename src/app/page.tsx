@@ -15,8 +15,12 @@ export default async function Home() {
     <div className="flex min-h-screen flex-col bg-[#F6F8FC] text-[#0E121B]">
       <main className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-2xl text-center">
-          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E7EDFF] text-lg font-semibold text-[#335CFF]">
-            YA
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl">
+            <img
+              src="/icon.svg"
+              alt="Youtube Auto"
+              className="h-8 w-8 scale-[1.5] origin-center"
+            />
           </div>
           <h1 className="text-2xl font-semibold md:text-3xl">
             Satura Trust Score
