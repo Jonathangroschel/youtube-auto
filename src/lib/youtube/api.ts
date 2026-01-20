@@ -33,6 +33,9 @@ export type YoutubeVideo = {
   description: string;
   publishedAt: string;
   categoryId?: string;
+  tags?: string[];
+  topicCategories?: string[];
+  topicIds?: string[];
   durationSeconds: number;
   thumbnails: Thumbnail[];
   viewCount?: number;
@@ -53,6 +56,11 @@ export type AnalyticsMetrics = {
   impressions?: number;
   impressionsClickThroughRate?: number;
   engagedViews?: number;
+};
+
+export type AnalyticsBreakdown = {
+  values: Record<string, number>;
+  total: number;
 };
 
 const fetchJson = async <T>(
@@ -204,7 +212,7 @@ export const fetchVideos = async (
   }
 
   const params = new URLSearchParams({
-    part: "snippet,contentDetails,statistics,fileDetails",
+    part: "snippet,contentDetails,statistics,fileDetails,topicDetails",
     id: videoIds.join(","),
   });
 
@@ -217,6 +225,7 @@ export const fetchVideos = async (
         publishedAt?: string;
         categoryId?: string;
         thumbnails?: Record<string, Thumbnail>;
+        tags?: string[];
       };
       contentDetails?: {
         duration?: string;
@@ -225,6 +234,10 @@ export const fetchVideos = async (
         viewCount?: string;
         likeCount?: string;
         commentCount?: string;
+      };
+      topicDetails?: {
+        topicCategories?: string[];
+        topicIds?: string[];
       };
       fileDetails?: {
         videoStreams?: Array<{
@@ -244,6 +257,9 @@ export const fetchVideos = async (
         description: item.snippet?.description ?? "",
         publishedAt: item.snippet?.publishedAt ?? "",
         categoryId: item.snippet?.categoryId,
+        tags: item.snippet?.tags ?? [],
+        topicCategories: item.topicDetails?.topicCategories ?? [],
+        topicIds: item.topicDetails?.topicIds ?? [],
         durationSeconds: parseDurationSeconds(item.contentDetails?.duration),
         thumbnails: normalizeThumbnails(item.snippet?.thumbnails),
         viewCount: item.statistics?.viewCount
@@ -339,6 +355,40 @@ const parseAnalyticsRows = (
   return metricsMap;
 };
 
+const parseBreakdownRows = (
+  data: {
+    columnHeaders?: Array<{ name: string }>;
+    rows?: Array<(string | number)[]>;
+  },
+  metricName: string
+): AnalyticsBreakdown | null => {
+  const headers = data.columnHeaders?.map((header) => header.name) ?? [];
+  const metricIndex = headers.indexOf(metricName);
+  if (metricIndex < 1) {
+    return null;
+  }
+
+  const rows = data.rows ?? [];
+  const values: Record<string, number> = {};
+  let total = 0;
+
+  for (const row of rows) {
+    const key = String(row[0] ?? "");
+    if (!key) {
+      continue;
+    }
+    const rawValue = row[metricIndex];
+    const value = rawValue === null || rawValue === undefined ? undefined : Number(rawValue);
+    if (value === undefined || Number.isNaN(value)) {
+      continue;
+    }
+    values[key] = (values[key] ?? 0) + value;
+    total += value;
+  }
+
+  return { values, total };
+};
+
 const fetchAnalyticsReport = async (
   accessToken: string,
   params: URLSearchParams
@@ -353,6 +403,82 @@ const fetchAnalyticsReport = async (
   } catch {
     return null;
   }
+};
+
+export const fetchAnalyticsBreakdown = async ({
+  accessToken,
+  dimension,
+  startDate,
+  endDate,
+  metrics = ["views"],
+  filters,
+}: {
+  accessToken: string;
+  dimension: string;
+  startDate: string | Date;
+  endDate: string | Date;
+  metrics?: string[];
+  filters?: string;
+}): Promise<AnalyticsBreakdown | null> => {
+  const params = new URLSearchParams({
+    ids: "channel==MINE",
+    dimensions: dimension,
+    startDate: toDateString(startDate),
+    endDate: toDateString(endDate),
+    metrics: metrics.join(","),
+  });
+
+  if (filters) {
+    params.set("filters", filters);
+  }
+
+  const url = buildAnalyticsUrl(accessToken, params);
+  try {
+    const data = await fetchJson<{
+      columnHeaders?: Array<{ name: string }>;
+      rows?: Array<(string | number)[]>;
+    }>(url, accessToken);
+    return parseBreakdownRows(data, metrics[0] ?? "views");
+  } catch {
+    return null;
+  }
+};
+
+export const fetchShortsFeedMetrics = async ({
+  accessToken,
+  videoIds,
+  startDate,
+  endDate,
+}: {
+  accessToken: string;
+  videoIds: string[];
+  startDate: string;
+  endDate: string;
+}): Promise<Map<string, AnalyticsMetrics>> => {
+  const metricsMap = new Map<string, AnalyticsMetrics>();
+  if (videoIds.length === 0) {
+    return metricsMap;
+  }
+
+  const filterValue = `video==${videoIds.join(",")};creatorContentType==SHORTS;insightTrafficSourceType==SHORTS`;
+  const params = new URLSearchParams({
+    ids: "channel==MINE",
+    dimensions: "video",
+    startDate: toDateString(startDate),
+    endDate: toDateString(endDate),
+    filters: filterValue,
+    metrics: "views,engagedViews",
+  });
+
+  const data = await fetchAnalyticsReport(accessToken, params);
+  if (!data) {
+    return metricsMap;
+  }
+  data.forEach((value, key) => {
+    metricsMap.set(key, { ...value });
+  });
+
+  return metricsMap;
 };
 
 export const fetchAnalyticsMetrics = async ({

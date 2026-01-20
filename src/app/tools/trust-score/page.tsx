@@ -307,6 +307,67 @@ const componentLabels: Record<string, string> = {
   nicheScore: "Niche clarity",
 };
 
+const componentTooltips: Record<
+  string,
+  {
+    summary: string;
+    zero: string;
+  }
+> = {
+  channelAge: {
+    summary: "Checks whether your channel is old enough to carry baseline trust.",
+    zero: "Your channel is brand new or the publish date is missing.",
+  },
+  featureEligibility: {
+    summary: "Shows whether YouTube has enabled long-form uploads for your channel.",
+    zero: "Long uploads are not enabled yet, usually because phone verification is incomplete.",
+  },
+  channelTags: {
+    summary: "Scores higher when channel keywords are empty, which keeps your channel profile clean.",
+    zero: "Channel keywords are still set.",
+  },
+  channelDescription: {
+    summary: "Looks for a clear channel bio (20+ characters) to help YouTube classify you.",
+    zero: "Your description is too short or empty.",
+  },
+  entertainmentCategory: {
+    summary: "Checks if 80%+ of recent uploads sit in one category (Entertainment).",
+    zero: "Recent uploads are split across categories.",
+  },
+  enhancements: {
+    summary: "Rewards vertical 9:16 videos at 1080p or higher resolution.",
+    zero: "Most recent uploads are not vertical or high-res.",
+  },
+  swipeScore: {
+    summary: "Stayed-to-watch rate from the Shorts feed (engaged views / views).",
+    zero: "Shorts feed engaged views are missing or the stay rate is below 72%.",
+  },
+  retentionScore: {
+    summary: "Compares average view duration to the target for each video length.",
+    zero: "Watch time data is missing or viewers drop well before the target.",
+  },
+  rewatchScore: {
+    summary: "Measures looping by comparing average view duration to video length.",
+    zero: "Most viewers do not reach a full watch.",
+  },
+  engagementScore: {
+    summary: "Based on like, comment, and subscriber gain rates versus benchmarks.",
+    zero: "Engagement is below the minimum thresholds.",
+  },
+  formattingScore: {
+    summary: "Checks vertical 9:16 framing and proper credits if content looks reused.",
+    zero: "Videos are not vertical/high-res or credits are missing.",
+  },
+  consistencyScore: {
+    summary: "Rewards frequent uploads over the last 12 days.",
+    zero: "Uploads are too sparse or key analytics signals are missing.",
+  },
+  nicheScore: {
+    summary: "Measures how consistently YouTube can place your Shorts into one recommendation cluster.",
+    zero: "Content, placement, or audience signals are mixed, or there is not enough data yet.",
+  },
+};
+
 
 const componentMaxes: Record<string, number> = {
   channelAge: 1,
@@ -334,6 +395,17 @@ const normalizeComponentScore = (
   const max = componentMaxes[key] ?? 1;
   const normalized = Math.round((value / max) * 100);
   return Math.min(100, Math.max(0, normalized));
+};
+
+const getComponentTooltip = (key: string, score: number | null) => {
+  const entry = componentTooltips[key];
+  if (!entry || score === null) {
+    return "";
+  }
+  if (score === 0) {
+    return entry.zero;
+  }
+  return entry.summary;
 };
 
 const getScoreLabel = (score: number) => {
@@ -1262,7 +1334,7 @@ export default function TrustScorePage() {
                         ? `${Math.min(100, Math.round((analysisResult?.swipeAvg ?? latestSnapshot?.swipe_avg ?? 0) * 100))}%`
                         : "—"}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">first 30s kept</p>
+                    <p className="mt-1 text-xs text-gray-400">stayed to watch</p>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5">
                     <p className="text-xs font-medium text-gray-400">Retention</p>
@@ -1369,21 +1441,43 @@ export default function TrustScorePage() {
 
                 {/* Score breakdown - collapsible */}
                 {breakdownItems.length > 0 ? (
-                  <details className="group rounded-[2rem] border border-gray-100 bg-white">
+                  <details className="group/details rounded-[2rem] border border-gray-100 bg-white">
                     <summary className="flex cursor-pointer items-center justify-between p-6 text-sm font-semibold text-gray-900 [&::-webkit-details-marker]:hidden">
                       Full breakdown
-                      <svg className="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-4 w-4 text-gray-400 transition-transform group-open/details:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </summary>
                     <div className="border-t border-gray-100 p-6 pt-4">
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {breakdownItems.map((item) => (
-                          <div key={item.key} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
-                            <span className="text-sm text-gray-600">{item.label}</span>
-                            <span className={`text-sm font-semibold ${getScoreTone(item.score)}`}>{item.score}</span>
-                          </div>
-                        ))}
+                        {breakdownItems.map((item) => {
+                          const tooltip = getComponentTooltip(item.key, item.score);
+                          const isZero = item.score === 0;
+                          return (
+                            <div
+                              key={item.key}
+                              tabIndex={0}
+                              className="group/item relative rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                            >
+                              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 transition-shadow group-hover/item:shadow-sm">
+                                <span className="text-sm text-gray-600">{item.label}</span>
+                                <span className={`text-sm font-semibold ${getScoreTone(item.score)}`}>{item.score}</span>
+                              </div>
+                              {tooltip ? (
+                                <div className="pointer-events-none absolute left-1/2 bottom-full z-30 mb-3 w-72 max-w-[80vw] -translate-x-1/2 opacity-0 transition-all duration-200 group-hover/item:-translate-y-1 group-hover/item:opacity-100 group-focus-within/item:-translate-y-1 group-focus-within/item:opacity-100">
+                                  <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.15)] backdrop-blur">
+                                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
+                                      <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-rose-500" : "bg-[#335CFF]"}`} />
+                                      {isZero ? "Why it's 0" : "What this means"}
+                                    </div>
+                                    <div className="mt-2 text-sm text-slate-700">{tooltip}</div>
+                                  </div>
+                                  <div className="mx-auto mt-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-white/95 ring-1 ring-slate-200/80 shadow-[0_6px_14px_rgba(15,23,42,0.12)]" />
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </details>

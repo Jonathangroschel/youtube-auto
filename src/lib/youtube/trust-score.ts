@@ -10,6 +10,8 @@ type VideoMetrics = YoutubeVideo & {
   impressions?: number;
   impressionsClickThroughRate?: number;
   engagedViews?: number;
+  shortsFeedViews?: number;
+  shortsFeedEngagedViews?: number;
 };
 
 type ActionItem = {
@@ -67,12 +69,30 @@ export type TrustScoreResult = {
   dataConfidence: "high" | "medium" | "low" | "insufficient";
 };
 
+type NicheDistribution = {
+  values: Record<string, number>;
+  total: number;
+};
+
+export type NicheSignals = {
+  placement?: {
+    previous: NicheDistribution;
+    current: NicheDistribution;
+  };
+  audience?: {
+    previous: NicheDistribution;
+    current: NicheDistribution;
+  };
+};
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Minimum thresholds for reliable scoring
 const MIN_VIEWS_FOR_VIDEO_SCORE = 100;
 const MIN_VIDEOS_WITH_ANALYTICS = 3;
 const MIN_VIDEOS_FOR_PERFORMANCE = 5;
+const MIN_NICHE_VIDEOS = 6;
+const MIN_NICHE_DISTRIBUTION_VIEWS = 100;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
@@ -265,19 +285,19 @@ const computeEngagementScore = (
  */
 const computeSwipeScore = (
   isShort: boolean,
-  impressions?: number,
-  engagedViews?: number,
+  shortsViews?: number,
+  shortsEngagedViews?: number,
   ctr?: number
 ): { score: number; rate: number | null; source: string } => {
   let rate: number | null = null;
   let source = "none";
   
   if (isShort) {
-    // For Shorts: use engaged views / impressions as "start rate"
-    // This represents viewers who actually watched vs swiped away
-    if (impressions && impressions > 0 && engagedViews !== undefined) {
-      rate = clamp(engagedViews / impressions, 0, 1);
-      source = "start_rate";
+    // For Shorts: use engaged views / views from the Shorts feed
+    // This represents viewers who stayed to watch vs swiped away
+    if (shortsViews && shortsViews > 0 && shortsEngagedViews !== undefined) {
+      rate = clamp(shortsEngagedViews / shortsViews, 0, 1);
+      source = "shorts_feed";
     }
   } else {
     // For long-form: use click-through rate
@@ -311,7 +331,7 @@ const computeSwipeScore = (
     return { score: 0, rate, source }; // Below 3% is poor
   }
 
-  // Swipe/Start rate thresholds for Shorts
+  // Swipe/Stay rate thresholds for Shorts
   // These are based on the "viewed vs swiped away" ratio
   if (rate >= 0.811) {
     return { score: 25, rate, source }; // Top tier
@@ -446,24 +466,47 @@ const tokenize = (text: string): string[] => {
     .filter((token) => token.length > 2 && !stopWords.has(token));
 };
 
-/**
- * Niche clarity scoring - measures topic consistency
- * Channels that stick to one topic get algorithmic benefits
- */
-const clusterNiche = (videos: VideoMetrics[]): number => {
-  if (videos.length < 6) {
-    return 0; // Not enough data to determine niche
+const extractTopicTokens = (topics?: string[]): string[] => {
+  if (!topics || topics.length === 0) {
+    return [];
+  }
+  return topics
+    .map((topic) => {
+      const lastSegment = topic.split("/").pop() ?? "";
+      return lastSegment.replace(/_/g, " ");
+    })
+    .filter(Boolean);
+};
+
+const buildContentTokens = (video: VideoMetrics): Set<string> => {
+  const topicText = extractTopicTokens(video.topicCategories).join(" ");
+  const tagsText = (video.tags ?? []).join(" ");
+  const combined = [video.title, video.description, tagsText, topicText]
+    .filter(Boolean)
+    .join(" ");
+  return new Set(tokenize(combined));
+};
+
+const computeContentCoherence = (videos: VideoMetrics[]): number | null => {
+  const shorts = videos.filter(
+    (video) => video.durationSeconds > 0 && video.durationSeconds <= 60
+  );
+  const sample = shorts.length >= MIN_NICHE_VIDEOS ? shorts : videos;
+  if (sample.length < MIN_NICHE_VIDEOS) {
+    return null;
   }
 
   const clusters: Array<{ tokens: Set<string>; count: number }> = [];
   const threshold = 0.3;
+  let usableVideos = 0;
 
-  for (const video of videos) {
-    const tokens = new Set(tokenize(video.title));
+  for (const video of sample) {
+    const tokens = buildContentTokens(video);
     if (tokens.size === 0) {
       continue;
     }
-    
+    usableVideos += 1;
+
     let matched = false;
     for (const cluster of clusters) {
       const intersection = new Set(
@@ -471,7 +514,7 @@ const clusterNiche = (videos: VideoMetrics[]): number => {
       );
       const unionSize = new Set([...tokens, ...cluster.tokens]).size;
       const similarity = unionSize === 0 ? 0 : intersection.size / unionSize;
-      
+
       if (similarity >= threshold) {
         cluster.count += 1;
         cluster.tokens = new Set([...cluster.tokens, ...tokens]);
@@ -479,29 +522,107 @@ const clusterNiche = (videos: VideoMetrics[]): number => {
         break;
       }
     }
-    
+
     if (!matched) {
       clusters.push({ tokens, count: 1 });
     }
   }
 
-  if (clusters.length === 0) {
+  if (clusters.length === 0 || usableVideos < MIN_NICHE_VIDEOS) {
+    return null;
+  }
+
+  const maxCluster = Math.max(...clusters.map((cluster) => cluster.count));
+  const pTop = maxCluster / usableVideos;
+  return clamp((pTop - 0.45) / (0.8 - 0.45), 0, 1);
+};
+
+const computeJSDivergence = (
+  current: Record<string, number>,
+  previous: Record<string, number>
+): number | null => {
+  const keys = new Set([...Object.keys(current), ...Object.keys(previous)]);
+  if (keys.size === 0) {
+    return null;
+  }
+
+  const currentTotal = Object.values(current).reduce((sum, value) => sum + value, 0);
+  const previousTotal = Object.values(previous).reduce((sum, value) => sum + value, 0);
+  if (currentTotal <= 0 || previousTotal <= 0) {
+    return null;
+  }
+
+  let divergence = 0;
+  keys.forEach((key) => {
+    const p = (current[key] ?? 0) / currentTotal;
+    const q = (previous[key] ?? 0) / previousTotal;
+    const m = (p + q) / 2;
+
+    if (p > 0) {
+      divergence += p * Math.log(p / m);
+    }
+    if (q > 0) {
+      divergence += q * Math.log(q / m);
+    }
+  });
+
+  divergence = 0.5 * divergence;
+  const normalized = divergence / Math.log(2);
+  return clamp(normalized, 0, 1);
+};
+
+const computeDistributionStability = (
+  pair?: {
+    previous: NicheDistribution;
+    current: NicheDistribution;
+  }
+): number | null => {
+  if (!pair) {
+    return null;
+  }
+  if (
+    pair.previous.total < MIN_NICHE_DISTRIBUTION_VIEWS ||
+    pair.current.total < MIN_NICHE_DISTRIBUTION_VIEWS
+  ) {
+    return null;
+  }
+  const jsd = computeJSDivergence(pair.current.values, pair.previous.values);
+  if (jsd === null) {
+    return null;
+  }
+  return clamp(1 - jsd, 0, 1);
+};
+
+const computeNicheScore = (videos: VideoMetrics[], signals?: NicheSignals): number => {
+  const contentCoherence = computeContentCoherence(videos);
+  const placementStability = computeDistributionStability(signals?.placement);
+  const audienceStability = computeDistributionStability(signals?.audience);
+
+  // If any signal is missing, treat niche clarity as unavailable.
+  if (contentCoherence === null || placementStability === null || audienceStability === null) {
     return 0;
   }
-  
-  const maxCluster = Math.max(...clusters.map((cluster) => cluster.count));
-  const pTop = maxCluster / videos.length;
 
-  if (pTop >= 0.8) {
-    return 3; // Very focused niche
+  const nicheIndex =
+    0.5 * contentCoherence + 0.3 * placementStability + 0.2 * audienceStability;
+
+  if (nicheIndex >= 0.75) {
+    return 3;
   }
-  if (pTop >= 0.6) {
-    return 2; // Reasonably focused
+  if (nicheIndex >= 0.55) {
+    return 2;
   }
-  if (pTop >= 0.45) {
-    return 1; // Somewhat focused
+  if (nicheIndex >= 0.4) {
+    return 1;
   }
-  return 0; // Scattered topics
+  return 0;
+};
+
+/**
+ * Niche clarity scoring - blends content, placement, and audience consistency.
+ */
+const clusterNiche = (videos: VideoMetrics[], signals?: NicheSignals): number => {
+  return computeNicheScore(videos, signals);
 };
 
 /**
@@ -738,6 +859,7 @@ export const calculateTrustScore = ({
   windowStart,
   windowEnd,
   now,
+  nicheSignals,
 }: {
   channel: YoutubeChannel;
   videos: VideoMetrics[];
@@ -745,6 +867,7 @@ export const calculateTrustScore = ({
   windowStart: string;
   windowEnd: string;
   now: Date;
+  nicheSignals?: NicheSignals;
 }): TrustScoreResult => {
   const videoScores: VideoScoreBreakdown[] = [];
   const weights: number[] = [];
@@ -769,7 +892,11 @@ export const calculateTrustScore = ({
 
     const isShort = video.durationSeconds > 0 && video.durationSeconds <= 60;
     const hasAnalytics = video.averageViewDuration > 0;
-    const hasSwipe = (video.impressions ?? 0) > 0 && video.engagedViews !== undefined;
+    const hasSwipe =
+      isShort
+        ? (video.shortsFeedViews ?? 0) > 0 &&
+          video.shortsFeedEngagedViews !== undefined
+        : normalizeRate(video.impressionsClickThroughRate) !== null;
     
     if (hasAnalytics) {
       videosWithAnalytics += 1;
@@ -780,16 +907,14 @@ export const calculateTrustScore = ({
     
     const swipe = computeSwipeScore(
       isShort,
-      video.impressions,
-      video.engagedViews,
+      video.shortsFeedViews,
+      video.shortsFeedEngagedViews,
       video.impressionsClickThroughRate
     );
 
-    if (swipe.rate !== null) {
-      if (swipe.source === "start_rate") {
-        shortsSwipeRates.push(swipe.rate);
-        shortsSwipeWeights.push(weight);
-      }
+    if (swipe.rate !== null && swipe.source === "shorts_feed") {
+      shortsSwipeRates.push(swipe.rate);
+      shortsSwipeWeights.push(weight);
     }
 
     const retention = computeRetentionScore(
@@ -945,7 +1070,7 @@ export const calculateTrustScore = ({
     hasEnoughAnalyticsData
   );
   
-  const nicheScore = clusterNiche(videos);
+  const nicheScore = clusterNiche(videos, nicheSignals);
 
   // Calculate raw score
   const rawScore = accountScore + performanceScore + consistencyScore + nicheScore;
