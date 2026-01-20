@@ -200,27 +200,27 @@ const ANALYSIS_STEPS = [
   {
     title: "Getting your channel ready",
     detail: "Checking channel basics and recent uploads.",
-    durationMs: 12000,
+    durationMs: 9000,
   },
   {
     title: "Pulling recent videos",
     detail: "Syncing titles, categories, and metadata.",
-    durationMs: 12000,
+    durationMs: 9000,
   },
   {
     title: "Reading watch signals",
     detail: "Looking at retention and start rates.",
-    durationMs: 12000,
+    durationMs: 9000,
   },
   {
     title: "Scoring engagement",
     detail: "Likes, comments, and subscriber gain.",
-    durationMs: 12000,
+    durationMs: 9000,
   },
   {
     title: "Building your action plan",
     detail: "Highlighting the fastest wins.",
-    durationMs: 12000,
+    durationMs: 9000,
   },
 ];
 
@@ -272,6 +272,13 @@ type TrustScoreResult = {
   components: Record<string, number>;
 };
 
+type ComponentBreakdownItem = {
+  key: string;
+  label: string;
+  score: number | null;
+  delta: number | null;
+};
+
 const formatDate = (value?: string | null) => {
   if (!value) return "Not yet";
   const date = new Date(value);
@@ -296,6 +303,70 @@ const componentLabels: Record<string, string> = {
   formattingScore: "Formatting",
   consistencyScore: "Consistency",
   nicheScore: "Niche clarity",
+};
+
+const SCORE_TARGET = 70;
+
+const componentMaxes: Record<string, number> = {
+  channelAge: 1,
+  featureEligibility: 1,
+  channelTags: 1,
+  channelDescription: 1,
+  entertainmentCategory: 1,
+  enhancements: 1,
+  swipeScore: 25,
+  retentionScore: 40,
+  rewatchScore: 10,
+  engagementScore: 8,
+  formattingScore: 2,
+  consistencyScore: 6,
+  nicheScore: 3,
+};
+
+const normalizeComponentScore = (
+  key: string,
+  value?: number | null
+) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return null;
+  }
+  const max = componentMaxes[key] ?? 1;
+  const normalized = Math.round((value / max) * 100);
+  return Math.min(100, Math.max(0, normalized));
+};
+
+const getScoreLabel = (score: number) => {
+  if (score >= 85) return "Excellent";
+  if (score >= 70) return "Strong";
+  if (score >= 50) return "Developing";
+  return "Needs work";
+};
+
+const getSeverityRank = (severity?: string) => {
+  if (severity === "high") return 3;
+  if (severity === "medium") return 2;
+  if (severity === "low") return 1;
+  return 0;
+};
+
+const getImpactMeta = (severity?: string) => {
+  if (severity === "high") {
+    return { label: "High impact", tone: "text-rose-600 bg-rose-50" };
+  }
+  if (severity === "medium") {
+    return { label: "Medium impact", tone: "text-amber-600 bg-amber-50" };
+  }
+  return { label: "Low impact", tone: "text-emerald-600 bg-emerald-50" };
+};
+
+const getWhyItMatters = (severity?: string) => {
+  if (severity === "high") {
+    return "Why it matters: This is a primary trust signal for viewers and the algorithm.";
+  }
+  if (severity === "medium") {
+    return "Why it matters: It improves viewer satisfaction and recommendation odds.";
+  }
+  return "Why it matters: Small gains compound into long-term trust with viewers and the algorithm.";
 };
 
 const getScoreTone = (score: number | null | undefined) => {
@@ -356,17 +427,18 @@ const getTopChanges = (latest?: Snapshot, previous?: Snapshot) => {
       key,
       label: componentLabels[key] ?? key,
       delta:
-        (latest.components?.[key] ?? 0) - (previous.components?.[key] ?? 0),
+        (normalizeComponentScore(key, latest.components?.[key]) ?? 0) -
+        (normalizeComponentScore(key, previous.components?.[key]) ?? 0),
     }))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
     .slice(0, 6);
 
-  const significant = deltas.filter((item) => Math.abs(item.delta) >= 0.15);
+  const significant = deltas.filter((item) => Math.abs(item.delta) >= 6);
   if (significant.length > 0) {
     return significant.slice(0, 3);
   }
 
-  const subtle = deltas.filter((item) => Math.abs(item.delta) >= 0.05);
+  const subtle = deltas.filter((item) => Math.abs(item.delta) >= 3);
   return subtle.slice(0, 3);
 };
 
@@ -409,6 +481,7 @@ export default function TrustScorePage() {
   const [analysisResult, setAnalysisResult] = useState<TrustScoreResult | null>(null);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [analysisActive, setAnalysisActive] = useState(false);
+  const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
   const [analysisStepIndex, setAnalysisStepIndex] = useState(0);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -592,6 +665,7 @@ export default function TrustScorePage() {
   const handleAnalyze = async (channelId: string) => {
     setAnalysisError(null);
     setAnalysisActive(true);
+    setAnalysisModalOpen(true);
     setAnalysisStepIndex(0);
     setAnalysisProgress(0);
 
@@ -703,6 +777,62 @@ export default function TrustScorePage() {
       : topChanges.length === 0
       ? "No big shifts yet. Keep running to spot the drivers."
       : null;
+
+  const topLifts = useMemo(() => {
+    return [...actionItems]
+      .sort((a, b) => getSeverityRank(b.severity) - getSeverityRank(a.severity))
+      .slice(0, 3);
+  }, [actionItems]);
+
+  const componentBreakdown = useMemo<ComponentBreakdownItem[]>(() => {
+    if (!currentComponents) return [];
+    return Object.entries(componentLabels).map(([key, label]) => {
+      const score = normalizeComponentScore(key, currentComponents[key]);
+      const previous = normalizeComponentScore(
+        key,
+        previousSnapshot?.components?.[key]
+      );
+      const delta =
+        score === null || previous === null ? null : score - previous;
+      return {
+        key,
+        label,
+        score,
+        delta,
+      };
+    });
+  }, [currentComponents, previousSnapshot]);
+
+  const breakdownItems = useMemo(() => {
+    return componentBreakdown.filter(
+      (item): item is ComponentBreakdownItem & { score: number } =>
+        item.score !== null
+    );
+  }, [componentBreakdown]);
+
+  const topDrags = useMemo(() => {
+    return [...breakdownItems]
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 3);
+  }, [breakdownItems]);
+
+  const diagnosisText = selectedChannel
+    ? topDrags.length > 0
+      ? `Your score is held back most by ${topDrags
+          .slice(0, 2)
+          .map((item) => item.label)
+          .join(" + ")}. Fixing these first moves the score fastest. Small wins stack fast.`
+      : "Run your first analysis to see what's holding your score back."
+    : "Connect your channel to get a clear, prioritized action plan. Small wins stack fast.";
+
+  const heroTitle = selectedChannel
+    ? `Your Trust Score for ${selectedChannel.title}`
+    : "Connect a YouTube Channel to Get Your Trust Score";
+
+  const channelHandle = selectedChannel?.handle
+    ? formatHandle(selectedChannel.handle)
+    : null;
+  const biggestDriver = topChanges[0];
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
@@ -1045,16 +1175,35 @@ export default function TrustScorePage() {
             <section className="rounded-3xl border border-gray-200 bg-white p-5 md:p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h1 className="mt-2 text-2xl font-semibold text-gray-900 md:text-3xl">
-                    Connect your YouTube channel(s)
-                  </h1>
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
+                    Trust Score
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <h1 className="text-2xl font-semibold text-gray-900 md:text-3xl">
+                      {heroTitle}
+                    </h1>
+                    {analysisActive ? (
+                      <span className="inline-flex items-center gap-2 rounded-full bg-[#EEF2FF] px-3 py-1 text-[10px] font-semibold text-[#335CFF]">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-[#335CFF]" />
+                        Updating...
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="mt-2 max-w-2xl text-sm text-gray-500">
-                    Sync up one or more channels, unlock your Trust Score, and
-                    get a clear action plan. We'll keep a running timeline so
-                    you can see exactly why your score changes over time.
+                    {diagnosisText}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
+                  {selectedChannel ? (
+                    <button
+                      className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0E121B] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black"
+                      type="button"
+                      onClick={() => handleAnalyze(selectedChannel.id)}
+                      disabled={analysisActive}
+                    >
+                      {analysisActive ? "Analyzing..." : "Recalculate score"}
+                    </button>
+                  ) : null}
                   <a
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-[#335CFF] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#2B4FE0]"
                     href="/api/trust-score/oauth/start?returnTo=/tools/trust-score"
@@ -1072,18 +1221,34 @@ export default function TrustScorePage() {
                       <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
                       <path d="M9.5 12.5 11 14l3.5-3.5" />
                     </svg>
-                    Connect channel
+                    {selectedChannel
+                      ? "Connect another channel"
+                      : "Connect YouTube channel"}
                   </a>
-                  <button
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-                    type="button"
-                    onClick={loadChannels}
-                  >
-                    Refresh list
-                  </button>
                 </div>
               </div>
             </section>
+
+            {analysisActive && !analysisModalOpen ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#DDE3FF] bg-[#F5F7FF] px-4 py-2 text-xs text-[#2E46B8]">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#335CFF]" />
+                  <span>
+                    Updating{" "}
+                    {selectedChannel?.title
+                      ? `Trust Score for ${selectedChannel.title}`
+                      : "Trust Score"}
+                  </span>
+                </div>
+                <button
+                  className="text-xs font-semibold text-[#335CFF] hover:text-[#2B4FE0]"
+                  type="button"
+                  onClick={() => setAnalysisModalOpen(true)}
+                >
+                  View progress
+                </button>
+              </div>
+            ) : null}
 
             <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1.6fr]">
               <div className="rounded-3xl border border-gray-200 bg-white p-5 md:p-6">
@@ -1096,9 +1261,18 @@ export default function TrustScorePage() {
                       Sync multiple channels and track each timeline.
                     </p>
                   </div>
-                  <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
-                    {channels.length} connected
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
+                      {channels.length} connected
+                    </span>
+                    <button
+                      className="text-xs font-semibold text-gray-500 transition-colors hover:text-gray-800"
+                      type="button"
+                      onClick={loadChannels}
+                    >
+                      Refresh
+                    </button>
+                  </div>
                 </div>
                 {disconnectError ? (
                   <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
@@ -1184,21 +1358,17 @@ export default function TrustScorePage() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-lg font-semibold text-gray-900">
-                      Trust score insights
+                      Insights
                     </h2>
                     <p className="text-xs text-gray-500">
-                      Your score, broken down with clear next steps.
+                      Clear next steps and what moved your score.
                     </p>
                   </div>
-                  {selectedChannel ? (
-                    <button
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0E121B] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black"
-                      type="button"
-                      onClick={() => handleAnalyze(selectedChannel.id)}
-                      disabled={analysisActive}
-                    >
-                      {analysisActive ? "Analyzing..." : "Recalculate score"}
-                    </button>
+                  {analysisActive ? (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-[#EEF2FF] px-3 py-1 text-[10px] font-semibold text-[#335CFF]">
+                      <span className="h-2 w-2 animate-spin rounded-full border-2 border-[#335CFF] border-t-transparent" />
+                      Updating...
+                    </span>
                   ) : null}
                 </div>
                 {analysisError ? (
@@ -1212,7 +1382,7 @@ export default function TrustScorePage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                          Current score
+                          Trust score now
                         </p>
                         <p
                           className={`mt-2 text-4xl font-semibold ${getScoreTone(
@@ -1222,7 +1392,7 @@ export default function TrustScorePage() {
                           {currentScore ?? "--"}
                         </p>
                         <p className="text-xs text-gray-500">
-                          Updated {formatDate(latestSnapshot?.created_at)}
+                          Last run {formatDate(latestSnapshot?.created_at)}
                         </p>
                         <p className="mt-2 text-xs text-gray-500">
                           {getScoreMessage(currentScore)}
@@ -1255,48 +1425,6 @@ export default function TrustScorePage() {
                           transform="rotate(-90 60 60)"
                         />
                       </svg>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-gray-600">
-                      <div>
-                        <p className="text-[10px] uppercase text-gray-400">
-                          Account
-                        </p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {analysisResult?.accountScore ??
-                            latestSnapshot?.account_score ??
-                            "--"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase text-gray-400">
-                          Performance
-                        </p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {analysisResult?.performanceScore ??
-                            latestSnapshot?.performance_score ??
-                            "--"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase text-gray-400">
-                          Consistency
-                        </p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {analysisResult?.consistencyScore ??
-                            latestSnapshot?.consistency_score ??
-                            "--"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase text-gray-400">
-                          Niche
-                        </p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {analysisResult?.nicheScore ??
-                            latestSnapshot?.niche_score ??
-                            "--"}
-                        </p>
-                      </div>
                     </div>
                   </div>
 
@@ -1344,100 +1472,201 @@ export default function TrustScorePage() {
                         </p>
                       )}
                     </div>
-                    <div className="mt-4 space-y-2 text-xs text-gray-600">
-                      {topChanges.length === 0 ? (
-                        <p className="text-gray-400">
-                          {driverMessage}
-                        </p>
-                      ) : (
-                        topChanges.map((change) => (
-                          <div
-                            key={change.key}
-                            className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2"
+                    <div className="mt-4 text-xs text-gray-600">
+                      {biggestDriver ? (
+                        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                          <span>Biggest driver since last run</span>
+                          <span
+                            className={`font-semibold ${
+                              biggestDriver.delta >= 0
+                                ? "text-emerald-600"
+                                : "text-rose-600"
+                            }`}
                           >
-                            <span>{change.label}</span>
-                            <span
-                              className={`font-semibold ${
-                                change.delta >= 0
-                                  ? "text-emerald-600"
-                                  : "text-rose-600"
-                              }`}
-                            >
-                              {change.delta >= 0 ? "+" : ""}
-                              {change.delta.toFixed(1)}
-                            </span>
-                          </div>
-                        ))
+                            {biggestDriver.label}{" "}
+                            {biggestDriver.delta >= 0 ? "+" : ""}
+                            {Math.round(biggestDriver.delta)}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-gray-400">{driverMessage}</p>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1.3fr_1fr]">
+                <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
                   <div className="rounded-2xl border border-gray-200 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                      Action plan
+                      Do These Next
                     </p>
-                    <div className="mt-3 space-y-3">
-                      {actionItems.length === 0 ? (
+                    <div className="mt-4 space-y-4">
+                      {analysisActive ? (
+                        Array.from({ length: 3 }, (_, index) => (
+                          <div
+                            key={`lift-skeleton-${index}`}
+                            className="animate-pulse space-y-2 border-b border-gray-100 pb-4 last:border-0 last:pb-0"
+                          >
+                            <div className="h-3 w-32 rounded-full bg-gray-200" />
+                            <div className="h-2 w-full rounded-full bg-gray-200" />
+                            <div className="h-2 w-4/5 rounded-full bg-gray-200" />
+                          </div>
+                        ))
+                      ) : topLifts.length === 0 ? (
                         <p className="text-sm text-gray-500">
                           Run a trust score to generate personalized
                           recommendations.
                         </p>
                       ) : (
-                        actionItems.map((item) => (
-                          <div
-                            key={item.title}
-                            className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3"
-                          >
+                        topLifts.map((item) => {
+                          const impact = getImpactMeta(item.severity);
+                          return (
                             <div
-                              className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                                item.severity === "high"
-                                  ? "bg-rose-500"
-                                  : item.severity === "medium"
-                                  ? "bg-amber-400"
-                                  : "bg-emerald-400"
-                              }`}
-                            />
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                {item.title}
+                              key={item.title}
+                              className="border-b border-gray-100 pb-4 last:border-0 last:pb-0"
+                            >
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {item.title}
+                                </p>
+                                <span
+                                  className={`rounded-full px-2 py-1 text-[10px] font-semibold ${impact.tone}`}
+                                >
+                                  {impact.label}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-xs text-gray-500">
+                                {getWhyItMatters(item.severity)}
                               </p>
-                              <p className="text-xs text-gray-500">
-                                {item.detail}
+                              <p className="mt-1 text-xs text-gray-600">
+                                What to do next: {item.detail}
                               </p>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-gray-200 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                      Component scores
+                      Top 3 drags
                     </p>
-                    <div className="mt-3 space-y-2 text-xs text-gray-600">
-                      {currentComponents ? (
-                        Object.entries(componentLabels).map(([key, label]) => (
+                    <div className="mt-4 space-y-3 text-xs text-gray-600">
+                      {analysisActive ? (
+                        Array.from({ length: 3 }, (_, index) => (
                           <div
-                            key={key}
-                            className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2"
+                            key={`drag-skeleton-${index}`}
+                            className="animate-pulse space-y-2"
                           >
-                            <span>{label}</span>
-                            <span className="font-semibold text-gray-900">
-                              {(currentComponents[key] ?? 0).toFixed(2)}
-                            </span>
+                            <div className="h-3 w-28 rounded-full bg-gray-200" />
+                            <div className="h-2 w-24 rounded-full bg-gray-200" />
                           </div>
                         ))
-                      ) : (
+                      ) : topDrags.length === 0 ? (
                         <p className="text-sm text-gray-500">
-                          Component breakdown appears after your first score.
+                          Run a trust score to see what's holding you back.
                         </p>
+                      ) : (
+                        topDrags.map((item) => {
+                          const scoreLabel = getScoreLabel(item.score);
+                          const hasDelta = item.delta !== null;
+                          const deltaValue = item.delta ?? 0;
+                          const deltaLabel =
+                            !hasDelta
+                              ? "No prior run"
+                              : `${deltaValue >= 0 ? "+" : ""}${deltaValue} pts`;
+                          return (
+                            <div
+                              key={item.key}
+                              className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2"
+                            >
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {item.label}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {item.score}/100 - {scoreLabel}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p
+                                  className={`text-xs font-semibold ${
+                                    hasDelta && deltaValue < 0
+                                      ? "text-rose-600"
+                                      : "text-emerald-600"
+                                  }`}
+                                >
+                                  {deltaLabel}
+                                </p>
+                                {hasDelta ? (
+                                  <p className="text-[10px] text-gray-400">
+                                    since last run
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
                 </div>
+
+                <details className="mt-6 rounded-2xl border border-gray-200 p-4">
+                  <summary className="cursor-pointer text-xs uppercase tracking-[0.2em] text-gray-400">
+                    Score breakdown
+                  </summary>
+                  <div className="mt-4 space-y-3 text-xs text-gray-600">
+                    {analysisActive ? (
+                      Array.from({ length: 4 }, (_, index) => (
+                        <div
+                          key={`breakdown-skeleton-${index}`}
+                          className="animate-pulse space-y-2"
+                        >
+                          <div className="h-3 w-32 rounded-full bg-gray-200" />
+                          <div className="h-2 w-full rounded-full bg-gray-200" />
+                        </div>
+                      ))
+                    ) : breakdownItems.length > 0 ? (
+                      breakdownItems.map((item) => {
+                        const scoreLabel = getScoreLabel(item.score);
+                        return (
+                          <div
+                            key={item.key}
+                            className="rounded-lg bg-gray-50 px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-gray-900">
+                                {item.label}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {item.score}/100 - {scoreLabel}
+                              </span>
+                            </div>
+                            <div className="relative mt-2 h-2 rounded-full bg-white">
+                              <div
+                                className="h-2 rounded-full bg-[#335CFF]"
+                                style={{ width: `${item.score}%` }}
+                              />
+                              <div
+                                className="absolute top-0 h-2 w-px bg-gray-300"
+                                style={{ left: `${SCORE_TARGET}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-sm text-gray-500">
+                        Component breakdown appears after your first score.
+                      </p>
+                    )}
+                  </div>
+                  <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-gray-400">
+                    Target line at {SCORE_TARGET}
+                  </p>
+                </details>
               </div>
             </section>
 
@@ -1448,9 +1677,7 @@ export default function TrustScorePage() {
                     Score history
                   </h2>
                   <p className="text-xs text-gray-500">
-                    Every time you run an analysis, we save it - so you can
-                    track what moved the needle and what didn't. Transparency,
-                    always.
+                    Every run is saved so you can see what moved the needle.
                   </p>
                 </div>
               </div>
@@ -1477,14 +1704,6 @@ export default function TrustScorePage() {
                           {entry.score}
                         </span>
                       </div>
-                      <div className="mt-3 text-xs text-gray-500">
-                        Account {entry.account_score} - Performance{" "}
-                        {entry.performance_score}
-                      </div>
-                      <div className="mt-2 text-xs text-gray-500">
-                        Consistency {entry.consistency_score} - Niche{" "}
-                        {entry.niche_score}
-                      </div>
                     </div>
                   ))
                 )}
@@ -1494,36 +1713,100 @@ export default function TrustScorePage() {
         </main>
       </div>
 
-      {analysisActive ? (
+      {analysisActive && analysisModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0F1A]/70 px-4">
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Putting your Trust Score together
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Hang tight, crunching the numbers and looking under the hood.
-                  Usually takes less than a minute.
-                </p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                {selectedChannel?.thumbnailUrl ? (
+                  <img
+                    src={selectedChannel.thumbnailUrl}
+                    alt={selectedChannel.title}
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-600">
+                    {selectedChannel?.title?.slice(0, 2).toUpperCase() ?? "YT"}
+                  </div>
+                )}
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-gray-400">
+                    {channelHandle ? `Analyzing ${channelHandle}` : "Analyzing"}
+                  </p>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {selectedChannel?.title ?? "Your channel"}
+                  </h3>
+                </div>
               </div>
-              <div className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
-                {Math.min(100, Math.round(analysisProgress))}%
-              </div>
+              <button
+                className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                type="button"
+                onClick={() => setAnalysisModalOpen(false)}
+              >
+                Run in background
+              </button>
             </div>
-            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+              <span>Estimated time: ~45s</span>
+              <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
+                {Math.min(100, Math.round(analysisProgress))}%
+              </span>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
               <div
                 className="h-full rounded-full bg-[#335CFF] transition-all duration-1000"
                 style={{ width: `${analysisProgress}%` }}
               />
             </div>
-            <div className="mt-4 rounded-2xl border border-gray-200 bg-[#F9FAFB] p-4">
-              <p className="text-sm font-semibold text-gray-900">
-                {ANALYSIS_STEPS[analysisStepIndex]?.title}
-              </p>
-              <p className="text-xs text-gray-500">
-                {ANALYSIS_STEPS[analysisStepIndex]?.detail}
-              </p>
+            <div className="mt-5 space-y-3">
+              {ANALYSIS_STEPS.map((step, index) => {
+                const isComplete = index < analysisStepIndex;
+                const isActive = index === analysisStepIndex;
+                return (
+                  <div key={step.title} className="flex items-start gap-3">
+                    <div
+                      className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                        isComplete
+                          ? "border-emerald-500 bg-emerald-50"
+                          : isActive
+                          ? "border-[#335CFF] bg-[#EEF2FF]"
+                          : "border-gray-200 bg-white"
+                      }`}
+                    >
+                      {isComplete ? (
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-3 w-3 text-emerald-600"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      ) : (
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            isActive ? "bg-[#335CFF]" : "bg-gray-300"
+                          }`}
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <p
+                        className={`text-sm font-medium ${
+                          isActive ? "text-gray-900" : "text-gray-600"
+                        }`}
+                      >
+                        {step.title}
+                      </p>
+                      <p className="text-xs text-gray-500">{step.detail}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             {analysisError ? (
               <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-600">
