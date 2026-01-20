@@ -282,12 +282,6 @@ const formatDate = (value?: string | null) => {
   });
 };
 
-const formatTime = (value: number) => {
-  const minutes = Math.floor(value / 60);
-  const seconds = Math.floor(value % 60);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-};
-
 const componentLabels: Record<string, string> = {
   channelAge: "Channel age",
   featureEligibility: "Long uploads",
@@ -328,6 +322,33 @@ const buildSparkline = (scores: number[]) => {
     .join(" ");
 };
 
+const formatHandle = (handle?: string | null) => {
+  if (!handle) {
+    return "No handle";
+  }
+  const trimmed = handle.trim().replace(/^@/, "");
+  return trimmed ? `@${trimmed}` : "No handle";
+};
+
+const getScoreMessage = (score: number | null) => {
+  if (score === null || Number.isNaN(score)) {
+    return "Run your first analysis to see your Trust Score.";
+  }
+  if (score < 30) {
+    return `Trust Score ${score}. Don't worry, it only goes up from here.`;
+  }
+  if (score < 50) {
+    return `Trust Score ${score}. Solid start - let's chase the quick wins below.`;
+  }
+  if (score < 70) {
+    return `Trust Score ${score}. You're building momentum. A few tweaks can push you higher.`;
+  }
+  if (score < 85) {
+    return `Trust Score ${score}. Strong signals. Stay consistent and polish the details.`;
+  }
+  return `Trust Score ${score}. Elite channel signals - keep the bar high.`;
+};
+
 const getTopChanges = (latest?: Snapshot, previous?: Snapshot) => {
   if (!latest?.components || !previous?.components) return [];
   const deltas = Object.keys(componentLabels)
@@ -337,10 +358,16 @@ const getTopChanges = (latest?: Snapshot, previous?: Snapshot) => {
       delta:
         (latest.components?.[key] ?? 0) - (previous.components?.[key] ?? 0),
     }))
-    .filter((item) => Math.abs(item.delta) >= 0.25)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, 3);
-  return deltas;
+    .slice(0, 6);
+
+  const significant = deltas.filter((item) => Math.abs(item.delta) >= 0.15);
+  if (significant.length > 0) {
+    return significant.slice(0, 3);
+  }
+
+  const subtle = deltas.filter((item) => Math.abs(item.delta) >= 0.05);
+  return subtle.slice(0, 3);
 };
 
 export default function TrustScorePage() {
@@ -384,10 +411,10 @@ export default function TrustScorePage() {
   const [analysisActive, setAnalysisActive] = useState(false);
   const [analysisStepIndex, setAnalysisStepIndex] = useState(0);
   const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [analysisElapsed, setAnalysisElapsed] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [disconnectingChannelId, setDisconnectingChannelId] = useState<string | null>(null);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const autoAnalyzeTriggeredRef = useRef(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -524,7 +551,6 @@ export default function TrustScorePage() {
     const total = MIN_ANALYSIS_MS;
     const interval = setInterval(() => {
       const elapsed = Date.now() - start;
-      setAnalysisElapsed(elapsed);
       const progress = Math.min(100, (elapsed / total) * 100);
       setAnalysisProgress(progress);
 
@@ -544,12 +570,30 @@ export default function TrustScorePage() {
     return () => clearInterval(interval);
   }, [analysisActive]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("connected");
+    if (
+      connected === "1" &&
+      selectedChannelId &&
+      !analysisActive &&
+      !autoAnalyzeTriggeredRef.current
+    ) {
+      autoAnalyzeTriggeredRef.current = true;
+      void handleAnalyze(selectedChannelId);
+      url.searchParams.delete("connected");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    }
+  }, [selectedChannelId, analysisActive]);
+
   const handleAnalyze = async (channelId: string) => {
     setAnalysisError(null);
     setAnalysisActive(true);
     setAnalysisStepIndex(0);
     setAnalysisProgress(0);
-    setAnalysisElapsed(0);
 
     const start = Date.now();
     try {
@@ -653,6 +697,12 @@ export default function TrustScorePage() {
   }, [history]);
 
   const topChanges = getTopChanges(latestSnapshot, previousSnapshot);
+  const driverMessage =
+    history.length < 2
+      ? "Run two analyses to see what moved the needle."
+      : topChanges.length === 0
+      ? "No big shifts yet. Keep running to spot the drivers."
+      : null;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
@@ -996,12 +1046,12 @@ export default function TrustScorePage() {
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h1 className="mt-2 text-2xl font-semibold text-gray-900 md:text-3xl">
-                    Measure credibility across every connected channel.
+                    Connect your YouTube channel(s)
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm text-gray-500">
-                    Connect one or more YouTube channels, run a deep trust
-                    analysis, and get a step-by-step action plan. We keep a
-                    timeline so you can see why your score moves over time.
+                    Sync up one or more channels, unlock your Trust Score, and
+                    get a clear action plan. We'll keep a running timeline so
+                    you can see exactly why your score changes over time.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -1093,9 +1143,7 @@ export default function TrustScorePage() {
                             {channel.title}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {channel.handle
-                              ? `@${channel.handle}`
-                              : "No handle"}{" "}
+                            {formatHandle(channel.handle)}{" "}
                             -{" "}
                             {channel.lastScoreAt
                               ? `Scored ${formatDate(channel.lastScoreAt)}`
@@ -1139,9 +1187,7 @@ export default function TrustScorePage() {
                       Trust score insights
                     </h2>
                     <p className="text-xs text-gray-500">
-                      {selectedChannel
-                        ? `Channel: ${selectedChannel.title}`
-                        : "Select a channel to view details."}
+                      Your score, broken down with clear next steps.
                     </p>
                   </div>
                   {selectedChannel ? (
@@ -1177,6 +1223,9 @@ export default function TrustScorePage() {
                         </p>
                         <p className="text-xs text-gray-500">
                           Updated {formatDate(latestSnapshot?.created_at)}
+                        </p>
+                        <p className="mt-2 text-xs text-gray-500">
+                          {getScoreMessage(currentScore)}
                         </p>
                       </div>
                       <svg width="84" height="84" viewBox="0 0 120 120">
@@ -1298,7 +1347,7 @@ export default function TrustScorePage() {
                     <div className="mt-4 space-y-2 text-xs text-gray-600">
                       {topChanges.length === 0 ? (
                         <p className="text-gray-400">
-                          We will highlight score drivers after two runs.
+                          {driverMessage}
                         </p>
                       ) : (
                         topChanges.map((change) => (
@@ -1399,7 +1448,9 @@ export default function TrustScorePage() {
                     Score history
                   </h2>
                   <p className="text-xs text-gray-500">
-                    Review every run and identify the drivers behind the change.
+                    Every time you run an analysis, we save it - so you can
+                    track what moved the needle and what didn't. Transparency,
+                    always.
                   </p>
                 </div>
               </div>
@@ -1452,7 +1503,8 @@ export default function TrustScorePage() {
                   Putting your Trust Score together
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Hang tight, this usually takes about a minute.
+                  Hang tight, crunching the numbers and looking under the hood.
+                  Usually takes less than a minute.
                 </p>
               </div>
               <div className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
@@ -1471,9 +1523,6 @@ export default function TrustScorePage() {
               </p>
               <p className="text-xs text-gray-500">
                 {ANALYSIS_STEPS[analysisStepIndex]?.detail}
-              </p>
-              <p className="mt-3 text-xs text-gray-400">
-                Time elapsed {formatTime(analysisElapsed / 1000)}
               </p>
             </div>
             {analysisError ? (
