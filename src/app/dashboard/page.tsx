@@ -97,6 +97,25 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Trust Score",
+    href: "/tools/trust-score",
+    icon: (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-5 w-5 text-gray-500"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
+        <path d="M9.5 12.5 11 14l3.5-3.5" />
+      </svg>
+    ),
+  },
 ];
 
 type MainAction = {
@@ -184,25 +203,6 @@ type ToolCard = {
 };
 
 const toolCards: ToolCard[] = [
-  {
-    label: "Trust Score",
-    href: "/tools/trust-score",
-    icon: (
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#122368]"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
-        <path d="M9.5 12.5 11 14l3.5-3.5" />
-      </svg>
-    ),
-  },
   {
     label: "Image Generator",
     href: "/tools/images",
@@ -345,10 +345,26 @@ const mobileSections: MobileSection[] = [
   },
   {
     label: "Tools",
-    items: [
-      { label: "Editor", href: "/tools" },
-      { label: "Trust Score", href: "/tools/trust-score" },
-    ],
+    items: [{ label: "Editor", href: "/tools" }],
+  },
+  {
+    label: "Trust Score",
+    icon: (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-4 w-4 text-gray-600"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
+        <path d="M9.5 12.5 11 14l3.5-3.5" />
+      </svg>
+    ),
+    items: [{ label: "Overview", href: "/tools/trust-score" }],
   },
   {
     label: "More",
@@ -1077,6 +1093,17 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+          <footer className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-gray-200 pt-4 text-[11px] text-gray-500 sm:flex-row">
+            <span>Privacy and terms</span>
+            <div className="flex items-center gap-4">
+              <a className="transition-colors hover:text-gray-700" href="/privacy-policy">
+                Privacy Policy
+              </a>
+              <a className="transition-colors hover:text-gray-700" href="/terms-of-service">
+                Terms of Service
+              </a>
+            </div>
+          </footer>
         </main>
       </div>
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />

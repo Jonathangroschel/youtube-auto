@@ -1,7 +1,10 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { signOut } from "@/app/login/actions";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 type NavItem = {
   label: string;
@@ -71,12 +74,11 @@ const navItems: NavItem[] = [
   {
     label: "Tools",
     href: "/tools",
-    active: true,
     icon: (
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#335CFF]"
+        className="h-5 w-5 text-gray-500"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -91,6 +93,26 @@ const navItems: NavItem[] = [
         <path d="M7 8H3" />
         <path d="M21 16h-4" />
         <path d="M11 3H9" />
+      </svg>
+    ),
+  },
+  {
+    label: "Trust Score",
+    href: "/tools/trust-score",
+    active: true,
+    icon: (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-5 w-5 text-[#335CFF]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
+        <path d="M9.5 12.5 11 14l3.5-3.5" />
       </svg>
     ),
   },
@@ -135,10 +157,26 @@ const mobileSections: MobileSection[] = [
   },
   {
     label: "Tools",
-    items: [
-      { label: "Editor", href: "/tools" },
-      { label: "Trust Score", href: "/tools/trust-score" },
-    ],
+    items: [{ label: "Editor", href: "/tools" }],
+  },
+  {
+    label: "Trust Score",
+    icon: (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-4 w-4 text-gray-600"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
+        <path d="M9.5 12.5 11 14l3.5-3.5" />
+      </svg>
+    ),
+    items: [{ label: "Overview", href: "/tools/trust-score" }],
   },
   {
     label: "More",
@@ -160,34 +198,29 @@ const mobileFooterActions: MobileFooterAction[] = [
 
 const ANALYSIS_STEPS = [
   {
-    title: "Initializing trust lattice",
-    detail: "Calibrating channel entropy vectors.",
-    durationMs: 15000,
+    title: "Getting your channel ready",
+    detail: "Checking channel basics and recent uploads.",
+    durationMs: 12000,
   },
   {
-    title: "Fetching channel graph",
-    detail: "Collecting uploads, metadata, and playlists.",
-    durationMs: 20000,
+    title: "Pulling recent videos",
+    detail: "Syncing titles, categories, and metadata.",
+    durationMs: 12000,
   },
   {
-    title: "Measuring swipe + retention",
-    detail: "Computing start rates and target AVD curves.",
-    durationMs: 25000,
+    title: "Reading watch signals",
+    detail: "Looking at retention and start rates.",
+    durationMs: 12000,
   },
   {
-    title: "Evaluating rewatch loops",
-    detail: "Estimating replay density and completion.",
-    durationMs: 20000,
+    title: "Scoring engagement",
+    detail: "Likes, comments, and subscriber gain.",
+    durationMs: 12000,
   },
   {
-    title: "Benchmarking engagement",
-    detail: "Normalizing likes, comments, and subs.",
-    durationMs: 20000,
-  },
-  {
-    title: "Synthesizing action plan",
-    detail: "Ranking improvements by expected lift.",
-    durationMs: 20000,
+    title: "Building your action plan",
+    detail: "Highlighting the fastest wins.",
+    durationMs: 12000,
   },
 ];
 
@@ -341,6 +374,8 @@ export default function TrustScorePage() {
   const resolvedNavIndex =
     hoveredNavIndex ?? (activeNavIndex >= 0 ? activeNavIndex : 0);
 
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [history, setHistory] = useState<Snapshot[]>([]);
@@ -351,6 +386,24 @@ export default function TrustScorePage() {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisElapsed, setAnalysisElapsed] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [disconnectingChannelId, setDisconnectingChannelId] = useState<string | null>(null);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+    } catch {
+      setIsLoggingOut(false);
+    }
+  };
 
   const updateIndicator = useCallback((index: number) => {
     const container = navContainerRef.current;
@@ -377,7 +430,7 @@ export default function TrustScorePage() {
       return;
     }
 
-    const handleClick = (event: MouseEvent) => {
+    const handleClick = (event: globalThis.MouseEvent) => {
       const target = event.target as Node | null;
       if (target && profileMenuRef.current?.contains(target)) {
         return;
@@ -414,6 +467,7 @@ export default function TrustScorePage() {
 
   const loadChannels = useCallback(async () => {
     setLoadingChannels(true);
+    setDisconnectError(null);
     try {
       const response = await fetch("/api/trust-score/channels");
       if (!response.ok) {
@@ -527,6 +581,45 @@ export default function TrustScorePage() {
     }
   };
 
+  const handleDisconnect = async (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    channelId: string,
+    channelTitle: string
+  ) => {
+    event.stopPropagation();
+    if (!window.confirm(`Disconnect ${channelTitle}?`)) {
+      return;
+    }
+    setDisconnectError(null);
+    setDisconnectingChannelId(channelId);
+    try {
+      const response = await fetch("/api/trust-score/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to disconnect channel.");
+      }
+      setChannels((prev) => {
+        const next = prev.filter((channel) => channel.id !== channelId);
+        if (selectedChannelId === channelId) {
+          setSelectedChannelId(next[0]?.id ?? null);
+          setHistory([]);
+          setAnalysisResult(null);
+        }
+        return next;
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to disconnect channel.";
+      setDisconnectError(message);
+    } finally {
+      setDisconnectingChannelId(null);
+    }
+  };
+
   const selectedChannel = channels.find(
     (channel) => channel.id === selectedChannelId
   );
@@ -541,6 +634,15 @@ export default function TrustScorePage() {
     analysisResult?.components ?? latestSnapshot?.components ?? null;
   const actionItems =
     analysisResult?.actionItems ?? latestSnapshot?.action_items ?? [];
+  const userEmail = user?.email ?? "";
+  const userName =
+    user?.user_metadata?.full_name ??
+    user?.user_metadata?.name ??
+    userEmail.split("@")[0] ??
+    "User";
+  const userAvatar =
+    user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? null;
+  const userInitials = userName.slice(0, 2).toUpperCase();
 
   const sparklinePoints = useMemo(() => {
     const scores = [...history]
@@ -676,16 +778,23 @@ export default function TrustScorePage() {
             >
               <div className="p-3">
                 <div className="flex items-center space-x-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-sm font-semibold text-white">
-                    TS
-                  </div>
+                  {userAvatar ? (
+                    <img
+                      src={userAvatar}
+                      alt="Profile"
+                      className="h-10 w-10 rounded-full object-cover"
+                      draggable="false"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-sm font-semibold text-white">
+                      {userInitials}
+                    </div>
+                  )}
                   <div className="flex-1">
                     <p className="text-sm font-medium text-gray-900">
-                      Trust Score
+                      {userName}
                     </p>
-                    <p className="text-xs text-gray-500">
-                      YouTube analytics
-                    </p>
+                    <p className="text-xs text-gray-500">{userEmail}</p>
                   </div>
                 </div>
               </div>
@@ -794,9 +903,6 @@ export default function TrustScorePage() {
                 <h2 className="text-lg font-medium text-black">
                   Trust Score
                 </h2>
-                <p className="text-xs text-gray-500">
-                  Nordic-grade channel credibility audit
-                </p>
               </div>
             </div>
             <div className="relative" ref={profileMenuRef}>
@@ -808,9 +914,18 @@ export default function TrustScorePage() {
                 aria-controls="trust-score-profile-menu"
                 onClick={() => setProfileMenuOpen((open) => !open)}
               >
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-600 to-slate-800 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
-                  TS
-                </div>
+                {userAvatar ? (
+                  <img
+                    src={userAvatar}
+                    alt="Profile"
+                    className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                    draggable="false"
+                  />
+                ) : (
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                    {userInitials}
+                  </div>
+                )}
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
@@ -833,14 +948,21 @@ export default function TrustScorePage() {
                 }`}
               >
                 <div className="flex flex-row items-center space-x-2 px-3 py-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-600 to-slate-800 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
-                    TS
-                  </div>
+                  {userAvatar ? (
+                    <img
+                      src={userAvatar}
+                      alt="Profile"
+                      className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                      draggable="false"
+                    />
+                  ) : (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                      {userInitials}
+                    </div>
+                  )}
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium">Trust Score</p>
-                    <p className="text-xs text-gray-500">
-                      Youtube analytics
-                    </p>
+                    <p className="text-base font-medium">{userName}</p>
+                    <p className="text-xs text-gray-500">{userEmail}</p>
                   </div>
                 </div>
                 <button
@@ -860,9 +982,10 @@ export default function TrustScorePage() {
                 <button
                   className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
-                  onClick={() => setProfileMenuOpen(false)}
+                  onClick={handleSignOut}
+                  disabled={isLoggingOut}
                 >
-                  Log Out
+                  {isLoggingOut ? "Logging out..." : "Log Out"}
                 </button>
               </div>
             </div>
@@ -872,9 +995,6 @@ export default function TrustScorePage() {
             <section className="rounded-3xl border border-gray-200 bg-white p-5 md:p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                    Trust Score
-                  </p>
                   <h1 className="mt-2 text-2xl font-semibold text-gray-900 md:text-3xl">
                     Measure credibility across every connected channel.
                   </h1>
@@ -930,6 +1050,11 @@ export default function TrustScorePage() {
                     {channels.length} connected
                   </span>
                 </div>
+                {disconnectError ? (
+                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                    {disconnectError}
+                  </div>
+                ) : null}
                 <div className="mt-4 flex flex-col gap-3">
                   {loadingChannels ? (
                     <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
@@ -977,15 +1102,29 @@ export default function TrustScorePage() {
                               : "Not scored yet"}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <p
-                            className={`text-lg font-semibold ${getScoreTone(
-                              channel.lastScore ?? null
-                            )}`}
+                        <div className="flex flex-col items-end gap-2 text-right">
+                          <div>
+                            <p
+                              className={`text-lg font-semibold ${getScoreTone(
+                                channel.lastScore ?? null
+                              )}`}
+                            >
+                              {channel.lastScore ?? "--"}
+                            </p>
+                            <p className="text-xs text-gray-400">Trust</p>
+                          </div>
+                          <button
+                            className="text-[11px] font-medium text-gray-400 transition-colors hover:text-rose-600 disabled:cursor-not-allowed disabled:text-gray-300"
+                            type="button"
+                            onClick={(event) =>
+                              handleDisconnect(event, channel.id, channel.title)
+                            }
+                            disabled={disconnectingChannelId === channel.id}
                           >
-                            {channel.lastScore ?? "--"}
-                          </p>
-                          <p className="text-xs text-gray-400">Trust</p>
+                            {disconnectingChannelId === channel.id
+                              ? "Disconnecting..."
+                              : "Disconnect"}
+                          </button>
                         </div>
                       </button>
                     ))
@@ -1309,14 +1448,11 @@ export default function TrustScorePage() {
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                  Quantum analysis
-                </p>
-                <h3 className="mt-2 text-xl font-semibold text-gray-900">
-                  Trust score computation in progress
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Putting your Trust Score together
                 </h3>
-                <p className="text-xs text-gray-500">
-                  Estimated time: {formatTime(MIN_ANALYSIS_MS / 1000)}
+                <p className="mt-1 text-sm text-gray-500">
+                  Hang tight, this usually takes about a minute.
                 </p>
               </div>
               <div className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
@@ -1337,7 +1473,7 @@ export default function TrustScorePage() {
                 {ANALYSIS_STEPS[analysisStepIndex]?.detail}
               </p>
               <p className="mt-3 text-xs text-gray-400">
-                Elapsed {formatTime(analysisElapsed / 1000)}
+                Time elapsed {formatTime(analysisElapsed / 1000)}
               </p>
             </div>
             {analysisError ? (
