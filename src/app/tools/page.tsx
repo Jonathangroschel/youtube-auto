@@ -135,7 +135,10 @@ const mobileSections: MobileSection[] = [
   },
   {
     label: "Tools",
-    items: [{ label: "Editor", href: "/tools" }],
+    items: [
+      { label: "Editor", href: "/tools" },
+      { label: "Trust Score", href: "/tools/trust-score" },
+    ],
   },
   {
     label: "More",
@@ -186,6 +189,26 @@ const quickTools: QuickTool[] = [
     ),
   },
   {
+    title: "Trust Score",
+    description: "Analyze your YouTube channel trust",
+    href: "/tools/trust-score",
+    icon: (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-5 w-5 text-blue-500"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
+        <path d="M9.5 12.5 11 14l3.5-3.5" />
+      </svg>
+    ),
+  },
+  {
     title: "Youtube Downloader",
     description: "Download Youtube videos",
     href: "/tools/youtube-downloader",
@@ -225,6 +248,12 @@ type ToolCard = {
 };
 
 const toolCards: ToolCard[] = [
+  {
+    title: "Trust Score",
+    description: "Connect a channel and get a credibility score.",
+    href: "/tools/trust-score",
+    badge: "New",
+  },
   {
     title: "AI Image Generator",
     description: "Generate high quality images with AI in seconds.",

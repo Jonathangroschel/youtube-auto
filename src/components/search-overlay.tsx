@@ -218,6 +218,26 @@ const sections: SearchSection[] = [
         ),
       },
       {
+        title: "Trust Score",
+        description: "Analyze your YouTube channel trust",
+        href: "/tools/trust-score",
+        icon: (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="h-4 w-4 text-gray-500"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
+            <path d="M9.5 12.5 11 14l3.5-3.5" />
+          </svg>
+        ),
+      },
+      {
         title: "AI Image Generator",
         description: "Generate high quality images with AI",
         href: "/tools/images",
