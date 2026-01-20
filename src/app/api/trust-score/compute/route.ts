@@ -224,6 +224,7 @@ export async function POST(request: Request) {
       components: result.components,
       video_breakdown: result.videoBreakdown,
       action_items: result.actionItems,
+      data_confidence: result.dataConfidence,
       created_at: new Date().toISOString(),
     });
 

@@ -253,6 +253,7 @@ type Snapshot = {
   retention_avg: number | null;
   components?: Record<string, number> | null;
   action_items?: { title: string; detail: string; severity: string }[] | null;
+  data_confidence?: "high" | "medium" | "low" | "insufficient" | null;
   created_at: string;
 };
 
@@ -270,6 +271,7 @@ type TrustScoreResult = {
   videoCount: number;
   actionItems: { title: string; detail: string; severity: string }[];
   components: Record<string, number>;
+  dataConfidence?: "high" | "medium" | "low" | "insufficient";
 };
 
 type ComponentBreakdownItem = {
@@ -296,7 +298,7 @@ const componentLabels: Record<string, string> = {
   channelDescription: "Description",
   entertainmentCategory: "Category focus",
   enhancements: "Enhancements",
-  swipeScore: "Start rate",
+  swipeScore: "Swipe ratio",
   retentionScore: "Retention",
   rewatchScore: "Rewatch",
   engagementScore: "Engagement",
@@ -305,7 +307,6 @@ const componentLabels: Record<string, string> = {
   nicheScore: "Niche clarity",
 };
 
-const SCORE_TARGET = 70;
 
 const componentMaxes: Record<string, number> = {
   channelAge: 1,
@@ -359,15 +360,6 @@ const getImpactMeta = (severity?: string) => {
   return { label: "Low impact", tone: "text-emerald-600 bg-emerald-50" };
 };
 
-const getWhyItMatters = (severity?: string) => {
-  if (severity === "high") {
-    return "Why it matters: This is a primary trust signal for viewers and the algorithm.";
-  }
-  if (severity === "medium") {
-    return "Why it matters: It improves viewer satisfaction and recommendation odds.";
-  }
-  return "Why it matters: Small gains compound into long-term trust with viewers and the algorithm.";
-};
 
 const getScoreTone = (score: number | null | undefined) => {
   if (score === null || score === undefined) return "text-gray-500";
@@ -377,21 +369,21 @@ const getScoreTone = (score: number | null | undefined) => {
   return "text-rose-600";
 };
 
-const buildSparkline = (scores: number[]) => {
-  if (scores.length < 2) return "";
-  const width = 120;
-  const height = 40;
-  const maxScore = Math.max(...scores);
-  const minScore = Math.min(...scores);
-  const range = maxScore - minScore || 1;
-  return scores
-    .map((score, index) => {
-      const x = (index / (scores.length - 1)) * width;
-      const y = height - ((score - minScore) / range) * height;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+const getDataConfidenceMeta = (confidence?: string | null) => {
+  switch (confidence) {
+    case "high":
+      return { label: "High confidence", tone: "text-emerald-600 bg-emerald-50", icon: "✓" };
+    case "medium":
+      return { label: "Medium confidence", tone: "text-blue-600 bg-blue-50", icon: "~" };
+    case "low":
+      return { label: "Low confidence", tone: "text-amber-600 bg-amber-50", icon: "!" };
+    case "insufficient":
+      return { label: "Insufficient data", tone: "text-rose-600 bg-rose-50", icon: "✗" };
+    default:
+      return { label: "Unknown", tone: "text-gray-500 bg-gray-50", icon: "?" };
+  }
 };
+
 
 const formatHandle = (handle?: string | null) => {
   if (!handle) {
@@ -401,46 +393,7 @@ const formatHandle = (handle?: string | null) => {
   return trimmed ? `@${trimmed}` : "No handle";
 };
 
-const getScoreMessage = (score: number | null) => {
-  if (score === null || Number.isNaN(score)) {
-    return "Run your first analysis to see your Trust Score.";
-  }
-  if (score < 30) {
-    return `Trust Score ${score}. Don't worry, it only goes up from here.`;
-  }
-  if (score < 50) {
-    return `Trust Score ${score}. Solid start - let's chase the quick wins below.`;
-  }
-  if (score < 70) {
-    return `Trust Score ${score}. You're building momentum. A few tweaks can push you higher.`;
-  }
-  if (score < 85) {
-    return `Trust Score ${score}. Strong signals. Stay consistent and polish the details.`;
-  }
-  return `Trust Score ${score}. Elite channel signals - keep the bar high.`;
-};
 
-const getTopChanges = (latest?: Snapshot, previous?: Snapshot) => {
-  if (!latest?.components || !previous?.components) return [];
-  const deltas = Object.keys(componentLabels)
-    .map((key) => ({
-      key,
-      label: componentLabels[key] ?? key,
-      delta:
-        (normalizeComponentScore(key, latest.components?.[key]) ?? 0) -
-        (normalizeComponentScore(key, previous.components?.[key]) ?? 0),
-    }))
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, 6);
-
-  const significant = deltas.filter((item) => Math.abs(item.delta) >= 6);
-  if (significant.length > 0) {
-    return significant.slice(0, 3);
-  }
-
-  const subtle = deltas.filter((item) => Math.abs(item.delta) >= 3);
-  return subtle.slice(0, 3);
-};
 
 export default function TrustScorePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -752,6 +705,9 @@ export default function TrustScorePage() {
     analysisResult?.components ?? latestSnapshot?.components ?? null;
   const actionItems =
     analysisResult?.actionItems ?? latestSnapshot?.action_items ?? [];
+  const dataConfidence =
+    analysisResult?.dataConfidence ?? latestSnapshot?.data_confidence ?? null;
+  const confidenceMeta = getDataConfidenceMeta(dataConfidence);
   const userEmail = user?.email ?? "";
   const userName =
     user?.user_metadata?.full_name ??
@@ -762,21 +718,6 @@ export default function TrustScorePage() {
     user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? null;
   const userInitials = userName.slice(0, 2).toUpperCase();
 
-  const sparklinePoints = useMemo(() => {
-    const scores = [...history]
-      .reverse()
-      .map((entry) => entry.score)
-      .filter((score) => typeof score === "number");
-    return buildSparkline(scores);
-  }, [history]);
-
-  const topChanges = getTopChanges(latestSnapshot, previousSnapshot);
-  const driverMessage =
-    history.length < 2
-      ? "Run two analyses to see what moved the needle."
-      : topChanges.length === 0
-      ? "No big shifts yet. Keep running to spot the drivers."
-      : null;
 
   const topLifts = useMemo(() => {
     return [...actionItems]
@@ -816,23 +757,9 @@ export default function TrustScorePage() {
       .slice(0, 3);
   }, [breakdownItems]);
 
-  const diagnosisText = selectedChannel
-    ? topDrags.length > 0
-      ? `Your score is held back most by ${topDrags
-          .slice(0, 2)
-          .map((item) => item.label)
-          .join(" + ")}. Fixing these first moves the score fastest. Small wins stack fast.`
-      : "Run your first analysis to see what's holding your score back."
-    : "Connect your channel to get a clear, prioritized action plan. Small wins stack fast.";
-
-  const heroTitle = selectedChannel
-    ? `Your Trust Score for ${selectedChannel.title}`
-    : "Connect a YouTube Channel to Get Your Trust Score";
-
   const channelHandle = selectedChannel?.handle
     ? formatHandle(selectedChannel.handle)
     : null;
-  const biggestDriver = topChanges[0];
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
@@ -1171,544 +1098,341 @@ export default function TrustScorePage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-6 border-t border-gray-200 pt-4 md:border-none md:pt-0">
-            <section className="rounded-3xl border border-gray-200 bg-white p-5 md:p-6">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                    Trust Score
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <h1 className="text-2xl font-semibold text-gray-900 md:text-3xl">
-                      {heroTitle}
-                    </h1>
+          <div className="flex flex-1 flex-col gap-8 pt-2 md:pt-0">
+            {/* Minimal analysis banner */}
+            {analysisActive && !analysisModalOpen ? (
+              <button
+                type="button"
+                onClick={() => setAnalysisModalOpen(true)}
+                className="flex items-center justify-between rounded-2xl bg-[#2A2F3C] px-5 py-3 text-white transition-all hover:bg-[#353B4A]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-[#335CFF]" />
+                  </span>
+                  <span className="text-sm font-medium">Analyzing {selectedChannel?.title ?? "channel"}...</span>
+                </div>
+                <span className="text-xs text-white/60">View progress →</span>
+              </button>
+            ) : null}
+
+            {/* Main score display - the hero */}
+            <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.8fr]">
+              {/* Score Card */}
+              <div className="flex flex-col gap-6">
+                <div className="rounded-[2rem] bg-[#2A2F3C] p-8 text-white">
+                  <div className="flex items-start justify-between">
+                    {selectedChannel ? (
+                      <p className="text-sm text-white/60">{selectedChannel.title}</p>
+                    ) : (
+                      <p className="text-sm text-white/40">No channel selected</p>
+                    )}
                     {analysisActive ? (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-[#EEF2FF] px-3 py-1 text-[10px] font-semibold text-[#335CFF]">
+                      <span className="flex h-6 w-6 items-center justify-center">
                         <span className="h-2 w-2 animate-pulse rounded-full bg-[#335CFF]" />
-                        Updating...
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-2 max-w-2xl text-sm text-gray-500">
-                    {diagnosisText}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  {selectedChannel ? (
-                    <button
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0E121B] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black"
-                      type="button"
-                      onClick={() => handleAnalyze(selectedChannel.id)}
-                      disabled={analysisActive}
-                    >
-                      {analysisActive ? "Analyzing..." : "Recalculate score"}
-                    </button>
-                  ) : null}
-                  <a
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-[#335CFF] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#2B4FE0]"
-                    href="/api/trust-score/oauth/start?returnTo=/tools/trust-score"
-                  >
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M12 3l7 4v6c0 5-3.5 7.5-7 8-3.5-.5-7-3-7-8V7l7-4z" />
-                      <path d="M9.5 12.5 11 14l3.5-3.5" />
-                    </svg>
-                    {selectedChannel
-                      ? "Connect another channel"
-                      : "Connect YouTube channel"}
-                  </a>
-                </div>
-              </div>
-            </section>
-
-            {analysisActive && !analysisModalOpen ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#DDE3FF] bg-[#F5F7FF] px-4 py-2 text-xs text-[#2E46B8]">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#335CFF]" />
-                  <span>
-                    Updating{" "}
-                    {selectedChannel?.title
-                      ? `Trust Score for ${selectedChannel.title}`
-                      : "Trust Score"}
-                  </span>
-                </div>
-                <button
-                  className="text-xs font-semibold text-[#335CFF] hover:text-[#2B4FE0]"
-                  type="button"
-                  onClick={() => setAnalysisModalOpen(true)}
-                >
-                  View progress
-                </button>
-              </div>
-            ) : null}
-
-            <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1.6fr]">
-              <div className="rounded-3xl border border-gray-200 bg-white p-5 md:p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Connected channels
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                      Sync multiple channels and track each timeline.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
-                      {channels.length} connected
-                    </span>
-                    <button
-                      className="text-xs font-semibold text-gray-500 transition-colors hover:text-gray-800"
-                      type="button"
-                      onClick={loadChannels}
-                    >
-                      Refresh
-                    </button>
-                  </div>
-                </div>
-                {disconnectError ? (
-                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
-                    {disconnectError}
-                  </div>
-                ) : null}
-                <div className="mt-4 flex flex-col gap-3">
-                  {loadingChannels ? (
-                    <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
-                      Loading channels...
-                    </div>
-                  ) : channels.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
-                      No channels connected yet. Connect your first channel to
-                      generate a trust score.
-                    </div>
-                  ) : (
-                    channels.map((channel) => (
-                      <button
-                        key={channel.id}
-                        type="button"
-                        onClick={() => setSelectedChannelId(channel.id)}
-                        className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition ${
-                          selectedChannelId === channel.id
-                            ? "border-[#335CFF] bg-[#F3F6FF]"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
-                      >
-                        {channel.thumbnailUrl ? (
-                          <img
-                            src={channel.thumbnailUrl}
-                            alt={channel.title}
-                            className="h-12 w-12 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-600">
-                            {channel.title?.slice(0, 2).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {channel.title}
+                  
+                  <div className="mt-6 flex items-end justify-between">
+                    <div>
+                      <p className={`text-7xl font-semibold tracking-tight ${currentScore === null ? "text-white/30" : ""}`}>
+                        {currentScore ?? "—"}
+                      </p>
+                      {currentScore !== null ? (
+                        <div className="mt-2 flex items-center gap-2">
+                          <p className="text-sm font-medium text-white/60">
+                            {currentScore >= 85 ? "Excellent" : currentScore >= 70 ? "Strong" : currentScore >= 50 ? "Developing" : "Needs work"}
                           </p>
-                          <p className="text-xs text-gray-500">
-                            {formatHandle(channel.handle)}{" "}
-                            -{" "}
-                            {channel.lastScoreAt
-                              ? `Scored ${formatDate(channel.lastScoreAt)}`
-                              : "Not scored yet"}
-                          </p>
+                          {dataConfidence ? (
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${confidenceMeta.tone}`}>
+                              {confidenceMeta.icon} {confidenceMeta.label}
+                            </span>
+                          ) : null}
                         </div>
-                        <div className="flex flex-col items-end gap-2 text-right">
-                          <div>
-                            <p
-                              className={`text-lg font-semibold ${getScoreTone(
-                                channel.lastScore ?? null
-                              )}`}
-                            >
-                              {channel.lastScore ?? "--"}
-                            </p>
-                            <p className="text-xs text-gray-400">Trust</p>
+                      ) : (
+                        <p className="mt-2 text-sm text-white/40">Connect a channel</p>
+                      )}
+                    </div>
+                    <svg width="100" height="100" viewBox="0 0 120 120" className="opacity-90">
+                      <circle cx="60" cy="60" r="52" stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="52"
+                        stroke="#335CFF"
+                        strokeWidth="8"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={2 * Math.PI * 52}
+                        strokeDashoffset={2 * Math.PI * 52 * (1 - (currentScore ?? 0) / 100)}
+                        transform="rotate(-90 60 60)"
+                        className="transition-all duration-1000"
+                      />
+                    </svg>
+                  </div>
+
+                  <div className="mt-8 flex gap-2">
+                    {selectedChannel ? (
+                      <button
+                        className="flex-1 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#2A2F3C] transition-all hover:bg-white/90"
+                        type="button"
+                        onClick={() => handleAnalyze(selectedChannel.id)}
+                        disabled={analysisActive}
+                      >
+                        {analysisActive ? "Analyzing..." : "Recalculate"}
+                      </button>
+                    ) : null}
+                    <a
+                      className="flex items-center justify-center gap-2 rounded-xl bg-[#335CFF] px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-[#2B4FE0]"
+                      href="/api/trust-score/oauth/start?returnTo=/tools/trust-score"
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      {selectedChannel ? "Add" : "Connect"}
+                    </a>
+                  </div>
+                </div>
+
+                {/* Channels - simplified */}
+                <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900">Channels</p>
+                    <span className="text-xs text-gray-400">{channels.length}</span>
+                  </div>
+                  {disconnectError ? (
+                    <p className="mt-3 text-xs text-rose-500">{disconnectError}</p>
+                  ) : null}
+                  <div className="mt-4 space-y-2">
+                    {loadingChannels ? (
+                      <div className="py-8 text-center text-sm text-gray-400">Loading...</div>
+                    ) : channels.length === 0 ? (
+                      <div className="py-8 text-center text-sm text-gray-400">No channels connected</div>
+                    ) : (
+                      channels.map((channel) => (
+                        <div
+                          key={channel.id}
+                          className={`group relative flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer ${
+                            selectedChannelId === channel.id
+                              ? "bg-[#F3F6FF] ring-1 ring-[#335CFF]/20"
+                              : "hover:bg-gray-50"
+                          }`}
+                          onClick={() => setSelectedChannelId(channel.id)}
+                        >
+                          {channel.thumbnailUrl ? (
+                            <img src={channel.thumbnailUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">
+                              {channel.title?.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-900">{channel.title}</p>
+                            <p className="text-xs text-gray-400">{formatHandle(channel.handle)}</p>
                           </div>
+                          <div className="text-right">
+                            <p className={`text-lg font-semibold ${getScoreTone(channel.lastScore ?? null)}`}>
+                              {channel.lastScore ?? "—"}
+                            </p>
+                          </div>
+                          {/* Disconnect button - appears on hover */}
                           <button
-                            className="text-[11px] font-medium text-gray-400 transition-colors hover:text-rose-600 disabled:cursor-not-allowed disabled:text-gray-300"
                             type="button"
-                            onClick={(event) =>
-                              handleDisconnect(event, channel.id, channel.title)
-                            }
+                            onClick={(e) => handleDisconnect(e, channel.id, channel.title)}
                             disabled={disconnectingChannelId === channel.id}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-rose-600 shadow-sm border border-gray-200 hover:bg-rose-50 hover:border-rose-200 disabled:opacity-50"
                           >
-                            {disconnectingChannelId === channel.id
-                              ? "Disconnecting..."
-                              : "Disconnect"}
+                            {disconnectingChannelId === channel.id ? "..." : "Disconnect"}
                           </button>
                         </div>
-                      </button>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-gray-200 bg-white p-5 md:p-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Insights
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                      Clear next steps and what moved your score.
-                    </p>
-                  </div>
-                  {analysisActive ? (
-                    <span className="inline-flex items-center gap-2 rounded-full bg-[#EEF2FF] px-3 py-1 text-[10px] font-semibold text-[#335CFF]">
-                      <span className="h-2 w-2 animate-spin rounded-full border-2 border-[#335CFF] border-t-transparent" />
-                      Updating...
-                    </span>
-                  ) : null}
-                </div>
+              {/* Insights Panel */}
+              <div className="flex flex-col gap-6">
                 {analysisError ? (
-                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                  <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm text-rose-600">
                     {analysisError}
                   </div>
                 ) : null}
 
-                <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1fr]">
-                  <div className="rounded-2xl border border-gray-200 bg-[#F9FAFB] p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                          Trust score now
-                        </p>
-                        <p
-                          className={`mt-2 text-4xl font-semibold ${getScoreTone(
-                            currentScore ?? null
-                          )}`}
-                        >
-                          {currentScore ?? "--"}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Last run {formatDate(latestSnapshot?.created_at)}
-                        </p>
-                        <p className="mt-2 text-xs text-gray-500">
-                          {getScoreMessage(currentScore)}
-                        </p>
-                      </div>
-                      <svg width="84" height="84" viewBox="0 0 120 120">
-                        <circle
-                          cx="60"
-                          cy="60"
-                          r="52"
-                          stroke="#E5E7EB"
-                          strokeWidth="10"
-                          fill="none"
-                        />
-                        <circle
-                          cx="60"
-                          cy="60"
-                          r="52"
-                          stroke="#335CFF"
-                          strokeWidth="10"
-                          fill="none"
-                          strokeLinecap="round"
-                          strokeDasharray={2 * Math.PI * 52}
-                          strokeDashoffset={
-                            2 *
-                            Math.PI *
-                            52 *
-                            (1 - (currentScore ?? 0) / 100)
-                          }
-                          transform="rotate(-90 60 60)"
-                        />
-                      </svg>
-                    </div>
+                {/* Quick Stats Row */}
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
+                    <p className="text-xs font-medium text-gray-400">Trend</p>
+                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                      {history.length > 1 && latestSnapshot && previousSnapshot
+                        ? `${latestSnapshot.score - previousSnapshot.score >= 0 ? "+" : ""}${(latestSnapshot.score - previousSnapshot.score).toFixed(0)}`
+                        : "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">{history.length} runs</p>
                   </div>
-
-                  <div className="rounded-2xl border border-gray-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                          Score trend
-                        </p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {history.length > 1
-                            ? `${latestSnapshot?.score ?? "--"} (${
-                                latestSnapshot && previousSnapshot
-                                  ? (latestSnapshot.score -
-                                      previousSnapshot.score >=
-                                    0
-                                      ? "+"
-                                      : "") +
-                                    (latestSnapshot.score -
-                                      previousSnapshot.score).toFixed(0)
-                                  : ""
-                              })`
-                            : "No history yet"}
-                        </p>
-                      </div>
-                      <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
-                        {history.length} runs
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-center rounded-xl bg-[#F8FAFC] py-4">
-                      {sparklinePoints ? (
-                        <svg width="120" height="40">
-                          <polyline
-                            points={sparklinePoints}
-                            fill="none"
-                            stroke="#335CFF"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      ) : (
-                        <p className="text-xs text-gray-400">
-                          Run your first analysis to see a trendline.
-                        </p>
-                      )}
-                    </div>
-                    <div className="mt-4 text-xs text-gray-600">
-                      {biggestDriver ? (
-                        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                          <span>Biggest driver since last run</span>
-                          <span
-                            className={`font-semibold ${
-                              biggestDriver.delta >= 0
-                                ? "text-emerald-600"
-                                : "text-rose-600"
-                            }`}
-                          >
-                            {biggestDriver.label}{" "}
-                            {biggestDriver.delta >= 0 ? "+" : ""}
-                            {Math.round(biggestDriver.delta)}
-                          </span>
-                        </div>
-                      ) : (
-                        <p className="text-gray-400">{driverMessage}</p>
-                      )}
-                    </div>
+                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
+                    <p className="text-xs font-medium text-gray-400">Swipe ratio</p>
+                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                      {analysisResult?.swipeAvg ?? latestSnapshot?.swipe_avg
+                        ? `${Math.min(100, Math.round((analysisResult?.swipeAvg ?? latestSnapshot?.swipe_avg ?? 0) * 100))}%`
+                        : "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">first 30s kept</p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
+                    <p className="text-xs font-medium text-gray-400">Retention</p>
+                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                      {analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg
+                        ? `${Math.min(100, Math.round((analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg ?? 0) * 100))}%`
+                        : "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">avg watch time</p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
+                    <p className="text-xs font-medium text-gray-400">Last run</p>
+                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                      {latestSnapshot?.created_at
+                        ? new Date(latestSnapshot.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                        : "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400">{latestSnapshot ? new Date(latestSnapshot.created_at).toLocaleDateString(undefined, { year: "numeric" }) : "never"}</p>
                   </div>
                 </div>
 
-                <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-                  <div className="rounded-2xl border border-gray-200 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                      Do These Next
-                    </p>
-                    <div className="mt-4 space-y-4">
-                      {analysisActive ? (
-                        Array.from({ length: 3 }, (_, index) => (
-                          <div
-                            key={`lift-skeleton-${index}`}
-                            className="animate-pulse space-y-2 border-b border-gray-100 pb-4 last:border-0 last:pb-0"
-                          >
-                            <div className="h-3 w-32 rounded-full bg-gray-200" />
-                            <div className="h-2 w-full rounded-full bg-gray-200" />
-                            <div className="h-2 w-4/5 rounded-full bg-gray-200" />
-                          </div>
-                        ))
-                      ) : topLifts.length === 0 ? (
-                        <p className="text-sm text-gray-500">
-                          Run a trust score to generate personalized
-                          recommendations.
-                        </p>
-                      ) : (
-                        topLifts.map((item) => {
-                          const impact = getImpactMeta(item.severity);
-                          return (
-                            <div
-                              key={item.title}
-                              className="border-b border-gray-100 pb-4 last:border-0 last:pb-0"
-                            >
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-semibold text-gray-900">
-                                  {item.title}
-                                </p>
-                                <span
-                                  className={`rounded-full px-2 py-1 text-[10px] font-semibold ${impact.tone}`}
-                                >
-                                  {impact.label}
-                                </span>
-                              </div>
-                              <p className="mt-2 text-xs text-gray-500">
-                                {getWhyItMatters(item.severity)}
-                              </p>
-                              <p className="mt-1 text-xs text-gray-600">
-                                What to do next: {item.detail}
-                              </p>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
+                {/* Actions - clean cards */}
+                <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900">Priority actions</p>
+                    {topLifts.length > 0 ? (
+                      <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600">
+                        {topLifts.length} items
+                      </span>
+                    ) : null}
                   </div>
-
-                  <div className="rounded-2xl border border-gray-200 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                      Top 3 drags
-                    </p>
-                    <div className="mt-4 space-y-3 text-xs text-gray-600">
-                      {analysisActive ? (
-                        Array.from({ length: 3 }, (_, index) => (
-                          <div
-                            key={`drag-skeleton-${index}`}
-                            className="animate-pulse space-y-2"
-                          >
-                            <div className="h-3 w-28 rounded-full bg-gray-200" />
-                            <div className="h-2 w-24 rounded-full bg-gray-200" />
-                          </div>
-                        ))
-                      ) : topDrags.length === 0 ? (
-                        <p className="text-sm text-gray-500">
-                          Run a trust score to see what's holding you back.
-                        </p>
-                      ) : (
-                        topDrags.map((item) => {
-                          const scoreLabel = getScoreLabel(item.score);
-                          const hasDelta = item.delta !== null;
-                          const deltaValue = item.delta ?? 0;
-                          const deltaLabel =
-                            !hasDelta
-                              ? "No prior run"
-                              : `${deltaValue >= 0 ? "+" : ""}${deltaValue} pts`;
-                          return (
-                            <div
-                              key={item.key}
-                              className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2"
-                            >
-                              <div>
-                                <p className="text-sm font-semibold text-gray-900">
-                                  {item.label}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  {item.score}/100 - {scoreLabel}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p
-                                  className={`text-xs font-semibold ${
-                                    hasDelta && deltaValue < 0
-                                      ? "text-rose-600"
-                                      : "text-emerald-600"
-                                  }`}
-                                >
-                                  {deltaLabel}
-                                </p>
-                                {hasDelta ? (
-                                  <p className="text-[10px] text-gray-400">
-                                    since last run
-                                  </p>
-                                ) : null}
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <details className="mt-6 rounded-2xl border border-gray-200 p-4">
-                  <summary className="cursor-pointer text-xs uppercase tracking-[0.2em] text-gray-400">
-                    Score breakdown
-                  </summary>
-                  <div className="mt-4 space-y-3 text-xs text-gray-600">
+                  <div className="mt-5 space-y-3">
                     {analysisActive ? (
-                      Array.from({ length: 4 }, (_, index) => (
-                        <div
-                          key={`breakdown-skeleton-${index}`}
-                          className="animate-pulse space-y-2"
-                        >
-                          <div className="h-3 w-32 rounded-full bg-gray-200" />
-                          <div className="h-2 w-full rounded-full bg-gray-200" />
+                      Array.from({ length: 3 }, (_, index) => (
+                        <div key={`skeleton-${index}`} className="animate-pulse rounded-xl bg-gray-50 p-4">
+                          <div className="h-4 w-3/4 rounded bg-gray-200" />
+                          <div className="mt-2 h-3 w-1/2 rounded bg-gray-100" />
                         </div>
                       ))
-                    ) : breakdownItems.length > 0 ? (
-                      breakdownItems.map((item) => {
-                        const scoreLabel = getScoreLabel(item.score);
+                    ) : topLifts.length === 0 ? (
+                      <div className="py-8 text-center text-sm text-gray-400">
+                        Run analysis to get recommendations
+                      </div>
+                    ) : (
+                      topLifts.map((item, idx) => {
+                        const impact = getImpactMeta(item.severity);
                         return (
                           <div
-                            key={item.key}
-                            className="rounded-lg bg-gray-50 px-3 py-2"
+                            key={item.title}
+                            className="flex items-start gap-4 rounded-xl bg-gray-50 p-4 transition-colors hover:bg-gray-100"
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-gray-900">
-                                {item.label}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                {item.score}/100 - {scoreLabel}
-                              </span>
+                            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-500 shadow-sm">
+                              {idx + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900">{item.title}</p>
+                              <p className="mt-1 text-sm text-gray-500">{item.detail}</p>
                             </div>
-                            <div className="relative mt-2 h-2 rounded-full bg-white">
-                              <div
-                                className="h-2 rounded-full bg-[#335CFF]"
-                                style={{ width: `${item.score}%` }}
-                              />
-                              <div
-                                className="absolute top-0 h-2 w-px bg-gray-300"
-                                style={{ left: `${SCORE_TARGET}%` }}
-                              />
-                            </div>
+                            <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${impact.tone}`}>
+                              {item.severity === "high" ? "High" : item.severity === "medium" ? "Med" : "Low"}
+                            </span>
                           </div>
                         );
                       })
-                    ) : (
-                      <p className="text-sm text-gray-500">
-                        Component breakdown appears after your first score.
-                      </p>
                     )}
                   </div>
-                  <p className="mt-3 text-[10px] uppercase tracking-[0.2em] text-gray-400">
-                    Target line at {SCORE_TARGET}
-                  </p>
-                </details>
+                </div>
+
+                {/* Weakest areas - simplified */}
+                <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
+                  <p className="text-sm font-semibold text-gray-900">Weakest areas</p>
+                  <div className="mt-5 space-y-4">
+                    {analysisActive ? (
+                      Array.from({ length: 3 }, (_, index) => (
+                        <div key={`drag-skeleton-${index}`} className="animate-pulse">
+                          <div className="h-3 w-24 rounded bg-gray-200" />
+                          <div className="mt-2 h-2 w-full rounded-full bg-gray-100" />
+                        </div>
+                      ))
+                    ) : topDrags.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-gray-400">
+                        Run analysis to identify weak spots
+                      </div>
+                    ) : (
+                      topDrags.map((item) => (
+                        <div key={item.key}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-900">{item.label}</span>
+                            <span className={`text-sm font-semibold ${getScoreTone(item.score)}`}>{item.score}</span>
+                          </div>
+                          <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                item.score >= 70 ? "bg-emerald-500" : item.score >= 50 ? "bg-amber-500" : "bg-rose-500"
+                              }`}
+                              style={{ width: `${item.score}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Score breakdown - collapsible */}
+                {breakdownItems.length > 0 ? (
+                  <details className="group rounded-[2rem] border border-gray-100 bg-white">
+                    <summary className="flex cursor-pointer items-center justify-between p-6 text-sm font-semibold text-gray-900 [&::-webkit-details-marker]:hidden">
+                      Full breakdown
+                      <svg className="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </summary>
+                    <div className="border-t border-gray-100 p-6 pt-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {breakdownItems.map((item) => (
+                          <div key={item.key} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
+                            <span className="text-sm text-gray-600">{item.label}</span>
+                            <span className={`text-sm font-semibold ${getScoreTone(item.score)}`}>{item.score}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                ) : null}
               </div>
             </section>
 
-            <section className="rounded-3xl border border-gray-200 bg-white p-5 md:p-6">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    Score history
-                  </h2>
-                  <p className="text-xs text-gray-500">
-                    Every run is saved so you can see what moved the needle.
-                  </p>
+            {/* History - minimal */}
+            {history.length > 0 ? (
+              <section className="rounded-[2rem] border border-gray-100 bg-white p-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-900">History</p>
+                  <p className="text-xs text-gray-400">{history.length} runs</p>
                 </div>
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {history.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
-                    No history yet. Run the trust score to log a baseline.
-                  </div>
-                ) : (
-                  history.map((entry) => (
+                <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
+                  {history.slice(0, 10).map((entry, idx) => (
                     <div
                       key={entry.id}
-                      className="rounded-2xl border border-gray-200 bg-white p-4"
+                      className={`flex flex-shrink-0 flex-col items-center rounded-xl px-5 py-4 ${
+                        idx === 0 ? "bg-[#2A2F3C] text-white" : "bg-gray-50"
+                      }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                          {formatDate(entry.created_at)}
-                        </p>
-                        <span
-                          className={`text-base font-semibold ${getScoreTone(
-                            entry.score
-                          )}`}
-                        >
-                          {entry.score}
-                        </span>
-                      </div>
+                      <span className={`text-2xl font-semibold ${idx === 0 ? "" : getScoreTone(entry.score)}`}>
+                        {entry.score}
+                      </span>
+                      <span className={`mt-1 text-xs ${idx === 0 ? "text-white/60" : "text-gray-400"}`}>
+                        {new Date(entry.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      </span>
                     </div>
-                  ))
-                )}
-              </div>
-            </section>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
         </main>
       </div>

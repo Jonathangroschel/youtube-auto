@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const { data: snapshots } = await supabaseServer
     .from("youtube_trust_score_snapshots")
     .select(
-      "id, channel_id, score, score_raw, account_score, performance_score, consistency_score, niche_score, swipe_avg, retention_avg, components, action_items, created_at"
+      "id, channel_id, score, score_raw, account_score, performance_score, consistency_score, niche_score, swipe_avg, retention_avg, components, action_items, data_confidence, created_at"
     )
     .eq("user_id", user.id)
     .eq("channel_id", channelId)
