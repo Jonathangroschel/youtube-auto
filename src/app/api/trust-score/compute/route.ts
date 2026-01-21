@@ -256,6 +256,7 @@ export async function POST(request: Request) {
       return {
         ...video,
         views: metrics.views ?? video.viewCount ?? 0,
+        analyticsViews: metrics.views ?? undefined,
         likes: metrics.likes ?? video.likeCount ?? 0,
         comments: metrics.comments ?? video.commentCount ?? 0,
         subscribersGained: metrics.subscribersGained ?? 0,

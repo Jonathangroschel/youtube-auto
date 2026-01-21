@@ -531,6 +531,7 @@ export const fetchAnalyticsMetrics = async ({
     ["impressions", "impressionsClickThroughRate", "engagedViews"],
     ["impressions", "impressionsCtr", "engagedViews"],
     ["impressions", "engagedViews"],
+    ["engagedViews"],
   ];
 
   for (const metrics of secondaryMetricsOptions) {

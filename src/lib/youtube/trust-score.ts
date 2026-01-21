@@ -2,6 +2,7 @@ import type { YoutubeChannel, YoutubePlaylistItem, YoutubeVideo } from "@/lib/yo
 
 type VideoMetrics = YoutubeVideo & {
   views: number;
+  analyticsViews?: number;
   likes: number;
   comments: number;
   subscribersGained: number;
@@ -148,20 +149,20 @@ const computeRetentionScore = (lov: number, avd: number): { score: number; targe
   if (lov <= 0) {
     return { score: 0, target: 0 };
   }
-  
+
   // If no AVD data, return 0 (don't assume anything)
   if (avd <= 0) {
     return { score: 0, target: roundToHalf(getTargetRatio(lov) * lov) };
   }
-  
+
   const target = roundToHalf(getTargetRatio(lov) * lov);
-  
+
   if (avd >= target) {
     return { score: 40, target };
   }
-  
+
   const delta = target - avd;
-  
+
   if (delta <= 1) {
     return { score: 30, target };
   }
@@ -171,13 +172,13 @@ const computeRetentionScore = (lov: number, avd: number): { score: number; targe
   if (delta <= 3) {
     return { score: 10, target };
   }
-  
+
   // If AVD >= LOV but still under target, give partial credit
   // This means viewer watched the whole video but didn't loop enough
   if (avd >= lov) {
     return { score: 5, target };
   }
-  
+
   // AVD < LOV and delta > 3: viewer dropped off early
   return { score: 0, target };
 };
@@ -190,10 +191,10 @@ const computeRewatchScore = (lov: number, avd: number): { score: number; loopRat
   if (lov <= 0 || avd <= 0) {
     return { score: 0, loopRatio: 0 };
   }
-  
+
   const loopRatio = avd / lov;
   let score = 0;
-  
+
   if (loopRatio >= 1.25) {
     score = 10; // Excellent looping
   } else if (loopRatio >= 1.1) {
@@ -211,7 +212,7 @@ const computeRewatchScore = (lov: number, avd: number): { score: number; loopRat
   if (lov <= 13 && loopRatio < 1.05) {
     score = Math.min(score, 2); // Cap at 2 if not looping
   }
-  
+
   // Videos under 8s with no loop are essentially failures
   if (lov <= 8 && loopRatio < 1.15) {
     score = Math.min(score, 1);
@@ -233,13 +234,13 @@ const computeEngagementScore = (
   if (views <= 0) {
     return 0;
   }
-  
+
   // Targets based on YouTube benchmarks
   // These are minimum thresholds for "good" engagement
   const likeTarget = views / 300;      // 0.33% like rate
   const commentTarget = views / 1500;  // 0.067% comment rate
   const subTarget = views / 1000;      // 0.1% sub rate
-  
+
   const hitLike = likes >= likeTarget;
   const hitComment = comments >= commentTarget;
   const hitSub = subs >= subTarget;
@@ -255,7 +256,7 @@ const computeEngagementScore = (
   if (hits === 1) {
     return 3;
   }
-  
+
   // Some engagement but no targets hit
   if (totalEngagement > 0) {
     // Scale based on how close to targets
@@ -263,18 +264,18 @@ const computeEngagementScore = (
     const commentRatio = Math.min(1, comments / commentTarget);
     const subRatio = Math.min(1, subs / subTarget);
     const avgRatio = (likeRatio + commentRatio + subRatio) / 3;
-    
+
     if (avgRatio >= 0.5) {
       return 2; // Halfway to targets
     }
     return 1; // Some engagement
   }
-  
+
   // Zero engagement on a video with views is a bad sign
   if (views >= 1000 && totalEngagement === 0) {
     return 0;
   }
-  
+
   return 0;
 };
 
@@ -287,17 +288,23 @@ const computeSwipeScore = (
   isShort: boolean,
   shortsViews?: number,
   shortsEngagedViews?: number,
-  ctr?: number
+  ctr?: number,
+  analyticsViews?: number,
+  analyticsEngagedViews?: number
 ): { score: number; rate: number | null; source: string } => {
   let rate: number | null = null;
   let source = "none";
-  
+
   if (isShort) {
     // For Shorts: use engaged views / views from the Shorts feed
     // This represents viewers who stayed to watch vs swiped away
     if (shortsViews && shortsViews > 0 && shortsEngagedViews !== undefined) {
       rate = clamp(shortsEngagedViews / shortsViews, 0, 1);
       source = "shorts_feed";
+    } else if (analyticsViews && analyticsViews > 0 && analyticsEngagedViews !== undefined) {
+      // Fallback to overall Shorts engaged views when feed-only data is missing.
+      rate = clamp(analyticsEngagedViews / analyticsViews, 0, 1);
+      source = "shorts_overall";
     }
   } else {
     // For long-form: use click-through rate
@@ -403,16 +410,16 @@ const computeFormatScore = (video: YoutubeVideo): { score: number; isVertical: b
   const width = video.width ?? getBestThumbnail(video.thumbnails).width;
   const height = video.height ?? getBestThumbnail(video.thumbnails).height;
   const aspectRatio = width && height ? height / width : 0;
-  
+
   // Vertical = aspect ratio >= 1.4 (roughly 9:16 or taller)
   const isVertical = aspectRatio >= 1.4;
   const hasHighRes = (height ?? 0) >= 1080;
   const formatOk = isVertical && hasHighRes;
-  
+
   // FIX: Actually check credits when content appears to be reused
   const isReused = detectReusedContent(video);
   const creditsOk = isReused ? hasCredits(video.description) : true;
-  
+
   let score = 0;
   if (formatOk && creditsOk) {
     score = 2;
@@ -421,7 +428,7 @@ const computeFormatScore = (video: YoutubeVideo): { score: number; isVertical: b
   } else {
     score = 0;
   }
-  
+
   return { score, isVertical, height };
 };
 
@@ -434,13 +441,13 @@ const computeWeight = (views: number, publishedAt: string, now: Date): number =>
   const ageDays = Number.isFinite(publishedAtMs)
     ? Math.max(0, (now.getTime() - publishedAtMs) / DAY_MS)
     : 0;
-  
+
   // View weight: scale from 0 to 1, maxing at 10k views
   // Videos under 100 views get heavily penalized
-  const viewWeight = views < MIN_VIEWS_FOR_VIDEO_SCORE 
+  const viewWeight = views < MIN_VIEWS_FOR_VIDEO_SCORE
     ? Math.max(0.05, views / MIN_VIEWS_FOR_VIDEO_SCORE * 0.2) // Max 0.2 weight for low-view videos
     : Math.min(1, views / 10000);
-  
+
   // Time decay: exponential decay over 14 days
   // Older videos matter less
   return viewWeight * Math.exp(-ageDays / 14);
@@ -598,13 +605,23 @@ const computeNicheScore = (videos: VideoMetrics[], signals?: NicheSignals): numb
   const placementStability = computeDistributionStability(signals?.placement);
   const audienceStability = computeDistributionStability(signals?.audience);
 
-  // If any signal is missing, treat niche clarity as unavailable.
-  if (contentCoherence === null || placementStability === null || audienceStability === null) {
+  const weightedSignals = [
+    { value: contentCoherence, weight: 0.5 },
+    { value: placementStability, weight: 0.3 },
+    { value: audienceStability, weight: 0.2 },
+  ].filter((entry) => entry.value !== null && entry.value !== undefined);
+
+  // If all signals are missing, treat niche clarity as unavailable.
+  if (weightedSignals.length === 0) {
     return 0;
   }
 
+  const totalWeight = weightedSignals.reduce((sum, entry) => sum + entry.weight, 0);
   const nicheIndex =
-    0.5 * contentCoherence + 0.3 * placementStability + 0.2 * audienceStability;
+    weightedSignals.reduce(
+      (sum, entry) => sum + (entry.value ?? 0) * entry.weight,
+      0
+    ) / totalWeight;
 
   if (nicheIndex >= 0.75) {
     return 3;
@@ -640,12 +657,12 @@ const computeConsistencyScore = (
   if (!hasEnoughAnalyticsData) {
     return 0;
   }
-  
+
   // GATE 2: Hard swipe fail = no consistency points
   if (swipeAvg !== null && swipeAvg < 0.72) {
     return 0;
   }
-  
+
   // GATE 3: Hard retention fail = no consistency points
   if (retentionAvg !== null && retentionAvg < 10) {
     return 0;
@@ -685,7 +702,7 @@ const computeConsistencyScore = (
   } else if (daysWithUpload >= 7) {
     score = 2;
   }
-  
+
   // FIX: If we have no swipe data at all, cap consistency at 2
   // Consistency alone shouldn't carry the score
   if (swipeAvg === null && score > 2) {
@@ -720,7 +737,7 @@ const buildActionItems = (
       severity: "high",
     });
   }
-  
+
   if (scores.featureEligibility < 1) {
     items.push({
       title: "Enable long uploads",
@@ -728,7 +745,7 @@ const buildActionItems = (
       severity: "high",
     });
   }
-  
+
   // Swipe/CTR is critical - highest priority
   if (scores.swipeScore < 15) {
     items.push({
@@ -737,7 +754,7 @@ const buildActionItems = (
       severity: "high",
     });
   }
-  
+
   // Retention is the #1 algorithm signal
   if (scores.retentionScore < 20) {
     items.push({
@@ -746,7 +763,7 @@ const buildActionItems = (
       severity: "high",
     });
   }
-  
+
   if (scores.rewatchScore < 5) {
     items.push({
       title: "Encourage loops",
@@ -754,7 +771,7 @@ const buildActionItems = (
       severity: "high",
     });
   }
-  
+
   if (scores.channelTags < 1) {
     items.push({
       title: "Remove channel keywords",
@@ -762,7 +779,7 @@ const buildActionItems = (
       severity: "medium",
     });
   }
-  
+
   if (scores.channelDescription < 1) {
     items.push({
       title: "Write a fuller channel bio",
@@ -770,7 +787,7 @@ const buildActionItems = (
       severity: "medium",
     });
   }
-  
+
   if (scores.entertainmentCategory < 1) {
     items.push({
       title: "Stay consistent with Entertainment",
@@ -778,7 +795,7 @@ const buildActionItems = (
       severity: "medium",
     });
   }
-  
+
   if (scores.enhancements < 1) {
     items.push({
       title: "Upgrade format fidelity",
@@ -786,7 +803,7 @@ const buildActionItems = (
       severity: "medium",
     });
   }
-  
+
   if (scores.engagementScore < 6) {
     items.push({
       title: "Boost engagement signals",
@@ -794,7 +811,7 @@ const buildActionItems = (
       severity: "medium",
     });
   }
-  
+
   if (scores.consistencyScore < 4) {
     items.push({
       title: "Ship more consistently",
@@ -802,7 +819,7 @@ const buildActionItems = (
       severity: "medium",
     });
   }
-  
+
   if (scores.nicheScore < 2) {
     items.push({
       title: "Tighten niche clarity",
@@ -810,7 +827,7 @@ const buildActionItems = (
       severity: "low",
     });
   }
-  
+
   if (scores.formattingScore < 1) {
     items.push({
       title: "Fix format and credits",
@@ -833,10 +850,10 @@ const calculateDataConfidence = (
   if (videos.length < MIN_VIDEOS_FOR_PERFORMANCE) {
     return "insufficient";
   }
-  
+
   const analyticsRatio = videosWithAnalytics / videos.length;
   const swipeRatio = videosWithSwipeData / videos.length;
-  
+
   if (analyticsRatio >= 0.8 && swipeRatio >= 0.5) {
     return "high";
   }
@@ -871,8 +888,10 @@ export const calculateTrustScore = ({
 }): TrustScoreResult => {
   const videoScores: VideoScoreBreakdown[] = [];
   const weights: number[] = [];
-  const shortsSwipeRates: number[] = [];
-  const shortsSwipeWeights: number[] = [];
+  const shortsSwipeFeedRates: number[] = [];
+  const shortsSwipeFeedWeights: number[] = [];
+  const shortsSwipeFallbackRates: number[] = [];
+  const shortsSwipeFallbackWeights: number[] = [];
   const swipeScoreValues: number[] = [];
   const retentionScoreValues: number[] = [];
   const rewatchScoreValues: number[] = [];
@@ -880,7 +899,7 @@ export const calculateTrustScore = ({
   const formattingScoreValues: number[] = [];
   const enhancements: number[] = [];
   const categories = videos.map((video) => video.categoryId).filter(Boolean);
-  
+
   // Track data availability
   let videosWithAnalytics = 0;
   let videosWithSwipeData = 0;
@@ -892,29 +911,34 @@ export const calculateTrustScore = ({
 
     const isShort = video.durationSeconds > 0 && video.durationSeconds <= 60;
     const hasAnalytics = video.averageViewDuration > 0;
-    const hasSwipe =
-      isShort
-        ? (video.shortsFeedViews ?? 0) > 0 &&
-          video.shortsFeedEngagedViews !== undefined
-        : normalizeRate(video.impressionsClickThroughRate) !== null;
-    
+    const hasSwipe = isShort
+      ? (((video.shortsFeedViews ?? 0) > 0 &&
+        video.shortsFeedEngagedViews !== undefined) ||
+        ((video.analyticsViews ?? 0) > 0 && video.engagedViews !== undefined))
+      : normalizeRate(video.impressionsClickThroughRate) !== null;
+
     if (hasAnalytics) {
       videosWithAnalytics += 1;
     }
     if (hasSwipe) {
       videosWithSwipeData += 1;
     }
-    
+
     const swipe = computeSwipeScore(
       isShort,
       video.shortsFeedViews,
       video.shortsFeedEngagedViews,
-      video.impressionsClickThroughRate
+      video.impressionsClickThroughRate,
+      video.analyticsViews,
+      video.engagedViews
     );
 
     if (swipe.rate !== null && swipe.source === "shorts_feed") {
-      shortsSwipeRates.push(swipe.rate);
-      shortsSwipeWeights.push(weight);
+      shortsSwipeFeedRates.push(swipe.rate);
+      shortsSwipeFeedWeights.push(weight);
+    } else if (swipe.rate !== null && swipe.source === "shorts_overall") {
+      shortsSwipeFallbackRates.push(swipe.rate);
+      shortsSwipeFallbackWeights.push(weight);
     }
 
     const retention = computeRetentionScore(
@@ -990,7 +1014,7 @@ export const calculateTrustScore = ({
 
   const totalWeight = weights.reduce((sum, value) => sum + value, 0);
   const safeWeight = totalWeight > 0 ? totalWeight : videos.length || 1;
-  
+
   const weightedAverage = (values: number[]): number => {
     if (values.length === 0) {
       return 0;
@@ -1002,17 +1026,28 @@ export const calculateTrustScore = ({
   };
 
   // Calculate shorts swipe average
-  const shortsSwipeWeightSum = shortsSwipeWeights.reduce((sum, value) => sum + value, 0);
+  const computeWeightedSwipeAvg = (rates: number[], rateWeights: number[]): number | null => {
+    if (rates.length === 0) {
+      return null;
+    }
+    const weightSum = rateWeights.reduce((sum, value) => sum + value, 0);
+    if (weightSum > 0) {
+      return rates.reduce(
+        (sum, value, index) => sum + value * (rateWeights[index] ?? 0),
+        0
+      ) / weightSum;
+    }
+    return rates.reduce((sum, value) => sum + value, 0) / rates.length;
+  };
+
+  const shortsSwipeFeedAvg = computeWeightedSwipeAvg(
+    shortsSwipeFeedRates,
+    shortsSwipeFeedWeights
+  );
   const shortsSwipeAvg =
-    shortsSwipeRates.length > 0
-      ? shortsSwipeWeightSum > 0
-        ? shortsSwipeRates.reduce(
-            (sum, value, index) => sum + value * (shortsSwipeWeights[index] ?? 0),
-            0
-          ) / shortsSwipeWeightSum
-        : shortsSwipeRates.reduce((sum, value) => sum + value, 0) / shortsSwipeRates.length
-      : null;
-      
+    shortsSwipeFeedAvg ??
+    computeWeightedSwipeAvg(shortsSwipeFallbackRates, shortsSwipeFallbackWeights);
+
   const retentionAvg =
     retentionScoreValues.length > 0
       ? weightedAverage(retentionScoreValues)
@@ -1020,7 +1055,7 @@ export const calculateTrustScore = ({
 
   // Calculate performance score
   let performanceScore = weightedAverage(videoScores.map((entry) => entry.scores.total));
-  
+
   // Apply penalty for insufficient data
   if (dataConfidence === "insufficient") {
     performanceScore = performanceScore * 0.5; // 50% penalty
@@ -1034,23 +1069,23 @@ export const calculateTrustScore = ({
     ? Math.max(0, (now.getTime() - publishedAtMs) / DAY_MS)
     : 0;
   const channelAgeScore = channelAgeDays >= 1 ? 1 : 0;
-  
+
   const featureEligibilityMap: Record<string, number> = {
     allowed: 1,
     eligible: 0.66,
     disallowed: 0,
   };
   const featureEligibility = featureEligibilityMap[channel.longUploadsStatus ?? ""] ?? 0;
-  
+
   const channelTags = channel.keywords && channel.keywords.trim().length > 0 ? 0 : 1;
   const channelDescription = (channel.description?.trim().length ?? 0) >= 20 ? 1 : 0;
-  
+
   const entertainmentShare =
     categories.length === 0
       ? 0
       : categories.filter((id) => id === "24").length / categories.length;
   const entertainmentCategory = entertainmentShare >= 0.8 ? 1 : 0;
-  
+
   const enhancementsScore = enhancements.length > 0 ? weightedAverage(enhancements) : 0;
 
   const accountScore =
@@ -1062,6 +1097,7 @@ export const calculateTrustScore = ({
     enhancementsScore;
 
   // Consistency score with stricter gates
+  // Use shortsSwipeAvg (combined feed + fallback) so consistency is gated by ANY available swipe data
   const hasEnoughAnalyticsData = videosWithAnalytics >= MIN_VIDEOS_WITH_ANALYTICS;
   const consistencyScore = computeConsistencyScore(
     uploads,
@@ -1069,18 +1105,18 @@ export const calculateTrustScore = ({
     retentionAvg,
     hasEnoughAnalyticsData
   );
-  
+
   const nicheScore = clusterNiche(videos, nicheSignals);
 
   // Calculate raw score
   const rawScore = accountScore + performanceScore + consistencyScore + nicheScore;
-  
-  // Apply hard cap if swipe rate is failing
+
+  // Apply hard cap if swipe rate is failing (use combined swipe avg for consistency)
   let finalScore = rawScore;
   if (shortsSwipeAvg !== null && shortsSwipeAvg < 0.72) {
     finalScore = Math.min(rawScore, 50);
   }
-  
+
   // Additional cap for insufficient data
   if (dataConfidence === "insufficient") {
     finalScore = Math.min(finalScore, 40);

@@ -339,8 +339,8 @@ const componentTooltips: Record<
     zero: "Most recent uploads are not vertical or high-res.",
   },
   swipeScore: {
-    summary: "Stayed-to-watch rate from the Shorts feed (engaged views / views).",
-    zero: "Shorts feed engaged views are missing or the stay rate is below 72%.",
+    summary: "Stayed-to-watch rate from the Shorts feed, or overall Shorts engaged rate when feed data is missing.",
+    zero: "Shorts engaged views are missing or the stay rate is below 72%.",
   },
   retentionScore: {
     summary: "Compares average view duration to the target for each video length.",
@@ -873,9 +873,8 @@ export default function TrustScorePage() {
                   ref={(element) => {
                     navItemRefs.current[index] = element;
                   }}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
-                    item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
-                  }`}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
+                    }`}
                   aria-label={item.label}
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
@@ -949,20 +948,17 @@ export default function TrustScorePage() {
           </div>
 
           <div
-            className={`fixed inset-0 z-40 md:hidden ${
-              mobileMenuOpen ? "" : "pointer-events-none"
-            }`}
+            className={`fixed inset-0 z-40 md:hidden ${mobileMenuOpen ? "" : "pointer-events-none"
+              }`}
           >
             <div
-              className={`absolute inset-0 bg-black/20 transition-opacity ${
-                mobileMenuOpen ? "opacity-100" : "opacity-0"
-              }`}
+              className={`absolute inset-0 bg-black/20 transition-opacity ${mobileMenuOpen ? "opacity-100" : "opacity-0"
+                }`}
               onClick={() => setMobileMenuOpen(false)}
             />
             <div
-              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-white shadow-xl transition-transform ${
-                mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-              }`}
+              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-white shadow-xl transition-transform ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+                }`}
             >
               <div className="p-3">
                 <div className="flex items-center space-x-3">
@@ -1015,9 +1011,8 @@ export default function TrustScorePage() {
                         <svg
                           aria-hidden="true"
                           viewBox="0 0 24 24"
-                          className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${
-                            isOpen ? "rotate-90" : ""
-                          }`}
+                          className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${isOpen ? "rotate-90" : ""
+                            }`}
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="2"
@@ -1029,9 +1024,8 @@ export default function TrustScorePage() {
                       </button>
                       <div
                         id={`section-${sectionId}`}
-                        className={`overflow-hidden transition-all duration-200 ease-in-out ${
-                          isOpen ? "max-h-96" : "max-h-0"
-                        }`}
+                        className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? "max-h-96" : "max-h-0"
+                          }`}
                       >
                         <div className="py-1">
                           {section.items.map((item) => (
@@ -1056,11 +1050,10 @@ export default function TrustScorePage() {
                   <a
                     key={action.label}
                     href={action.href}
-                    className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      action.tone === "danger"
+                    className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${action.tone === "danger"
                         ? "text-red-600 hover:bg-red-50"
                         : "text-gray-700 hover:bg-gray-100"
-                    }`}
+                      }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {action.label}
@@ -1129,11 +1122,10 @@ export default function TrustScorePage() {
               </button>
               <div
                 id="trust-score-profile-menu"
-                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${
-                  profileMenuOpen
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${profileMenuOpen
                     ? "pointer-events-auto translate-y-0 opacity-100"
                     : "pointer-events-none translate-y-1 opacity-0"
-                }`}
+                  }`}
               >
                 <div className="flex flex-row items-center space-x-2 px-3 py-2">
                   {userAvatar ? (
@@ -1198,7 +1190,7 @@ export default function TrustScorePage() {
                       </span>
                     ) : null}
                   </div>
-                  
+
                   <div className="mt-6 flex items-end justify-between">
                     <div>
                       <p className={`text-7xl font-semibold tracking-tight ${currentScore === null ? "text-white/30" : ""}`}>
@@ -1278,11 +1270,10 @@ export default function TrustScorePage() {
                       channels.map((channel) => (
                         <div
                           key={channel.id}
-                          className={`group relative flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer ${
-                            selectedChannelId === channel.id
+                          className={`group relative flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer ${selectedChannelId === channel.id
                               ? "bg-[#F3F6FF] ring-1 ring-[#335CFF]/20"
                               : "hover:bg-gray-50"
-                          }`}
+                            }`}
                           onClick={() => setSelectedChannelId(channel.id)}
                         >
                           {channel.thumbnailUrl ? (
@@ -1349,7 +1340,7 @@ export default function TrustScorePage() {
                     <p className="text-xs font-medium text-gray-400">Retention</p>
                     <p className="mt-2 text-2xl font-semibold text-gray-900">
                       {analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg
-                        ? `${Math.min(100, Math.round((analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg ?? 0) * 100))}%`
+                        ? `${Math.min(100, Math.round(((analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg ?? 0) / 40) * 100))}%`
                         : "—"}
                     </p>
                     <p className="mt-1 text-xs text-gray-400">avg watch time</p>
@@ -1436,9 +1427,8 @@ export default function TrustScorePage() {
                           </div>
                           <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
                             <div
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                item.score >= 70 ? "bg-emerald-500" : item.score >= 50 ? "bg-amber-500" : "bg-rose-500"
-                              }`}
+                              className={`h-full rounded-full transition-all duration-500 ${item.score >= 70 ? "bg-emerald-500" : item.score >= 50 ? "bg-amber-500" : "bg-rose-500"
+                                }`}
                               style={{ width: `${item.score}%` }}
                             />
                           </div>
@@ -1505,9 +1495,8 @@ export default function TrustScorePage() {
                   {history.slice(0, 10).map((entry, idx) => (
                     <div
                       key={entry.id}
-                      className={`flex flex-shrink-0 flex-col items-center rounded-xl px-5 py-4 ${
-                        idx === 0 ? "bg-[#2A2F3C] text-white" : "bg-gray-50"
-                      }`}
+                      className={`flex flex-shrink-0 flex-col items-center rounded-xl px-5 py-4 ${idx === 0 ? "bg-[#2A2F3C] text-white" : "bg-gray-50"
+                        }`}
                     >
                       <span className={`text-2xl font-semibold ${idx === 0 ? "" : getScoreTone(entry.score)}`}>
                         {entry.score}
@@ -1527,27 +1516,27 @@ export default function TrustScorePage() {
       {analysisActive ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0F1A]/70 px-4">
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
-<div className="flex items-center gap-3">
-                {selectedChannel?.thumbnailUrl ? (
-                  <img
-                    src={selectedChannel.thumbnailUrl}
-                    alt={selectedChannel.title}
-                    className="h-12 w-12 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-600">
-                    {selectedChannel?.title?.slice(0, 2).toUpperCase() ?? "YT"}
-                  </div>
-                )}
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-gray-400">
-                    {channelHandle ? `Analyzing ${channelHandle}` : "Analyzing"}
-                  </p>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {selectedChannel?.title ?? "Your channel"}
-                  </h3>
+            <div className="flex items-center gap-3">
+              {selectedChannel?.thumbnailUrl ? (
+                <img
+                  src={selectedChannel.thumbnailUrl}
+                  alt={selectedChannel.title}
+                  className="h-12 w-12 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-600">
+                  {selectedChannel?.title?.slice(0, 2).toUpperCase() ?? "YT"}
                 </div>
+              )}
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-gray-400">
+                  {channelHandle ? `Analyzing ${channelHandle}` : "Analyzing"}
+                </p>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {selectedChannel?.title ?? "Your channel"}
+                </h3>
               </div>
+            </div>
             <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
               <span>Estimated time: ~45s</span>
               <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
@@ -1567,13 +1556,12 @@ export default function TrustScorePage() {
                 return (
                   <div key={step.title} className="flex items-start gap-3">
                     <div
-                      className={`flex h-6 w-6 items-center justify-center rounded-full border ${
-                        isComplete
+                      className={`flex h-6 w-6 items-center justify-center rounded-full border ${isComplete
                           ? "border-emerald-500 bg-emerald-50"
                           : isActive
-                          ? "border-[#335CFF] bg-[#EEF2FF]"
-                          : "border-gray-200 bg-white"
-                      }`}
+                            ? "border-[#335CFF] bg-[#EEF2FF]"
+                            : "border-gray-200 bg-white"
+                        }`}
                     >
                       {isComplete ? (
                         <svg
@@ -1590,17 +1578,15 @@ export default function TrustScorePage() {
                         </svg>
                       ) : (
                         <span
-                          className={`h-2 w-2 rounded-full ${
-                            isActive ? "bg-[#335CFF]" : "bg-gray-300"
-                          }`}
+                          className={`h-2 w-2 rounded-full ${isActive ? "bg-[#335CFF]" : "bg-gray-300"
+                            }`}
                         />
                       )}
                     </div>
                     <div>
                       <p
-                        className={`text-sm font-medium ${
-                          isActive ? "text-gray-900" : "text-gray-600"
-                        }`}
+                        className={`text-sm font-medium ${isActive ? "text-gray-900" : "text-gray-600"
+                          }`}
                       >
                         {step.title}
                       </p>
