@@ -190,14 +190,12 @@ export async function POST(request: Request) {
       endDate: windowEnd,
     });
 
-    // Fetch channel-level metrics for share rate and views per viewer
+    // Fetch channel-level metrics for share rate
     const channelMetrics = await fetchChannelMetrics({
       accessToken,
       startDate: windowStart,
       endDate: windowEnd,
     });
-
-    console.log("[compute] Channel metrics for share/stickiness:", channelMetrics);
 
     const mergedVideos = videos.map((video) => {
       const metrics = analyticsMap.get(video.id) ?? {};

@@ -265,7 +265,6 @@ type TrustScoreResult = {
   consistencyScore: number;
   engagedViewAvg: number | null;
   shareRate: number | null;
-  viewsPerViewer: number | null;
   retentionAvg: number | null;
   windowStart: string;
   windowEnd: string;
@@ -305,7 +304,6 @@ const componentLabels: Record<string, string> = {
   engagementScore: "Engagement",
   formattingScore: "Formatting",
   shareRateScore: "Share rate",
-  viewsPerViewerScore: "Viewer stickiness",
   consistencyScore: "Consistency",
 };
 
@@ -364,10 +362,6 @@ const componentTooltips: Record<
     summary: "How often viewers share your content. High share rate signals highly valuable, recommendation-worthy content.",
     zero: "Share data is missing or share rate is below 0.05%.",
   },
-  viewsPerViewerScore: {
-    summary: "Average views per unique viewer. Higher means viewers are watching multiple videos (sticky content).",
-    zero: "Viewer data is missing or viewers watch ~1 video on average.",
-  },
   consistencyScore: {
     summary: "Rewards frequent uploads over the last 12 days with gap penalties for long breaks.",
     zero: "Uploads are too sparse or key analytics signals are missing.",
@@ -387,8 +381,7 @@ const componentMaxes: Record<string, number> = {
   rewatchScore: 10,
   engagementScore: 8,
   formattingScore: 2,
-  shareRateScore: 5,
-  viewsPerViewerScore: 2,
+  shareRateScore: 7,
   consistencyScore: 6,
 };
 

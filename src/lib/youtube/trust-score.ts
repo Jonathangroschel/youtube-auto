@@ -61,7 +61,6 @@ export type TrustScoreResult = {
   consistencyScore: number;
   engagedViewAvg: number | null;
   shareRate: number | null;
-  viewsPerViewer: number | null;
   retentionAvg: number | null;
   windowStart: string;
   windowEnd: string;
@@ -266,7 +265,7 @@ const computeEngagementScore = (
 /**
  * Share Rate scoring - how often viewers share content
  * High share rate signals highly valuable, recommendation-worthy content
- * Max score: 5 points
+ * Max score: 7 points
  */
 const computeShareRateScore = (
   totalViews: number,
@@ -280,13 +279,16 @@ const computeShareRateScore = (
 
   // Thresholds based on typical share rates (shares are rare)
   if (rate >= 0.005) {
-    return { score: 5, rate };  // 0.5%+ Excellent
+    return { score: 7, rate };  // 0.5%+ Excellent
+  }
+  if (rate >= 0.004) {
+    return { score: 6, rate };  // 0.4%+ Great
   }
   if (rate >= 0.003) {
-    return { score: 4, rate };  // 0.3%+ Great
+    return { score: 5, rate };  // 0.3%+ Very good
   }
   if (rate >= 0.002) {
-    return { score: 3, rate };  // 0.2%+ Good
+    return { score: 4, rate };  // 0.2%+ Good
   }
   if (rate >= 0.001) {
     return { score: 2, rate };  // 0.1%+ Average
@@ -297,36 +299,6 @@ const computeShareRateScore = (
   return { score: 0, rate };    // <0.05% Needs work
 };
 
-/**
- * Views Per Viewer scoring - measures audience stickiness
- * Higher ratio means viewers are watching multiple videos
- * Max score: 2 points
- */
-const computeViewsPerViewerScore = (
-  totalViews: number,
-  totalViewers: number
-): { score: number; ratio: number } => {
-  if (totalViewers <= 0) {
-    return { score: 0, ratio: 0 };
-  }
-
-  const ratio = totalViews / totalViewers;
-
-  // How many videos does each unique viewer watch on average?
-  if (ratio >= 2.0) {
-    return { score: 2, ratio };    // 2+ views/viewer (very sticky)
-  }
-  if (ratio >= 1.5) {
-    return { score: 1.5, ratio };  // 1.5+ views/viewer (sticky)
-  }
-  if (ratio >= 1.2) {
-    return { score: 1, ratio };    // 1.2+ views/viewer (some stickiness)
-  }
-  if (ratio >= 1.1) {
-    return { score: 0.5, ratio };  // 1.1+ views/viewer (minimal)
-  }
-  return { score: 0, ratio };       // ~1 view/viewer (no stickiness)
-};
 
 /**
  * Engaged View Rate scoring for Shorts
@@ -597,8 +569,7 @@ const buildActionItems = (
   const rewatchPct = (scores.rewatchScore / 10) * 100;
   const engagementPct = (scores.engagementScore / 8) * 100;
   const consistencyPct = (scores.consistencyScore / 6) * 100;
-  const sharePct = (scores.shareRateScore / 5) * 100;
-  const stickyPct = (scores.viewsPerViewerScore / 2) * 100;
+  const sharePct = (scores.shareRateScore / 7) * 100;
   const formatPct = (scores.formattingScore / 2) * 100;
 
   // ===================
@@ -772,32 +743,6 @@ const buildActionItems = (
   }
 
   // ===================
-  // VIEWER STICKINESS
-  // ===================
-  if (stickyPct < 25) {
-    issues.push({
-      title: "Build an audience, not just views",
-      detail: "Most viewers watch one video and never come back. You're getting views but not building a following. The fix: develop a recognizable style, create series people want to follow, or build a personality that makes viewers want YOUR next video specifically.",
-      severity: "medium",
-      category: "stickiness",
-    });
-  } else if (stickyPct < 60) {
-    issues.push({
-      title: "Turn viewers into regulars",
-      detail: "Some viewers come back, but most don't. Look at what your returning viewers watched. That's your signal for what to make more of. Consistency in style and format helps people know what to expect from you.",
-      severity: "low",
-      category: "stickiness",
-    });
-  } else if (stickyPct >= 80) {
-    wins.push({
-      title: "You're building real fans",
-      detail: "Viewers keep coming back for more. You're not just getting views, you're building an audience. This is the foundation of a sustainable channel.",
-      severity: "positive",
-      category: "stickiness",
-    });
-  }
-
-  // ===================
   // CONSISTENCY
   // ===================
   if (consistencyPct < 35) {
@@ -869,7 +814,7 @@ const buildActionItems = (
   // COMPOUND ISSUES (when multiple things are wrong)
   // ===================
   const hookAndRetentionBad = engagedPct < 50 && retentionPct < 40;
-  const viewsButNoGrowth = engagementPct < 40 && stickyPct < 40;
+  const viewsButNoGrowth = engagementPct < 40 && sharePct < 40;
 
   if (hookAndRetentionBad && issues.length >= 2) {
     // Replace the first two issues with a compound recommendation
@@ -1188,10 +1133,6 @@ export const calculateTrustScore = ({
     channelMetrics?.views ?? 0,
     channelMetrics?.shares ?? 0
   );
-  const viewsPerViewerResult = computeViewsPerViewerScore(
-    channelMetrics?.views ?? 0,
-    channelMetrics?.viewers ?? 0
-  );
 
   // Consistency score with soft gates
   // Use engagedViewAvg (combined feed + fallback) so consistency is gated by ANY available engaged view data
@@ -1203,8 +1144,8 @@ export const calculateTrustScore = ({
     hasEnoughAnalyticsData
   );
 
-  // Calculate raw score with new channel metrics
-  const rawScore = accountScore + performanceScore + consistencyScore + shareRateResult.score + viewsPerViewerResult.score;
+  // Calculate raw score with channel metrics
+  const rawScore = accountScore + performanceScore + consistencyScore + shareRateResult.score;
 
   // Apply soft cap if engaged view rate is failing (use combined engaged avg)
   // Changed from hard cap to soft 50% penalty to allow new creators to see progress
@@ -1231,7 +1172,6 @@ export const calculateTrustScore = ({
     engagementScore: weightedAverage(engagementScoreValues),
     formattingScore: weightedAverage(formattingScoreValues),
     shareRateScore: shareRateResult.score,
-    viewsPerViewerScore: viewsPerViewerResult.score,
     consistencyScore,
   };
 
@@ -1245,7 +1185,6 @@ export const calculateTrustScore = ({
     consistencyScore,
     engagedViewAvg: engagedViewAvg !== null ? Number(engagedViewAvg.toFixed(4)) : null,
     shareRate: channelMetrics && channelMetrics.views > 0 ? Number(shareRateResult.rate.toFixed(6)) : null,
-    viewsPerViewer: channelMetrics && channelMetrics.viewers > 0 ? Number(viewsPerViewerResult.ratio.toFixed(2)) : null,
     retentionAvg: retentionAvg !== null ? Number(retentionAvg.toFixed(2)) : null,
     windowStart,
     windowEnd,
