@@ -1,4 +1,4 @@
-import type { YoutubeChannel, YoutubePlaylistItem, YoutubeVideo } from "@/lib/youtube/api";
+import type { YoutubeChannel, YoutubePlaylistItem, YoutubeVideo, ChannelMetrics } from "@/lib/youtube/api";
 
 type VideoMetrics = YoutubeVideo & {
   views: number;
@@ -18,7 +18,8 @@ type VideoMetrics = YoutubeVideo & {
 type ActionItem = {
   title: string;
   detail: string;
-  severity: "high" | "medium" | "low";
+  severity: "high" | "medium" | "low" | "positive";
+  category?: string;
 };
 
 type VideoScoreBreakdown = {
@@ -29,7 +30,7 @@ type VideoScoreBreakdown = {
   weight: number;
   views: number;
   scores: {
-    swipe: number;
+    engagedView: number;
     retention: number;
     rewatch: number;
     engagement: number;
@@ -37,8 +38,8 @@ type VideoScoreBreakdown = {
     total: number;
   };
   metrics: {
-    swipeRate?: number;
-    swipeSource?: string;
+    engagedViewRate?: number;
+    engagedViewSource?: string;
     ctr?: number;
     startRate?: number;
     averageViewDuration: number;
@@ -47,7 +48,7 @@ type VideoScoreBreakdown = {
   };
   flags: {
     hasAnalyticsData: boolean;
-    hasSwipeData: boolean;
+    hasEngagedViewData: boolean;
     lowConfidence: boolean;
   };
 };
@@ -58,8 +59,9 @@ export type TrustScoreResult = {
   accountScore: number;
   performanceScore: number;
   consistencyScore: number;
-  nicheScore: number;
-  swipeAvg: number | null;
+  engagedViewAvg: number | null;
+  shareRate: number | null;
+  viewsPerViewer: number | null;
   retentionAvg: number | null;
   windowStart: string;
   windowEnd: string;
@@ -70,30 +72,12 @@ export type TrustScoreResult = {
   dataConfidence: "high" | "medium" | "low" | "insufficient";
 };
 
-type NicheDistribution = {
-  values: Record<string, number>;
-  total: number;
-};
-
-export type NicheSignals = {
-  placement?: {
-    previous: NicheDistribution;
-    current: NicheDistribution;
-  };
-  audience?: {
-    previous: NicheDistribution;
-    current: NicheDistribution;
-  };
-};
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Minimum thresholds for reliable scoring
 const MIN_VIEWS_FOR_VIDEO_SCORE = 100;
 const MIN_VIDEOS_WITH_ANALYTICS = 3;
 const MIN_VIDEOS_FOR_PERFORMANCE = 5;
-const MIN_NICHE_VIDEOS = 6;
-const MIN_NICHE_DISTRIBUTION_VIEWS = 100;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
@@ -280,11 +264,77 @@ const computeEngagementScore = (
 };
 
 /**
- * Swipe/Start Rate scoring for Shorts
- * CTR scoring for long-form
- * This is the "first impression" metric
+ * Share Rate scoring - how often viewers share content
+ * High share rate signals highly valuable, recommendation-worthy content
+ * Max score: 5 points
  */
-const computeSwipeScore = (
+const computeShareRateScore = (
+  totalViews: number,
+  totalShares: number
+): { score: number; rate: number } => {
+  if (totalViews <= 0) {
+    return { score: 0, rate: 0 };
+  }
+
+  const rate = totalShares / totalViews;
+
+  // Thresholds based on typical share rates (shares are rare)
+  if (rate >= 0.005) {
+    return { score: 5, rate };  // 0.5%+ Excellent
+  }
+  if (rate >= 0.003) {
+    return { score: 4, rate };  // 0.3%+ Great
+  }
+  if (rate >= 0.002) {
+    return { score: 3, rate };  // 0.2%+ Good
+  }
+  if (rate >= 0.001) {
+    return { score: 2, rate };  // 0.1%+ Average
+  }
+  if (rate >= 0.0005) {
+    return { score: 1, rate }; // 0.05%+ Below avg
+  }
+  return { score: 0, rate };    // <0.05% Needs work
+};
+
+/**
+ * Views Per Viewer scoring - measures audience stickiness
+ * Higher ratio means viewers are watching multiple videos
+ * Max score: 2 points
+ */
+const computeViewsPerViewerScore = (
+  totalViews: number,
+  totalViewers: number
+): { score: number; ratio: number } => {
+  if (totalViewers <= 0) {
+    return { score: 0, ratio: 0 };
+  }
+
+  const ratio = totalViews / totalViewers;
+
+  // How many videos does each unique viewer watch on average?
+  if (ratio >= 2.0) {
+    return { score: 2, ratio };    // 2+ views/viewer (very sticky)
+  }
+  if (ratio >= 1.5) {
+    return { score: 1.5, ratio };  // 1.5+ views/viewer (sticky)
+  }
+  if (ratio >= 1.2) {
+    return { score: 1, ratio };    // 1.2+ views/viewer (some stickiness)
+  }
+  if (ratio >= 1.1) {
+    return { score: 0.5, ratio };  // 1.1+ views/viewer (minimal)
+  }
+  return { score: 0, ratio };       // ~1 view/viewer (no stickiness)
+};
+
+/**
+ * Engaged View Rate scoring for Shorts
+ * CTR scoring for long-form
+ * This measures the percentage of viewers who watched past the first few seconds
+ * Based on YouTube's official engagedViews metric
+ */
+const computeEngagedViewScore = (
   isShort: boolean,
   shortsViews?: number,
   shortsEngagedViews?: number,
@@ -297,7 +347,7 @@ const computeSwipeScore = (
 
   if (isShort) {
     // For Shorts: use engaged views / views from the Shorts feed
-    // This represents viewers who stayed to watch vs swiped away
+    // This represents viewers who watched past the initial seconds
     if (shortsViews && shortsViews > 0 && shortsEngagedViews !== undefined) {
       rate = clamp(shortsEngagedViews / shortsViews, 0, 1);
       source = "shorts_feed";
@@ -318,45 +368,41 @@ const computeSwipeScore = (
     return { score: 0, rate: null, source };
   }
 
-  // CTR thresholds for long-form (different scale than swipe)
+  // CTR thresholds for long-form (different scale)
   if (source === "ctr") {
     if (rate >= 0.10) {
-      return { score: 25, rate, source }; // 10%+ CTR is exceptional
+      return { score: 21, rate, source }; // 10%+ CTR is exceptional
     }
     if (rate >= 0.08) {
-      return { score: 20, rate, source }; // 8%+ is great
+      return { score: 16, rate, source }; // 8%+ is great
     }
     if (rate >= 0.06) {
-      return { score: 15, rate, source }; // 6%+ is good
+      return { score: 12, rate, source }; // 6%+ is good
     }
     if (rate >= 0.045) {
-      return { score: 10, rate, source }; // 4.5%+ is average
+      return { score: 8, rate, source }; // 4.5%+ is average
     }
     if (rate >= 0.03) {
-      return { score: 5, rate, source }; // 3%+ is below average
+      return { score: 4, rate, source }; // 3%+ is below average
     }
     return { score: 0, rate, source }; // Below 3% is poor
   }
 
-  // Swipe/Stay rate thresholds for Shorts
-  // These are based on the "viewed vs swiped away" ratio
-  if (rate >= 0.811) {
-    return { score: 25, rate, source }; // Top tier
-  }
-  if (rate >= 0.78) {
-    return { score: 20, rate, source };
+  // Engaged View Rate thresholds for Shorts
+  // Based on engagedViews/views ratio - percentage who watched past the hook
+  if (rate >= 0.85) {
+    return { score: 21, rate, source }; // Excellent - 85%+ watched past hook
   }
   if (rate >= 0.75) {
-    return { score: 15, rate, source };
+    return { score: 15, rate, source }; // Good - 75%+ watched past hook
   }
-  if (rate >= 0.73) {
-    return { score: 10, rate, source };
+  if (rate >= 0.65) {
+    return { score: 8, rate, source };  // Average - 65%+ watched past hook
   }
-  // FIX: Fill the gap between 0.72 and 0.73
-  if (rate >= 0.72) {
-    return { score: 5, rate, source }; // Borderline acceptable
+  if (rate >= 0.55) {
+    return { score: 4, rate, source };  // Below average - 55%+ watched past hook
   }
-  // Below 0.72 is failing - most viewers swipe away
+  // Below 55% is failing - most viewers leave before hook
   return { score: 0, rate, source };
 };
 
@@ -453,221 +499,16 @@ const computeWeight = (views: number, publishedAt: string, now: Date): number =>
   return viewWeight * Math.exp(-ageDays / 14);
 };
 
-const stopWords = new Set([
-  "a", "an", "and", "the", "to", "of", "in", "for", "on", "with", "at", "by",
-  "from", "is", "are", "was", "were", "be", "this", "that", "it", "as",
-  "your", "my", "our", "you", "we", "i", "me", "they", "their", "his", "her",
-  "about", "how", "what", "why", "when", "which", "new", "best", "top",
-  "vs", "vs.", "episode", "part", "shorts", "video", "watch", "see", "look",
-  "get", "got", "like", "just", "now", "today", "day", "time", "way",
-  "make", "made", "first", "last", "more", "most", "very", "really",
-  "can", "will", "would", "could", "should", "must", "may", "might",
-  "one", "two", "three", "1", "2", "3", "pt", "ep",
-]);
-
-const tokenize = (text: string): string[] => {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2 && !stopWords.has(token));
-};
-
-const extractTopicTokens = (topics?: string[]): string[] => {
-  if (!topics || topics.length === 0) {
-    return [];
-  }
-  return topics
-    .map((topic) => {
-      const lastSegment = topic.split("/").pop() ?? "";
-      return lastSegment.replace(/_/g, " ");
-    })
-    .filter(Boolean);
-};
-
-const buildContentTokens = (video: VideoMetrics): Set<string> => {
-  const topicText = extractTopicTokens(video.topicCategories).join(" ");
-  const tagsText = (video.tags ?? []).join(" ");
-  const combined = [video.title, video.description, tagsText, topicText]
-    .filter(Boolean)
-    .join(" ");
-  return new Set(tokenize(combined));
-};
-
-const computeContentCoherence = (videos: VideoMetrics[]): number | null => {
-  const shorts = videos.filter(
-    (video) => video.durationSeconds > 0 && video.durationSeconds <= 60
-  );
-  const sample = shorts.length >= MIN_NICHE_VIDEOS ? shorts : videos;
-  if (sample.length < MIN_NICHE_VIDEOS) {
-    return null;
-  }
-
-  const clusters: Array<{ tokens: Set<string>; count: number }> = [];
-  const threshold = 0.3;
-  let usableVideos = 0;
-
-  for (const video of sample) {
-    const tokens = buildContentTokens(video);
-    if (tokens.size === 0) {
-      continue;
-    }
-    usableVideos += 1;
-
-    let matched = false;
-    for (const cluster of clusters) {
-      const intersection = new Set(
-        [...tokens].filter((token) => cluster.tokens.has(token))
-      );
-      const unionSize = new Set([...tokens, ...cluster.tokens]).size;
-      const similarity = unionSize === 0 ? 0 : intersection.size / unionSize;
-
-      if (similarity >= threshold) {
-        cluster.count += 1;
-        cluster.tokens = new Set([...cluster.tokens, ...tokens]);
-        matched = true;
-        break;
-      }
-    }
-
-    if (!matched) {
-      clusters.push({ tokens, count: 1 });
-    }
-  }
-
-  if (clusters.length === 0 || usableVideos < MIN_NICHE_VIDEOS) {
-    return null;
-  }
-
-  const maxCluster = Math.max(...clusters.map((cluster) => cluster.count));
-  const pTop = maxCluster / usableVideos;
-  return clamp((pTop - 0.45) / (0.8 - 0.45), 0, 1);
-};
-
-const computeJSDivergence = (
-  current: Record<string, number>,
-  previous: Record<string, number>
-): number | null => {
-  const keys = new Set([...Object.keys(current), ...Object.keys(previous)]);
-  if (keys.size === 0) {
-    return null;
-  }
-
-  const currentTotal = Object.values(current).reduce((sum, value) => sum + value, 0);
-  const previousTotal = Object.values(previous).reduce((sum, value) => sum + value, 0);
-  if (currentTotal <= 0 || previousTotal <= 0) {
-    return null;
-  }
-
-  let divergence = 0;
-  keys.forEach((key) => {
-    const p = (current[key] ?? 0) / currentTotal;
-    const q = (previous[key] ?? 0) / previousTotal;
-    const m = (p + q) / 2;
-
-    if (p > 0) {
-      divergence += p * Math.log(p / m);
-    }
-    if (q > 0) {
-      divergence += q * Math.log(q / m);
-    }
-  });
-
-  divergence = 0.5 * divergence;
-  const normalized = divergence / Math.log(2);
-  return clamp(normalized, 0, 1);
-};
-
-const computeDistributionStability = (
-  pair?: {
-    previous: NicheDistribution;
-    current: NicheDistribution;
-  }
-): number | null => {
-  if (!pair) {
-    return null;
-  }
-  if (
-    pair.previous.total < MIN_NICHE_DISTRIBUTION_VIEWS ||
-    pair.current.total < MIN_NICHE_DISTRIBUTION_VIEWS
-  ) {
-    return null;
-  }
-  const jsd = computeJSDivergence(pair.current.values, pair.previous.values);
-  if (jsd === null) {
-    return null;
-  }
-  return clamp(1 - jsd, 0, 1);
-};
-
-const computeNicheScore = (videos: VideoMetrics[], signals?: NicheSignals): number => {
-  const contentCoherence = computeContentCoherence(videos);
-  const placementStability = computeDistributionStability(signals?.placement);
-  const audienceStability = computeDistributionStability(signals?.audience);
-
-  const weightedSignals = [
-    { value: contentCoherence, weight: 0.5 },
-    { value: placementStability, weight: 0.3 },
-    { value: audienceStability, weight: 0.2 },
-  ].filter((entry) => entry.value !== null && entry.value !== undefined);
-
-  // If all signals are missing, treat niche clarity as unavailable.
-  if (weightedSignals.length === 0) {
-    return 0;
-  }
-
-  const totalWeight = weightedSignals.reduce((sum, entry) => sum + entry.weight, 0);
-  const nicheIndex =
-    weightedSignals.reduce(
-      (sum, entry) => sum + (entry.value ?? 0) * entry.weight,
-      0
-    ) / totalWeight;
-
-  if (nicheIndex >= 0.75) {
-    return 3;
-  }
-  if (nicheIndex >= 0.55) {
-    return 2;
-  }
-  if (nicheIndex >= 0.4) {
-    return 1;
-  }
-  return 0;
-};
-
 /**
- * Niche clarity scoring - blends content, placement, and audience consistency.
- */
-const clusterNiche = (videos: VideoMetrics[], signals?: NicheSignals): number => {
-  return computeNicheScore(videos, signals);
-};
-
-/**
- * Consistency score - measures upload frequency
- * FIX: Stricter gates when swipe data is missing
+ * Consistency score - measures upload frequency with progressive tiers
+ * Uses soft gates instead of hard zeros to allow new creators to see progress
  */
 const computeConsistencyScore = (
   uploads: YoutubePlaylistItem[],
-  swipeAvg: number | null,
+  engagedViewAvg: number | null,
   retentionAvg: number | null,
   hasEnoughAnalyticsData: boolean
 ): number => {
-  // GATE 1: If we don't have enough analytics data, consistency shouldn't boost score
-  // This prevents gaming by just uploading frequently with no quality
-  if (!hasEnoughAnalyticsData) {
-    return 0;
-  }
-
-  // GATE 2: Hard swipe fail = no consistency points
-  if (swipeAvg !== null && swipeAvg < 0.72) {
-    return 0;
-  }
-
-  // GATE 3: Hard retention fail = no consistency points
-  if (retentionAvg !== null && retentionAvg < 10) {
-    return 0;
-  }
-
   const today = new Date();
   const days = Array.from({ length: 12 }, (_, index) => {
     const date = new Date(today.getTime() - (11 - index) * DAY_MS);
@@ -680,13 +521,13 @@ const computeConsistencyScore = (
       .filter((date) => days.includes(date))
   );
 
-  let daysWithUpload = 0;
+  const daysWithUpload = uploadDates.size;
+
+  // Calculate max gap between uploads
   let maxGap = 0;
   let currentGap = 0;
-
   for (const day of days) {
     if (uploadDates.has(day)) {
-      daysWithUpload += 1;
       currentGap = 0;
     } else {
       currentGap += 1;
@@ -694,149 +535,395 @@ const computeConsistencyScore = (
     }
   }
 
+  // Progressive base score
   let score = 0;
-  if (daysWithUpload >= 10 && maxGap <= 1) {
-    score = 6;
-  } else if (daysWithUpload >= 9) {
-    score = 4;
+  if (daysWithUpload >= 10) {
+    score = 6;        // Near-daily
   } else if (daysWithUpload >= 7) {
-    score = 2;
+    score = 5;        // Very active
+  } else if (daysWithUpload >= 5) {
+    score = 4;        // Active
+  } else if (daysWithUpload >= 4) {
+    score = 3;        // Regular (~2.3/week)
+  } else if (daysWithUpload >= 3) {
+    score = 2;        // Consistent (~1.75/week)
+  } else if (daysWithUpload >= 2) {
+    score = 1;        // Light (~1/week)
+  } else if (daysWithUpload >= 1) {
+    score = 0.5;      // Sporadic
   }
 
-  // FIX: If we have no swipe data at all, cap consistency at 2
-  // Consistency alone shouldn't carry the score
-  if (swipeAvg === null && score > 2) {
-    score = 2;
+  // Gap penalty: Large gaps hurt consistency
+  if (maxGap >= 5) {
+    score = score * 0.5;  // 50% penalty for 5+ day gaps
+  } else if (maxGap >= 4) {
+    score = score * 0.75; // 25% penalty for 4 day gaps
   }
 
-  return score;
+  // SOFT GATES (instead of hard zero)
+  // If analytics data is insufficient, reduce by 50%
+  if (!hasEnoughAnalyticsData) {
+    score = score * 0.5;
+  }
+
+  // If engaged view rate is failing (<55%), reduce by 50% (not zero)
+  if (engagedViewAvg !== null && engagedViewAvg < 0.55) {
+    score = score * 0.5;
+  }
+
+  // If retention is very poor, reduce by 50%
+  if (retentionAvg !== null && retentionAvg < 5) {
+    score = score * 0.5;
+  }
+
+  return Math.round(score * 10) / 10; // Round to 1 decimal
 };
 
 /**
  * Generate actionable items based on score components
+ * Designed to give specific, plain-English advice that new Shorts creators can immediately use
  */
 const buildActionItems = (
   scores: Record<string, number>,
   dataConfidence: string
 ): ActionItem[] => {
   const items: ActionItem[] = [];
+  const issues: ActionItem[] = [];
+  const wins: ActionItem[] = [];
 
-  // Data confidence warning first
-  if (dataConfidence === "insufficient" || dataConfidence === "low") {
-    items.push({
-      title: "Get more data",
-      detail: "Your channel needs more views and videos for accurate scoring. Keep posting consistently.",
+  // Normalize scores to percentages for easier threshold comparison
+  const engagedPct = (scores.engagedViewScore / 21) * 100;
+  const retentionPct = (scores.retentionScore / 40) * 100;
+  const rewatchPct = (scores.rewatchScore / 10) * 100;
+  const engagementPct = (scores.engagementScore / 8) * 100;
+  const consistencyPct = (scores.consistencyScore / 6) * 100;
+  const sharePct = (scores.shareRateScore / 5) * 100;
+  const stickyPct = (scores.viewsPerViewerScore / 2) * 100;
+  const formatPct = (scores.formattingScore / 2) * 100;
+
+  // ===================
+  // DATA CONFIDENCE
+  // ===================
+  if (dataConfidence === "insufficient") {
+    issues.push({
+      title: "Keep posting to unlock insights",
+      detail: "We need at least 5 videos with 100+ views each to give you accurate recommendations. Focus on posting consistently for now. Your scores will become more reliable as you grow.",
       severity: "high",
+      category: "data",
     });
-  }
-
-  if (scores.channelAge < 1) {
-    items.push({
-      title: "Warm up the channel",
-      detail: "Publish and verify your channel to unlock baseline trust.",
-      severity: "high",
-    });
-  }
-
-  if (scores.featureEligibility < 1) {
-    items.push({
-      title: "Enable long uploads",
-      detail: "Verify your phone and channel to unlock long uploads.",
-      severity: "high",
-    });
-  }
-
-  // Swipe/CTR is critical - highest priority
-  if (scores.swipeScore < 15) {
-    items.push({
-      title: "Fix your hook",
-      detail: "The first 1-2 seconds determine if viewers stay or swipe. Start with motion, conflict, or curiosity.",
-      severity: "high",
-    });
-  }
-
-  // Retention is the #1 algorithm signal
-  if (scores.retentionScore < 20) {
-    items.push({
-      title: "Lift retention",
-      detail: "Cut faster, remove dead air, and match the target average view duration for your video length.",
-      severity: "high",
-    });
-  }
-
-  if (scores.rewatchScore < 5) {
-    items.push({
-      title: "Encourage loops",
-      detail: "For Shorts under 15s, viewers must rewatch. Add a payoff that leads back to the start.",
-      severity: "high",
-    });
-  }
-
-  if (scores.channelTags < 1) {
-    items.push({
-      title: "Remove channel keywords",
-      detail: "Empty channel tags signal a cleaner, more trustworthy channel.",
+  } else if (dataConfidence === "low") {
+    issues.push({
+      title: "More data coming soon",
+      detail: "Your scores are based on limited data. Keep posting and check back in a few days for more accurate insights.",
       severity: "medium",
+      category: "data",
+    });
+  }
+
+  // ===================
+  // HOOK / ENGAGED VIEW RATE (Most important for Shorts)
+  // ===================
+  if (engagedPct < 30) {
+    // Critical - most viewers leaving immediately
+    issues.push({
+      title: "Your hook is losing viewers",
+      detail: "Most viewers swipe away before your video even starts. Your first frame needs to stop the scroll instantly. Try: start mid-action, use bold text on screen, or open with something unexpected. No logos, no slow intros.",
+      severity: "high",
+      category: "hook",
+    });
+  } else if (engagedPct < 55) {
+    // Needs significant work
+    issues.push({
+      title: "Stronger hooks needed",
+      detail: "Too many viewers are swiping away in the first second. Lead with your most interesting moment, not a buildup to it. Ask yourself: 'Would I stop scrolling for this first frame?'",
+      severity: "high",
+      category: "hook",
+    });
+  } else if (engagedPct < 75) {
+    // Room for improvement
+    issues.push({
+      title: "Test different opening frames",
+      detail: "Your hooks are okay but could be better. Try filming 3 different openings for your next video and see which one feels most scroll-stopping. Movement, faces, and text overlays usually win.",
+      severity: "medium",
+      category: "hook",
+    });
+  } else if (engagedPct >= 85) {
+    // Winning
+    wins.push({
+      title: "Your hooks are working",
+      detail: "Viewers are staying past the first second. That's the hardest part. Keep doing what you're doing and don't overthink it.",
+      severity: "positive",
+      category: "hook",
+    });
+  }
+
+  // ===================
+  // RETENTION
+  // ===================
+  if (retentionPct < 15) {
+    // Critical
+    issues.push({
+      title: "Viewers are dropping off fast",
+      detail: "People start your videos but don't finish them. Every second needs to earn the next. Cut anything that doesn't add value. Be ruthless. If you're explaining something, show don't tell. If there's a pause, cut it.",
+      severity: "high",
+      category: "retention",
+    });
+  } else if (retentionPct < 40) {
+    // Needs work
+    issues.push({
+      title: "Tighten your pacing",
+      detail: "Your videos have slow moments where viewers leave. Watch your own content and notice where you'd get bored. Those spots need to be cut or made more interesting. Aim for something new every 1-2 seconds.",
+      severity: "high",
+      category: "retention",
+    });
+  } else if (retentionPct < 65) {
+    // Getting there
+    issues.push({
+      title: "Keep viewers hooked longer",
+      detail: "You're keeping some viewers but losing others mid-video. Try adding an 'open loop' early. Hint at something coming that viewers have to wait for. 'Wait for the end' only works if you've earned their trust.",
+      severity: "medium",
+      category: "retention",
+    });
+  } else if (retentionPct >= 80) {
+    wins.push({
+      title: "Strong watch time",
+      detail: "Viewers are watching most of your content. This is your competitive advantage. YouTube loves this. Protect your pacing and don't let videos get bloated.",
+      severity: "positive",
+      category: "retention",
+    });
+  }
+
+  // ===================
+  // REWATCH / LOOP (Critical for short Shorts)
+  // ===================
+  if (rewatchPct < 20) {
+    issues.push({
+      title: "Your videos aren't looping",
+      detail: "For Shorts under 30 seconds, YouTube wants viewers to watch more than once. The best trick: make your ending connect to your beginning, so viewers don't even notice when it restarts. Or end on a cliffhanger that makes them rewatch to understand.",
+      severity: "high",
+      category: "rewatch",
+    });
+  } else if (rewatchPct < 50) {
+    issues.push({
+      title: "Add replay value",
+      detail: "Viewers watch once and leave. Try hiding a small detail early that only makes sense after the payoff. Curious viewers will rewatch to spot it. Or make content so satisfying people want to see it again.",
+      severity: "medium",
+      category: "rewatch",
+    });
+  } else if (rewatchPct >= 80) {
+    wins.push({
+      title: "Viewers are rewatching",
+      detail: "Your content has replay value. This is rare and YouTube rewards it heavily. Keep creating content that's satisfying to watch multiple times.",
+      severity: "positive",
+      category: "rewatch",
+    });
+  }
+
+  // ===================
+  // ENGAGEMENT (Likes, Comments, Subs)
+  // ===================
+  if (engagementPct < 25) {
+    issues.push({
+      title: "Get viewers to interact",
+      detail: "People watch but don't like, comment, or subscribe. This usually means your content is 'fine' but not emotionally activating. Try: share a hot take people will agree OR disagree with, ask a genuine question, or create moments that make people want to tag a friend.",
+      severity: "medium",
+      category: "engagement",
+    });
+  } else if (engagementPct < 50) {
+    issues.push({
+      title: "Spark more conversation",
+      detail: "Engagement is below average. End your videos with something that invites a response. Try a question, a controversial opinion, or asking viewers to share their experience. Respond to comments quickly to encourage more.",
+      severity: "medium",
+      category: "engagement",
+    });
+  } else if (engagementPct >= 75) {
+    wins.push({
+      title: "Great engagement",
+      detail: "Viewers are liking, commenting, and subscribing at a strong rate. This tells YouTube your content is valuable. Keep fostering that community.",
+      severity: "positive",
+      category: "engagement",
+    });
+  }
+
+  // ===================
+  // SHARE RATE
+  // ===================
+  if (sharePct < 20) {
+    issues.push({
+      title: "Make content worth sharing",
+      detail: "Shares are the strongest signal to YouTube that your content is valuable, but almost no one is sharing yours. Think: 'Would someone send this to a friend?' Content that makes people look funny, smart, or helpful gets shared. Relatable beats impressive.",
+      severity: "medium",
+      category: "shares",
+    });
+  } else if (sharePct < 50) {
+    issues.push({
+      title: "Create more shareable moments",
+      detail: "Some viewers share, but you can do better. Try: relatable struggles people want to say 'this is so me', useful tips worth saving, or takes so spicy people need to debate them with friends.",
+      severity: "low",
+      category: "shares",
+    });
+  } else if (sharePct >= 80) {
+    wins.push({
+      title: "Your content is getting shared",
+      detail: "People are sending your videos to friends. This is one of the strongest growth signals. Whatever you're doing, it's working.",
+      severity: "positive",
+      category: "shares",
+    });
+  }
+
+  // ===================
+  // VIEWER STICKINESS
+  // ===================
+  if (stickyPct < 25) {
+    issues.push({
+      title: "Build an audience, not just views",
+      detail: "Most viewers watch one video and never come back. You're getting views but not building a following. The fix: develop a recognizable style, create series people want to follow, or build a personality that makes viewers want YOUR next video specifically.",
+      severity: "medium",
+      category: "stickiness",
+    });
+  } else if (stickyPct < 60) {
+    issues.push({
+      title: "Turn viewers into regulars",
+      detail: "Some viewers come back, but most don't. Look at what your returning viewers watched. That's your signal for what to make more of. Consistency in style and format helps people know what to expect from you.",
+      severity: "low",
+      category: "stickiness",
+    });
+  } else if (stickyPct >= 80) {
+    wins.push({
+      title: "You're building real fans",
+      detail: "Viewers keep coming back for more. You're not just getting views, you're building an audience. This is the foundation of a sustainable channel.",
+      severity: "positive",
+      category: "stickiness",
+    });
+  }
+
+  // ===================
+  // CONSISTENCY
+  // ===================
+  if (consistencyPct < 35) {
+    issues.push({
+      title: "Post more regularly",
+      detail: "You're not posting often enough for YouTube to learn who should see your content. The algorithm rewards creators who show up consistently. Aim for at least 4-5 videos per week while you're growing. You can slow down once you have momentum.",
+      severity: "medium",
+      category: "consistency",
+    });
+  } else if (consistencyPct < 65) {
+    issues.push({
+      title: "Fill the gaps in your schedule",
+      detail: "You post sometimes, but gaps of 3+ days hurt your momentum. Try batch-creating content when you're in a flow state so you always have something ready to post.",
+      severity: "low",
+      category: "consistency",
+    });
+  } else if (consistencyPct >= 85) {
+    wins.push({
+      title: "Consistent posting",
+      detail: "You're showing up regularly. This builds trust with both YouTube and your audience. Keep this rhythm going.",
+      severity: "positive",
+      category: "consistency",
+    });
+  }
+
+  // ===================
+  // FORMATTING
+  // ===================
+  if (formatPct < 50) {
+    issues.push({
+      title: "Fix your video format",
+      detail: "Your videos aren't optimized for Shorts. Use vertical 9:16 format (full phone screen), shoot in 1080p or higher, and keep faces and action in the center. Horizontal or blurry videos get buried.",
+      severity: "medium",
+      category: "format",
+    });
+  }
+
+  // ===================
+  // CHANNEL SETUP (Lower priority but easy wins)
+  // ===================
+  if (scores.channelAge < 1) {
+    issues.push({
+      title: "Verify your channel",
+      detail: "New and unverified channels have limited reach. Verify your phone number in YouTube Studio to unlock full features and build baseline trust with the algorithm.",
+      severity: "medium",
+      category: "setup",
+    });
+  }
+
+  if (scores.featureEligibility < 0.5) {
+    issues.push({
+      title: "Unlock all YouTube features",
+      detail: "Your channel doesn't have full features enabled yet. Go to YouTube Studio → Settings → Channel → Feature eligibility, and complete phone verification to unlock everything.",
+      severity: "low",
+      category: "setup",
     });
   }
 
   if (scores.channelDescription < 1) {
-    items.push({
-      title: "Write a fuller channel bio",
-      detail: "Add a 20+ character description focused on your niche.",
-      severity: "medium",
-    });
-  }
-
-  if (scores.entertainmentCategory < 1) {
-    items.push({
-      title: "Stay consistent with Entertainment",
-      detail: "Keep 80%+ of recent uploads in category 24 (Entertainment).",
-      severity: "medium",
-    });
-  }
-
-  if (scores.enhancements < 1) {
-    items.push({
-      title: "Upgrade format fidelity",
-      detail: "Post vertical 9:16 videos at 1080p or higher resolution.",
-      severity: "medium",
-    });
-  }
-
-  if (scores.engagementScore < 6) {
-    items.push({
-      title: "Boost engagement signals",
-      detail: "Ask for likes, comments, and subscriptions in-video. Use pinned comments.",
-      severity: "medium",
-    });
-  }
-
-  if (scores.consistencyScore < 4) {
-    items.push({
-      title: "Ship more consistently",
-      detail: "Aim for 9+ upload days in a 12-day window. The algorithm rewards daily creators.",
-      severity: "medium",
-    });
-  }
-
-  if (scores.nicheScore < 2) {
-    items.push({
-      title: "Tighten niche clarity",
-      detail: "Focus titles and topics around one clear theme. Mixed content confuses the algorithm.",
+    issues.push({
+      title: "Write a channel description",
+      detail: "Your bio is empty or too short. Write 2-3 sentences about what viewers can expect from your channel. This helps YouTube understand who to recommend you to.",
       severity: "low",
+      category: "setup",
     });
   }
 
-  if (scores.formattingScore < 1) {
-    items.push({
-      title: "Fix format and credits",
-      detail: "Use 9:16 vertical framing and credit any reused content properly.",
-      severity: "low",
+  // ===================
+  // COMPOUND ISSUES (when multiple things are wrong)
+  // ===================
+  const hookAndRetentionBad = engagedPct < 50 && retentionPct < 40;
+  const viewsButNoGrowth = engagementPct < 40 && stickyPct < 40;
+
+  if (hookAndRetentionBad && issues.length >= 2) {
+    // Replace the first two issues with a compound recommendation
+    const hookIndex = issues.findIndex(i => i.category === "hook");
+    const retentionIndex = issues.findIndex(i => i.category === "retention");
+    
+    if (hookIndex >= 0 && retentionIndex >= 0) {
+      // Remove both and add compound
+      const filtered = issues.filter(i => i.category !== "hook" && i.category !== "retention");
+      filtered.unshift({
+        title: "Focus on hooks first",
+        detail: "Both your hooks and retention need work, but start with hooks. Nothing else matters if viewers swipe away in the first second. Once you're keeping 70%+ of viewers past the hook, then focus on the rest of the video.",
+        severity: "high",
+        category: "compound",
+      });
+      issues.length = 0;
+      issues.push(...filtered);
+    }
+  }
+
+  if (viewsButNoGrowth && !issues.some(i => i.category === "compound")) {
+    issues.push({
+      title: "You're getting views but not growing",
+      detail: "People watch your content but don't engage or come back. This often means videos are 'interesting enough to watch' but not 'interesting enough to care about.' Find what makes YOU different and lean into it hard.",
+      severity: "medium",
+      category: "compound",
     });
   }
 
-  return items.slice(0, 6);
+  // ===================
+  // ASSEMBLE FINAL LIST
+  // ===================
+  // Prioritize: High severity issues first, then medium, then low, then wins
+  const highIssues = issues.filter(i => i.severity === "high");
+  const mediumIssues = issues.filter(i => i.severity === "medium");
+  const lowIssues = issues.filter(i => i.severity === "low");
+
+  // Always show issues first, but include 1-2 wins if there's room
+  items.push(...highIssues);
+  items.push(...mediumIssues);
+  items.push(...lowIssues);
+  
+  // Add wins at the end (max 2)
+  const winsToAdd = wins.slice(0, 2);
+  
+  // Return max 6 items total, ensuring at least 1 win if they have any and room
+  const maxIssues = winsToAdd.length > 0 ? 5 : 6;
+  const finalItems = items.slice(0, maxIssues);
+  
+  if (winsToAdd.length > 0 && finalItems.length < 6) {
+    finalItems.push(...winsToAdd.slice(0, 6 - finalItems.length));
+  }
+
+  return finalItems;
 };
 
 /**
@@ -845,19 +932,19 @@ const buildActionItems = (
 const calculateDataConfidence = (
   videos: VideoMetrics[],
   videosWithAnalytics: number,
-  videosWithSwipeData: number
+  videosWithEngagedViewData: number
 ): "high" | "medium" | "low" | "insufficient" => {
   if (videos.length < MIN_VIDEOS_FOR_PERFORMANCE) {
     return "insufficient";
   }
 
   const analyticsRatio = videosWithAnalytics / videos.length;
-  const swipeRatio = videosWithSwipeData / videos.length;
+  const engagedViewRatio = videosWithEngagedViewData / videos.length;
 
-  if (analyticsRatio >= 0.8 && swipeRatio >= 0.5) {
+  if (analyticsRatio >= 0.8 && engagedViewRatio >= 0.5) {
     return "high";
   }
-  if (analyticsRatio >= 0.5 && swipeRatio >= 0.3) {
+  if (analyticsRatio >= 0.5 && engagedViewRatio >= 0.3) {
     return "medium";
   }
   if (analyticsRatio >= 0.3) {
@@ -876,7 +963,7 @@ export const calculateTrustScore = ({
   windowStart,
   windowEnd,
   now,
-  nicheSignals,
+  channelMetrics,
 }: {
   channel: YoutubeChannel;
   videos: VideoMetrics[];
@@ -884,15 +971,15 @@ export const calculateTrustScore = ({
   windowStart: string;
   windowEnd: string;
   now: Date;
-  nicheSignals?: NicheSignals;
+  channelMetrics?: ChannelMetrics;
 }): TrustScoreResult => {
   const videoScores: VideoScoreBreakdown[] = [];
   const weights: number[] = [];
-  const shortsSwipeFeedRates: number[] = [];
-  const shortsSwipeFeedWeights: number[] = [];
-  const shortsSwipeFallbackRates: number[] = [];
-  const shortsSwipeFallbackWeights: number[] = [];
-  const swipeScoreValues: number[] = [];
+  const shortsEngagedFeedRates: number[] = [];
+  const shortsEngagedFeedWeights: number[] = [];
+  const shortsEngagedFallbackRates: number[] = [];
+  const shortsEngagedFallbackWeights: number[] = [];
+  const engagedViewScoreValues: number[] = [];
   const retentionScoreValues: number[] = [];
   const rewatchScoreValues: number[] = [];
   const engagementScoreValues: number[] = [];
@@ -902,7 +989,7 @@ export const calculateTrustScore = ({
 
   // Track data availability
   let videosWithAnalytics = 0;
-  let videosWithSwipeData = 0;
+  let videosWithEngagedViewData = 0;
 
   videos.forEach((video) => {
     const views = video.views ?? 0;
@@ -911,7 +998,7 @@ export const calculateTrustScore = ({
 
     const isShort = video.durationSeconds > 0 && video.durationSeconds <= 60;
     const hasAnalytics = video.averageViewDuration > 0;
-    const hasSwipe = isShort
+    const hasEngagedViewData = isShort
       ? (((video.shortsFeedViews ?? 0) > 0 &&
         video.shortsFeedEngagedViews !== undefined) ||
         ((video.analyticsViews ?? 0) > 0 && video.engagedViews !== undefined))
@@ -920,11 +1007,11 @@ export const calculateTrustScore = ({
     if (hasAnalytics) {
       videosWithAnalytics += 1;
     }
-    if (hasSwipe) {
-      videosWithSwipeData += 1;
+    if (hasEngagedViewData) {
+      videosWithEngagedViewData += 1;
     }
 
-    const swipe = computeSwipeScore(
+    const engagedView = computeEngagedViewScore(
       isShort,
       video.shortsFeedViews,
       video.shortsFeedEngagedViews,
@@ -933,12 +1020,12 @@ export const calculateTrustScore = ({
       video.engagedViews
     );
 
-    if (swipe.rate !== null && swipe.source === "shorts_feed") {
-      shortsSwipeFeedRates.push(swipe.rate);
-      shortsSwipeFeedWeights.push(weight);
-    } else if (swipe.rate !== null && swipe.source === "shorts_overall") {
-      shortsSwipeFallbackRates.push(swipe.rate);
-      shortsSwipeFallbackWeights.push(weight);
+    if (engagedView.rate !== null && engagedView.source === "shorts_feed") {
+      shortsEngagedFeedRates.push(engagedView.rate);
+      shortsEngagedFeedWeights.push(weight);
+    } else if (engagedView.rate !== null && engagedView.source === "shorts_overall") {
+      shortsEngagedFallbackRates.push(engagedView.rate);
+      shortsEngagedFallbackWeights.push(weight);
     }
 
     const retention = computeRetentionScore(
@@ -961,13 +1048,13 @@ export const calculateTrustScore = ({
     enhancements.push(format.isVertical ? (format.height && format.height >= 1080 ? 1 : 0.5) : 0);
 
     const videoScore =
-      swipe.score +
+      engagedView.score +
       retention.score +
       rewatch.score +
       engagement +
       format.score;
 
-    swipeScoreValues.push(swipe.score);
+    engagedViewScoreValues.push(engagedView.score);
     retentionScoreValues.push(retention.score);
     rewatchScoreValues.push(rewatch.score);
     engagementScoreValues.push(engagement);
@@ -981,7 +1068,7 @@ export const calculateTrustScore = ({
       weight,
       views,
       scores: {
-        swipe: swipe.score,
+        engagedView: engagedView.score,
         retention: retention.score,
         rewatch: rewatch.score,
         engagement,
@@ -989,17 +1076,17 @@ export const calculateTrustScore = ({
         total: videoScore,
       },
       metrics: {
-        swipeRate: swipe.rate ?? undefined,
-        swipeSource: swipe.source,
+        engagedViewRate: engagedView.rate ?? undefined,
+        engagedViewSource: engagedView.source,
         ctr: isShort ? undefined : normalizeRate(video.impressionsClickThroughRate) ?? undefined,
-        startRate: isShort && swipe.rate !== null ? swipe.rate : undefined,
+        startRate: isShort && engagedView.rate !== null ? engagedView.rate : undefined,
         averageViewDuration: video.averageViewDuration,
         targetAvd: retention.target,
         loopRatio: rewatch.loopRatio,
       },
       flags: {
         hasAnalyticsData: hasAnalytics,
-        hasSwipeData: hasSwipe,
+        hasEngagedViewData: hasEngagedViewData,
         lowConfidence: views < MIN_VIEWS_FOR_VIDEO_SCORE,
       },
     });
@@ -1009,7 +1096,7 @@ export const calculateTrustScore = ({
   const dataConfidence = calculateDataConfidence(
     videos,
     videosWithAnalytics,
-    videosWithSwipeData
+    videosWithEngagedViewData
   );
 
   const totalWeight = weights.reduce((sum, value) => sum + value, 0);
@@ -1025,8 +1112,8 @@ export const calculateTrustScore = ({
     return values.reduce((sum, value, index) => sum + value * (weights[index] ?? 0), 0) / safeWeight;
   };
 
-  // Calculate shorts swipe average
-  const computeWeightedSwipeAvg = (rates: number[], rateWeights: number[]): number | null => {
+  // Calculate shorts engaged view average
+  const computeWeightedEngagedAvg = (rates: number[], rateWeights: number[]): number | null => {
     if (rates.length === 0) {
       return null;
     }
@@ -1040,13 +1127,13 @@ export const calculateTrustScore = ({
     return rates.reduce((sum, value) => sum + value, 0) / rates.length;
   };
 
-  const shortsSwipeFeedAvg = computeWeightedSwipeAvg(
-    shortsSwipeFeedRates,
-    shortsSwipeFeedWeights
+  const shortsEngagedFeedAvg = computeWeightedEngagedAvg(
+    shortsEngagedFeedRates,
+    shortsEngagedFeedWeights
   );
-  const shortsSwipeAvg =
-    shortsSwipeFeedAvg ??
-    computeWeightedSwipeAvg(shortsSwipeFallbackRates, shortsSwipeFallbackWeights);
+  const engagedViewAvg =
+    shortsEngagedFeedAvg ??
+    computeWeightedEngagedAvg(shortsEngagedFallbackRates, shortsEngagedFallbackWeights);
 
   const retentionAvg =
     retentionScoreValues.length > 0
@@ -1096,24 +1183,33 @@ export const calculateTrustScore = ({
     entertainmentCategory +
     enhancementsScore;
 
-  // Consistency score with stricter gates
-  // Use shortsSwipeAvg (combined feed + fallback) so consistency is gated by ANY available swipe data
+  // Calculate channel-level metrics scores
+  const shareRateResult = computeShareRateScore(
+    channelMetrics?.views ?? 0,
+    channelMetrics?.shares ?? 0
+  );
+  const viewsPerViewerResult = computeViewsPerViewerScore(
+    channelMetrics?.views ?? 0,
+    channelMetrics?.viewers ?? 0
+  );
+
+  // Consistency score with soft gates
+  // Use engagedViewAvg (combined feed + fallback) so consistency is gated by ANY available engaged view data
   const hasEnoughAnalyticsData = videosWithAnalytics >= MIN_VIDEOS_WITH_ANALYTICS;
   const consistencyScore = computeConsistencyScore(
     uploads,
-    shortsSwipeAvg,
+    engagedViewAvg,
     retentionAvg,
     hasEnoughAnalyticsData
   );
 
-  const nicheScore = clusterNiche(videos, nicheSignals);
+  // Calculate raw score with new channel metrics
+  const rawScore = accountScore + performanceScore + consistencyScore + shareRateResult.score + viewsPerViewerResult.score;
 
-  // Calculate raw score
-  const rawScore = accountScore + performanceScore + consistencyScore + nicheScore;
-
-  // Apply hard cap if swipe rate is failing (use combined swipe avg for consistency)
+  // Apply soft cap if engaged view rate is failing (use combined engaged avg)
+  // Changed from hard cap to soft 50% penalty to allow new creators to see progress
   let finalScore = rawScore;
-  if (shortsSwipeAvg !== null && shortsSwipeAvg < 0.72) {
+  if (engagedViewAvg !== null && engagedViewAvg < 0.55) {
     finalScore = Math.min(rawScore, 50);
   }
 
@@ -1129,13 +1225,14 @@ export const calculateTrustScore = ({
     channelDescription,
     entertainmentCategory,
     enhancements: enhancementsScore,
-    swipeScore: weightedAverage(swipeScoreValues),
+    engagedViewScore: weightedAverage(engagedViewScoreValues),
     retentionScore: weightedAverage(retentionScoreValues),
     rewatchScore: weightedAverage(rewatchScoreValues),
     engagementScore: weightedAverage(engagementScoreValues),
     formattingScore: weightedAverage(formattingScoreValues),
+    shareRateScore: shareRateResult.score,
+    viewsPerViewerScore: viewsPerViewerResult.score,
     consistencyScore,
-    nicheScore,
   };
 
   const actionItems = buildActionItems(components, dataConfidence);
@@ -1146,8 +1243,9 @@ export const calculateTrustScore = ({
     accountScore: Number(accountScore.toFixed(2)),
     performanceScore: Number(performanceScore.toFixed(2)),
     consistencyScore,
-    nicheScore,
-    swipeAvg: shortsSwipeAvg !== null ? Number(shortsSwipeAvg.toFixed(4)) : null,
+    engagedViewAvg: engagedViewAvg !== null ? Number(engagedViewAvg.toFixed(4)) : null,
+    shareRate: channelMetrics && channelMetrics.views > 0 ? Number(shareRateResult.rate.toFixed(6)) : null,
+    viewsPerViewer: channelMetrics && channelMetrics.viewers > 0 ? Number(viewsPerViewerResult.ratio.toFixed(2)) : null,
     retentionAvg: retentionAvg !== null ? Number(retentionAvg.toFixed(2)) : null,
     windowStart,
     windowEnd,

@@ -3,14 +3,14 @@ import { createClient } from "@/lib/supabase/server-client";
 import { supabaseServer } from "@/lib/supabase/server";
 import {
   fetchAnalyticsMetrics,
-  fetchAnalyticsBreakdown,
+  fetchChannelMetrics,
   fetchChannels,
   fetchPlaylistItems,
   fetchShortsFeedMetrics,
   fetchVideos,
 } from "@/lib/youtube/api";
 import { refreshAccessToken } from "@/lib/youtube/oauth";
-import { calculateTrustScore, type NicheSignals } from "@/lib/youtube/trust-score";
+import { calculateTrustScore } from "@/lib/youtube/trust-score";
 
 export const runtime = "nodejs";
 
@@ -70,22 +70,6 @@ const pickWindowVideos = (uploads: UploadItem[]) => {
     return recent;
   }
   return sorted.slice(0, 12);
-};
-
-const NICHE_WINDOW_DAYS = 7;
-
-const buildNicheWindows = (windowEnd: string) => {
-  const end = new Date(windowEnd);
-  const currentEnd = end;
-  const currentStart = new Date(
-    end.getTime() - (NICHE_WINDOW_DAYS - 1) * DAY_MS
-  );
-  const previousEnd = new Date(currentStart.getTime() - DAY_MS);
-  const previousStart = new Date(
-    previousEnd.getTime() - (NICHE_WINDOW_DAYS - 1) * DAY_MS
-  );
-
-  return { previousStart, previousEnd, currentStart, currentEnd };
 };
 
 export async function POST(request: Request) {
@@ -206,49 +190,12 @@ export async function POST(request: Request) {
       endDate: windowEnd,
     });
 
-    const nicheWindows = buildNicheWindows(windowEnd);
-    const [trafficPrevious, trafficCurrent, audiencePrevious, audienceCurrent] =
-      await Promise.all([
-        fetchAnalyticsBreakdown({
-          accessToken,
-          dimension: "insightTrafficSourceType",
-          startDate: nicheWindows.previousStart,
-          endDate: nicheWindows.previousEnd,
-          filters: "creatorContentType==SHORTS",
-        }),
-        fetchAnalyticsBreakdown({
-          accessToken,
-          dimension: "insightTrafficSourceType",
-          startDate: nicheWindows.currentStart,
-          endDate: nicheWindows.currentEnd,
-          filters: "creatorContentType==SHORTS",
-        }),
-        fetchAnalyticsBreakdown({
-          accessToken,
-          dimension: "country",
-          startDate: nicheWindows.previousStart,
-          endDate: nicheWindows.previousEnd,
-          filters: "creatorContentType==SHORTS",
-        }),
-        fetchAnalyticsBreakdown({
-          accessToken,
-          dimension: "country",
-          startDate: nicheWindows.currentStart,
-          endDate: nicheWindows.currentEnd,
-          filters: "creatorContentType==SHORTS",
-        }),
-      ]);
-
-    const nicheSignals: NicheSignals = {
-      placement:
-        trafficPrevious && trafficCurrent
-          ? { previous: trafficPrevious, current: trafficCurrent }
-          : undefined,
-      audience:
-        audiencePrevious && audienceCurrent
-          ? { previous: audiencePrevious, current: audienceCurrent }
-          : undefined,
-    };
+    // Fetch channel-level metrics for share rate and views per viewer
+    const channelMetrics = await fetchChannelMetrics({
+      accessToken,
+      startDate: windowStart,
+      endDate: windowEnd,
+    });
 
     const mergedVideos = videos.map((video) => {
       const metrics = analyticsMap.get(video.id) ?? {};
@@ -278,7 +225,7 @@ export async function POST(request: Request) {
       windowStart,
       windowEnd,
       now: new Date(),
-      nicheSignals,
+      channelMetrics,
     });
 
     await supabaseServer.from("youtube_trust_score_snapshots").insert({
@@ -289,8 +236,8 @@ export async function POST(request: Request) {
       account_score: result.accountScore,
       performance_score: result.performanceScore,
       consistency_score: result.consistencyScore,
-      niche_score: result.nicheScore,
-      swipe_avg: result.swipeAvg,
+      niche_score: 0, // Deprecated - niche scoring removed
+      swipe_avg: result.engagedViewAvg, // Now stores engaged view avg
       retention_avg: result.retentionAvg,
       window_start: result.windowStart,
       window_end: result.windowEnd,

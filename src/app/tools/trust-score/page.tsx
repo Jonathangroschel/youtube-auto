@@ -263,13 +263,14 @@ type TrustScoreResult = {
   accountScore: number;
   performanceScore: number;
   consistencyScore: number;
-  nicheScore: number;
-  swipeAvg: number | null;
+  engagedViewAvg: number | null;
+  shareRate: number | null;
+  viewsPerViewer: number | null;
   retentionAvg: number | null;
   windowStart: string;
   windowEnd: string;
   videoCount: number;
-  actionItems: { title: string; detail: string; severity: string }[];
+  actionItems: { title: string; detail: string; severity: string; category?: string }[];
   components: Record<string, number>;
   dataConfidence?: "high" | "medium" | "low" | "insufficient";
 };
@@ -298,13 +299,14 @@ const componentLabels: Record<string, string> = {
   channelDescription: "Description",
   entertainmentCategory: "Category focus",
   enhancements: "Enhancements",
-  swipeScore: "Swipe ratio",
+  engagedViewScore: "Engaged view rate",
   retentionScore: "Retention",
   rewatchScore: "Rewatch",
   engagementScore: "Engagement",
   formattingScore: "Formatting",
+  shareRateScore: "Share rate",
+  viewsPerViewerScore: "Viewer stickiness",
   consistencyScore: "Consistency",
-  nicheScore: "Niche clarity",
 };
 
 const componentTooltips: Record<
@@ -338,9 +340,9 @@ const componentTooltips: Record<
     summary: "Rewards vertical 9:16 videos at 1080p or higher resolution.",
     zero: "Most recent uploads are not vertical or high-res.",
   },
-  swipeScore: {
-    summary: "Stayed-to-watch rate from the Shorts feed, or overall Shorts engaged rate when feed data is missing.",
-    zero: "Shorts engaged views are missing or the stay rate is below 72%.",
+  engagedViewScore: {
+    summary: "Percentage of viewers who watched past the first few seconds. Based on YouTube's official engagedViews metric.",
+    zero: "Engaged view data is missing or fewer than 55% of viewers watch past the hook.",
   },
   retentionScore: {
     summary: "Compares average view duration to the target for each video length.",
@@ -358,13 +360,17 @@ const componentTooltips: Record<
     summary: "Checks vertical 9:16 framing and proper credits if content looks reused.",
     zero: "Videos are not vertical/high-res or credits are missing.",
   },
-  consistencyScore: {
-    summary: "Rewards frequent uploads over the last 12 days.",
-    zero: "Uploads are too sparse or key analytics signals are missing.",
+  shareRateScore: {
+    summary: "How often viewers share your content. High share rate signals highly valuable, recommendation-worthy content.",
+    zero: "Share data is missing or share rate is below 0.05%.",
   },
-  nicheScore: {
-    summary: "Measures how consistently YouTube can place your Shorts into one recommendation cluster.",
-    zero: "Content, placement, or audience signals are mixed, or there is not enough data yet.",
+  viewsPerViewerScore: {
+    summary: "Average views per unique viewer. Higher means viewers are watching multiple videos (sticky content).",
+    zero: "Viewer data is missing or viewers watch ~1 video on average.",
+  },
+  consistencyScore: {
+    summary: "Rewards frequent uploads over the last 12 days with gap penalties for long breaks.",
+    zero: "Uploads are too sparse or key analytics signals are missing.",
   },
 };
 
@@ -376,13 +382,14 @@ const componentMaxes: Record<string, number> = {
   channelDescription: 1,
   entertainmentCategory: 1,
   enhancements: 1,
-  swipeScore: 25,
+  engagedViewScore: 21,
   retentionScore: 40,
   rewatchScore: 10,
   engagementScore: 8,
   formattingScore: 2,
+  shareRateScore: 5,
+  viewsPerViewerScore: 2,
   consistencyScore: 6,
-  nicheScore: 3,
 };
 
 const normalizeComponentScore = (
@@ -416,20 +423,24 @@ const getScoreLabel = (score: number) => {
 };
 
 const getSeverityRank = (severity?: string) => {
-  if (severity === "high") return 3;
-  if (severity === "medium") return 2;
-  if (severity === "low") return 1;
+  if (severity === "high") return 4;
+  if (severity === "medium") return 3;
+  if (severity === "low") return 2;
+  if (severity === "positive") return 1; // Show wins last
   return 0;
 };
 
 const getImpactMeta = (severity?: string) => {
   if (severity === "high") {
-    return { label: "High impact", tone: "text-rose-600 bg-rose-50" };
+    return { label: "High", tone: "text-rose-600 bg-rose-50" };
   }
   if (severity === "medium") {
-    return { label: "Medium impact", tone: "text-amber-600 bg-amber-50" };
+    return { label: "Med", tone: "text-amber-600 bg-amber-50" };
   }
-  return { label: "Low impact", tone: "text-emerald-600 bg-emerald-50" };
+  if (severity === "positive") {
+    return { label: "Win", tone: "text-emerald-600 bg-emerald-50" };
+  }
+  return { label: "Low", tone: "text-sky-600 bg-sky-50" };
 };
 
 
@@ -481,6 +492,7 @@ export default function TrustScorePage() {
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [hoveredNavIndex, setHoveredNavIndex] = useState<number | null>(null);
+  const [detailsAnimKey, setDetailsAnimKey] = useState(0);
   const [indicatorStyle, setIndicatorStyle] = useState<{
     top: number;
     height: number;
@@ -792,9 +804,12 @@ export default function TrustScorePage() {
 
 
   const topLifts = useMemo(() => {
-    return [...actionItems]
-      .sort((a, b) => getSeverityRank(b.severity) - getSeverityRank(a.severity))
-      .slice(0, 3);
+    // Sort by severity (high -> medium -> low -> positive/wins)
+    // Show up to 5 items, prioritizing issues over wins
+    const sorted = [...actionItems].sort(
+      (a, b) => getSeverityRank(b.severity) - getSeverityRank(a.severity)
+    );
+    return sorted.slice(0, 5);
   }, [actionItems]);
 
   const componentBreakdown = useMemo<ComponentBreakdownItem[]>(() => {
@@ -1328,13 +1343,13 @@ export default function TrustScorePage() {
                     <p className="mt-1 text-xs text-gray-400">{history.length} runs</p>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                    <p className="text-xs font-medium text-gray-400">Swipe ratio</p>
+                    <p className="text-xs font-medium text-gray-400">Engaged view rate</p>
                     <p className="mt-2 text-2xl font-semibold text-gray-900">
-                      {analysisResult?.swipeAvg ?? latestSnapshot?.swipe_avg
-                        ? `${Math.min(100, Math.round((analysisResult?.swipeAvg ?? latestSnapshot?.swipe_avg ?? 0) * 100))}%`
+                      {analysisResult?.engagedViewAvg ?? latestSnapshot?.swipe_avg
+                        ? `${Math.min(100, Math.round((analysisResult?.engagedViewAvg ?? latestSnapshot?.swipe_avg ?? 0) * 100))}%`
                         : "—"}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">stayed to watch</p>
+                    <p className="mt-1 text-xs text-gray-400">watched past hook</p>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5">
                     <p className="text-xs font-medium text-gray-400">Retention</p>
@@ -1359,10 +1374,19 @@ export default function TrustScorePage() {
                 {/* Actions - clean cards */}
                 <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">Priority actions</p>
+                    <p className="text-sm font-semibold text-gray-900">How to improve</p>
                     {topLifts.length > 0 ? (
-                      <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600">
-                        {topLifts.length} items
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        topLifts.some(i => i.severity === "positive")
+                          ? "bg-emerald-50 text-emerald-600"
+                          : "bg-gray-100 text-gray-600"
+                      }`}>
+                        {topLifts.filter(i => i.severity !== "positive").length > 0 
+                          ? `${topLifts.filter(i => i.severity !== "positive").length} to fix`
+                          : "Looking good"}
+                        {topLifts.some(i => i.severity === "positive") && topLifts.filter(i => i.severity !== "positive").length > 0
+                          ? ` · ${topLifts.filter(i => i.severity === "positive").length} win${topLifts.filter(i => i.severity === "positive").length > 1 ? "s" : ""}`
+                          : ""}
                       </span>
                     ) : null}
                   </div>
@@ -1381,20 +1405,29 @@ export default function TrustScorePage() {
                     ) : (
                       topLifts.map((item, idx) => {
                         const impact = getImpactMeta(item.severity);
+                        const isWin = item.severity === "positive";
                         return (
                           <div
                             key={item.title}
-                            className="flex items-start gap-4 rounded-xl bg-gray-50 p-4 transition-colors hover:bg-gray-100"
+                            className={`flex items-start gap-4 rounded-xl p-4 transition-colors ${
+                              isWin 
+                                ? "bg-emerald-50/50 hover:bg-emerald-50" 
+                                : "bg-gray-50 hover:bg-gray-100"
+                            }`}
                           >
-                            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-500 shadow-sm">
-                              {idx + 1}
+                            <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold shadow-sm ${
+                              isWin
+                                ? "bg-emerald-500 text-white"
+                                : "bg-white text-gray-500"
+                            }`}>
+                              {isWin ? "✓" : idx + 1}
                             </span>
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-gray-900">{item.title}</p>
-                              <p className="mt-1 text-sm text-gray-500">{item.detail}</p>
+                              <p className={`font-medium ${isWin ? "text-emerald-900" : "text-gray-900"}`}>{item.title}</p>
+                              <p className={`mt-1 text-sm ${isWin ? "text-emerald-700" : "text-gray-500"}`}>{item.detail}</p>
                             </div>
                             <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${impact.tone}`}>
-                              {item.severity === "high" ? "High" : item.severity === "medium" ? "Med" : "Low"}
+                              {impact.label}
                             </span>
                           </div>
                         );
@@ -1440,18 +1473,24 @@ export default function TrustScorePage() {
 
                 {/* Score breakdown - collapsible */}
                 {breakdownItems.length > 0 ? (
-                  <details className="group/details rounded-[2rem] border border-gray-100 bg-white">
-                    <summary className="flex cursor-pointer items-center justify-between p-6 text-sm font-semibold text-gray-900 [&::-webkit-details-marker]:hidden">
+                  <details 
+                    className="group/details rounded-[2rem] border border-gray-100 bg-white"
+                    onToggle={() => setDetailsAnimKey(prev => prev + 1)}
+                  >
+                    <summary className="flex cursor-pointer items-center justify-between p-6 text-sm font-semibold text-gray-900 [&::-webkit-details-marker]:hidden transition-colors hover:bg-gray-50/50">
                       Full breakdown
-                      <svg className="h-4 w-4 text-gray-400 transition-transform group-open/details:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-4 w-4 text-gray-400 transition-transform duration-300 ease-in-out group-open/details:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </summary>
-                    <div className="border-t border-gray-100 p-6 pt-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {breakdownItems.map((item) => {
+                    <div className="overflow-hidden">
+                      <div key={detailsAnimKey} className="animate-details-content border-t border-gray-100 p-6 pt-4 overflow-visible">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                        {breakdownItems.map((item, idx) => {
                           const tooltip = getComponentTooltip(item.key, item.score);
                           const isZero = item.score === 0;
+                          // First 4 items (2 rows) show tooltip below, rest show above
+                          const showTooltipBelow = idx < 4;
                           return (
                             <div
                               key={item.key}
@@ -1463,20 +1502,34 @@ export default function TrustScorePage() {
                                 <span className={`text-sm font-semibold ${getScoreTone(item.score)}`}>{item.score}</span>
                               </div>
                               {tooltip ? (
-                                <div className="pointer-events-none absolute left-1/2 bottom-full z-30 mb-3 w-72 max-w-[80vw] -translate-x-1/2 opacity-0 transition-all duration-200 group-hover/item:-translate-y-1 group-hover/item:opacity-100 group-focus-within/item:-translate-y-1 group-focus-within/item:opacity-100">
-                                  <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.15)] backdrop-blur">
-                                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                                      <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-rose-500" : "bg-[#335CFF]"}`} />
-                                      {isZero ? "Why it's 0" : "What this means"}
+                                showTooltipBelow ? (
+                                  <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-3 w-72 max-w-[80vw] -translate-x-1/2 -translate-y-1 opacity-0 transition-all duration-300 ease-in-out group-hover/item:translate-y-0 group-hover/item:opacity-100 group-focus-within/item:translate-y-0 group-focus-within/item:opacity-100">
+                                    <div className="mx-auto mb-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-white/95 ring-1 ring-slate-200/80 shadow-[0_-3px_8px_rgba(15,23,42,0.08)]" />
+                                    <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.15)] backdrop-blur">
+                                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
+                                        <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-rose-500" : "bg-[#335CFF]"}`} />
+                                        {isZero ? "Why it's 0" : "What this means"}
+                                      </div>
+                                      <div className="mt-2 text-sm text-slate-700">{tooltip}</div>
                                     </div>
-                                    <div className="mt-2 text-sm text-slate-700">{tooltip}</div>
                                   </div>
-                                  <div className="mx-auto mt-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-white/95 ring-1 ring-slate-200/80 shadow-[0_6px_14px_rgba(15,23,42,0.12)]" />
-                                </div>
+                                ) : (
+                                  <div className="pointer-events-none absolute left-1/2 bottom-full z-50 mb-3 w-72 max-w-[80vw] -translate-x-1/2 translate-y-1 opacity-0 transition-all duration-300 ease-in-out group-hover/item:translate-y-0 group-hover/item:opacity-100 group-focus-within/item:translate-y-0 group-focus-within/item:opacity-100">
+                                    <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.15)] backdrop-blur">
+                                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
+                                        <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-rose-500" : "bg-[#335CFF]"}`} />
+                                        {isZero ? "Why it's 0" : "What this means"}
+                                      </div>
+                                      <div className="mt-2 text-sm text-slate-700">{tooltip}</div>
+                                    </div>
+                                    <div className="mx-auto mt-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-white/95 ring-1 ring-slate-200/80 shadow-[0_6px_14px_rgba(15,23,42,0.12)]" />
+                                  </div>
+                                )
                               ) : null}
                             </div>
                           );
                         })}
+                        </div>
                       </div>
                     </div>
                   </details>

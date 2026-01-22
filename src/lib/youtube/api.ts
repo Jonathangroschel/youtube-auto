@@ -550,3 +550,52 @@ export const fetchAnalyticsMetrics = async ({
 
   return metricsMap;
 };
+
+export type ChannelMetrics = {
+  views: number;
+  viewers: number;
+  shares: number;
+};
+
+/**
+ * Fetch channel-level metrics for share rate and views per viewer calculations
+ */
+export const fetchChannelMetrics = async ({
+  accessToken,
+  startDate,
+  endDate,
+}: {
+  accessToken: string;
+  startDate: string;
+  endDate: string;
+}): Promise<ChannelMetrics> => {
+  const params = new URLSearchParams({
+    ids: "channel==MINE",
+    startDate: toDateString(startDate),
+    endDate: toDateString(endDate),
+    metrics: "views,viewers,shares",
+  });
+
+  const url = buildAnalyticsUrl(accessToken, params);
+  try {
+    const data = await fetchJson<{
+      columnHeaders?: Array<{ name: string }>;
+      rows?: Array<(string | number)[]>;
+    }>(url, accessToken);
+
+    const headers = data.columnHeaders?.map((header) => header.name) ?? [];
+    const row = data.rows?.[0] ?? [];
+
+    const viewsIndex = headers.indexOf("views");
+    const viewersIndex = headers.indexOf("viewers");
+    const sharesIndex = headers.indexOf("shares");
+
+    return {
+      views: viewsIndex >= 0 ? Number(row[viewsIndex] ?? 0) : 0,
+      viewers: viewersIndex >= 0 ? Number(row[viewersIndex] ?? 0) : 0,
+      shares: sharesIndex >= 0 ? Number(row[sharesIndex] ?? 0) : 0,
+    };
+  } catch {
+    return { views: 0, viewers: 0, shares: 0 };
+  }
+};
