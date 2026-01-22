@@ -197,6 +197,8 @@ export async function POST(request: Request) {
       endDate: windowEnd,
     });
 
+    console.log("[compute] Channel metrics for share/stickiness:", channelMetrics);
+
     const mergedVideos = videos.map((video) => {
       const metrics = analyticsMap.get(video.id) ?? {};
       const shortsFeedMetrics = shortsFeedMap.get(video.id) ?? {};

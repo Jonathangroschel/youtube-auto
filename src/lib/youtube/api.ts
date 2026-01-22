@@ -559,6 +559,8 @@ export type ChannelMetrics = {
 
 /**
  * Fetch channel-level metrics for share rate and views per viewer calculations
+ * Note: 'shares' and 'viewers' metrics may not be available for all channels
+ * or may require sufficient data volume to return non-zero values.
  */
 export const fetchChannelMetrics = async ({
   accessToken,
@@ -569,14 +571,19 @@ export const fetchChannelMetrics = async ({
   startDate: string;
   endDate: string;
 }): Promise<ChannelMetrics> => {
+  // First try to get all metrics together
   const params = new URLSearchParams({
     ids: "channel==MINE",
     startDate: toDateString(startDate),
     endDate: toDateString(endDate),
-    metrics: "views,viewers,shares",
+    metrics: "views,shares",
   });
 
   const url = buildAnalyticsUrl(accessToken, params);
+  let views = 0;
+  let shares = 0;
+  let viewers = 0;
+
   try {
     const data = await fetchJson<{
       columnHeaders?: Array<{ name: string }>;
@@ -587,15 +594,45 @@ export const fetchChannelMetrics = async ({
     const row = data.rows?.[0] ?? [];
 
     const viewsIndex = headers.indexOf("views");
-    const viewersIndex = headers.indexOf("viewers");
     const sharesIndex = headers.indexOf("shares");
 
-    return {
-      views: viewsIndex >= 0 ? Number(row[viewsIndex] ?? 0) : 0,
-      viewers: viewersIndex >= 0 ? Number(row[viewersIndex] ?? 0) : 0,
-      shares: sharesIndex >= 0 ? Number(row[sharesIndex] ?? 0) : 0,
-    };
-  } catch {
-    return { views: 0, viewers: 0, shares: 0 };
+    views = viewsIndex >= 0 ? Number(row[viewsIndex] ?? 0) : 0;
+    shares = sharesIndex >= 0 ? Number(row[sharesIndex] ?? 0) : 0;
+
+    console.log("[fetchChannelMetrics] views/shares response:", { headers, row, views, shares });
+  } catch (error) {
+    console.error("[fetchChannelMetrics] Error fetching views/shares:", error);
   }
+
+  // Fetch 'viewers' (unique viewers) separately as it may have different availability
+  // This metric counts unique viewers and may have privacy thresholds
+  try {
+    const viewersParams = new URLSearchParams({
+      ids: "channel==MINE",
+      startDate: toDateString(startDate),
+      endDate: toDateString(endDate),
+      metrics: "viewers",
+    });
+
+    const viewersUrl = buildAnalyticsUrl(accessToken, viewersParams);
+    const viewersData = await fetchJson<{
+      columnHeaders?: Array<{ name: string }>;
+      rows?: Array<(string | number)[]>;
+    }>(viewersUrl, accessToken);
+
+    const viewersHeaders = viewersData.columnHeaders?.map((header) => header.name) ?? [];
+    const viewersRow = viewersData.rows?.[0] ?? [];
+    const viewersIndex = viewersHeaders.indexOf("viewers");
+
+    viewers = viewersIndex >= 0 ? Number(viewersRow[viewersIndex] ?? 0) : 0;
+
+    console.log("[fetchChannelMetrics] viewers response:", { viewersHeaders, viewersRow, viewers });
+  } catch (error) {
+    // 'viewers' metric may not be available for all channels
+    console.warn("[fetchChannelMetrics] Could not fetch viewers metric (may not be available):", error);
+  }
+
+  console.log("[fetchChannelMetrics] Final metrics:", { views, viewers, shares });
+
+  return { views, viewers, shares };
 };
