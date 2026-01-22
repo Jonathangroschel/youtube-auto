@@ -339,11 +339,11 @@ const componentTooltips: Record<
     zero: "Most recent uploads are not vertical or high-res.",
   },
   engagedViewScore: {
-    summary: "Percentage of viewers who watched past the first few seconds. Based on YouTube's official engagedViews metric.",
+    summary: "Based on YouTube's engagedViews API metric — not the same as 'stayed to watch' in YouTube Studio. This is a stricter measure of who watched past the hook.",
     zero: "Engaged view data is missing or fewer than 55% of viewers watch past the hook.",
   },
   retentionScore: {
-    summary: "Compares average view duration to the target for each video length.",
+    summary: "Compares average view duration to target. Shorter Shorts have higher targets that expect looping — longer Shorts (45-60s) have more forgiving thresholds.",
     zero: "Watch time data is missing or viewers drop well before the target.",
   },
   rewatchScore: {
@@ -363,8 +363,8 @@ const componentTooltips: Record<
     zero: "Share data is missing or share rate is below 0.01%.",
   },
   consistencyScore: {
-    summary: "Rewards frequent uploads over the last 12 days with gap penalties for long breaks.",
-    zero: "Uploads are too sparse or key analytics signals are missing.",
+    summary: "Rewards frequent uploads over the last 12 days. Score is weighted down if retention or engaged view rate are below threshold — posting often only counts when the content performs.",
+    zero: "Uploads are too sparse, or other metrics (retention, engaged views) are dragging down the score.",
   },
 };
 
