@@ -266,6 +266,9 @@ const computeEngagementScore = (
  * Share Rate scoring - how often viewers share content
  * High share rate signals highly valuable, recommendation-worthy content
  * Max score: 7 points
+ * 
+ * Note: Shares are rare - typical rates are 0.01% to 0.1%
+ * Shorts tend to have lower share rates than long-form content
  */
 const computeShareRateScore = (
   totalViews: number,
@@ -277,26 +280,29 @@ const computeShareRateScore = (
 
   const rate = totalShares / totalViews;
 
-  // Thresholds based on typical share rates (shares are rare)
-  if (rate >= 0.005) {
-    return { score: 7, rate };  // 0.5%+ Excellent
-  }
-  if (rate >= 0.004) {
-    return { score: 6, rate };  // 0.4%+ Great
-  }
+  // Thresholds calibrated for realistic share rates (shares are rare)
   if (rate >= 0.003) {
-    return { score: 5, rate };  // 0.3%+ Very good
+    return { score: 7, rate };  // 0.3%+ Exceptional
   }
   if (rate >= 0.002) {
-    return { score: 4, rate };  // 0.2%+ Good
+    return { score: 6, rate };  // 0.2%+ Excellent
   }
   if (rate >= 0.001) {
-    return { score: 2, rate };  // 0.1%+ Average
+    return { score: 5, rate };  // 0.1%+ Great
   }
   if (rate >= 0.0005) {
-    return { score: 1, rate }; // 0.05%+ Below avg
+    return { score: 4, rate };  // 0.05%+ Good
   }
-  return { score: 0, rate };    // <0.05% Needs work
+  if (rate >= 0.0003) {
+    return { score: 3, rate };  // 0.03%+ Above average
+  }
+  if (rate >= 0.0002) {
+    return { score: 2, rate };  // 0.02%+ Average
+  }
+  if (rate >= 0.0001) {
+    return { score: 1, rate };  // 0.01%+ Below average
+  }
+  return { score: 0, rate };    // <0.01% Needs work
 };
 
 

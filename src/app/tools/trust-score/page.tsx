@@ -360,7 +360,7 @@ const componentTooltips: Record<
   },
   shareRateScore: {
     summary: "How often viewers share your content. High share rate signals highly valuable, recommendation-worthy content.",
-    zero: "Share data is missing or share rate is below 0.05%.",
+    zero: "Share data is missing or share rate is below 0.01%.",
   },
   consistencyScore: {
     summary: "Rewards frequent uploads over the last 12 days with gap penalties for long breaks.",
