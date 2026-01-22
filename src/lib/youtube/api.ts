@@ -560,6 +560,7 @@ export type ChannelMetrics = {
  * Fetch channel-level metrics for share rate calculation.
  * Note: The 'viewers' (unique viewers) metric is not available through the
  * standard YouTube Analytics API, so we only fetch views and shares.
+ * Includes retry logic for transient YouTube API errors.
  */
 export const fetchChannelMetrics = async ({
   accessToken,
@@ -578,27 +579,42 @@ export const fetchChannelMetrics = async ({
   });
 
   const url = buildAnalyticsUrl(accessToken, params);
+  const maxRetries = 3;
 
-  try {
-    const data = await fetchJson<{
-      columnHeaders?: Array<{ name: string }>;
-      rows?: Array<(string | number)[]>;
-    }>(url, accessToken);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const data = await fetchJson<{
+        columnHeaders?: Array<{ name: string }>;
+        rows?: Array<(string | number)[]>;
+      }>(url, accessToken);
 
-    const headers = data.columnHeaders?.map((header) => header.name) ?? [];
-    const row = data.rows?.[0] ?? [];
+      const headers = data.columnHeaders?.map((header) => header.name) ?? [];
+      const row = data.rows?.[0] ?? [];
 
-    const viewsIndex = headers.indexOf("views");
-    const sharesIndex = headers.indexOf("shares");
+      const viewsIndex = headers.indexOf("views");
+      const sharesIndex = headers.indexOf("shares");
 
-    const views = viewsIndex >= 0 ? Number(row[viewsIndex] ?? 0) : 0;
-    const shares = sharesIndex >= 0 ? Number(row[sharesIndex] ?? 0) : 0;
+      const views = viewsIndex >= 0 ? Number(row[viewsIndex] ?? 0) : 0;
+      const shares = sharesIndex >= 0 ? Number(row[sharesIndex] ?? 0) : 0;
 
-    console.log("[fetchChannelMetrics] Response:", { headers, row, views, shares });
+      console.log("[fetchChannelMetrics] Response:", { headers, row, views, shares });
 
-    return { views, shares };
-  } catch (error) {
-    console.error("[fetchChannelMetrics] Error fetching metrics:", error);
-    return { views: 0, shares: 0 };
+      return { views, shares };
+    } catch (error) {
+      const isRetryable = error instanceof Error && 
+        (error.message.includes("500") || error.message.includes("503") || error.message.includes("backendError"));
+      
+      if (isRetryable && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
+        console.warn(`[fetchChannelMetrics] Attempt ${attempt} failed, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      console.error("[fetchChannelMetrics] Error fetching metrics:", error);
+      return { views: 0, shares: 0 };
+    }
   }
+
+  return { views: 0, shares: 0 };
 };
