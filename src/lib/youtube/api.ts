@@ -594,6 +594,8 @@ export const fetchChannelMetrics = async ({
     const views = viewsIndex >= 0 ? Number(row[viewsIndex] ?? 0) : 0;
     const shares = sharesIndex >= 0 ? Number(row[sharesIndex] ?? 0) : 0;
 
+    console.log("[fetchChannelMetrics] Response:", { headers, row, views, shares });
+
     return { views, shares };
   } catch (error) {
     console.error("[fetchChannelMetrics] Error fetching metrics:", error);
