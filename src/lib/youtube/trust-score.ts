@@ -754,14 +754,14 @@ const buildActionItems = (
   if (consistencyPct < 35) {
     issues.push({
       title: "Post more regularly",
-      detail: "You're not posting often enough for YouTube to learn who should see your content. The algorithm rewards creators who show up consistently. Aim for at least 4-5 videos per week while you're growing. You can slow down once you have momentum.",
+      detail: "You're not posting often enough for YouTube to learn who should see your content. The algorithm rewards creators who show up consistently. Aim for at least 4-5 videos per week while you're growing. You can slow down once you have momentum. Note: This score is also affected by your hook and retention performance.",
       severity: "medium",
       category: "consistency",
     });
   } else if (consistencyPct < 65) {
     issues.push({
       title: "Fill the gaps in your schedule",
-      detail: "You post sometimes, but gaps of 3+ days hurt your momentum. Try batch-creating content when you're in a flow state so you always have something ready to post.",
+      detail: "You post sometimes, but gaps of 3+ days hurt your momentum. Try batch-creating content when you're in a flow state so you always have something ready to post. Note: This score is also affected by your hook and retention performance.",
       severity: "low",
       category: "consistency",
     });
