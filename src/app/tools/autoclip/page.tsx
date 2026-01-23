@@ -736,11 +736,11 @@ export default function AutoClipPage() {
     return height >= width;
   }, [resolvedInputHeight, resolvedInputWidth]);
   const inputPreviewFrameClass = inputIsPortrait
-    ? "mx-auto h-[200px] w-auto max-w-full md:h-[300px]"
-    : "h-auto w-full max-h-[200px] md:max-h-[300px]";
+    ? "mx-auto h-[360px] w-auto max-w-full md:h-[520px]"
+    : "h-auto w-full max-h-[360px] md:max-h-[520px]";
   const reviewPreviewFrameClass = inputIsPortrait
-    ? "mx-auto h-[200px] w-auto max-w-full sm:h-[260px]"
-    : "h-auto w-full max-h-[200px] sm:max-h-[260px]";
+    ? "mx-auto h-[300px] w-auto max-w-full sm:h-[420px]"
+    : "h-auto w-full max-h-[300px] sm:max-h-[420px]";
   const updateInputPreviewMeta = useCallback(
     (width: number, height: number) => {
       if (
@@ -3059,6 +3059,8 @@ export default function AutoClipPage() {
                                       controls
                                       playsInline
                                       className="h-full w-full object-contain"
+                                      style={{ objectFit: "contain" }}
+                                      preload="metadata"
                                       onLoadedMetadata={(event) => {
                                         const { videoWidth, videoHeight } =
                                           event.currentTarget;
@@ -3070,7 +3072,7 @@ export default function AutoClipPage() {
                                     />
                                   </div>
                                 ) : (
-                                  <div className="flex min-h-[200px] items-center justify-center text-xs text-gray-400 md:min-h-[260px]">
+                                  <div className="flex min-h-[360px] items-center justify-center text-xs text-gray-400 md:min-h-[520px]">
                                     Preview available after upload
                                   </div>
                                 )}
@@ -3449,7 +3451,7 @@ export default function AutoClipPage() {
                                       {reviewTranscript}
                                     </p>
                                   </div>
-                                  <div className="relative flex min-h-[200px] w-full items-center justify-center rounded-xl bg-gray-100 sm:min-h-[260px]">
+                                  <div className="relative flex min-h-[300px] w-full items-center justify-center rounded-xl bg-gray-100 sm:min-h-[420px]">
                                     {reviewPreviewUrl ? (
                                       <div
                                         className={reviewPreviewFrameClass}
@@ -3460,6 +3462,8 @@ export default function AutoClipPage() {
                                           src={reviewPreviewUrl}
                                           ref={reviewVideoRef}
                                           className="h-full w-full object-contain"
+                                          style={{ objectFit: "contain" }}
+                                          preload="metadata"
                                           playsInline
                                           controls
                                           onLoadedMetadata={(event) => {
@@ -3938,6 +3942,8 @@ export default function AutoClipPage() {
                                           src={clip.previewUrl}
                                           controls
                                           className="h-full w-full object-contain"
+                                          style={{ objectFit: "contain" }}
+                                          preload="metadata"
                                           playsInline
                                           onLoadedMetadata={(event) => {
                                             const { videoWidth, videoHeight } =
