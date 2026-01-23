@@ -14,6 +14,36 @@ const WORKER_SECRET = process.env.WORKER_SECRET || "dev-secret";
 const TEMP_DIR = process.env.TEMP_DIR || "/tmp/autoclip";
 const BUCKET = "autoclip-files";
 
+const toPositiveInt = (value, fallback) => {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.floor(parsed);
+  }
+  return fallback;
+};
+
+const toEven = (value) => {
+  const safe = Math.max(2, Math.floor(value));
+  return safe - (safe % 2);
+};
+
+const MAX_RENDER_CONCURRENCY = toPositiveInt(
+  process.env.AUTOCLIP_RENDER_CONCURRENCY,
+  1
+);
+const FFMPEG_THREADS = toPositiveInt(process.env.AUTOCLIP_FFMPEG_THREADS, 1);
+const MAX_RENDER_FPS = toPositiveInt(process.env.AUTOCLIP_MAX_RENDER_FPS, 30);
+const MAX_RENDER_HEIGHT = toPositiveInt(
+  process.env.AUTOCLIP_MAX_RENDER_HEIGHT,
+  1280
+);
+const RENDER_PRESET = process.env.AUTOCLIP_FFMPEG_PRESET || "veryfast";
+const SCALE_FLAGS = process.env.AUTOCLIP_SCALE_FLAGS || "fast_bilinear";
+const RENDER_HEIGHT = toEven(MAX_RENDER_HEIGHT);
+const RENDER_WIDTH = toEven(Math.round(RENDER_HEIGHT * 9 / 16));
+
+let activeRenders = 0;
+
 // Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -184,6 +214,7 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
         "-hide_banner", "-loglevel", "error",
         "-y", "-i", videoPath,
         "-vn", "-acodec", "libmp3lame", "-q:a", "4",
+        "-threads", String(FFMPEG_THREADS),
         audioPath,
       ]);
       let stderr = "";
@@ -228,34 +259,39 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
 
 // Render clips
 app.post("/render", authMiddleware, async (req, res) => {
+  const { sessionId, videoKey, clips, quality = "high", cropMode = "auto" } =
+    req.body;
+
+  if (!clips?.length) {
+    return res.status(400).json({ error: "No clips provided" });
+  }
+  if (!videoKey) {
+    return res.status(400).json({ error: "Missing videoKey" });
+  }
+  if (activeRenders >= MAX_RENDER_CONCURRENCY) {
+    return res.status(429).json({ error: "Render busy. Try again soon." });
+  }
+
+  const normalizedClips = clips.map((clip, index) => ({
+    index,
+    start: Number(clip?.start),
+    end: Number(clip?.end),
+    highlightIndex: Number(clip?.highlightIndex),
+  }));
+  const invalidClip = normalizedClips.find(
+    (clip) =>
+      !Number.isFinite(clip.start) ||
+      !Number.isFinite(clip.end) ||
+      clip.end <= clip.start
+  );
+  if (invalidClip) {
+    return res.status(400).json({
+      error: `Invalid clip range at index ${invalidClip.index}.`,
+    });
+  }
+
+  activeRenders += 1;
   try {
-    const { sessionId, videoKey, clips, quality = "high", cropMode = "auto" } = req.body;
-
-    if (!clips?.length) {
-      return res.status(400).json({ error: "No clips provided" });
-    }
-    if (!videoKey) {
-      return res.status(400).json({ error: "Missing videoKey" });
-    }
-
-    const normalizedClips = clips.map((clip, index) => ({
-      index,
-      start: Number(clip?.start),
-      end: Number(clip?.end),
-      highlightIndex: Number(clip?.highlightIndex),
-    }));
-    const invalidClip = normalizedClips.find(
-      (clip) =>
-        !Number.isFinite(clip.start) ||
-        !Number.isFinite(clip.end) ||
-        clip.end <= clip.start
-    );
-    if (invalidClip) {
-      return res.status(400).json({
-        error: `Invalid clip range at index ${invalidClip.index}.`,
-      });
-    }
-
     // Download video from Supabase
     const videoPath = path.join(TEMP_DIR, `${sessionId}_video.mp4`);
     
@@ -286,9 +322,11 @@ app.post("/render", authMiddleware, async (req, res) => {
           "-t", String(clipDuration),
           "-map", "0:v:0",
           "-map", "0:a:0?",
+          "-r", String(MAX_RENDER_FPS),
           "-c:v", "libx264",
-          "-preset", "veryfast",
+          "-preset", RENDER_PRESET,
           "-crf", "18",
+          "-threads", String(FFMPEG_THREADS),
           "-c:a", "aac",
           "-b:a", "128k",
           "-reset_timestamps", "1",
@@ -347,10 +385,13 @@ app.post("/render", authMiddleware, async (req, res) => {
           "-i", clipPath,             // Original clip (for audio)
           "-map", "0:v:0",            // Take video from first input
           "-map", "1:a:0?",           // Take audio from second input (optional)
-          "-vf", "scale=1080:1920:flags=lanczos",
+          "-filter_threads", String(FFMPEG_THREADS),
+          "-vf", `scale=${RENDER_WIDTH}:${RENDER_HEIGHT}:flags=${SCALE_FLAGS}`,
+          "-r", String(MAX_RENDER_FPS),
           "-c:v", "libx264",
-          "-preset", "veryfast",
+          "-preset", RENDER_PRESET,
           "-crf", crf,
+          "-threads", String(FFMPEG_THREADS),
           "-c:a", "aac",
           "-b:a", "128k",
           "-shortest",
@@ -411,6 +452,8 @@ app.post("/render", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Render error:", error);
     res.status(500).json({ error: error.message });
+  } finally {
+    activeRenders = Math.max(0, activeRenders - 1);
   }
 });
 
@@ -443,6 +486,7 @@ app.post("/preview", authMiddleware, async (req, res) => {
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-crf", "28",
+        "-threads", String(FFMPEG_THREADS),
         "-c:a", "aac",
         "-b:a", "96k",
         previewPath,

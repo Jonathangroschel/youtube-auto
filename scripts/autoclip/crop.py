@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from typing import List, Optional, Tuple
 
@@ -19,6 +20,7 @@ GROUP_FACE_AREA_RATIO = 0.6
 GROUP_MAX_SPAN_RATIO = 0.9
 MISSING_FACE_SECONDS = 2.0
 DEFAULT_FPS = 30.0
+DEFAULT_FFMPEG_THREADS = 1
 
 
 def clamp(value: float, min_value: float, max_value: float) -> float:
@@ -48,6 +50,15 @@ def resolve_fps(cap: cv2.VideoCapture, fallback: float = DEFAULT_FPS) -> float:
 def ensure_valid_dimensions(width: int, height: int) -> None:
     if width < 2 or height < 2:
         raise RuntimeError(f"Invalid video dimensions: {width}x{height}")
+
+
+def resolve_threads() -> int:
+    value = os.environ.get("AUTOCLIP_FFMPEG_THREADS")
+    try:
+        threads = int(value) if value is not None else DEFAULT_FFMPEG_THREADS
+    except ValueError:
+        threads = DEFAULT_FFMPEG_THREADS
+    return max(1, threads)
 
 
 def face_area(face: FaceBox) -> int:
@@ -248,6 +259,8 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
     
     print(f"Output dimensions: {target_width}x{target_height}", file=sys.stderr)
 
+    threads = resolve_threads()
+
     # Use FFmpeg subprocess for output (proper timestamps)
     ffmpeg_cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
@@ -260,6 +273,7 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-crf", "18",
+        "-threads", str(threads),
         "-pix_fmt", "yuv420p",
         "-reset_timestamps", "1",
         output_path
@@ -372,6 +386,8 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
     
     print(f"Screen tracking output: {target_width}x{target_height}", file=sys.stderr)
 
+    threads = resolve_threads()
+
     target_display_width = int(width * 0.67)
     scale = target_width / target_display_width
     scaled_width = int(width * scale)
@@ -393,6 +409,7 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-crf", "18",
+        "-threads", str(threads),
         "-pix_fmt", "yuv420p",
         "-reset_timestamps", "1",
         output_path

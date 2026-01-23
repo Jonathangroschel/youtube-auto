@@ -2941,7 +2941,7 @@ export default function AutoClipPage() {
                                     src={inputPreviewUrl}
                                     controls
                                     playsInline
-                                    className="max-h-[200px] w-full object-contain md:max-h-[300px]"
+                                    className="max-h-[200px] w-full object-cover md:max-h-[300px]"
                                   />
                                 ) : (
                                   <div className="flex min-h-[200px] items-center justify-center text-xs text-gray-400 md:min-h-[260px]">
@@ -3329,7 +3329,7 @@ export default function AutoClipPage() {
                                         key={reviewPreviewUrl}
                                         src={reviewPreviewUrl}
                                         ref={reviewVideoRef}
-                                        className="h-full w-full object-contain"
+                                        className="h-full w-full object-cover"
                                         playsInline
                                         controls
                                       />
@@ -3794,7 +3794,7 @@ export default function AutoClipPage() {
                                       <video
                                         src={clip.previewUrl}
                                         controls
-                                        className="h-full w-full object-contain"
+                                        className="h-full w-full object-cover"
                                       />
                                     ) : (
                                       <div className="flex h-full items-center justify-center text-xs text-gray-400">
