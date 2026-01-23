@@ -262,79 +262,30 @@ app.post("/render", authMiddleware, async (req, res) => {
       });
 
       // Step 2: Crop with face detection (Python script) or simple FFmpeg crop
-      let useFaceDetection = cropMode === "face" || cropMode === "auto";
-      
-      if (useFaceDetection) {
-        try {
-          await new Promise((resolve, reject) => {
-            const python = spawn("python3", [
-              "/app/scripts/crop.py",
-              "--input", clipPath,
-              "--output", croppedPath,
-              "--mode", cropMode,
-            ]);
-            let stderr = "";
-            python.stderr.on("data", (data) => (stderr += data.toString()));
-            python.on("close", (code) => {
-              if (code === 0) resolve();
-              else {
-                console.warn("Python crop failed, falling back to FFmpeg:", stderr);
-                reject(new Error("Python crop failed"));
-              }
-            });
-            python.on("error", reject);
-          });
-        } catch {
-          // Fallback to simple FFmpeg crop
-          useFaceDetection = false;
-        }
-      }
-
-      if (!useFaceDetection) {
-        // Simple center crop with FFmpeg
-        // Get video dimensions first
-        const probeResult = await new Promise((resolve, reject) => {
-          const ffprobe = spawn("ffprobe", [
-            "-v", "quiet",
-            "-print_format", "json",
-            "-show_streams",
-            clipPath,
-          ]);
-          let stdout = "";
-          ffprobe.stdout.on("data", (data) => (stdout += data.toString()));
-          ffprobe.on("close", (code) => {
-            if (code === 0) {
-              try {
-                const data = JSON.parse(stdout);
-                const video = data.streams?.find(s => s.codec_type === "video");
-                resolve({ width: video?.width || 1920, height: video?.height || 1080 });
-              } catch { resolve({ width: 1920, height: 1080 }); }
-            } else { resolve({ width: 1920, height: 1080 }); }
-          });
+      // Step 2: Crop with Python face detection (mediapipe)
+      await new Promise((resolve, reject) => {
+        console.log(`Running Python crop: mode=${cropMode}, input=${clipPath}, output=${croppedPath}`);
+        const python = spawn("python3", [
+          "/app/scripts/crop.py",
+          "--input", clipPath,
+          "--output", croppedPath,
+          "--mode", cropMode,
+        ]);
+        let stderr = "";
+        let stdout = "";
+        python.stdout.on("data", (data) => (stdout += data.toString()));
+        python.stderr.on("data", (data) => (stderr += data.toString()));
+        python.on("close", (code) => {
+          if (code === 0) {
+            console.log("Python crop succeeded");
+            resolve();
+          } else {
+            console.error("Python crop failed:", stderr);
+            reject(new Error(`Face detection failed: ${stderr.slice(-500)}`));
+          }
         });
-        
-        const { width: srcW, height: srcH } = probeResult;
-        const targetW = Math.min(srcW, Math.floor(srcH * 9 / 16));
-        const cropX = Math.floor((srcW - targetW) / 2);
-        
-        await new Promise((resolve, reject) => {
-          const ffmpeg = spawn("ffmpeg", [
-            "-y",
-            "-i", clipPath,
-            "-vf", `crop=${targetW}:${srcH}:${cropX}:0,scale=1080:1920`,
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            croppedPath,
-          ]);
-          let stderr = "";
-          ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
-          ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error(`FFmpeg crop failed: ${stderr.slice(-1000)}`)));
-          ffmpeg.on("error", reject);
-        });
-      }
+        python.on("error", (err) => reject(new Error(`Python spawn error: ${err.message}`)));
+      });
 
       // Step 3: Scale and encode final output
       const crf = quality === "high" ? "23" : quality === "medium" ? "26" : "30";
