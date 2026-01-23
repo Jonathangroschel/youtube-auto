@@ -41,7 +41,8 @@ async function persistSession(session: AutoClipSession): Promise<void> {
   if (!db) return;
 
   try {
-    await db.from("autoclip_sessions").upsert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as any).from("autoclip_sessions").upsert({
       id: session.id,
       data: session,
       updated_at: new Date().toISOString(),
@@ -58,7 +59,8 @@ async function loadSession(sessionId: string): Promise<AutoClipSession | null> {
   if (!db) return null;
 
   try {
-    const { data, error } = await db
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (db as any)
       .from("autoclip_sessions")
       .select("data")
       .eq("id", sessionId)
@@ -135,7 +137,8 @@ export const deleteSession = async (sessionId: string) => {
   const db = getSupabase();
   if (db) {
     try {
-      await db.from("autoclip_sessions").delete().eq("id", sessionId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).from("autoclip_sessions").delete().eq("id", sessionId);
     } catch {
       // Ignore deletion errors
     }
