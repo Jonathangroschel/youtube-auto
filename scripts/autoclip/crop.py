@@ -208,6 +208,8 @@ def detect_face_centers(video_path: str, max_samples: int = 12) -> List[int]:
 
 
 def crop_face_tracking(input_path: str, output_path: str) -> None:
+    import subprocess
+    
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         raise RuntimeError("Unable to open video for face crop.")
@@ -220,17 +222,32 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
     if target_width > width:
         target_width = width
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
+    # Use FFmpeg subprocess for output (proper timestamps)
+    ffmpeg_cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo",
+        "-vcodec", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-s", f"{target_width}x{target_height}",
+        "-r", str(fps),
+        "-i", "-",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        output_path
+    ]
+    ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
     if width <= target_width:
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
-            out.write(frame)
+            ffmpeg_proc.stdin.write(frame.tobytes())
         cap.release()
-        out.release()
+        ffmpeg_proc.stdin.close()
+        ffmpeg_proc.wait()
         return
 
     detector = FaceDetector()
@@ -267,15 +284,18 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
             crop_x = int(round(smoothed_center - half_width))
             crop_x = int(clamp(crop_x, 0, width - target_width))
             cropped = frame[:, crop_x : crop_x + target_width]
-            out.write(cropped)
+            ffmpeg_proc.stdin.write(cropped.tobytes())
             frame_idx += 1
     finally:
         cap.release()
         detector.close()
-        out.release()
+        ffmpeg_proc.stdin.close()
+        ffmpeg_proc.wait()
 
 
 def crop_screen_tracking(input_path: str, output_path: str) -> None:
+    import subprocess
+    
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         raise RuntimeError("Unable to open video for screen crop.")
@@ -297,8 +317,22 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
         scaled_width = int(width * scale)
         scaled_height = int(height * scale)
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
+    # Use FFmpeg subprocess for output (proper timestamps)
+    ffmpeg_cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo",
+        "-vcodec", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-s", f"{target_width}x{target_height}",
+        "-r", str(fps),
+        "-i", "-",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        output_path
+    ]
+    ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
     update_interval = max(1, int(fps))
     smoothed_x = 0
@@ -351,14 +385,15 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
         elif scaled_height > target_height:
             cropped = cropped[:target_height, :]
 
-        out.write(cropped)
+        ffmpeg_proc.stdin.write(cropped.tobytes())
         frame_idx += 1
 
         if total_frames and frame_idx >= total_frames:
             break
 
     cap.release()
-    out.release()
+    ffmpeg_proc.stdin.close()
+    ffmpeg_proc.wait()
 
 
 def main() -> None:

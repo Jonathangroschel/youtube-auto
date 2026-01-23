@@ -262,8 +262,8 @@ app.post("/render", authMiddleware, async (req, res) => {
       });
 
       // Step 2: Crop with Python face detection (mediapipe)
-      // Note: Python crop outputs video only (no audio)
-      const croppedVideoOnly = path.join(TEMP_DIR, `${sessionId}_cropped_video_${i}.mp4`);
+      // Python now outputs proper H.264 with correct timestamps via FFmpeg pipe
+      const croppedVideoOnly = path.join(TEMP_DIR, `${sessionId}_cropped_${i}.mp4`);
       await new Promise((resolve, reject) => {
         console.log(`Running Python crop: mode=${cropMode}, input=${clipPath}, output=${croppedVideoOnly}`);
         const python = spawn("python3", [
@@ -288,39 +288,20 @@ app.post("/render", authMiddleware, async (req, res) => {
         python.on("error", (err) => reject(new Error(`Python spawn error: ${err.message}`)));
       });
 
-      // Step 3: Re-encode Python output to fix timestamps
-      // OpenCV's mp4v codec has broken timestamps, so we force frame rate
-      const reEncodedPath = path.join(TEMP_DIR, `${sessionId}_reencoded_${i}.mp4`);
-      await new Promise((resolve, reject) => {
-        const ffmpeg = spawn("ffmpeg", [
-          "-y",
-          "-r", "30",               // Force input frame rate
-          "-i", croppedVideoOnly,
-          "-vf", "scale=1080:1920:flags=lanczos,fps=30",
-          "-vsync", "cfr",          // Constant frame rate
-          "-c:v", "libx264",
-          "-preset", "veryfast",
-          "-crf", "23",
-          "-an",                     // No audio yet
-          reEncodedPath,
-        ]);
-        let stderr = "";
-        ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
-        ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error(`FFmpeg re-encode failed: ${stderr.slice(-500)}`)));
-        ffmpeg.on("error", reject);
-      });
-
-      // Step 4: Merge with audio from original clip
+      // Step 3: Scale to 1080x1920 and merge with audio from original clip
       const crf = quality === "high" ? "23" : quality === "medium" ? "26" : "30";
       
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
           "-y",
-          "-i", reEncodedPath,      // Re-encoded video with fixed timestamps
-          "-i", clipPath,            // Original clip (for audio)
-          "-map", "0:v:0",           // Take video from first input
-          "-map", "1:a:0?",          // Take audio from second input (optional)
-          "-c:v", "copy",            // Copy video (already encoded)
+          "-i", croppedVideoOnly,    // Cropped video from Python
+          "-i", clipPath,             // Original clip (for audio)
+          "-map", "0:v:0",            // Take video from first input
+          "-map", "1:a:0?",           // Take audio from second input (optional)
+          "-vf", "scale=1080:1920:flags=lanczos",
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-crf", crf,
           "-c:a", "aac",
           "-b:a", "128k",
           "-shortest",
@@ -332,15 +313,12 @@ app.post("/render", authMiddleware, async (req, res) => {
         ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
         ffmpeg.on("close", (code) => {
           if (code === 0) resolve();
-          else reject(new Error(`FFmpeg merge failed: ${stderr.slice(-1000)}`));
+          else reject(new Error(`FFmpeg encode failed: ${stderr.slice(-1000)}`));
         });
         ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
       });
 
-      // Clean up re-encoded file
-      await fs.unlink(reEncodedPath).catch(() => {});
-
-      // Clean up intermediate video file
+      // Clean up cropped video
       await fs.unlink(croppedVideoOnly).catch(() => {});
 
       // Clean up intermediate files
