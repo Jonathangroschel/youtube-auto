@@ -15,6 +15,8 @@ export type AutoClipInput = {
   sourceType: AutoClipSourceType;
   sourceUrl?: string;
   localPath?: string;
+  /** Storage key in Supabase (used by worker) */
+  videoKey?: string;
   title?: string;
   originalFilename?: string;
   durationSeconds?: number | null;
@@ -77,6 +79,8 @@ export type AutoClipSession = {
   createdAt: string;
   updatedAt: string;
   tempDir: string;
+  /** Worker session ID from Railway worker */
+  workerSessionId?: string;
   input?: AutoClipInput;
   transcript?: TranscriptBundle;
   highlights?: AutoClipHighlight[];

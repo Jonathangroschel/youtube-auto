@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
-import path from "path";
 import { getSession, saveSession, updateSessionStatus } from "@/lib/autoclip/session-store";
-import { extractAudio, transcribeAudio } from "@/lib/autoclip/transcribe";
 
 export const runtime = "nodejs";
+export const maxDuration = 300; // 5 minutes for transcription
+
+const WORKER_URL = process.env.AUTOCLIP_WORKER_URL || "http://localhost:3001";
+const WORKER_SECRET = process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";
+
+async function workerFetch(endpoint: string, options: RequestInit = {}) {
+  return fetch(`${WORKER_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${WORKER_SECRET}`,
+    },
+  });
+}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -11,24 +23,51 @@ export async function POST(request: Request) {
   const language =
     typeof body?.language === "string" && body.language.trim().length > 0
       ? body.language.trim()
-      : null;
+      : "en";
+
   if (!sessionId) {
     return NextResponse.json({ error: "Missing sessionId." }, { status: 400 });
   }
 
   const session = await getSession(sessionId);
-  if (!session || !session.input?.localPath) {
+  if (!session || !session.input?.videoKey || !session.workerSessionId) {
     return NextResponse.json({ error: "Session not ready for transcription." }, { status: 404 });
   }
 
   try {
-    const audioPath = path.join(session.tempDir, "audio.wav");
-    await extractAudio(session.input.localPath, audioPath);
-    const transcript = await transcribeAudio(audioPath, language);
-    session.transcript = transcript;
-    await updateSessionStatus(session, "transcribed", "Transcription complete.");
+    // Call worker's transcribe endpoint
+    const response = await workerFetch("/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: session.workerSessionId,
+        videoKey: session.input.videoKey,
+        language,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Transcription failed");
+    }
+
+    const workerData = await response.json();
+
+    // Convert worker response to our transcript format
+    session.transcript = {
+      language: workerData.language,
+      segments: workerData.segments.map((seg: { start: number; end: number; text: string }) => ({
+        start: seg.start,
+        end: seg.end,
+        text: seg.text,
+      })),
+      raw: workerData,
+    };
+
+    await updateSessionStatus(session, "transcribed", "Transcription complete via worker.");
     await saveSession(session);
-    return NextResponse.json({ transcript });
+
+    return NextResponse.json({ transcript: session.transcript });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Transcription failed.";
     session.status = "error";

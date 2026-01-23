@@ -1,36 +1,21 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import { promises as fs } from "fs";
 import { getSession, saveSession, updateSessionStatus } from "@/lib/autoclip/session-store";
-import { runFfprobe } from "@/lib/autoclip/ffmpeg";
-import { slugify } from "@/lib/autoclip/utils";
 
 export const runtime = "nodejs";
+export const maxDuration = 300; // 5 minutes for video upload/download
 
-const resolveBaseUrl = (request: Request) => {
-  const proto = request.headers.get("x-forwarded-proto") ?? "http";
-  const host =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  return host ? `${proto}://${host}` : "";
-};
+const WORKER_URL = process.env.AUTOCLIP_WORKER_URL || "http://localhost:3001";
+const WORKER_SECRET = process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";
 
-const downloadToFile = async (url: string, destPath: string) => {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download input: ${response.status}`);
-  }
-  const buffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(destPath, buffer);
-  return buffer.byteLength;
-};
-
-const resolveExtension = (filename: string | null) => {
-  if (!filename) {
-    return ".mp4";
-  }
-  const ext = path.extname(filename);
-  return ext.length > 1 ? ext : ".mp4";
-};
+async function workerFetch(endpoint: string, options: RequestInit = {}) {
+  return fetch(`${WORKER_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${WORKER_SECRET}`,
+    },
+  });
+}
 
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
@@ -67,64 +52,55 @@ export async function POST(request: Request) {
   }
 
   try {
-    let inputPath = path.join(session.tempDir, "input.mp4");
-    let title: string | undefined;
-    let sizeBytes: number | null = null;
+    let workerResponse: Response;
     let sourceType: "youtube" | "file" = "file";
+    let title: string | undefined;
 
     if (url) {
+      // YouTube URL - call worker's youtube endpoint
       sourceType = "youtube";
-      const baseUrl = resolveBaseUrl(request);
-      if (!baseUrl) {
-        throw new Error("Unable to resolve base URL for download.");
-      }
-      const quality = session.options.quality === "auto" ? "1080" : session.options.quality;
-      const downloadResponse = await fetch(`${baseUrl}/api/youtube-download`, {
+      workerResponse = await workerFetch("/youtube", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, format: quality }),
+        body: JSON.stringify({ url }),
       });
-      if (!downloadResponse.ok) {
-        const message = await downloadResponse.text();
-        throw new Error(message || "YouTube download failed.");
-      }
-      const downloadData = await downloadResponse.json();
-      const assetUrl = String(downloadData.assetUrl || "");
-      if (!assetUrl) {
-        throw new Error("Missing assetUrl from downloader.");
-      }
-      title = downloadData.title ? String(downloadData.title) : undefined;
-      const ext = resolveExtension(downloadData.filename ?? null);
-      inputPath = path.join(session.tempDir, `input${ext}`);
-      sizeBytes = await downloadToFile(assetUrl, inputPath);
     } else if (file) {
-      const ext = resolveExtension(file.name);
-      inputPath = path.join(session.tempDir, `input${ext}`);
-      const buffer = Buffer.from(await file.arrayBuffer());
-      await fs.writeFile(inputPath, buffer);
-      sizeBytes = buffer.byteLength;
-      title = file.name ? slugify(file.name.replace(ext, "")) : undefined;
+      // File upload - call worker's upload endpoint
+      const formData = new FormData();
+      formData.append("video", file);
+      workerResponse = await workerFetch("/upload", {
+        method: "POST",
+        body: formData,
+      });
+      title = file.name?.replace(/\.[^.]+$/, "");
+    } else {
+      return NextResponse.json({ error: "No input provided." }, { status: 400 });
     }
 
-    const probe = await runFfprobe(inputPath).catch(() => null);
-    const width = probe?.streams?.[0]?.width ?? null;
-    const height = probe?.streams?.[0]?.height ?? null;
-    const durationSeconds = probe?.format?.duration
-      ? Number(probe.format.duration)
-      : null;
+    if (!workerResponse.ok) {
+      const errorData = await workerResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || "Worker request failed");
+    }
 
+    const workerData = await workerResponse.json();
+    
+    // Update session with worker response
     session.input = {
       sourceType,
       sourceUrl: url ?? undefined,
-      localPath: inputPath,
-      title: title ?? undefined,
-      originalFilename: file?.name ?? undefined,
-      durationSeconds,
-      width,
-      height,
-      sizeBytes,
+      videoKey: workerData.videoKey,
+      title: title ?? workerData.title,
+      originalFilename: file?.name,
+      durationSeconds: workerData.metadata?.duration ?? null,
+      width: workerData.metadata?.width ?? null,
+      height: workerData.metadata?.height ?? null,
+      sizeBytes: workerData.metadata?.size ?? null,
     };
-    await updateSessionStatus(session, "input_ready", "Input prepared.");
+
+    // Store worker session ID for later use
+    session.workerSessionId = workerData.sessionId;
+
+    await updateSessionStatus(session, "input_ready", "Input prepared via worker.");
     await saveSession(session);
 
     return NextResponse.json({

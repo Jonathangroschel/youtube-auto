@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import { promises as fs } from "fs";
 import { getSession, saveSession, updateSessionStatus } from "@/lib/autoclip/session-store";
-import { renderClipWithSubtitles } from "@/lib/autoclip/render";
-import { slugify } from "@/lib/autoclip/utils";
 
 export const runtime = "nodejs";
+export const maxDuration = 300; // 5 minutes for rendering
 
-const resolveQuality = (
-  width?: number | null,
-  height?: number | null
-): "auto" | "1080" | "720" | "480" => {
-  const maxSide = Math.max(width ?? 0, height ?? 0);
-  if (maxSide >= 1080) return "1080";
-  if (maxSide >= 720) return "720";
-  return "480";
-};
+const WORKER_URL = process.env.AUTOCLIP_WORKER_URL || "http://localhost:3001";
+const WORKER_SECRET = process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";
+
+async function workerFetch(endpoint: string, options: RequestInit = {}) {
+  return fetch(`${WORKER_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${WORKER_SECRET}`,
+    },
+  });
+}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   }
 
   const session = await getSession(sessionId);
-  if (!session?.input?.localPath || !session.highlights?.length || !session.transcript) {
+  if (!session?.input?.videoKey || !session.workerSessionId || !session.highlights?.length || !session.transcript) {
     return NextResponse.json({ error: "Session not ready for render." }, { status: 404 });
   }
 
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     .map((value: unknown) => Number(value))
     .filter((value: number) => Number.isFinite(value) && value >= 0);
   const uniqueIndexes = (Array.from(new Set(indexes)) as number[]).sort((a, b) => a - b);
+
   if (!uniqueIndexes.length) {
     return NextResponse.json({ error: "No approved highlights to render." }, { status: 400 });
   }
@@ -45,71 +46,61 @@ export async function POST(request: Request) {
   }
 
   try {
-    await updateSessionStatus(session, "rendering", "Rendering clips.");
-    const quality =
-      session.options.quality === "auto"
-        ? resolveQuality(session.input.width, session.input.height)
-        : session.options.quality;
+    await updateSessionStatus(session, "rendering", "Rendering clips via worker.");
 
-    const title = session.input.title || "output";
-    const slug = slugify(title) || "output";
-    const outputs = [];
-    for (const index of uniqueIndexes) {
-      const highlight = session.highlights[index];
-      if (!highlight) {
-        continue;
-      }
-      const renderResult = await renderClipWithSubtitles({
-        inputPath: session.input.localPath,
-        outputDir: session.tempDir,
+    // Prepare clips for worker
+    const clips = uniqueIndexes.map((index) => {
+      const highlight = session.highlights![index];
+      return {
         start: highlight.start,
         end: highlight.end,
-        mode: session.options.cropMode,
-        quality,
-      subtitlesEnabled: false,
-        fontName: session.options.fontName,
-        fontPath: session.options.fontPath,
-        segments: session.transcript.segments,
-      });
-      const finalName = `${slug}_${session.id}_short_${index + 1}.mp4`;
-      const finalPath = path.join(session.tempDir, finalName);
-      await fs.copyFile(renderResult.filePath, finalPath);
-      outputs.push({
-        filePath: finalPath,
-        filename: finalName,
         highlightIndex: index,
-      });
+      };
+    });
+
+    // Map quality setting
+    const qualityMap: Record<string, "high" | "medium" | "low"> = {
+      "1080": "high",
+      "720": "medium",
+      "480": "low",
+      auto: "high",
+    };
+    const quality = qualityMap[session.options.quality] || "high";
+
+    // Call worker's render endpoint
+    const response = await workerFetch("/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: session.workerSessionId,
+        videoKey: session.input.videoKey,
+        clips,
+        quality,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Render failed");
     }
-    if (!outputs.length) {
-      throw new Error("Render produced no outputs.");
-    }
-    session.outputs = outputs;
+
+    const workerData = await response.json();
+
+    // Convert worker response to our output format
+    session.outputs = workerData.outputs.map((output: {
+      index: number;
+      clipKey: string;
+      downloadUrl: string;
+      filename: string;
+    }) => ({
+      filePath: output.clipKey,
+      filename: output.filename,
+      highlightIndex: uniqueIndexes[output.index],
+      publicUrl: output.downloadUrl,
+    }));
 
     await updateSessionStatus(session, "complete", "Render complete.");
     await saveSession(session);
-
-    const finalPaths = new Set(outputs.map((item) => item.filePath));
-    const cleanupTargets = [
-      "audio.wav",
-      "clip.mp4",
-      "cropped.mp4",
-      "cropped_with_audio.mp4",
-      "scaled.mp4",
-      "subtitles.srt",
-      "subtitled.mp4",
-    ]
-      .map((file) => path.join(session.tempDir, file))
-      .filter((filePath) => !finalPaths.has(filePath));
-
-    await Promise.all(
-      cleanupTargets.map(async (filePath) => {
-        try {
-          await fs.rm(filePath, { force: true });
-        } catch {
-          // Ignore cleanup errors.
-        }
-      })
-    );
 
     return NextResponse.json({ outputs: session.outputs });
   } catch (error) {

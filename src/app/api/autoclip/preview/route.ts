@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import { promises as fs } from "fs";
-import { clipVideo } from "@/lib/autoclip/render";
 import { getSession, saveSession } from "@/lib/autoclip/session-store";
 import { clampNumber } from "@/lib/autoclip/utils";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+const WORKER_URL = process.env.AUTOCLIP_WORKER_URL || "http://localhost:3001";
+const WORKER_SECRET = process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";
 
 const parseNumber = (value: string | null) => {
   if (value == null) {
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   }
 
   const session = await getSession(sessionId);
-  if (!session?.input?.localPath) {
+  if (!session?.input?.videoKey || !session.workerSessionId) {
     return NextResponse.json(
       { error: "Session not ready for preview." },
       { status: 404 }
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
   const fallbackEnd = fallbackHighlight?.end ?? null;
   const rawStart = requestedStart ?? fallbackStart;
   const rawEnd = requestedEnd ?? fallbackEnd;
+
   if (rawStart == null || rawEnd == null || rawEnd <= rawStart) {
     return NextResponse.json(
       { error: "Invalid preview range." },
@@ -56,6 +58,7 @@ export async function GET(request: Request) {
     start = clampNumber(start, 0, maxStart);
     end = clampNumber(end, start + minGap, duration);
   }
+
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return NextResponse.json(
       { error: "Invalid preview range." },
@@ -63,45 +66,50 @@ export async function GET(request: Request) {
     );
   }
 
-  const startMs = Math.round(start * 1000);
-  const endMs = Math.round(end * 1000);
-  const previewFilename = `preview_${startMs}_${endMs}.mp4`;
-  const previewPath = path.join(session.tempDir, previewFilename);
-
   try {
+    // Check if we have a cached preview for this range
     if (
-      session.preview?.filePath &&
-      session.preview.filePath !== previewPath
+      session.preview?.publicUrl &&
+      session.preview.start === start &&
+      session.preview.end === end
     ) {
-      await fs.rm(session.preview.filePath, { force: true });
+      return NextResponse.redirect(session.preview.publicUrl);
     }
-  } catch {
-    // Ignore cleanup failures.
-  }
 
-  const hasPreview = await fs
-    .stat(previewPath)
-    .then(() => true)
-    .catch(() => false);
+    // Call worker to generate preview
+    const response = await fetch(`${WORKER_URL}/preview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${WORKER_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: session.workerSessionId,
+        videoKey: session.input.videoKey,
+        start,
+        end,
+      }),
+    });
 
-  try {
-    if (!hasPreview) {
-      await clipVideo(session.input.localPath, previewPath, start, end);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Preview generation failed");
     }
+
+    const workerData = await response.json();
+
+    // Cache the preview info
     session.preview = {
-      filePath: previewPath,
-      filename: previewFilename,
+      filePath: workerData.previewKey,
+      filename: `preview_${Math.round(start * 1000)}_${Math.round(end * 1000)}.mp4`,
       start,
       end,
+      publicUrl: workerData.previewUrl,
     };
     await saveSession(session);
-    const buffer = await fs.readFile(previewPath);
-    return new NextResponse(buffer, {
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Disposition": `inline; filename="${previewFilename}"`,
-      },
-    });
+
+    // Redirect to the preview URL
+    return NextResponse.redirect(workerData.previewUrl);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Preview failed.";
