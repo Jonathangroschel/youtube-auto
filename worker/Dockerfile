@@ -12,14 +12,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package files from worker directory
+COPY worker/package*.json ./
 
 # Install dependencies
 RUN npm install --production
 
-# Copy source
-COPY . .
+# Copy source from worker directory
+COPY worker/server.js ./
 
 # Create temp directory
 RUN mkdir -p /tmp/autoclip
