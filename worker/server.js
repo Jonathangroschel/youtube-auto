@@ -289,13 +289,15 @@ app.post("/render", authMiddleware, async (req, res) => {
       });
 
       // Step 3: Re-encode Python output to fix timestamps
+      // OpenCV's mp4v codec has broken timestamps, so we force frame rate
       const reEncodedPath = path.join(TEMP_DIR, `${sessionId}_reencoded_${i}.mp4`);
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
           "-y",
-          "-fflags", "+genpts",     // Generate timestamps
+          "-r", "30",               // Force input frame rate
           "-i", croppedVideoOnly,
-          "-vf", "scale=1080:1920:flags=lanczos",
+          "-vf", "scale=1080:1920:flags=lanczos,fps=30",
+          "-vsync", "cfr",          // Constant frame rate
           "-c:v", "libx264",
           "-preset", "veryfast",
           "-crf", "23",
