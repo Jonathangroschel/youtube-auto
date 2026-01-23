@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     && pip3 install --break-system-packages yt-dlp \
-    && pip3 install --break-system-packages opencv-python-headless mediapipe numpy \
+    && pip3 install --break-system-packages opencv-python-headless==4.8.1.78 mediapipe==0.10.14 numpy \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
