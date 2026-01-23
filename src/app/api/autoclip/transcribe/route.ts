@@ -64,17 +64,55 @@ export async function POST(request: Request) {
     }
 
     const workerData = await response.json();
+    console.log("Worker transcription response keys:", Object.keys(workerData));
+    console.log("Segments count:", workerData.segments?.length || 0);
 
     // Convert worker response to our transcript format
+    // Handle case where segments might be empty but words exist
+    let segments = workerData.segments || [];
+    
+    // If no segments but we have words, generate segments from words
+    if (!segments.length && workerData.words?.length) {
+      console.log("No segments from API, generating from words");
+      // Group words into ~10 second segments
+      const words = workerData.words as Array<{ start: number; end: number; word: string }>;
+      let currentSegment = { start: words[0]?.start || 0, end: 0, text: "" };
+      const generatedSegments: Array<{ start: number; end: number; text: string }> = [];
+      
+      for (const word of words) {
+        currentSegment.text += (currentSegment.text ? " " : "") + word.word;
+        currentSegment.end = word.end;
+        
+        // Create new segment every ~10 seconds
+        if (word.end - currentSegment.start >= 10) {
+          generatedSegments.push({ ...currentSegment });
+          currentSegment = { start: word.end, end: word.end, text: "" };
+        }
+      }
+      // Add final segment
+      if (currentSegment.text) {
+        generatedSegments.push(currentSegment);
+      }
+      segments = generatedSegments;
+    }
+
+    // If still no segments, create one from full text
+    if (!segments.length && workerData.text) {
+      console.log("Creating single segment from full text");
+      segments = [{ start: 0, end: session.input?.durationSeconds || 0, text: workerData.text }];
+    }
+
     session.transcript = {
       language: workerData.language,
-      segments: workerData.segments.map((seg: { start: number; end: number; text: string }) => ({
+      segments: segments.map((seg: { start: number; end: number; text: string }) => ({
         start: seg.start,
         end: seg.end,
         text: seg.text,
       })),
       raw: workerData,
     };
+    
+    console.log("Final segments count:", session.transcript.segments.length);
 
     await updateSessionStatus(session, "transcribed", "Transcription complete via worker.");
     await saveSession(session);
