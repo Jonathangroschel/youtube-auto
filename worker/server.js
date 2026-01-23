@@ -221,7 +221,7 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
 // Render clips
 app.post("/render", authMiddleware, async (req, res) => {
   try {
-    const { sessionId, videoKey, clips, quality = "high" } = req.body;
+    const { sessionId, videoKey, clips, quality = "high", cropMode = "auto" } = req.body;
 
     if (!clips?.length) {
       return res.status(400).json({ error: "No clips provided" });
@@ -242,27 +242,89 @@ app.post("/render", authMiddleware, async (req, res) => {
 
     for (let i = 0; i < clips.length; i++) {
       const clip = clips[i];
-      const outputFilename = `clip_${i}_${Date.now()}.mp4`;
-      const outputPath = path.join(TEMP_DIR, outputFilename);
+      const clipFilename = `clip_${i}_${Date.now()}.mp4`;
+      const clipPath = path.join(TEMP_DIR, `${sessionId}_clip_${i}.mp4`);
+      const croppedPath = path.join(TEMP_DIR, `${sessionId}_cropped_${i}.mp4`);
+      const outputPath = path.join(TEMP_DIR, clipFilename);
 
-      // Render with FFmpeg (vertical 9:16 crop)
+      // Step 1: Extract clip segment
+      await new Promise((resolve, reject) => {
+        const ffmpeg = spawn("ffmpeg", [
+          "-y",
+          "-ss", String(clip.start),
+          "-i", videoPath,
+          "-t", String(clip.end - clip.start),
+          "-c", "copy",
+          clipPath,
+        ]);
+        ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error("Clip extraction failed")));
+        ffmpeg.on("error", reject);
+      });
+
+      // Step 2: Crop with face detection (Python script) or simple FFmpeg crop
+      let useFaceDetection = cropMode === "face" || cropMode === "auto";
+      
+      if (useFaceDetection) {
+        try {
+          await new Promise((resolve, reject) => {
+            const python = spawn("python3", [
+              "/app/scripts/crop.py",
+              "--input", clipPath,
+              "--output", croppedPath,
+              "--mode", cropMode,
+            ]);
+            let stderr = "";
+            python.stderr.on("data", (data) => (stderr += data.toString()));
+            python.on("close", (code) => {
+              if (code === 0) resolve();
+              else {
+                console.warn("Python crop failed, falling back to FFmpeg:", stderr);
+                reject(new Error("Python crop failed"));
+              }
+            });
+            python.on("error", reject);
+          });
+        } catch {
+          // Fallback to simple FFmpeg crop
+          useFaceDetection = false;
+        }
+      }
+
+      if (!useFaceDetection) {
+        // Simple center crop with FFmpeg
+        await new Promise((resolve, reject) => {
+          const ffmpeg = spawn("ffmpeg", [
+            "-y",
+            "-i", clipPath,
+            "-vf", "crop=min(iw\\,ih*9/16):ih,scale=1080:1920:flags=fast_bilinear",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            croppedPath,
+          ]);
+          let stderr = "";
+          ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+          ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error(`FFmpeg crop failed: ${stderr.slice(-1000)}`)));
+          ffmpeg.on("error", reject);
+        });
+      }
+
+      // Step 3: Scale and encode final output
       const crf = quality === "high" ? "23" : quality === "medium" ? "26" : "30";
       
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
           "-y",
-          "-threads", "2",           // Limit threads for Railway
-          "-ss", String(clip.start), // Seek before input (faster)
-          "-i", videoPath,
-          "-t", String(clip.end - clip.start),
-          "-vf", "crop=min(iw\\,ih*9/16):ih,scale=1080:1920:flags=fast_bilinear",
+          "-i", croppedPath,
+          "-vf", "scale=1080:1920:flags=lanczos",
           "-c:v", "libx264",
-          "-preset", "veryfast",     // Faster encoding
+          "-preset", "veryfast",
           "-crf", crf,
-          "-threads", "2",           // Limit encoding threads
           "-c:a", "aac",
           "-b:a", "128k",
-          "-movflags", "+faststart", // Better streaming
+          "-movflags", "+faststart",
           outputPath,
         ]);
 
@@ -270,10 +332,14 @@ app.post("/render", authMiddleware, async (req, res) => {
         ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
         ffmpeg.on("close", (code) => {
           if (code === 0) resolve();
-          else reject(new Error(`FFmpeg render failed: ${stderr.slice(-2000)}`)); // Limit error length
+          else reject(new Error(`FFmpeg encode failed: ${stderr.slice(-1000)}`));
         });
         ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
       });
+
+      // Clean up intermediate files
+      await fs.unlink(clipPath).catch(() => {});
+      await fs.unlink(croppedPath).catch(() => {});
 
       // Upload rendered clip to Supabase
       const clipKey = `sessions/${sessionId}/clips/${outputFilename}`;

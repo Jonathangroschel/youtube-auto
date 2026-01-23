@@ -76,6 +76,7 @@ export async function POST(request: Request) {
         videoKey: session.input.videoKey,
         clips,
         quality,
+        cropMode: session.options.cropMode || "auto",
       }),
     });
 

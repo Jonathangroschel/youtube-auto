@@ -1,12 +1,19 @@
 FROM node:20-slim
 
-# Install FFmpeg and yt-dlp
+# Install FFmpeg, Python, and dependencies for face detection
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
     python3-pip \
+    python3-venv \
     curl \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     && pip3 install --break-system-packages yt-dlp \
+    && pip3 install --break-system-packages opencv-python-headless mediapipe numpy \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,6 +27,9 @@ RUN npm install --production
 
 # Copy source from worker directory
 COPY worker/server.js ./
+
+# Copy Python crop script
+COPY scripts/autoclip/crop.py ./scripts/crop.py
 
 # Create temp directory
 RUN mkdir -p /tmp/autoclip
