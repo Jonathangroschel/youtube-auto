@@ -994,21 +994,45 @@ export default function AutoClipPage() {
       setInputUploading(true);
       try {
         const activeSession = await ensureSession();
-        const formData = new FormData();
-        formData.append("sessionId", activeSession);
-        formData.append("file", file);
-        const response = await fetch("/api/autoclip/input", {
+        
+        // Step 1: Get signed upload URL from our API
+        const urlResponse = await fetch("/api/autoclip/upload-url", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: activeSession,
+            filename: file.name,
+            contentType: file.type || "video/mp4",
+          }),
         });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const message =
-            typeof payload?.error === "string"
-              ? payload.error
-              : "Upload failed.";
-          throw new Error(message);
+        const urlData = await urlResponse.json().catch(() => ({}));
+        if (!urlResponse.ok) {
+          throw new Error(urlData.error || "Failed to get upload URL");
         }
+
+        // Step 2: Upload directly to Supabase Storage
+        const uploadResponse = await fetch(urlData.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type || "video/mp4",
+          },
+          body: file,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error("Failed to upload file to storage");
+        }
+
+        // Step 3: Notify our API that upload is complete
+        const completeResponse = await fetch("/api/autoclip/upload-complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: activeSession }),
+        });
+        const payload = await completeResponse.json().catch(() => ({}));
+        if (!completeResponse.ok) {
+          throw new Error(payload.error || "Upload verification failed");
+        }
+
         setInputMeta(payload.input ?? null);
         setUploadReady(true);
       } catch (error) {

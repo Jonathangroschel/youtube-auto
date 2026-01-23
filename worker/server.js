@@ -422,6 +422,39 @@ app.post("/cleanup", authMiddleware, async (req, res) => {
   }
 });
 
+// Get video metadata for already-uploaded file
+app.post("/metadata", authMiddleware, async (req, res) => {
+  try {
+    const { sessionId, videoKey } = req.body;
+    
+    if (!videoKey) {
+      return res.status(400).json({ error: "Missing videoKey" });
+    }
+
+    // Download video from Supabase
+    const videoPath = path.join(TEMP_DIR, `${sessionId}_metadata.mp4`);
+    
+    const { data: videoData, error: downloadError } = await supabase.storage
+      .from(BUCKET)
+      .download(videoKey);
+
+    if (downloadError) throw downloadError;
+
+    await fs.writeFile(videoPath, Buffer.from(await videoData.arrayBuffer()));
+
+    // Get metadata
+    const metadata = await getVideoMetadata(videoPath);
+
+    // Clean up
+    await fs.unlink(videoPath).catch(() => {});
+
+    res.json({ metadata });
+  } catch (error) {
+    console.error("Metadata error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Helper: Get video metadata with ffprobe
 async function getVideoMetadata(filePath) {
   return new Promise((resolve, reject) => {
