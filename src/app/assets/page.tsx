@@ -1,7 +1,21 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  addAssetsToLibrary,
+  buildAssetLibraryItem,
+  loadAssetLibrary,
+  type AssetLibraryItem,
+} from "@/lib/assets/library";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 
 type NavItem = {
   label: string;
@@ -197,9 +211,22 @@ const mobileFooterActions: MobileFooterAction[] = [
 
 const assetTabs = ["All", "Video", "Images", "Audio"];
 
+const inferAssetKind = (file: File): AssetLibraryItem["kind"] => {
+  if (file.type.startsWith("audio/")) {
+    return "audio";
+  }
+  if (file.type.startsWith("image/")) {
+    return "image";
+  }
+  return "video";
+};
+
 export default function AssetsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [assets, setAssets] = useState<AssetLibraryItem[]>([]);
+  const [activeTab, setActiveTab] = useState("All");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
     () =>
       Object.fromEntries(
@@ -243,7 +270,49 @@ export default function AssetsPage() {
       opacity: 1,
     });
   }, []);
-  const [activeTab, setActiveTab] = useState("Video");
+
+  const refreshAssets = useCallback(() => {
+    setAssets(loadAssetLibrary());
+  }, []);
+
+  const handleUploadAssets = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files ?? []);
+      if (!files.length) {
+        return;
+      }
+      const incoming = files
+        .map((file) =>
+          buildAssetLibraryItem({
+            name: file.name || "Uploaded asset",
+            kind: inferAssetKind(file),
+            url: URL.createObjectURL(file),
+            size: file.size,
+            source: "upload",
+          })
+        )
+        .filter((item): item is AssetLibraryItem => Boolean(item));
+      if (incoming.length) {
+        const next = addAssetsToLibrary(incoming);
+        setAssets(next);
+      }
+      event.target.value = "";
+    },
+    []
+  );
+
+  const filteredAssets = useMemo(() => {
+    if (activeTab === "All") {
+      return assets;
+    }
+    if (activeTab === "Video") {
+      return assets.filter((asset) => asset.kind === "video");
+    }
+    if (activeTab === "Images") {
+      return assets.filter((asset) => asset.kind === "image");
+    }
+    return assets.filter((asset) => asset.kind === "audio");
+  }, [activeTab, assets]);
 
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -288,6 +357,10 @@ export default function AssetsPage() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [resolvedNavIndex, updateIndicator]);
+
+  useEffect(() => {
+    refreshAssets();
+  }, [refreshAssets]);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
@@ -651,6 +724,21 @@ export default function AssetsPage() {
                 </div>
 
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="video/*,audio/*,image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleUploadAssets}
+                  />
+                  <button
+                    className="inline-flex w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:w-auto"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Upload Assets
+                  </button>
                   <button className="w-full lg:w-64" type="button">
                     <div className="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 transition-colors hover:bg-gray-100">
                       <p className="text-sm text-gray-800">All</p>
@@ -696,11 +784,52 @@ export default function AssetsPage() {
             </div>
 
             <div className="grid flex-1 auto-rows-max grid-cols-1 content-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              <div className="col-span-full flex cursor-default flex-col items-center justify-center py-12">
-                <p className="text-sm text-gray-600 sm:text-base">
-                  No items found
-                </p>
-              </div>
+              {filteredAssets.length ? (
+                filteredAssets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                  >
+                    <div className="h-40 w-full overflow-hidden bg-gray-100">
+                      {asset.kind === "image" ? (
+                        <img
+                          src={asset.url}
+                          alt={asset.name}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : asset.kind === "audio" ? (
+                        <div className="flex h-full items-center justify-center">
+                          <audio src={asset.url} controls className="w-full px-3" />
+                        </div>
+                      ) : (
+                        <video
+                          src={asset.url}
+                          className="h-full w-full object-cover"
+                          controls
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-1 flex-col gap-1 p-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        {asset.name}
+                      </p>
+                      <p className="text-xs uppercase tracking-wider text-gray-400">
+                        {asset.kind}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-full flex cursor-default flex-col items-center justify-center py-12">
+                  <p className="text-sm text-gray-600 sm:text-base">
+                    No items found
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col items-center space-y-3 sm:hidden">

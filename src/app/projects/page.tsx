@@ -1,7 +1,14 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type { ProjectLibraryItem } from "@/lib/projects/types";
 
 type NavItem = {
   label: string;
@@ -195,16 +202,51 @@ const mobileFooterActions: MobileFooterAction[] = [
   { label: "Log Out", href: "/logout", tone: "danger" },
 ];
 
-const projects = [
-  { title: "Untitled Video", type: "VIDEO", created: "Created 39 minutes ago" },
-  { title: "Untitled Video", type: "VIDEO", created: "Created 41 minutes ago" },
-  { title: "Untitled Video", type: "VIDEO", created: "Created 1 hour ago" },
-  { title: "Untitled Video", type: "VIDEO", created: "Created 2 hours ago" },
-  { title: "Untitled Video", type: "VIDEO", created: "Created 4 hours ago" },
-  { title: "Untitled Video", type: "VIDEO", created: "Created 6 hours ago" },
-  { title: "Untitled Video", type: "VIDEO", created: "Created yesterday" },
-  { title: "Untitled Video", type: "VIDEO", created: "Created 2 days ago" },
-];
+const formatCreatedLabel = (createdAt: string) => {
+  const createdDate = new Date(createdAt);
+  if (Number.isNaN(createdDate.getTime())) {
+    return "Created just now";
+  }
+  const diffSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - createdDate.getTime()) / 1000)
+  );
+  const formatUnit = (value: number, unit: string) =>
+    `Created ${value} ${unit}${value === 1 ? "" : "s"} ago`;
+  if (diffSeconds < 60) {
+    return formatUnit(diffSeconds, "second");
+  }
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return formatUnit(diffMinutes, "minute");
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return formatUnit(diffHours, "hour");
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) {
+    return formatUnit(diffDays, "day");
+  }
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) {
+    return formatUnit(diffWeeks, "week");
+  }
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    return formatUnit(diffMonths, "month");
+  }
+  const diffYears = Math.floor(diffDays / 365);
+  return formatUnit(diffYears, "year");
+};
+
+const formatDateLabel = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+  return date.toLocaleDateString("en-US");
+};
 
 export default function ProjectsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -222,6 +264,11 @@ export default function ProjectsPage() {
   const [openProjectMenuIndex, setOpenProjectMenuIndex] = useState<
     number | null
   >(null);
+  const [projects, setProjects] = useState<ProjectLibraryItem[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [previewProject, setPreviewProject] =
+    useState<ProjectLibraryItem | null>(null);
   const [hoveredNavIndex, setHoveredNavIndex] = useState<number | null>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{
     top: number;
@@ -259,6 +306,48 @@ export default function ProjectsPage() {
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
   };
+
+  const buildProjectVideoUrl = useCallback(
+    (projectId: string, disposition: "inline" | "attachment" = "inline") =>
+      `/api/projects/download?id=${encodeURIComponent(
+        projectId
+      )}&disposition=${disposition}`,
+    []
+  );
+
+  const handleOpenPreview = useCallback((project: ProjectLibraryItem) => {
+    setOpenProjectMenuIndex(null);
+    setPreviewProject(project);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewProject(null);
+  }, []);
+
+  const handleOpenProjectInEditor = useCallback(
+    (project: ProjectLibraryItem) => {
+      const assetUrl = buildProjectVideoUrl(project.id, "inline");
+      const payload = { url: assetUrl, name: project.title };
+      try {
+        window.localStorage.setItem(
+          "autoclip:asset",
+          JSON.stringify(payload)
+        );
+      } catch (error) {
+        // Ignore localStorage failures.
+      }
+      window.location.href = "/editor/advanced";
+    },
+    [buildProjectVideoUrl]
+  );
+
+  const handleDownloadProject = useCallback(
+    (project: ProjectLibraryItem) => {
+      const url = buildProjectVideoUrl(project.id, "attachment");
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+    [buildProjectVideoUrl]
+  );
 
   useEffect(() => {
     if (!profileMenuOpen) {
@@ -315,6 +404,75 @@ export default function ProjectsPage() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [resolvedNavIndex, updateIndicator]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadProjects = async () => {
+      setProjectsLoading(true);
+      setProjectsError(null);
+      try {
+        const response = await fetch("/api/projects");
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message =
+            typeof payload?.error === "string"
+              ? payload.error
+              : "Unable to load projects.";
+          throw new Error(message);
+        }
+        if (!cancelled) {
+          setProjects(
+            Array.isArray(payload?.projects) ? payload.projects : []
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setProjectsError(
+            error instanceof Error ? error.message : "Unable to load projects."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setProjectsLoading(false);
+        }
+      }
+    };
+    loadProjects();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!previewProject) {
+      return;
+    }
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleClosePreview();
+      }
+    };
+    document.addEventListener("keydown", handleKeydown);
+    return () => document.removeEventListener("keydown", handleKeydown);
+  }, [handleClosePreview, previewProject]);
+
+  useEffect(() => {
+    if (!previewProject) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [previewProject]);
+
+  const previewVideoUrl = previewProject
+    ? buildProjectVideoUrl(previewProject.id, "inline")
+    : null;
+  const previewCreatedLabel = previewProject
+    ? formatDateLabel(previewProject.createdAt)
+    : "--";
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
@@ -699,83 +857,123 @@ export default function ProjectsPage() {
             </div>
 
             <div className="grid flex-1 auto-rows-max grid-cols-1 content-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {projects.map((project, index) => (
-                <div
-                  key={`${project.title}-${index}`}
-                  className={`relative flex w-full cursor-pointer flex-col rounded-lg border border-gray-200 bg-white ${
-                    openProjectMenuIndex === index ? "z-10" : "z-0"
-                  }`}
-                >
-                  <div className="relative w-full overflow-hidden rounded-t-lg">
-                    <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
-                  </div>
-                  <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
-                    <div className="flex w-full items-center gap-2">
-                      <div className="flex min-w-[100px] flex-1 items-center gap-2">
-                        <p className="truncate">{project.title}</p>
-                        <div className="inline-flex items-center rounded-full border border-transparent bg-gray-100 px-2.5 py-0.5 text-[10px] font-semibold text-gray-500">
-                          {project.type}
-                        </div>
-                      </div>
-                      <div className="relative" data-project-menu>
-                        <button
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-black hover:bg-gray-100"
-                          type="button"
-                          aria-label="Project menu"
-                          aria-expanded={openProjectMenuIndex === index}
-                          onClick={() =>
-                            setOpenProjectMenuIndex((prev) =>
-                              prev === index ? null : index
-                            )
-                          }
-                        >
-                          <svg
-                            aria-hidden="true"
-                            viewBox="0 0 24 24"
-                            className="h-5 w-5"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <circle cx="12" cy="12" r="1" />
-                            <circle cx="19" cy="12" r="1" />
-                            <circle cx="5" cy="12" r="1" />
-                          </svg>
-                        </button>
-                        <div
-                          className={`absolute right-0 top-9 z-30 w-48 rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-md transition-all ${
-                            openProjectMenuIndex === index
-                              ? "pointer-events-auto translate-y-0 opacity-100"
-                              : "pointer-events-none translate-y-1 opacity-0"
-                          }`}
-                        >
-                          <a
-                            href="/editor/advanced"
-                            className="block rounded-lg px-2 py-1.5 hover:bg-gray-100"
-                            onClick={() => setOpenProjectMenuIndex(null)}
-                          >
-                            Open advanced editor
-                          </a>
-                          <button
-                            className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50"
-                            type="button"
-                            onClick={() => setOpenProjectMenuIndex(null)}
-                          >
-                            Delete project
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-gray-500">
-                        {project.created}
-                      </span>
-                    </div>
-                  </div>
+              {projectsLoading ? (
+                <div className="col-span-full rounded-xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
+                  Loading projects...
                 </div>
-              ))}
+              ) : projectsError ? (
+                <div className="col-span-full rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-600">
+                  {projectsError}
+                </div>
+              ) : projects.length ? (
+                projects.map((project, index) => (
+                  <div
+                    key={project.id}
+                    className={`relative flex w-full cursor-pointer flex-col rounded-lg border border-gray-200 bg-white ${
+                      openProjectMenuIndex === index ? "z-10" : "z-0"
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleOpenPreview(project)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleOpenPreview(project);
+                      }
+                    }}
+                  >
+                    <div className="relative w-full overflow-hidden rounded-t-lg">
+                      {project.previewImage ? (
+                        <img
+                          src={project.previewImage}
+                          alt={project.title}
+                          className="h-48 w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
+                      <div className="flex w-full items-center gap-2">
+                        <div className="flex min-w-[100px] flex-1 items-center gap-2">
+                          <p className="truncate">{project.title}</p>
+                          <div className="inline-flex items-center rounded-full border border-transparent bg-gray-100 px-2.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                            {project.type}
+                          </div>
+                        </div>
+                        <div className="relative" data-project-menu>
+                          <button
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-black hover:bg-gray-100"
+                            type="button"
+                            aria-label="Project menu"
+                            aria-expanded={openProjectMenuIndex === index}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenProjectMenuIndex((prev) =>
+                                prev === index ? null : index
+                              );
+                            }}
+                          >
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="h-5 w-5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <circle cx="12" cy="12" r="1" />
+                              <circle cx="19" cy="12" r="1" />
+                              <circle cx="5" cy="12" r="1" />
+                            </svg>
+                          </button>
+                          <div
+                            className={`absolute right-0 top-9 z-30 w-48 rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-md transition-all ${
+                              openProjectMenuIndex === index
+                                ? "pointer-events-auto translate-y-0 opacity-100"
+                                : "pointer-events-none translate-y-1 opacity-0"
+                            }`}
+                          >
+                            <button
+                              className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-gray-100"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenProjectMenuIndex(null);
+                                handleOpenProjectInEditor(project);
+                              }}
+                            >
+                              Open advanced editor
+                            </button>
+                            <button
+                              className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenProjectMenuIndex(null);
+                              }}
+                            >
+                              Delete project
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-500">
+                          {formatCreatedLabel(project.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-full rounded-xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
+                  No projects yet. Save a clip to see it here.
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col items-center space-y-3 sm:hidden">
@@ -956,6 +1154,143 @@ export default function ProjectsPage() {
           </div>
         </main>
       </div>
+      {previewProject ? (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+            onClick={handleClosePreview}
+            aria-hidden="true"
+          />
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4"
+            onClick={handleClosePreview}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="project-preview-title"
+              aria-describedby="project-preview-desc"
+              className="flex w-full max-w-[90vw] max-h-[90svh] flex-col gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg focus:outline-none md:max-w-2xl"
+              onClick={(event) => event.stopPropagation()}
+              tabIndex={-1}
+            >
+              <div className="flex w-full items-center justify-between gap-2 border-b border-gray-200 px-4 py-4 sm:px-6 sm:py-5">
+                <h2
+                  id="project-preview-title"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-lg font-medium leading-none tracking-tight"
+                >
+                  <span className="truncate text-xl font-medium leading-none sm:text-2xl">
+                    {previewProject.title}
+                  </span>
+                </h2>
+                <button
+                  className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none"
+                  type="button"
+                  aria-label="Close"
+                  onClick={handleClosePreview}
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4 text-black"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p id="project-preview-desc" className="sr-only">
+                Project details including properties, preview, and available
+                actions
+              </p>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="flex h-[min(60svh,420px)] flex-col sm:flex-row">
+                  <div className="flex w-full flex-col justify-between gap-4 p-4 sm:w-[320px] sm:min-w-[320px]">
+                    <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-600">
+                      <div className="flex items-center justify-between">
+                        <p>Created on</p>
+                        <p className="font-medium text-gray-500">
+                          {previewCreatedLabel}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p>Updated on</p>
+                        <p className="font-medium text-gray-500">
+                          {previewCreatedLabel}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex w-full flex-col gap-2 sm:flex-row">
+                      <button
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                        type="button"
+                        onClick={() => handleOpenProjectInEditor(previewProject)}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a.5.5 0 0 0 .830-.497z" />
+                          <path d="m15 5 4 4" />
+                        </svg>
+                        Open editor
+                      </button>
+                      <button
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                        type="button"
+                        onClick={() => handleDownloadProject(previewProject)}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 15V3" />
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <path d="m7 10 5 5 5-5" />
+                        </svg>
+                        Download clip
+                      </button>
+                    </div>
+                  </div>
+                  <div className="order-first flex flex-1 items-center justify-center overflow-hidden border-b border-gray-200 bg-[#F5F7FA] p-4 sm:order-none sm:border-b-0 sm:border-l">
+                    {previewVideoUrl ? (
+                      <video
+                        src={previewVideoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        poster={previewProject.previewImage ?? undefined}
+                        className="h-full max-h-full w-auto max-w-full rounded-2xl object-contain"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
+                        Preview unavailable
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );

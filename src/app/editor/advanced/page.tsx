@@ -18,6 +18,12 @@ import {
 import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import type { IGif } from "@giphy/js-types";
+import {
+  addAssetsToLibrary,
+  buildAssetLibraryItem,
+  loadAssetLibrary,
+  type AssetLibraryItem,
+} from "@/lib/assets/library";
 
 import type {
   AssetFilter,
@@ -361,6 +367,51 @@ const subtitleLanguages: SubtitleLanguageOption[] = [
   { code: "pt", label: "Portuguese", detail: "Portuguese (BR)", region: "BR" },
 ];
 
+const toLibraryItemFromAsset = (asset: MediaAsset): AssetLibraryItem | null => {
+  if (asset.kind === "text") {
+    return null;
+  }
+  return buildAssetLibraryItem({
+    id: asset.id,
+    name: asset.name,
+    kind: asset.kind,
+    url: asset.url,
+    size: asset.size,
+    duration: asset.duration,
+    width: asset.width,
+    height: asset.height,
+    aspectRatio: asset.aspectRatio,
+    createdAt: asset.createdAt,
+  });
+};
+
+const mergeAssetsWithLibrary = (
+  current: MediaAsset[],
+  libraryItems: AssetLibraryItem[]
+) => {
+  if (!libraryItems.length) {
+    return current;
+  }
+  const existingKeys = new Set(
+    current.map((asset) => `${asset.kind}:${asset.url}`)
+  );
+  const additions = libraryItems
+    .filter((item) => !existingKeys.has(`${item.kind}:${item.url}`))
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      kind: item.kind,
+      url: item.url,
+      size: item.size,
+      duration: item.duration,
+      width: item.width,
+      height: item.height,
+      aspectRatio: item.aspectRatio,
+      createdAt: item.createdAt,
+    }));
+  return additions.length ? [...additions, ...current] : current;
+};
+
 export default function AdvancedEditorPage() {
   const textMinLayerSize = 24;
   const textPresetPreviewCount = 6;
@@ -375,6 +426,7 @@ export default function AdvancedEditorPage() {
   const [lanes, setLanes] = useState<TimelineLane[]>([]);
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("All");
   const [isAssetLibraryExpanded, setIsAssetLibraryExpanded] = useState(false);
+  const [assetLibraryReady, setAssetLibraryReady] = useState(false);
   const [assetSearch, setAssetSearch] = useState("");
   const [isGifLibraryExpanded, setIsGifLibraryExpanded] = useState(false);
   const [isStickerLibraryExpanded, setIsStickerLibraryExpanded] = useState(false);
@@ -671,6 +723,7 @@ export default function AdvancedEditorPage() {
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const replaceMediaInputRef = useRef<HTMLInputElement | null>(null);
   const assetsRef = useRef<MediaAsset[]>([]);
+  const assetLibraryBootstrappedRef = useRef(false);
   const lanesRef = useRef<TimelineLane[]>([]);
   const subtitleLaneIdRef = useRef<string | null>(null);
   const subtitleGroupTransformsRef = useRef<Map<string, ClipTransform> | null>(
@@ -1284,6 +1337,31 @@ export default function AdvancedEditorPage() {
 
   useEffect(() => {
     assetsRef.current = assets;
+  }, [assets]);
+
+  useEffect(() => {
+    if (assetLibraryBootstrappedRef.current) {
+      return;
+    }
+    const storedAssets = loadAssetLibrary();
+    if (storedAssets.length) {
+      setAssets((prev) => mergeAssetsWithLibrary(prev, storedAssets));
+    }
+    assetLibraryBootstrappedRef.current = true;
+    setAssetLibraryReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!assetLibraryBootstrappedRef.current) {
+      return;
+    }
+    const libraryItems = assets
+      .map((asset) => toLibraryItemFromAsset(asset))
+      .filter((item): item is AssetLibraryItem => Boolean(item));
+    if (!libraryItems.length) {
+      return;
+    }
+    addAssetsToLibrary(libraryItems);
   }, [assets]);
 
   useEffect(() => {
@@ -6998,6 +7076,124 @@ export default function AdvancedEditorPage() {
     },
     [addToTimeline, pushHistory]
   );
+
+  const handleAddExternalVideo = useCallback(
+    async ({ url, name }: { url: string; name?: string }) => {
+      if (!url) {
+        return;
+      }
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "video" && asset.url === url
+      );
+      if (existing) {
+        addToTimeline(existing.id);
+        return;
+      }
+      const meta = await getMediaMeta("video", url);
+      const durationSeconds =
+        typeof meta.duration === "number" && Number.isFinite(meta.duration)
+          ? meta.duration
+          : undefined;
+      const width =
+        typeof meta.width === "number" && Number.isFinite(meta.width)
+          ? meta.width
+          : undefined;
+      const height =
+        typeof meta.height === "number" && Number.isFinite(meta.height)
+          ? meta.height
+          : undefined;
+      setIsBackgroundSelected(false);
+      pushHistory();
+      const aspectRatio =
+        width && height ? width / height : undefined;
+      const videoAsset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name: name?.trim() || "Imported video",
+        kind: "video",
+        url,
+        size: 0,
+        duration: durationSeconds ?? undefined,
+        width,
+        height,
+        aspectRatio,
+        createdAt: Date.now(),
+      };
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes);
+      const clip = createClip(videoAsset.id, laneId, 0, videoAsset);
+      setLanes(nextLanes);
+      setAssets((prev) => [videoAsset, ...prev]);
+      setTimeline((prev) => [...prev, clip]);
+      setActiveAssetId(videoAsset.id);
+    },
+    [addToTimeline, createClip, pushHistory]
+  );
+
+  useEffect(() => {
+    if (!assetLibraryReady) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedList = window.localStorage.getItem("autoclip:assets");
+    const storedSingle = window.localStorage.getItem("autoclip:asset");
+    if (!storedList && !storedSingle) {
+      return;
+    }
+    window.localStorage.removeItem("autoclip:assets");
+    window.localStorage.removeItem("autoclip:asset");
+
+    const parsePayload = (value: unknown) => {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      const payload = value as { url?: string; name?: string };
+      const assetUrl =
+        typeof payload.url === "string" ? payload.url : "";
+      if (!assetUrl) {
+        return null;
+      }
+      return {
+        url: assetUrl,
+        name:
+          typeof payload.name === "string" && payload.name.trim().length > 0
+            ? payload.name
+            : "AutoClip Highlight",
+      };
+    };
+
+    const assets: Array<{ url: string; name: string }> = [];
+    if (storedList) {
+      try {
+        const parsed = JSON.parse(storedList);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item) => {
+            const payload = parsePayload(item);
+            if (payload) {
+              assets.push(payload);
+            }
+          });
+        }
+      } catch {
+        // Ignore parse errors.
+      }
+    }
+    if (!assets.length && storedSingle) {
+      try {
+        const parsed = JSON.parse(storedSingle);
+        const payload = parsePayload(parsed);
+        if (payload) {
+          assets.push(payload);
+        }
+      } catch {
+        // Ignore parse errors.
+      }
+    }
+    assets.forEach((payload) => {
+      handleAddExternalVideo(payload).catch(() => {});
+    });
+  }, [assetLibraryReady, handleAddExternalVideo]);
 
   const handleAddStockAudio = useCallback(
     async (track: StockAudioTrack) => {
