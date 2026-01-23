@@ -112,20 +112,20 @@ export const createSession = async (
 export const getSession = async (
   sessionId: string
 ): Promise<AutoClipSession | null> => {
-  // Check memory cache first
-  const cached = memoryStore.get(sessionId);
-  if (cached) {
-    console.log("Session from memory cache:", sessionId, "status:", cached.status, "hasTranscript:", !!cached.transcript);
-    return cached;
-  }
-
-  // Try to load from Supabase
-  console.log("Session not in memory, loading from Supabase:", sessionId);
+  // Always load from Supabase to avoid stale cache issues in serverless
+  // (Different Vercel instances have separate memory caches)
   const loaded = await loadSession(sessionId);
   if (loaded) {
     memoryStore.set(sessionId, loaded);
     console.log("Session loaded from Supabase:", sessionId, "status:", loaded.status, "hasTranscript:", !!loaded.transcript);
     return loaded;
+  }
+
+  // Fall back to memory cache only if Supabase is unavailable
+  const cached = memoryStore.get(sessionId);
+  if (cached) {
+    console.log("Session from memory cache (Supabase unavailable):", sessionId, "status:", cached.status);
+    return cached;
   }
 
   console.warn("Session not found anywhere:", sessionId);
