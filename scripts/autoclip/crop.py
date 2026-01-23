@@ -217,6 +217,10 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    print(f"Input video: {width}x{height} @ {fps}fps, {total_frames} frames", file=sys.stderr)
+    
     target_height = height
     target_width = int(target_height * 9 / 16)
     if target_width > width:
@@ -225,6 +229,8 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
     # Ensure even dimensions for libx264
     target_width = target_width - (target_width % 2)
     target_height = target_height - (target_height % 2)
+    
+    print(f"Output dimensions: {target_width}x{target_height}", file=sys.stderr)
 
     # Use FFmpeg subprocess for output (proper timestamps)
     ffmpeg_cmd = [
@@ -242,13 +248,16 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
         output_path
     ]
     ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    frames_written = 0
 
     def write_frame(frame_data):
+        nonlocal frames_written
         try:
             ffmpeg_proc.stdin.write(frame_data)
+            frames_written += 1
         except BrokenPipeError:
             _, stderr = ffmpeg_proc.communicate()
-            raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
+            raise RuntimeError(f"FFmpeg pipe broke after {frames_written} frames: {stderr.decode()[-500:]}")
 
     if width <= target_width:
         while True:
@@ -261,6 +270,7 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
         cap.release()
         ffmpeg_proc.stdin.close()
         ffmpeg_proc.wait()
+        print(f"Wrote {frames_written} frames (passthrough mode)", file=sys.stderr)
         return
 
     detector = FaceDetector()
@@ -309,7 +319,11 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
             ffmpeg_proc.stdin.close()
         except:
             pass
-        ffmpeg_proc.wait()
+        ret = ffmpeg_proc.wait()
+        print(f"Wrote {frames_written} frames, FFmpeg exit code: {ret}", file=sys.stderr)
+        if ret != 0:
+            stderr = ffmpeg_proc.stderr.read().decode() if ffmpeg_proc.stderr else ""
+            raise RuntimeError(f"FFmpeg exited with code {ret}: {stderr[-500:]}")
 
 
 def crop_screen_tracking(input_path: str, output_path: str) -> None:
@@ -323,6 +337,8 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    print(f"Screen tracking input: {width}x{height} @ {fps}fps, {total_frames} frames", file=sys.stderr)
 
     target_height = height
     target_width = int(target_height * 9 / 16)
@@ -330,6 +346,8 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
     # Ensure even dimensions for libx264
     target_width = target_width - (target_width % 2)
     target_height = target_height - (target_height % 2)
+    
+    print(f"Screen tracking output: {target_width}x{target_height}", file=sys.stderr)
 
     target_display_width = int(width * 0.67)
     scale = target_width / target_display_width
@@ -356,13 +374,16 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
         output_path
     ]
     ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    frames_written = 0
     
     def write_frame(frame_data):
+        nonlocal frames_written
         try:
             ffmpeg_proc.stdin.write(frame_data)
+            frames_written += 1
         except BrokenPipeError:
             _, stderr = ffmpeg_proc.communicate()
-            raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
+            raise RuntimeError(f"FFmpeg pipe broke after {frames_written} frames: {stderr.decode()[-500:]}")
 
     update_interval = max(1, int(fps))
     smoothed_x = 0
@@ -430,7 +451,11 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
         ffmpeg_proc.stdin.close()
     except:
         pass
-    ffmpeg_proc.wait()
+    ret = ffmpeg_proc.wait()
+    print(f"Screen tracking: wrote {frames_written} frames, FFmpeg exit code: {ret}", file=sys.stderr)
+    if ret != 0:
+        stderr = ffmpeg_proc.stderr.read().decode() if ffmpeg_proc.stderr else ""
+        raise RuntimeError(f"FFmpeg exited with code {ret}: {stderr[-500:]}")
 
 
 def main() -> None:
