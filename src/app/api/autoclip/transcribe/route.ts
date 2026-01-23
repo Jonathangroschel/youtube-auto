@@ -30,8 +30,20 @@ export async function POST(request: Request) {
   }
 
   const session = await getSession(sessionId);
-  if (!session || !session.input?.videoKey || !session.workerSessionId) {
-    return NextResponse.json({ error: "Session not ready for transcription." }, { status: 404 });
+  if (!session) {
+    return NextResponse.json({ error: "Session not found. Make sure you uploaded a video first." }, { status: 404 });
+  }
+  if (!session.input?.videoKey) {
+    return NextResponse.json({ 
+      error: "Video not uploaded yet. Session exists but no videoKey.", 
+      debug: { hasInput: !!session.input, status: session.status }
+    }, { status: 404 });
+  }
+  if (!session.workerSessionId) {
+    return NextResponse.json({ 
+      error: "Worker session not initialized.", 
+      debug: { hasInput: !!session.input, videoKey: session.input?.videoKey }
+    }, { status: 404 });
   }
 
   try {

@@ -38,18 +38,23 @@ function getSupabase() {
 // Store session in Supabase
 async function persistSession(session: AutoClipSession): Promise<void> {
   const db = getSupabase();
-  if (!db) return;
+  if (!db) {
+    console.warn("Supabase not configured - session will only be in memory");
+    return;
+  }
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any).from("autoclip_sessions").upsert({
+    const { error } = await (db as any).from("autoclip_sessions").upsert({
       id: session.id,
       data: session,
       updated_at: new Date().toISOString(),
     });
+    if (error) {
+      console.error("Supabase upsert error:", error);
+    }
   } catch (error) {
     console.error("Failed to persist session to Supabase:", error);
-    // Continue - in-memory store still works
   }
 }
 

@@ -13,8 +13,23 @@ export async function POST(request: Request) {
   }
 
   const session = await getSession(sessionId);
-  if (!session?.transcript?.segments?.length) {
-    return NextResponse.json({ error: "Transcript unavailable." }, { status: 404 });
+  if (!session) {
+    return NextResponse.json({ 
+      error: "Session not found.", 
+      debug: { sessionId } 
+    }, { status: 404 });
+  }
+  if (!session.transcript) {
+    return NextResponse.json({ 
+      error: "Transcript not available. Run transcription first.", 
+      debug: { status: session.status, hasInput: !!session.input } 
+    }, { status: 404 });
+  }
+  if (!session.transcript.segments?.length) {
+    return NextResponse.json({ 
+      error: "Transcript has no segments.", 
+      debug: { transcriptKeys: Object.keys(session.transcript) } 
+    }, { status: 404 });
   }
 
   if (action === "update") {
