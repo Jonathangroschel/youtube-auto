@@ -221,6 +221,10 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
     target_width = int(target_height * 9 / 16)
     if target_width > width:
         target_width = width
+    
+    # Ensure even dimensions for libx264
+    target_width = target_width - (target_width % 2)
+    target_height = target_height - (target_height % 2)
 
     # Use FFmpeg subprocess for output (proper timestamps)
     ffmpeg_cmd = [
@@ -237,14 +241,23 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
         "-pix_fmt", "yuv420p",
         output_path
     ]
-    ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def write_frame(frame_data):
+        try:
+            ffmpeg_proc.stdin.write(frame_data)
+        except BrokenPipeError:
+            _, stderr = ffmpeg_proc.communicate()
+            raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
 
     if width <= target_width:
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
-            ffmpeg_proc.stdin.write(frame.tobytes())
+            # Resize to ensure exact dimensions
+            frame = cv2.resize(frame, (target_width, target_height))
+            write_frame(frame.tobytes())
         cap.release()
         ffmpeg_proc.stdin.close()
         ffmpeg_proc.wait()
@@ -283,13 +296,19 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
             smoothed_center += (target_center - smoothed_center) * smoothing
             crop_x = int(round(smoothed_center - half_width))
             crop_x = int(clamp(crop_x, 0, width - target_width))
-            cropped = frame[:, crop_x : crop_x + target_width]
-            ffmpeg_proc.stdin.write(cropped.tobytes())
+            cropped = frame[:target_height, crop_x : crop_x + target_width]
+            # Ensure exact dimensions
+            if cropped.shape[1] != target_width or cropped.shape[0] != target_height:
+                cropped = cv2.resize(cropped, (target_width, target_height))
+            write_frame(cropped.tobytes())
             frame_idx += 1
     finally:
         cap.release()
         detector.close()
-        ffmpeg_proc.stdin.close()
+        try:
+            ffmpeg_proc.stdin.close()
+        except:
+            pass
         ffmpeg_proc.wait()
 
 
@@ -307,6 +326,10 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
 
     target_height = height
     target_width = int(target_height * 9 / 16)
+    
+    # Ensure even dimensions for libx264
+    target_width = target_width - (target_width % 2)
+    target_height = target_height - (target_height % 2)
 
     target_display_width = int(width * 0.67)
     scale = target_width / target_display_width
@@ -332,7 +355,14 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
         "-pix_fmt", "yuv420p",
         output_path
     ]
-    ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+    def write_frame(frame_data):
+        try:
+            ffmpeg_proc.stdin.write(frame_data)
+        except BrokenPipeError:
+            _, stderr = ffmpeg_proc.communicate()
+            raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
 
     update_interval = max(1, int(fps))
     smoothed_x = 0
@@ -384,15 +414,22 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
             cropped = canvas
         elif scaled_height > target_height:
             cropped = cropped[:target_height, :]
+        
+        # Ensure exact dimensions
+        if cropped.shape[1] != target_width or cropped.shape[0] != target_height:
+            cropped = cv2.resize(cropped, (target_width, target_height))
 
-        ffmpeg_proc.stdin.write(cropped.tobytes())
+        write_frame(cropped.tobytes())
         frame_idx += 1
 
         if total_frames and frame_idx >= total_frames:
             break
 
     cap.release()
-    ffmpeg_proc.stdin.close()
+    try:
+        ffmpeg_proc.stdin.close()
+    except:
+        pass
     ffmpeg_proc.wait()
 
 
