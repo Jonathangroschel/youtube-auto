@@ -18,6 +18,7 @@ MIN_FACE_SCORE = 0.5
 GROUP_FACE_AREA_RATIO = 0.6
 GROUP_MAX_SPAN_RATIO = 0.9
 MISSING_FACE_SECONDS = 2.0
+DEFAULT_FPS = 30.0
 
 
 def clamp(value: float, min_value: float, max_value: float) -> float:
@@ -35,6 +36,18 @@ def resize_for_detection(frame: np.ndarray, max_width: int) -> Tuple[np.ndarray,
         interpolation=cv2.INTER_AREA,
     )
     return resized, scale
+
+
+def resolve_fps(cap: cv2.VideoCapture, fallback: float = DEFAULT_FPS) -> float:
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or not np.isfinite(fps) or fps <= 0:
+        return fallback
+    return fps
+
+
+def ensure_valid_dimensions(width: int, height: int) -> None:
+    if width < 2 or height < 2:
+        raise RuntimeError(f"Invalid video dimensions: {width}x{height}")
 
 
 def face_area(face: FaceBox) -> int:
@@ -216,7 +229,8 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    ensure_valid_dimensions(width, height)
+    fps = resolve_fps(cap)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     print(f"Input video: {width}x{height} @ {fps}fps, {total_frames} frames", file=sys.stderr)
@@ -229,12 +243,14 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
     # Ensure even dimensions for libx264
     target_width = target_width - (target_width % 2)
     target_height = target_height - (target_height % 2)
+    if target_width < 2 or target_height < 2:
+        raise RuntimeError(f"Invalid crop size: {target_width}x{target_height}")
     
     print(f"Output dimensions: {target_width}x{target_height}", file=sys.stderr)
 
     # Use FFmpeg subprocess for output (proper timestamps)
     ffmpeg_cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-f", "rawvideo",
         "-vcodec", "rawvideo",
         "-pix_fmt", "bgr24",
@@ -245,6 +261,7 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
         "-preset", "veryfast",
         "-crf", "18",
         "-pix_fmt", "yuv420p",
+        "-reset_timestamps", "1",
         output_path
     ]
     ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -269,7 +286,10 @@ def crop_face_tracking(input_path: str, output_path: str) -> None:
             write_frame(frame.tobytes())
         cap.release()
         ffmpeg_proc.stdin.close()
-        ffmpeg_proc.wait()
+        ret = ffmpeg_proc.wait()
+        if ret != 0:
+            stderr = ffmpeg_proc.stderr.read().decode() if ffmpeg_proc.stderr else ""
+            raise RuntimeError(f"FFmpeg exited with code {ret}: {stderr[-500:]}")
         print(f"Wrote {frames_written} frames (passthrough mode)", file=sys.stderr)
         return
 
@@ -335,7 +355,8 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    ensure_valid_dimensions(width, height)
+    fps = resolve_fps(cap)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     print(f"Screen tracking input: {width}x{height} @ {fps}fps, {total_frames} frames", file=sys.stderr)
@@ -346,6 +367,8 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
     # Ensure even dimensions for libx264
     target_width = target_width - (target_width % 2)
     target_height = target_height - (target_height % 2)
+    if target_width < 2 or target_height < 2:
+        raise RuntimeError(f"Invalid crop size: {target_width}x{target_height}")
     
     print(f"Screen tracking output: {target_width}x{target_height}", file=sys.stderr)
 
@@ -360,7 +383,7 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
 
     # Use FFmpeg subprocess for output (proper timestamps)
     ffmpeg_cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-f", "rawvideo",
         "-vcodec", "rawvideo",
         "-pix_fmt", "bgr24",
@@ -371,6 +394,7 @@ def crop_screen_tracking(input_path: str, output_path: str) -> None:
         "-preset", "veryfast",
         "-crf", "18",
         "-pix_fmt", "yuv420p",
+        "-reset_timestamps", "1",
         output_path
     ]
     ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)

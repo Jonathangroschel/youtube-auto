@@ -112,6 +112,7 @@ app.post("/youtube", authMiddleware, async (req, res) => {
         "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "-o", outputPath,
         "--merge-output-format", "mp4",
+        "--no-playlist",
         url,
       ]);
 
@@ -121,6 +122,7 @@ app.post("/youtube", authMiddleware, async (req, res) => {
         if (code === 0) resolve();
         else reject(new Error(`yt-dlp failed: ${stderr}`));
       });
+      ytdlp.on("error", reject);
     });
 
     // Get metadata
@@ -179,13 +181,19 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
     // Extract audio with FFmpeg
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn("ffmpeg", [
+        "-hide_banner", "-loglevel", "error",
         "-y", "-i", videoPath,
         "-vn", "-acodec", "libmp3lame", "-q:a", "4",
         audioPath,
       ]);
+      let stderr = "";
+      ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
       ffmpeg.on("close", (code) =>
-        code === 0 ? resolve() : reject(new Error("FFmpeg audio extraction failed"))
+        code === 0
+          ? resolve()
+          : reject(new Error(`FFmpeg audio extraction failed: ${stderr}`))
       );
+      ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
     });
 
     // Transcribe with OpenAI Whisper
@@ -226,6 +234,27 @@ app.post("/render", authMiddleware, async (req, res) => {
     if (!clips?.length) {
       return res.status(400).json({ error: "No clips provided" });
     }
+    if (!videoKey) {
+      return res.status(400).json({ error: "Missing videoKey" });
+    }
+
+    const normalizedClips = clips.map((clip, index) => ({
+      index,
+      start: Number(clip?.start),
+      end: Number(clip?.end),
+      highlightIndex: Number(clip?.highlightIndex),
+    }));
+    const invalidClip = normalizedClips.find(
+      (clip) =>
+        !Number.isFinite(clip.start) ||
+        !Number.isFinite(clip.end) ||
+        clip.end <= clip.start
+    );
+    if (invalidClip) {
+      return res.status(400).json({
+        error: `Invalid clip range at index ${invalidClip.index}.`,
+      });
+    }
 
     // Download video from Supabase
     const videoPath = path.join(TEMP_DIR, `${sessionId}_video.mp4`);
@@ -240,31 +269,42 @@ app.post("/render", authMiddleware, async (req, res) => {
 
     const outputs = [];
 
-    for (let i = 0; i < clips.length; i++) {
-      const clip = clips[i];
+    for (let i = 0; i < normalizedClips.length; i++) {
+      const clip = normalizedClips[i];
       const clipFilename = `clip_${i}_${Date.now()}.mp4`;
       const clipPath = path.join(TEMP_DIR, `${sessionId}_clip_${i}.mp4`);
-      const croppedPath = path.join(TEMP_DIR, `${sessionId}_cropped_${i}.mp4`);
       const outputPath = path.join(TEMP_DIR, clipFilename);
 
       // Step 1: Extract clip segment and re-encode to H.264 (OpenCV can't read AV1)
       await new Promise((resolve, reject) => {
+        const clipDuration = clip.end - clip.start;
         const ffmpeg = spawn("ffmpeg", [
+          "-hide_banner", "-loglevel", "error",
           "-y",
           "-ss", String(clip.start),
           "-i", videoPath,
-          "-t", String(clip.end - clip.start),
+          "-t", String(clipDuration),
+          "-map", "0:v:0",
+          "-map", "0:a:0?",
           "-c:v", "libx264",
           "-preset", "veryfast",
           "-crf", "18",
           "-c:a", "aac",
           "-b:a", "128k",
+          "-reset_timestamps", "1",
+          "-avoid_negative_ts", "make_zero",
           clipPath,
         ]);
         let stderr = "";
         ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
-        ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Clip extraction failed: ${stderr.slice(-500)}`)));
-        ffmpeg.on("error", reject);
+        ffmpeg.on("close", (code, signal) => {
+          if (code === 0) return resolve();
+          const reason = signal ? `signal ${signal}` : `code ${code}`;
+          reject(new Error(`Clip extraction failed (${reason}): ${stderr.slice(-500)}`));
+        });
+        ffmpeg.on("error", (err) =>
+          reject(new Error(`FFmpeg spawn error: ${err.message}`))
+        );
       });
 
       // Step 2: Crop with Python face detection (mediapipe)
@@ -299,8 +339,11 @@ app.post("/render", authMiddleware, async (req, res) => {
       
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
+          "-hide_banner", "-loglevel", "error",
           "-y",
+          "-fflags", "+genpts",
           "-i", croppedVideoOnly,    // Cropped video from Python
+          "-fflags", "+genpts",
           "-i", clipPath,             // Original clip (for audio)
           "-map", "0:v:0",            // Take video from first input
           "-map", "1:a:0?",           // Take audio from second input (optional)
@@ -312,14 +355,16 @@ app.post("/render", authMiddleware, async (req, res) => {
           "-b:a", "128k",
           "-shortest",
           "-movflags", "+faststart",
+          "-avoid_negative_ts", "make_zero",
           outputPath,
         ]);
 
         let stderr = "";
         ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
-        ffmpeg.on("close", (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(`FFmpeg encode failed: ${stderr.slice(-1000)}`));
+        ffmpeg.on("close", (code, signal) => {
+          if (code === 0) return resolve();
+          const reason = signal ? `signal ${signal}` : `code ${code}`;
+          reject(new Error(`FFmpeg encode failed (${reason}): ${stderr.slice(-1000)}`));
         });
         ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
       });
@@ -331,7 +376,7 @@ app.post("/render", authMiddleware, async (req, res) => {
       await fs.unlink(clipPath).catch(() => {});
 
       // Upload rendered clip to Supabase
-      const clipKey = `sessions/${sessionId}/clips/${outputFilename}`;
+      const clipKey = `sessions/${sessionId}/clips/${clipFilename}`;
       const clipBuffer = await fs.readFile(outputPath);
       
       const { error: uploadError } = await supabase.storage
@@ -352,7 +397,7 @@ app.post("/render", authMiddleware, async (req, res) => {
         index: i,
         clipKey,
         downloadUrl: urlData?.signedUrl,
-        filename: outputFilename,
+        filename: clipFilename,
       });
 
       // Clean up temp file
@@ -389,6 +434,7 @@ app.post("/preview", authMiddleware, async (req, res) => {
     // Generate preview with FFmpeg (lower quality for speed)
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn("ffmpeg", [
+        "-hide_banner", "-loglevel", "error",
         "-y",
         "-ss", String(start),
         "-i", videoPath,
@@ -401,9 +447,14 @@ app.post("/preview", authMiddleware, async (req, res) => {
         "-b:a", "96k",
         previewPath,
       ]);
-      ffmpeg.on("close", (code) =>
-        code === 0 ? resolve() : reject(new Error("Preview generation failed"))
-      );
+      let stderr = "";
+      ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+      ffmpeg.on("close", (code, signal) => {
+        if (code === 0) return resolve();
+        const reason = signal ? `signal ${signal}` : `code ${code}`;
+        reject(new Error(`Preview generation failed (${reason}): ${stderr}`));
+      });
+      ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
     });
 
     // Upload preview to Supabase
@@ -543,6 +594,7 @@ async function getVideoMetadata(filePath) {
         reject(e);
       }
     });
+    ffprobe.on("error", (err) => reject(new Error(`ffprobe spawn error: ${err.message}`)));
   });
 }
 
