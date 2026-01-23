@@ -246,20 +246,23 @@ app.post("/render", authMiddleware, async (req, res) => {
       const outputPath = path.join(TEMP_DIR, outputFilename);
 
       // Render with FFmpeg (vertical 9:16 crop)
-      const crf = quality === "high" ? "18" : quality === "medium" ? "23" : "28";
+      const crf = quality === "high" ? "23" : quality === "medium" ? "26" : "30";
       
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
           "-y",
-          "-ss", String(clip.start),
+          "-threads", "2",           // Limit threads for Railway
+          "-ss", String(clip.start), // Seek before input (faster)
           "-i", videoPath,
           "-t", String(clip.end - clip.start),
-          "-vf", "crop=ih*9/16:ih,scale=1080:1920",
+          "-vf", "crop=min(iw\\,ih*9/16):ih,scale=1080:1920:flags=fast_bilinear",
           "-c:v", "libx264",
-          "-preset", "fast",
+          "-preset", "veryfast",     // Faster encoding
           "-crf", crf,
+          "-threads", "2",           // Limit encoding threads
           "-c:a", "aac",
           "-b:a", "128k",
+          "-movflags", "+faststart", // Better streaming
           outputPath,
         ]);
 
@@ -267,8 +270,9 @@ app.post("/render", authMiddleware, async (req, res) => {
         ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
         ffmpeg.on("close", (code) => {
           if (code === 0) resolve();
-          else reject(new Error(`FFmpeg render failed: ${stderr}`));
+          else reject(new Error(`FFmpeg render failed: ${stderr.slice(-2000)}`)); // Limit error length
         });
+        ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
       });
 
       // Upload rendered clip to Supabase
