@@ -736,11 +736,11 @@ export default function AutoClipPage() {
     return height >= width;
   }, [resolvedInputHeight, resolvedInputWidth]);
   const inputPreviewFrameClass = inputIsPortrait
-    ? "mx-auto h-[220px] w-auto max-w-full md:h-[320px]"
-    : "h-auto w-full max-h-[220px] md:max-h-[320px]";
+    ? "mx-auto h-[290px] w-auto max-w-full md:h-[420px]"
+    : "h-auto w-full max-h-[290px] md:max-h-[420px]";
   const reviewPreviewFrameClass = inputIsPortrait
-    ? "mx-auto h-[180px] w-auto max-w-full sm:h-[250px]"
-    : "h-auto w-full max-h-[180px] sm:max-h-[250px]";
+    ? "mx-auto h-[240px] w-auto max-w-full sm:h-[330px]"
+    : "h-auto w-full max-h-[240px] sm:max-h-[330px]";
   const updateInputPreviewMeta = useCallback(
     (width: number, height: number) => {
       if (
@@ -3072,7 +3072,7 @@ export default function AutoClipPage() {
                                     />
                                   </div>
                                 ) : (
-                                  <div className="flex min-h-[220px] items-center justify-center text-xs text-gray-400 md:min-h-[320px]">
+                                  <div className="flex min-h-[290px] items-center justify-center text-xs text-gray-400 md:min-h-[420px]">
                                     Preview available after upload
                                   </div>
                                 )}
@@ -3451,7 +3451,7 @@ export default function AutoClipPage() {
                                       {reviewTranscript}
                                     </p>
                                   </div>
-                                  <div className="relative flex min-h-[180px] w-full items-center justify-center rounded-xl bg-gray-100 sm:min-h-[250px]">
+                                  <div className="relative flex min-h-[240px] w-full items-center justify-center rounded-xl bg-gray-100 sm:min-h-[330px]">
                                     {reviewPreviewUrl ? (
                                       <div
                                         className={reviewPreviewFrameClass}
