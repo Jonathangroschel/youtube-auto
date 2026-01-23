@@ -619,6 +619,10 @@ export default function AutoClipPage() {
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<"upload" | "youtube">("upload");
   const [inputMeta, setInputMeta] = useState<AutoClipInputMeta | null>(null);
+  const [inputPreviewMeta, setInputPreviewMeta] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [inputPreviewUrl, setInputPreviewUrl] = useState<string | null>(null);
   const [inputUploading, setInputUploading] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
@@ -652,6 +656,9 @@ export default function AutoClipPage() {
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<AutoClipOutputMeta[]>([]);
+  const [outputAspectRatios, setOutputAspectRatios] = useState<
+    Record<number, { width: number; height: number }>
+  >({});
   const [selectedClipIds, setSelectedClipIds] = useState<number[]>([]);
   const [savedClipIds, setSavedClipIds] = useState<number[]>([]);
   const [savingClipIds, setSavingClipIds] = useState<number[]>([]);
@@ -692,9 +699,112 @@ export default function AutoClipPage() {
     inputMeta?.originalFilename ||
     inputMeta?.title ||
     (inputMode === "youtube" ? "youtube-video" : "uploaded-video");
+  const resolvedInputWidth = inputMeta?.width ?? inputPreviewMeta?.width ?? null;
+  const resolvedInputHeight =
+    inputMeta?.height ?? inputPreviewMeta?.height ?? null;
   const inputSizeLabel = formatBytes(inputMeta?.sizeBytes ?? null);
-  const inputWidthLabel = inputMeta?.width ? `${inputMeta.width}px` : "--";
-  const inputHeightLabel = inputMeta?.height ? `${inputMeta.height}px` : "--";
+  const inputWidthLabel = resolvedInputWidth
+    ? `${resolvedInputWidth}px`
+    : "--";
+  const inputHeightLabel = resolvedInputHeight
+    ? `${resolvedInputHeight}px`
+    : "--";
+  const inputAspectStyle = useMemo(() => {
+    const width = resolvedInputWidth;
+    const height = resolvedInputHeight;
+    if (
+      !width ||
+      !height ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height)
+    ) {
+      return { aspectRatio: "16 / 9" };
+    }
+    return { aspectRatio: `${width} / ${height}` };
+  }, [resolvedInputHeight, resolvedInputWidth]);
+  const inputIsPortrait = useMemo(() => {
+    const width = resolvedInputWidth;
+    const height = resolvedInputHeight;
+    if (
+      !width ||
+      !height ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height)
+    ) {
+      return false;
+    }
+    return height >= width;
+  }, [resolvedInputHeight, resolvedInputWidth]);
+  const inputPreviewFrameClass = inputIsPortrait
+    ? "mx-auto h-[200px] w-auto max-w-full md:h-[300px]"
+    : "h-auto w-full max-h-[200px] md:max-h-[300px]";
+  const reviewPreviewFrameClass = inputIsPortrait
+    ? "mx-auto h-[200px] w-auto max-w-full sm:h-[260px]"
+    : "h-auto w-full max-h-[200px] sm:max-h-[260px]";
+  const updateInputPreviewMeta = useCallback(
+    (width: number, height: number) => {
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        return;
+      }
+      if (inputMeta?.width && inputMeta?.height) {
+        return;
+      }
+      setInputPreviewMeta((prev) => {
+        if (prev && prev.width === width && prev.height === height) {
+          return prev;
+        }
+        return { width, height };
+      });
+    },
+    [inputMeta?.height, inputMeta?.width]
+  );
+  const registerOutputAspectRatio = useCallback(
+    (clipId: number, width: number, height: number) => {
+      if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        return;
+      }
+      setOutputAspectRatios((prev) => {
+        const existing = prev[clipId];
+        if (existing && existing.width === width && existing.height === height) {
+          return prev;
+        }
+        return { ...prev, [clipId]: { width, height } };
+      });
+    },
+    []
+  );
+  const resolveOutputFrameClass = useCallback(
+    (clipId: number) => {
+      const aspect = outputAspectRatios[clipId];
+      if (!aspect) {
+        return "h-full w-full";
+      }
+      return aspect.height >= aspect.width
+        ? "h-full w-auto max-w-full"
+        : "w-full h-auto max-h-full";
+    },
+    [outputAspectRatios]
+  );
+  const resolveOutputAspectStyle = useCallback(
+    (clipId: number) => {
+      const aspect = outputAspectRatios[clipId];
+      if (!aspect) {
+        return { aspectRatio: "9 / 16" };
+      }
+      return { aspectRatio: `${aspect.width} / ${aspect.height}` };
+    },
+    [outputAspectRatios]
+  );
   const activeHighlight =
     activeHighlightIndex != null ? highlights[activeHighlightIndex] ?? null : null;
   const highlightRange = activeHighlight
@@ -927,6 +1037,7 @@ export default function AutoClipPage() {
     setRenderError(null);
     setRendering(false);
     setOutputs([]);
+    setOutputAspectRatios({});
     setSelectedClipIds([]);
     setSavedClipIds([]);
     setSavingClipIds([]);
@@ -943,6 +1054,7 @@ export default function AutoClipPage() {
       URL.revokeObjectURL(inputPreviewUrl);
     }
     setInputPreviewUrl(null);
+    setInputPreviewMeta(null);
     setInputMeta(null);
     setUploadReady(false);
     setInputUploading(false);
@@ -985,6 +1097,7 @@ export default function AutoClipPage() {
       setRenderError(null);
       setProcessingError(null);
       setInputMeta(null);
+      setInputPreviewMeta(null);
       setUploadReady(false);
       if (inputPreviewUrl) {
         URL.revokeObjectURL(inputPreviewUrl);
@@ -2935,14 +3048,27 @@ export default function AutoClipPage() {
                             </h3>
                             <div className="h-px w-full bg-gray-100" />
                             <div className="flex w-full flex-col gap-4">
-                              <div className="w-full overflow-hidden rounded-2xl bg-black/90 ring-1 ring-black/5">
+                              <div className="flex w-full items-center justify-center overflow-hidden rounded-2xl bg-black/90 ring-1 ring-black/5">
                                 {inputPreviewUrl ? (
-                                  <video
-                                    src={inputPreviewUrl}
-                                    controls
-                                    playsInline
-                                    className="max-h-[200px] w-full object-cover md:max-h-[300px]"
-                                  />
+                                  <div
+                                    className={inputPreviewFrameClass}
+                                    style={inputAspectStyle}
+                                  >
+                                    <video
+                                      src={inputPreviewUrl}
+                                      controls
+                                      playsInline
+                                      className="h-full w-full object-contain"
+                                      onLoadedMetadata={(event) => {
+                                        const { videoWidth, videoHeight } =
+                                          event.currentTarget;
+                                        updateInputPreviewMeta(
+                                          videoWidth,
+                                          videoHeight
+                                        );
+                                      }}
+                                    />
+                                  </div>
                                 ) : (
                                   <div className="flex min-h-[200px] items-center justify-center text-xs text-gray-400 md:min-h-[260px]">
                                     Preview available after upload
@@ -3323,16 +3449,29 @@ export default function AutoClipPage() {
                                       {reviewTranscript}
                                     </p>
                                   </div>
-                                  <div className="relative flex h-[200px] w-full items-center justify-center rounded-xl bg-gray-100 sm:h-[260px]">
+                                  <div className="relative flex min-h-[200px] w-full items-center justify-center rounded-xl bg-gray-100 sm:min-h-[260px]">
                                     {reviewPreviewUrl ? (
-                                      <video
-                                        key={reviewPreviewUrl}
-                                        src={reviewPreviewUrl}
-                                        ref={reviewVideoRef}
-                                        className="h-full w-full object-cover"
-                                        playsInline
-                                        controls
-                                      />
+                                      <div
+                                        className={reviewPreviewFrameClass}
+                                        style={inputAspectStyle}
+                                      >
+                                        <video
+                                          key={reviewPreviewUrl}
+                                          src={reviewPreviewUrl}
+                                          ref={reviewVideoRef}
+                                          className="h-full w-full object-contain"
+                                          playsInline
+                                          controls
+                                          onLoadedMetadata={(event) => {
+                                            const { videoWidth, videoHeight } =
+                                              event.currentTarget;
+                                            updateInputPreviewMeta(
+                                              videoWidth,
+                                              videoHeight
+                                            );
+                                          }}
+                                        />
+                                      </div>
                                     ) : (
                                       <div className="text-xs text-gray-400">
                                         Preview available after upload
@@ -3789,13 +3928,28 @@ export default function AutoClipPage() {
                                     : "border-gray-200 hover:border-gray-300 hover:shadow-md"
                                     }`}
                                 >
-                                  <div className="relative h-[320px] w-full overflow-hidden bg-black transition-all duration-200 md:h-[360px]">
+                                  <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden bg-black transition-all duration-200 md:h-[360px]">
                                     {clip.previewUrl ? (
-                                      <video
-                                        src={clip.previewUrl}
-                                        controls
-                                        className="h-full w-full object-cover"
-                                      />
+                                      <div
+                                        className={resolveOutputFrameClass(clip.id)}
+                                        style={resolveOutputAspectStyle(clip.id)}
+                                      >
+                                        <video
+                                          src={clip.previewUrl}
+                                          controls
+                                          className="h-full w-full object-contain"
+                                          playsInline
+                                          onLoadedMetadata={(event) => {
+                                            const { videoWidth, videoHeight } =
+                                              event.currentTarget;
+                                            registerOutputAspectRatio(
+                                              clip.id,
+                                              videoWidth,
+                                              videoHeight
+                                            );
+                                          }}
+                                        />
+                                      </div>
                                     ) : (
                                       <div className="flex h-full items-center justify-center text-xs text-gray-400">
                                         Preview ready after render
