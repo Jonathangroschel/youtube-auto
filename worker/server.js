@@ -288,20 +288,37 @@ app.post("/render", authMiddleware, async (req, res) => {
         python.on("error", (err) => reject(new Error(`Python spawn error: ${err.message}`)));
       });
 
-      // Step 3: Merge cropped video with audio from original clip, scale, and encode
+      // Step 3: Re-encode Python output to fix timestamps
+      const reEncodedPath = path.join(TEMP_DIR, `${sessionId}_reencoded_${i}.mp4`);
+      await new Promise((resolve, reject) => {
+        const ffmpeg = spawn("ffmpeg", [
+          "-y",
+          "-fflags", "+genpts",     // Generate timestamps
+          "-i", croppedVideoOnly,
+          "-vf", "scale=1080:1920:flags=lanczos",
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-crf", "23",
+          "-an",                     // No audio yet
+          reEncodedPath,
+        ]);
+        let stderr = "";
+        ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+        ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error(`FFmpeg re-encode failed: ${stderr.slice(-500)}`)));
+        ffmpeg.on("error", reject);
+      });
+
+      // Step 4: Merge with audio from original clip
       const crf = quality === "high" ? "23" : quality === "medium" ? "26" : "30";
       
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
           "-y",
-          "-i", croppedVideoOnly,  // Video from Python crop (no audio)
-          "-i", clipPath,           // Original clip (for audio)
-          "-map", "0:v:0",          // Take video from first input
-          "-map", "1:a:0?",         // Take audio from second input (optional)
-          "-vf", "scale=1080:1920:flags=lanczos",
-          "-c:v", "libx264",
-          "-preset", "veryfast",
-          "-crf", crf,
+          "-i", reEncodedPath,      // Re-encoded video with fixed timestamps
+          "-i", clipPath,            // Original clip (for audio)
+          "-map", "0:v:0",           // Take video from first input
+          "-map", "1:a:0?",          // Take audio from second input (optional)
+          "-c:v", "copy",            // Copy video (already encoded)
           "-c:a", "aac",
           "-b:a", "128k",
           "-shortest",
@@ -313,10 +330,13 @@ app.post("/render", authMiddleware, async (req, res) => {
         ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
         ffmpeg.on("close", (code) => {
           if (code === 0) resolve();
-          else reject(new Error(`FFmpeg encode failed: ${stderr.slice(-1000)}`));
+          else reject(new Error(`FFmpeg merge failed: ${stderr.slice(-1000)}`));
         });
         ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
       });
+
+      // Clean up re-encoded file
+      await fs.unlink(reEncodedPath).catch(() => {});
 
       // Clean up intermediate video file
       await fs.unlink(croppedVideoOnly).catch(() => {});
