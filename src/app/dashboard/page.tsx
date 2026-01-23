@@ -98,6 +98,27 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    label: "AutoClip",
+    href: "/tools/autoclip",
+    icon: (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-5 w-5 text-gray-500"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
+        <path d="M20 2v4" />
+        <path d="M22 4h-4" />
+        <circle cx="4" cy="20" r="2" />
+      </svg>
+    ),
+  },
+  {
     label: "Trust Score",
     href: "/tools/trust-score",
     icon: (
@@ -347,7 +368,10 @@ const mobileSections: MobileSection[] = [
   },
   {
     label: "Tools",
-    items: [{ label: "Editor", href: "/tools" }],
+    items: [
+      { label: "Editor", href: "/tools" },
+      { label: "AutoClip", href: "/tools/autoclip" },
+    ],
   },
   {
     label: "Trust Score",
@@ -968,24 +992,45 @@ export default function DashboardPage() {
                         {feature.description}
                       </p>
                     </div>
-                    <button
-                      className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#EBF1FF] px-4 py-2 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5] sm:w-auto"
-                      type="button"
-                    >
-                      Try Now
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                    {feature.title === "AutoClip" ? (
+                      <a
+                        className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#EBF1FF] px-4 py-2 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5] sm:w-auto"
+                        href="/tools/autoclip"
                       >
-                        <path d="m9 18 6-6-6-6" />
-                      </svg>
-                    </button>
+                        Try Now
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                      </a>
+                    ) : (
+                      <button
+                        className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#EBF1FF] px-4 py-2 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5] sm:w-auto"
+                        type="button"
+                      >
+                        Try Now
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

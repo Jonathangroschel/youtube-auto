@@ -1349,6 +1349,34 @@ export default function AutoClipPage() {
     }
   }, [description, instructions, sessionId, transcriptionLanguage, uploadReady]);
 
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) {
+        return;
+      }
+      if (processing || inputUploading || sessionBusy || !uploadReady) {
+        return;
+      }
+      if (view !== "instructions") {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      handleFindMoments();
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [handleFindMoments, inputUploading, processing, sessionBusy, uploadReady, view]);
+
   const handleApprove = useCallback(
     async (index: number) => {
       if (!sessionId) {
