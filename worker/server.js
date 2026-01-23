@@ -247,17 +247,23 @@ app.post("/render", authMiddleware, async (req, res) => {
       const croppedPath = path.join(TEMP_DIR, `${sessionId}_cropped_${i}.mp4`);
       const outputPath = path.join(TEMP_DIR, clipFilename);
 
-      // Step 1: Extract clip segment
+      // Step 1: Extract clip segment and re-encode to H.264 (OpenCV can't read AV1)
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
           "-y",
           "-ss", String(clip.start),
           "-i", videoPath,
           "-t", String(clip.end - clip.start),
-          "-c", "copy",
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-crf", "18",
+          "-c:a", "aac",
+          "-b:a", "128k",
           clipPath,
         ]);
-        ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error("Clip extraction failed")));
+        let stderr = "";
+        ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+        ffmpeg.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Clip extraction failed: ${stderr.slice(-500)}`)));
         ffmpeg.on("error", reject);
       });
 
