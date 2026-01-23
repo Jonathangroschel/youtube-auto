@@ -61,7 +61,10 @@ async function persistSession(session: AutoClipSession): Promise<void> {
 // Load session from Supabase
 async function loadSession(sessionId: string): Promise<AutoClipSession | null> {
   const db = getSupabase();
-  if (!db) return null;
+  if (!db) {
+    console.warn("Supabase not configured - cannot load session from DB");
+    return null;
+  }
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,9 +74,18 @@ async function loadSession(sessionId: string): Promise<AutoClipSession | null> {
       .eq("id", sessionId)
       .single();
 
-    if (error || !data) return null;
+    if (error) {
+      console.error("Supabase load error:", error);
+      return null;
+    }
+    if (!data) {
+      console.warn("No session found in Supabase for:", sessionId);
+      return null;
+    }
+    console.log("Loaded session from Supabase:", sessionId, "status:", data.data?.status);
     return data.data as AutoClipSession;
-  } catch {
+  } catch (err) {
+    console.error("Exception loading session:", err);
     return null;
   }
 }
@@ -103,16 +115,20 @@ export const getSession = async (
   // Check memory cache first
   const cached = memoryStore.get(sessionId);
   if (cached) {
+    console.log("Session from memory cache:", sessionId, "status:", cached.status, "hasTranscript:", !!cached.transcript);
     return cached;
   }
 
   // Try to load from Supabase
+  console.log("Session not in memory, loading from Supabase:", sessionId);
   const loaded = await loadSession(sessionId);
   if (loaded) {
     memoryStore.set(sessionId, loaded);
+    console.log("Session loaded from Supabase:", sessionId, "status:", loaded.status, "hasTranscript:", !!loaded.transcript);
     return loaded;
   }
 
+  console.warn("Session not found anywhere:", sessionId);
   return null;
 };
 
@@ -121,6 +137,7 @@ export const saveSession = async (
 ): Promise<void> => {
   session.updatedAt = nowIso();
   memoryStore.set(session.id, session);
+  console.log("Saving session:", session.id, "status:", session.status, "hasTranscript:", !!session.transcript);
   await persistSession(session);
 };
 
