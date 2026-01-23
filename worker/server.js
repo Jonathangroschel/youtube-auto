@@ -261,14 +261,15 @@ app.post("/render", authMiddleware, async (req, res) => {
         ffmpeg.on("error", reject);
       });
 
-      // Step 2: Crop with face detection (Python script) or simple FFmpeg crop
       // Step 2: Crop with Python face detection (mediapipe)
+      // Note: Python crop outputs video only (no audio)
+      const croppedVideoOnly = path.join(TEMP_DIR, `${sessionId}_cropped_video_${i}.mp4`);
       await new Promise((resolve, reject) => {
-        console.log(`Running Python crop: mode=${cropMode}, input=${clipPath}, output=${croppedPath}`);
+        console.log(`Running Python crop: mode=${cropMode}, input=${clipPath}, output=${croppedVideoOnly}`);
         const python = spawn("python3", [
           "/app/scripts/crop.py",
           "--input", clipPath,
-          "--output", croppedPath,
+          "--output", croppedVideoOnly,
           "--mode", cropMode,
         ]);
         let stderr = "";
@@ -287,19 +288,23 @@ app.post("/render", authMiddleware, async (req, res) => {
         python.on("error", (err) => reject(new Error(`Python spawn error: ${err.message}`)));
       });
 
-      // Step 3: Scale and encode final output
+      // Step 3: Merge cropped video with audio from original clip, scale, and encode
       const crf = quality === "high" ? "23" : quality === "medium" ? "26" : "30";
       
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
           "-y",
-          "-i", croppedPath,
+          "-i", croppedVideoOnly,  // Video from Python crop (no audio)
+          "-i", clipPath,           // Original clip (for audio)
+          "-map", "0:v:0",          // Take video from first input
+          "-map", "1:a:0?",         // Take audio from second input (optional)
           "-vf", "scale=1080:1920:flags=lanczos",
           "-c:v", "libx264",
           "-preset", "veryfast",
           "-crf", crf,
           "-c:a", "aac",
           "-b:a", "128k",
+          "-shortest",
           "-movflags", "+faststart",
           outputPath,
         ]);
@@ -313,9 +318,11 @@ app.post("/render", authMiddleware, async (req, res) => {
         ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
       });
 
+      // Clean up intermediate video file
+      await fs.unlink(croppedVideoOnly).catch(() => {});
+
       // Clean up intermediate files
       await fs.unlink(clipPath).catch(() => {});
-      await fs.unlink(croppedPath).catch(() => {});
 
       // Upload rendered clip to Supabase
       const clipKey = `sessions/${sessionId}/clips/${outputFilename}`;
