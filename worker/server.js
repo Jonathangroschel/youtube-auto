@@ -292,11 +292,36 @@ app.post("/render", authMiddleware, async (req, res) => {
 
       if (!useFaceDetection) {
         // Simple center crop with FFmpeg
+        // Get video dimensions first
+        const probeResult = await new Promise((resolve, reject) => {
+          const ffprobe = spawn("ffprobe", [
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_streams",
+            clipPath,
+          ]);
+          let stdout = "";
+          ffprobe.stdout.on("data", (data) => (stdout += data.toString()));
+          ffprobe.on("close", (code) => {
+            if (code === 0) {
+              try {
+                const data = JSON.parse(stdout);
+                const video = data.streams?.find(s => s.codec_type === "video");
+                resolve({ width: video?.width || 1920, height: video?.height || 1080 });
+              } catch { resolve({ width: 1920, height: 1080 }); }
+            } else { resolve({ width: 1920, height: 1080 }); }
+          });
+        });
+        
+        const { width: srcW, height: srcH } = probeResult;
+        const targetW = Math.min(srcW, Math.floor(srcH * 9 / 16));
+        const cropX = Math.floor((srcW - targetW) / 2);
+        
         await new Promise((resolve, reject) => {
           const ffmpeg = spawn("ffmpeg", [
             "-y",
             "-i", clipPath,
-            "-vf", "crop=min(iw\\,ih*9/16):ih,scale=1080:1920:flags=fast_bilinear",
+            "-vf", `crop=${targetW}:${srcH}:${cropX}:0,scale=1080:1920`,
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", "23",
