@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession, saveSession, updateSessionStatus } from "@/lib/autoclip/session-store";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // 5 minutes for transcription
+export const maxDuration = 900; // Allow long-form transcription via worker
 
 const WORKER_URL = process.env.AUTOCLIP_WORKER_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";

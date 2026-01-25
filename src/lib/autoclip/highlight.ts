@@ -894,6 +894,7 @@ export const selectHighlight = async (
     "Prefer moments with a strong hook in the first 1-2 seconds, rising tension or curiosity, and a clear payoff.",
     "Pick segments that are surprising, emotionally charged, funny, controversial, or deliver a sharp, useful insight.",
     "Avoid intros, greetings, sponsor reads, housekeeping, repeated info, and low-energy filler.",
+    "Consider the full timeline and prefer highlights from different sections when possible, not just the opening.",
     "Select a segment between 7 and 45 seconds. Start right before the hook; end right after the payoff.",
     "Include enough setup/context for the punchline or key moment to make sense; extend the clip as needed within 7-45 seconds.",
     "The selected text should contain only complete sentences and form a complete thought.",

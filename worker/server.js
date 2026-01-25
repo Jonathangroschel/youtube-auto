@@ -37,6 +37,12 @@ const MAX_RENDER_HEIGHT = toPositiveInt(
   process.env.AUTOCLIP_MAX_RENDER_HEIGHT,
   1280
 );
+const TRANSCRIBE_CHUNK_SECONDS = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS,
+  600
+);
+const TRANSCRIBE_AUDIO_BITRATE =
+  process.env.AUTOCLIP_TRANSCRIBE_BITRATE || "64k";
 const RENDER_PRESET = process.env.AUTOCLIP_FFMPEG_PRESET || "veryfast";
 const SCALE_FLAGS = process.env.AUTOCLIP_SCALE_FLAGS || "fast_bilinear";
 const RENDER_HEIGHT = toEven(MAX_RENDER_HEIGHT);
@@ -193,12 +199,14 @@ app.post("/youtube", authMiddleware, async (req, res) => {
 
 // Transcribe video
 app.post("/transcribe", authMiddleware, async (req, res) => {
+  const cleanupTargets = [];
   try {
     const { sessionId, videoKey, language = "en" } = req.body;
 
     // Download video from Supabase
     const videoPath = path.join(TEMP_DIR, `${sessionId}_video.mp4`);
-    const audioPath = path.join(TEMP_DIR, `${sessionId}_audio.mp3`);
+    const audioChunkDir = path.join(TEMP_DIR, `${sessionId}_audio_chunks`);
+    cleanupTargets.push(videoPath, audioChunkDir);
 
     const { data: videoData, error: downloadError } = await supabase.storage
       .from(BUCKET)
@@ -208,52 +216,115 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
 
     await fs.writeFile(videoPath, Buffer.from(await videoData.arrayBuffer()));
 
-    // Extract audio with FFmpeg
+    // Extract audio into chunks to stay under Whisper limits.
+    await fs.mkdir(audioChunkDir, { recursive: true });
+    const chunkPattern = path.join(audioChunkDir, "chunk_%03d.mp3");
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn("ffmpeg", [
         "-hide_banner", "-loglevel", "error",
         "-y", "-i", videoPath,
-        "-vn", "-acodec", "libmp3lame", "-q:a", "4",
-        "-threads", String(FFMPEG_THREADS),
-        audioPath,
+        "-vn", "-ac", "1", "-ar", "16000",
+        "-b:a", TRANSCRIBE_AUDIO_BITRATE,
+        "-f", "segment",
+        "-segment_time", String(TRANSCRIBE_CHUNK_SECONDS),
+        "-reset_timestamps", "1",
+        chunkPattern,
       ]);
       let stderr = "";
       ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
       ffmpeg.on("close", (code) =>
         code === 0
           ? resolve()
-          : reject(new Error(`FFmpeg audio extraction failed: ${stderr}`))
+          : reject(new Error(`FFmpeg audio chunking failed: ${stderr}`))
       );
       ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
     });
 
-    // Transcribe with OpenAI Whisper
-    const audioBuffer = await fs.readFile(audioPath);
-    const audioFile = new File([audioBuffer], "audio.mp3", { type: "audio/mpeg" });
-    
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: "whisper-1",
-      language,
-      response_format: "verbose_json",
-      timestamp_granularities: ["word", "segment"],
-    });
+    const chunkFiles = (await fs.readdir(audioChunkDir))
+      .filter((name) => name.endsWith(".mp3"))
+      .sort()
+      .map((name) => path.join(audioChunkDir, name));
+    if (!chunkFiles.length) {
+      throw new Error("No audio chunks were created for transcription.");
+    }
 
-    // Clean up
-    await Promise.all([
-      fs.unlink(videoPath).catch(() => {}),
-      fs.unlink(audioPath).catch(() => {}),
-    ]);
+    const requestedLanguage =
+      typeof language === "string" && language.trim().length > 0
+        ? language
+        : undefined;
+    const allSegments = [];
+    const allWords = [];
+    let fullText = "";
+    let detectedLanguage = null;
+    let offsetSeconds = 0;
+
+    for (const chunkPath of chunkFiles) {
+      const audioBuffer = await fs.readFile(chunkPath);
+      const audioFile = new File([audioBuffer], path.basename(chunkPath), {
+        type: "audio/mpeg",
+      });
+
+      const transcription = await openai.audio.transcriptions.create({
+        file: audioFile,
+        model: "whisper-1",
+        language: requestedLanguage,
+        response_format: "verbose_json",
+        timestamp_granularities: ["word", "segment"],
+      });
+
+      if (!detectedLanguage && transcription.language) {
+        detectedLanguage = transcription.language;
+      }
+
+      const chunkSegments = (transcription.segments || []).map((segment) => ({
+        ...segment,
+        start: Number(segment.start) + offsetSeconds,
+        end: Number(segment.end) + offsetSeconds,
+      }));
+      const chunkWords = (transcription.words || []).map((word) => ({
+        ...word,
+        start: Number(word.start) + offsetSeconds,
+        end: Number(word.end) + offsetSeconds,
+      }));
+
+      allSegments.push(...chunkSegments);
+      allWords.push(...chunkWords);
+
+      const snippet = String(transcription.text ?? "").trim();
+      if (snippet) {
+        fullText = fullText ? `${fullText} ${snippet}` : snippet;
+      }
+
+      const chunkMetadata = await getVideoMetadata(chunkPath).catch(() => null);
+      const chunkDuration =
+        chunkMetadata &&
+        Number.isFinite(chunkMetadata.duration) &&
+        chunkMetadata.duration > 0
+          ? chunkMetadata.duration
+          : TRANSCRIBE_CHUNK_SECONDS;
+      offsetSeconds += chunkDuration;
+
+      await fs.unlink(chunkPath).catch(() => {});
+    }
 
     res.json({
-      segments: transcription.segments || [],
-      words: transcription.words || [],
-      text: transcription.text,
-      language: transcription.language,
+      segments: allSegments,
+      words: allWords,
+      text: fullText,
+      language: detectedLanguage,
     });
   } catch (error) {
     console.error("Transcribe error:", error);
     res.status(500).json({ error: error.message });
+  } finally {
+    await Promise.all(
+      cleanupTargets.map(async (target) => {
+        if (!target) {
+          return;
+        }
+        await fs.rm(target, { recursive: true, force: true }).catch(() => {});
+      })
+    );
   }
 });
 
