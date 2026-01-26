@@ -15,15 +15,20 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
+import { useSearchParams } from "next/navigation";
 import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import type { IGif } from "@giphy/js-types";
 import {
-  addAssetsToLibrary,
-  buildAssetLibraryItem,
+  consumeDeletedAssetIds,
+  createExternalAsset,
+  DELETED_ASSETS_EVENT,
+  deleteAssetById,
   loadAssetLibrary,
+  uploadAssetFile,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
+import { createClient } from "@/lib/supabase/client";
 
 import type {
   AssetFilter,
@@ -238,6 +243,50 @@ type ProjectBackgroundImage = {
   url: string;
   name: string;
   size: number;
+  assetId?: string;
+};
+
+type EditorProjectState = {
+  version: number;
+  project: {
+    name: string;
+    sizeId: string;
+    durationMode: "automatic" | "fixed";
+    durationSeconds: number;
+    backgroundMode: "color" | "image";
+    backgroundImage?: ProjectBackgroundImage | null;
+    canvasBackground?: string;
+    videoBackground?: string;
+  };
+  snapshot: EditorSnapshot;
+};
+
+type ProjectSaveState = "idle" | "saving" | "saved" | "error";
+
+type ExportStatus =
+  | "idle"
+  | "starting"
+  | "queued"
+  | "loading"
+  | "rendering"
+  | "encoding"
+  | "uploading"
+  | "complete"
+  | "error";
+
+type ExportOutput = {
+  width: number;
+  height: number;
+};
+
+type ExportUiState = {
+  open: boolean;
+  status: ExportStatus;
+  stage: string;
+  progress: number;
+  jobId: string | null;
+  downloadUrl: string | null;
+  error: string | null;
 };
 
 const projectSizeOptions: ProjectSizeOption[] = [
@@ -367,24 +416,6 @@ const subtitleLanguages: SubtitleLanguageOption[] = [
   { code: "pt", label: "Portuguese", detail: "Portuguese (BR)", region: "BR" },
 ];
 
-const toLibraryItemFromAsset = (asset: MediaAsset): AssetLibraryItem | null => {
-  if (asset.kind === "text") {
-    return null;
-  }
-  return buildAssetLibraryItem({
-    id: asset.id,
-    name: asset.name,
-    kind: asset.kind,
-    url: asset.url,
-    size: asset.size,
-    duration: asset.duration,
-    width: asset.width,
-    height: asset.height,
-    aspectRatio: asset.aspectRatio,
-    createdAt: asset.createdAt,
-  });
-};
-
 const mergeAssetsWithLibrary = (
   current: MediaAsset[],
   libraryItems: AssetLibraryItem[]
@@ -392,12 +423,11 @@ const mergeAssetsWithLibrary = (
   if (!libraryItems.length) {
     return current;
   }
-  const existingKeys = new Set(
-    current.map((asset) => `${asset.kind}:${asset.url}`)
+  const merged = new Map<string, MediaAsset>(
+    current.map((asset) => [asset.id, asset])
   );
-  const additions = libraryItems
-    .filter((item) => !existingKeys.has(`${item.kind}:${item.url}`))
-    .map((item) => ({
+  libraryItems.forEach((item) => {
+    const updated: MediaAsset = {
       id: item.id,
       name: item.name,
       kind: item.kind,
@@ -408,8 +438,16 @@ const mergeAssetsWithLibrary = (
       height: item.height,
       aspectRatio: item.aspectRatio,
       createdAt: item.createdAt,
-    }));
-  return additions.length ? [...additions, ...current] : current;
+    };
+    const existing = merged.get(item.id);
+    merged.set(item.id, existing ? { ...existing, ...updated } : updated);
+  });
+  return Array.from(merged.values());
+};
+
+const ensureEven = (value: number) => {
+  const rounded = Math.max(2, Math.round(value));
+  return rounded % 2 === 0 ? rounded : rounded + 1;
 };
 
 export default function AdvancedEditorPage() {
@@ -419,6 +457,8 @@ export default function AdvancedEditorPage() {
   const gifSearchLimit = 30;
   const gifPreviewIntervalMs = 15000;
   const gifDragType = "application/x-gif-asset";
+  const searchParams = useSearchParams();
+  const isExportMode = searchParams.get("export") === "1";
   const [activeTool, setActiveTool] = useState("video");
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
@@ -496,6 +536,12 @@ export default function AdvancedEditorPage() {
   const [stageSelection, setStageSelection] =
     useState<RangeSelectionState | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectReady, setProjectReady] = useState(false);
+  const [projectSaveState, setProjectSaveState] =
+    useState<ProjectSaveState>("idle");
+  const [showSaveIndicator, setShowSaveIndicator] = useState(false);
+  const [projectStarted, setProjectStarted] = useState(false);
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectSizeId, setProjectSizeId] = useState("original");
   const [projectDurationMode, setProjectDurationMode] = useState<
@@ -507,6 +553,20 @@ export default function AdvancedEditorPage() {
   >("color");
   const [projectBackgroundImage, setProjectBackgroundImage] =
     useState<ProjectBackgroundImage | null>(null);
+  const [exportUi, setExportUi] = useState<ExportUiState>({
+    open: false,
+    status: "idle",
+    stage: "",
+    progress: 0,
+    jobId: null,
+    downloadUrl: null,
+    error: null,
+  });
+  const [exportViewport, setExportViewport] = useState<ExportOutput | null>(
+    null
+  );
+  const [exportAutoDownloaded, setExportAutoDownloaded] = useState(false);
+  const exportPollRef = useRef<number | null>(null);
   const resolvedProjectSize = useMemo(
     () =>
       projectSizeOptions.find((option) => option.id === projectSizeId) ??
@@ -515,6 +575,9 @@ export default function AdvancedEditorPage() {
   );
   const projectAspectRatioOverride = resolvedProjectSize?.aspectRatio ?? null;
   const projectBackgroundUrlRef = useRef<string | null>(null);
+  const projectNameRef = useRef(projectName);
+  const projectNameSavePendingRef = useRef(false);
+  const saveStatusTimeoutRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [canvasBackground, setCanvasBackground] = useState("#f2f3fa");
@@ -737,18 +800,36 @@ export default function AdvancedEditorPage() {
     null
   );
   const textSettingsRef = useRef<Record<string, TextClipSettings>>({});
-  const handleProjectBackgroundImageChange = useCallback((file: File | null) => {
-    if (!file) {
-      setProjectBackgroundImage(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setProjectBackgroundImage({
-      url,
-      name: file.name,
-      size: file.size,
-    });
-  }, []);
+  const handleProjectBackgroundImageChange = useCallback(
+    async (file: File | null) => {
+      if (!file) {
+        setProjectBackgroundImage(null);
+        return;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      const meta = await getMediaMeta("image", previewUrl);
+      URL.revokeObjectURL(previewUrl);
+      const stored = await uploadAssetFile(file, {
+        name: file.name || "Background image",
+        kind: "image",
+        source: "upload",
+        width: meta.width,
+        height: meta.height,
+        aspectRatio: meta.aspectRatio,
+      });
+      if (!stored) {
+        return;
+      }
+      setProjectBackgroundImage({
+        url: stored.url,
+        name: stored.name,
+        size: stored.size,
+        assetId: stored.id,
+      });
+      setAssets((prev) => mergeAssetsWithLibrary(prev, [stored]));
+    },
+    []
+  );
   const handleProjectBackgroundImageClear = useCallback(() => {
     setProjectBackgroundImage(null);
   }, []);
@@ -756,7 +837,8 @@ export default function AdvancedEditorPage() {
     const nextUrl = projectBackgroundImage?.url ?? null;
     if (
       projectBackgroundUrlRef.current &&
-      projectBackgroundUrlRef.current !== nextUrl
+      projectBackgroundUrlRef.current !== nextUrl &&
+      projectBackgroundUrlRef.current.startsWith("blob:")
     ) {
       URL.revokeObjectURL(projectBackgroundUrlRef.current);
     }
@@ -764,7 +846,10 @@ export default function AdvancedEditorPage() {
   }, [projectBackgroundImage?.url]);
   useEffect(() => {
     return () => {
-      if (projectBackgroundUrlRef.current) {
+      if (
+        projectBackgroundUrlRef.current &&
+        projectBackgroundUrlRef.current.startsWith("blob:")
+      ) {
         URL.revokeObjectURL(projectBackgroundUrlRef.current);
       }
     };
@@ -824,6 +909,8 @@ export default function AdvancedEditorPage() {
     future: EditorSnapshot[];
     locked: boolean;
   }>({ past: [], future: [], locked: false });
+  const projectIdRef = useRef<string | null>(null);
+  const projectSaveTimeoutRef = useRef<number | null>(null);
   const historyThrottleRef = useRef(0);
   const clipboardRef = useRef<ClipboardData | null>(null);
   const dragTransformHistoryRef = useRef(false);
@@ -1303,6 +1390,319 @@ export default function AdvancedEditorPage() {
     historyRef.current.locked = false;
   }, []);
 
+  const pruneAssetsById = useCallback(
+    (assetIds: string[]) => {
+      const ids = assetIds.filter((id) => typeof id === "string");
+      if (!ids.length) {
+        return;
+      }
+      const assetIdSet = new Set(ids);
+      const clipIdsForAssets = timeline
+        .filter((clip) => assetIdSet.has(clip.assetId))
+        .map((clip) => clip.id);
+      if (!clipIdsForAssets.length) {
+        setAssets((prev) => prev.filter((asset) => !assetIdSet.has(asset.id)));
+        if (projectBackgroundImage?.assetId && assetIdSet.has(projectBackgroundImage.assetId)) {
+          setProjectBackgroundImage(null);
+        }
+        return;
+      }
+      const subtitleClipIdsToRemove = new Set<string>();
+      const sourceIdsToRemove = new Set(clipIdsForAssets);
+      subtitleSegments.forEach((segment) => {
+        if (segment.sourceClipId && sourceIdsToRemove.has(segment.sourceClipId)) {
+          subtitleClipIdsToRemove.add(segment.clipId);
+        }
+        if (sourceIdsToRemove.has(segment.clipId)) {
+          subtitleClipIdsToRemove.add(segment.clipId);
+        }
+      });
+      const idsToRemove = new Set([
+        ...clipIdsForAssets,
+        ...subtitleClipIdsToRemove,
+      ]);
+      const nextTimeline = timeline.filter((clip) => !idsToRemove.has(clip.id));
+      const nextAssets = assetsRef.current.filter(
+        (item) => !assetIdSet.has(item.id)
+      );
+      const selectedIds =
+        selectedClipIds.length > 0
+          ? selectedClipIds
+          : selectedClipId
+            ? [selectedClipId]
+            : [];
+      const remainingSelection = selectedIds.filter(
+        (id) => !idsToRemove.has(id)
+      );
+      const nextSelectedId =
+        remainingSelection[0] ?? nextTimeline[0]?.id ?? null;
+      const nextSelectedIds =
+        remainingSelection.length > 0
+          ? remainingSelection
+          : nextSelectedId
+            ? [nextSelectedId]
+            : [];
+      const nextActiveAssetId = nextSelectedId
+        ? nextTimeline.find((clip) => clip.id === nextSelectedId)?.assetId ??
+          null
+        : assetIdSet.has(activeAssetId ?? "")
+          ? nextAssets[0]?.id ?? null
+          : activeAssetId;
+      setTimeline(nextTimeline);
+      setSelectedClipId(nextSelectedId);
+      setSelectedClipIds(nextSelectedIds);
+      setActiveAssetId(nextActiveAssetId);
+      setSubtitleSegments((prev) =>
+        prev.filter((segment) => !subtitleClipIdsToRemove.has(segment.clipId))
+      );
+      setTextSettings((prev) => {
+        const next = { ...prev };
+        idsToRemove.forEach((id) => {
+          delete next[id];
+        });
+        return next;
+      });
+      setClipTransforms((prev) => {
+        const next = { ...prev };
+        idsToRemove.forEach((id) => {
+          delete next[id];
+        });
+        return next;
+      });
+      setDetachedSubtitleIds((prev) => {
+        if (prev.size === 0) {
+          return prev;
+        }
+        const next = new Set(prev);
+        idsToRemove.forEach((id) => next.delete(id));
+        return next;
+      });
+      setAssets(nextAssets);
+      if (projectBackgroundImage?.assetId && assetIdSet.has(projectBackgroundImage.assetId)) {
+        setProjectBackgroundImage(null);
+      }
+      historyRef.current.past = [];
+      historyRef.current.future = [];
+      syncHistoryState();
+    },
+    [
+      activeAssetId,
+      projectBackgroundImage?.assetId,
+      selectedClipId,
+      selectedClipIds,
+      subtitleSegments,
+      syncHistoryState,
+      timeline,
+    ]
+  );
+
+  const buildProjectState = useCallback<() => EditorProjectState>(
+    () => ({
+      version: 1,
+      project: {
+        name: projectName,
+        sizeId: projectSizeId,
+        durationMode: projectDurationMode,
+        durationSeconds: projectDurationSeconds,
+        backgroundMode: projectBackgroundMode,
+        backgroundImage: projectBackgroundImage ?? null,
+        canvasBackground,
+        videoBackground,
+      },
+      snapshot: createSnapshot(),
+    }),
+    [
+      projectName,
+      projectSizeId,
+      projectDurationMode,
+      projectDurationSeconds,
+      projectBackgroundMode,
+      projectBackgroundImage,
+      canvasBackground,
+      videoBackground,
+      createSnapshot,
+    ]
+  );
+
+  const applyProjectState = useCallback(
+    (payload: EditorProjectState) => {
+      const snapshot = payload?.snapshot;
+      if (snapshot) {
+        applySnapshot(snapshot);
+      }
+      const project = payload?.project;
+      if (project) {
+        if (typeof project.name === "string") {
+          setProjectName(project.name);
+        }
+        if (typeof project.sizeId === "string") {
+          setProjectSizeId(project.sizeId);
+        }
+        if (project.durationMode === "automatic" || project.durationMode === "fixed") {
+          setProjectDurationMode(project.durationMode);
+        }
+        if (typeof project.durationSeconds === "number") {
+          setProjectDurationSeconds(project.durationSeconds);
+        }
+        if (project.backgroundMode === "color" || project.backgroundMode === "image") {
+          setProjectBackgroundMode(project.backgroundMode);
+        }
+        if (
+          project.backgroundImage &&
+          typeof project.backgroundImage.url === "string"
+        ) {
+          setProjectBackgroundImage(project.backgroundImage);
+        } else {
+          setProjectBackgroundImage(null);
+        }
+        if (typeof project.canvasBackground === "string") {
+          setCanvasBackground(project.canvasBackground);
+        }
+        if (typeof project.videoBackground === "string") {
+          setVideoBackground(project.videoBackground);
+        }
+      }
+      historyRef.current.past = [];
+      historyRef.current.future = [];
+      syncHistoryState();
+    },
+    [applySnapshot, syncHistoryState]
+  );
+
+  useEffect(() => {
+    if (!isExportMode || typeof window === "undefined") {
+      return;
+    }
+    const payload = (window as any).__EDITOR_EXPORT__;
+    if (payload?.output && typeof payload.output === "object") {
+      const nextWidth = Number(payload.output.width);
+      const nextHeight = Number(payload.output.height);
+      if (Number.isFinite(nextWidth) && Number.isFinite(nextHeight)) {
+        setExportViewport({
+          width: Math.max(2, Math.round(nextWidth)),
+          height: Math.max(2, Math.round(nextHeight)),
+        });
+      }
+    }
+    if (payload?.state) {
+      const sanitizedSnapshot = payload.state.snapshot
+        ? {
+            ...payload.state.snapshot,
+            selectedClipId: null,
+            selectedClipIds: [],
+            activeCanvasClipId: null,
+            activeAssetId: null,
+            currentTime: 0,
+          }
+        : null;
+      const sanitizedState = sanitizedSnapshot
+        ? {
+            ...payload.state,
+            snapshot: sanitizedSnapshot,
+          }
+        : payload.state;
+      applyProjectState(sanitizedState as EditorProjectState);
+      setProjectReady(true);
+      setProjectStarted(true);
+      setIsPlaying(false);
+      return;
+    }
+    setProjectReady(true);
+  }, [applyProjectState, isExportMode]);
+
+  const handleProjectNameCommit = useCallback((value: string) => {
+    if (saveStatusTimeoutRef.current) {
+      window.clearTimeout(saveStatusTimeoutRef.current);
+      saveStatusTimeoutRef.current = null;
+    }
+    const nextName = value;
+    const nextNormalized = nextName.trim();
+    const currentNormalized = projectNameRef.current.trim();
+    setProjectName(nextName);
+    if (nextNormalized === currentNormalized) {
+      return;
+    }
+    projectNameSavePendingRef.current = true;
+    setProjectSaveState("idle");
+    setShowSaveIndicator(true);
+  }, []);
+
+  const saveProjectState = useCallback(
+    async (state: EditorProjectState) => {
+      const notifyNameSave = projectNameSavePendingRef.current;
+      if (notifyNameSave && saveStatusTimeoutRef.current) {
+        window.clearTimeout(saveStatusTimeoutRef.current);
+        saveStatusTimeoutRef.current = null;
+      }
+      if (notifyNameSave) {
+        setProjectSaveState("saving");
+      }
+      const supabase = createClient();
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user) {
+        if (notifyNameSave) {
+          setProjectSaveState("error");
+          saveStatusTimeoutRef.current = window.setTimeout(() => {
+            setShowSaveIndicator(false);
+          }, 4000);
+          projectNameSavePendingRef.current = false;
+        }
+        return;
+      }
+      let resolvedId = projectIdRef.current;
+      if (!resolvedId) {
+        resolvedId = crypto.randomUUID();
+        projectIdRef.current = resolvedId;
+        setProjectId(resolvedId);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("editor:lastProjectId", resolvedId);
+        }
+      }
+      const title = state.project.name.trim() || "Untitled Project";
+      const { error } = await supabase.from("projects").upsert({
+        id: resolvedId,
+        user_id: user.id,
+        title,
+        kind: "editor",
+        status: "draft",
+        project_state: state,
+      });
+      if (error) {
+        if (notifyNameSave) {
+          setProjectSaveState("error");
+          saveStatusTimeoutRef.current = window.setTimeout(() => {
+            setShowSaveIndicator(false);
+          }, 4000);
+          projectNameSavePendingRef.current = false;
+        }
+        return;
+      }
+      const assetIds = state.snapshot.assets
+        .filter((asset) => asset.kind !== "text")
+        .map((asset) => asset.id)
+        .filter((assetId): assetId is string => typeof assetId === "string");
+      if (assetIds.length) {
+        const payload = assetIds.map((assetId) => ({
+          project_id: resolvedId,
+          asset_id: assetId,
+          role: "source",
+        }));
+        await supabase
+          .from("project_assets")
+          .upsert(payload, { onConflict: "project_id,asset_id" });
+      }
+      if (notifyNameSave) {
+        setProjectSaveState("saved");
+        saveStatusTimeoutRef.current = window.setTimeout(() => {
+          setShowSaveIndicator(false);
+        }, 2000);
+        projectNameSavePendingRef.current = false;
+      }
+    },
+    []
+  );
+
   const handleUndo = useCallback(() => {
     const history = historyRef.current;
     if (history.past.length === 0) {
@@ -1340,29 +1740,205 @@ export default function AdvancedEditorPage() {
   }, [assets]);
 
   useEffect(() => {
+    projectNameRef.current = projectName;
+  }, [projectName]);
+
+  useEffect(() => {
+    if (isExportMode) {
+      setAssetLibraryReady(true);
+      return;
+    }
     if (assetLibraryBootstrappedRef.current) {
       return;
     }
-    const storedAssets = loadAssetLibrary();
-    if (storedAssets.length) {
-      setAssets((prev) => mergeAssetsWithLibrary(prev, storedAssets));
-    }
     assetLibraryBootstrappedRef.current = true;
-    setAssetLibraryReady(true);
+    let cancelled = false;
+    const loadLibrary = async () => {
+      const storedAssets = await loadAssetLibrary();
+      if (cancelled) {
+        return;
+      }
+      if (storedAssets.length) {
+        setAssets((prev) => mergeAssetsWithLibrary(prev, storedAssets));
+      }
+      setAssetLibraryReady(true);
+    };
+    loadLibrary().catch(() => {
+      if (!cancelled) {
+        setAssetLibraryReady(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isExportMode]);
+
+  useEffect(() => {
+    projectIdRef.current = projectId;
+  }, [projectId]);
+
+  useEffect(() => {
+    if (isExportMode) {
+      setProjectReady(true);
+      return;
+    }
+    let cancelled = false;
+    const loadProject = async () => {
+      const supabase = createClient();
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      if (!user) {
+        if (!cancelled) {
+          setProjectReady(true);
+        }
+        return;
+      }
+      const queryProjectId = searchParams.get("projectId");
+      const fetchProjectById = async (id: string) => {
+        const { data } = await supabase
+          .from("projects")
+          .select("id,title,project_state,kind")
+          .eq("id", id)
+          .eq("kind", "editor")
+          .limit(1);
+        return data?.[0] ?? null;
+      };
+
+      if (!queryProjectId) {
+        if (!cancelled) {
+          setProjectReady(true);
+        }
+        return;
+      }
+
+      const project = await fetchProjectById(queryProjectId);
+
+      if (!cancelled && project?.project_state) {
+        applyProjectState(project.project_state as EditorProjectState);
+        const libraryItems = await loadAssetLibrary();
+        if (!cancelled && libraryItems.length) {
+          setAssets((prev) => mergeAssetsWithLibrary(prev, libraryItems));
+        }
+        setProjectId(project.id);
+        if (
+          typeof project.title === "string" &&
+          !project.project_state?.project?.name
+        ) {
+          setProjectName(project.title);
+        }
+      }
+
+      if (!cancelled) {
+        setProjectReady(true);
+      }
+    };
+
+    loadProject().catch(() => {
+      if (!cancelled) {
+        setProjectReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyProjectState, isExportMode, searchParams]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleDeletedAssets = () => {
+      const deletedIds = consumeDeletedAssetIds();
+      if (deletedIds.length) {
+        pruneAssetsById(deletedIds);
+      }
+    };
+    handleDeletedAssets();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "satura:deleted-assets") {
+        handleDeletedAssets();
+      }
+    };
+    const handleImmediateDelete = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!Array.isArray(detail)) {
+        return;
+      }
+      const ids = detail.filter((id): id is string => typeof id === "string");
+      if (ids.length) {
+        pruneAssetsById(ids);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(DELETED_ASSETS_EVENT, handleImmediateDelete);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(DELETED_ASSETS_EVENT, handleImmediateDelete);
+    };
+  }, [pruneAssetsById]);
+
+  useEffect(() => {
+    if (!projectStarted && timeline.length > 0) {
+      setProjectStarted(true);
+    }
+  }, [projectStarted, timeline.length]);
+
+  useEffect(() => {
+    if (!projectStarted && projectId) {
+      setProjectStarted(true);
+    }
+  }, [projectId, projectStarted]);
+
+  useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
+    if (!projectReady || !projectStarted) {
+      return;
+    }
+    if (projectSaveTimeoutRef.current) {
+      window.clearTimeout(projectSaveTimeoutRef.current);
+    }
+    projectSaveTimeoutRef.current = window.setTimeout(() => {
+      const state = buildProjectState();
+      saveProjectState(state).catch(() => {});
+    }, 1500);
+    return () => {
+      if (projectSaveTimeoutRef.current) {
+        window.clearTimeout(projectSaveTimeoutRef.current);
+      }
+    };
+  }, [buildProjectState, isExportMode, projectReady, projectStarted, saveProjectState]);
+
+  useEffect(() => {
+    return () => {
+      if (saveStatusTimeoutRef.current) {
+        window.clearTimeout(saveStatusTimeoutRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
-    if (!assetLibraryBootstrappedRef.current) {
+    if (!projectBackgroundImage?.assetId) {
       return;
     }
-    const libraryItems = assets
-      .map((asset) => toLibraryItemFromAsset(asset))
-      .filter((item): item is AssetLibraryItem => Boolean(item));
-    if (!libraryItems.length) {
+    const match = assetsRef.current.find(
+      (asset) => asset.id === projectBackgroundImage.assetId
+    );
+    if (!match) {
       return;
     }
-    addAssetsToLibrary(libraryItems);
-  }, [assets]);
+    if (match.url === projectBackgroundImage.url) {
+      return;
+    }
+    setProjectBackgroundImage({
+      url: match.url,
+      name: match.name,
+      size: match.size,
+      assetId: match.id,
+    });
+  }, [projectBackgroundImage?.assetId, projectBackgroundImage?.url, assets]);
 
   useEffect(() => {
     lanesRef.current = lanes;
@@ -3477,6 +4053,7 @@ export default function AdvancedEditorPage() {
   const canPlay = Boolean(activeClipEntry || firstClipEntry);
   const hasTimelineClips = timeline.length > 0;
   const showEmptyState = !hasTimelineClips;
+  const showUploadingState = showEmptyState && uploading;
   const showVideoPanel =
     activeTool === "video" &&
     Boolean(selectedVideoEntry && selectedVideoSettings);
@@ -4218,6 +4795,378 @@ export default function AdvancedEditorPage() {
     }
     return contentTimelineTotal;
   }, [contentTimelineTotal, projectDurationMode, projectDurationSeconds]);
+
+  const exportFonts = useMemo(() => {
+    const fonts = new Set<string>();
+    if (fallbackTextSettings.fontFamily) {
+      fonts.add(fallbackTextSettings.fontFamily);
+    }
+    if (subtitleBaseSettings.fontFamily) {
+      fonts.add(subtitleBaseSettings.fontFamily);
+    }
+    Object.values(textSettings).forEach((settings) => {
+      if (settings?.fontFamily) {
+        fonts.add(settings.fontFamily);
+      }
+    });
+    const activeSubtitleStyle =
+      resolvedSubtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
+      null;
+    if (activeSubtitleStyle?.preview?.fontFamily) {
+      fonts.add(activeSubtitleStyle.preview.fontFamily);
+    }
+    return Array.from(fonts).filter(Boolean);
+  }, [
+    fallbackTextSettings.fontFamily,
+    subtitleBaseSettings.fontFamily,
+    resolvedSubtitleStylePresets,
+    subtitleStyleId,
+    textSettings,
+  ]);
+
+  const exportDimensions = useMemo<ExportOutput>(() => {
+    if (resolvedProjectSize?.width && resolvedProjectSize?.height) {
+      return {
+        width: ensureEven(resolvedProjectSize.width),
+        height: ensureEven(resolvedProjectSize.height),
+      };
+    }
+    const ratio = Number.isFinite(projectAspectRatio) && projectAspectRatio > 0
+      ? projectAspectRatio
+      : 16 / 9;
+    if (ratio >= 1) {
+      const width = 1920;
+      return {
+        width: ensureEven(width),
+        height: ensureEven(width / ratio),
+      };
+    }
+    const height = 1920;
+    return {
+      width: ensureEven(height * ratio),
+      height: ensureEven(height),
+    };
+  }, [projectAspectRatio, resolvedProjectSize?.height, resolvedProjectSize?.width]);
+
+  const waitForExportStage = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const start = performance.now();
+    const waitFrame = () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    while (performance.now() - start < 15000) {
+      const stage = stageRef.current;
+      if (stage) {
+        const rect = stage.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          return;
+        }
+      }
+      await waitFrame();
+    }
+  }, []);
+
+  const waitForExportMedia = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stage = stageRef.current;
+    if (!stage) {
+      return;
+    }
+    const images = Array.from(stage.querySelectorAll("img"));
+    const videos = Array.from(stage.querySelectorAll("video"));
+    await Promise.all(
+      images.map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if (img.complete && img.naturalWidth > 0) {
+              resolve();
+              return;
+            }
+            const done = () => resolve();
+            img.addEventListener("load", done, { once: true });
+            img.addEventListener("error", done, { once: true });
+          })
+      )
+    );
+    await Promise.all(
+      videos.map(
+        (video) =>
+          new Promise<void>((resolve) => {
+            if (video.readyState >= 2 && !video.seeking) {
+              resolve();
+              return;
+            }
+            const done = () => resolve();
+            video.addEventListener("loadeddata", done, { once: true });
+            video.addEventListener("seeked", done, { once: true });
+            video.addEventListener("error", done, { once: true });
+          })
+      )
+    );
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    );
+  }, []);
+
+  const waitForExportFonts = useCallback(
+    async (fonts: string[]) => {
+      if (typeof document === "undefined") {
+        return;
+      }
+      const unique = Array.from(
+        new Set(
+          fonts
+            .map((font) => (typeof font === "string" ? font.trim() : ""))
+            .filter(Boolean)
+        )
+      );
+      await Promise.all(unique.map((font) => loadFontFamily(font)));
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+    },
+    [loadFontFamily]
+  );
+
+  useEffect(() => {
+    if (!isExportMode || typeof window === "undefined") {
+      return;
+    }
+    const payload = (window as any).__EDITOR_EXPORT__;
+    const fonts = Array.isArray(payload?.fonts) ? payload.fonts : [];
+    (window as any).__EDITOR_EXPORT_API__ = {
+      waitForReady: async () => {
+        await waitForExportStage();
+        await waitForExportFonts(fonts);
+        await waitForExportMedia();
+      },
+      setTime: async (time: number) => {
+        setIsPlaying(false);
+        setCurrentTime(time);
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve())
+        );
+        await waitForExportMedia();
+      },
+      getStageSelector: () => "[data-export-stage]",
+    };
+    return () => {
+      delete (window as any).__EDITOR_EXPORT_API__;
+    };
+  }, [
+    isExportMode,
+    waitForExportFonts,
+    waitForExportMedia,
+    waitForExportStage,
+  ]);
+
+  const buildExportState = useCallback(() => {
+    const state = buildProjectState();
+    const snapshot = state.snapshot
+      ? {
+          ...state.snapshot,
+          selectedClipId: null,
+          selectedClipIds: [],
+          activeCanvasClipId: null,
+          activeAssetId: null,
+          currentTime: 0,
+        }
+      : state.snapshot;
+    return {
+      ...state,
+      snapshot,
+    };
+  }, [buildProjectState]);
+
+  const stopExportPolling = useCallback(() => {
+    if (exportPollRef.current) {
+      window.clearInterval(exportPollRef.current);
+      exportPollRef.current = null;
+    }
+  }, []);
+
+  const triggerExportDownload = useCallback(
+    (url: string) => {
+      if (typeof document === "undefined") {
+        return;
+      }
+      const safeName = (projectName || "export")
+        .trim()
+        .replace(/[^a-zA-Z0-9-_]+/g, "-")
+        .replace(/-+/g, "-");
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeName || "export"}.mp4`;
+      anchor.rel = "noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    },
+    [projectName]
+  );
+
+  const startExportPolling = useCallback(
+    (jobId: string) => {
+      stopExportPolling();
+      exportPollRef.current = window.setInterval(async () => {
+        try {
+          const response = await fetch(
+            `/api/editor/export/status?jobId=${jobId}`
+          );
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || "Export status check failed.");
+          }
+          setExportUi((prev) => ({
+            ...prev,
+            status: payload?.status ?? prev.status,
+            stage: payload?.stage ?? prev.stage,
+            progress:
+              typeof payload?.progress === "number"
+                ? clamp(payload.progress, 0, 1)
+                : prev.progress,
+            downloadUrl:
+              typeof payload?.downloadUrl === "string"
+                ? payload.downloadUrl
+                : prev.downloadUrl,
+            error:
+              typeof payload?.error === "string" ? payload.error : prev.error,
+          }));
+          if (payload?.status === "complete" || payload?.status === "error") {
+            stopExportPolling();
+          }
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Export failed.";
+          setExportUi((prev) => ({
+            ...prev,
+            status: "error",
+            stage: "Export failed",
+            error: message,
+          }));
+          stopExportPolling();
+        }
+      }, 1000);
+    },
+    [stopExportPolling]
+  );
+
+  const handleStartExport = useCallback(async () => {
+    if (
+      timeline.length === 0 ||
+      exportUi.status === "starting" ||
+      exportUi.status === "queued" ||
+      exportUi.status === "loading" ||
+      exportUi.status === "rendering" ||
+      exportUi.status === "encoding" ||
+      exportUi.status === "uploading"
+    ) {
+      return;
+    }
+    setExportAutoDownloaded(false);
+    setExportUi({
+      open: true,
+      status: "starting",
+      stage: "Preparing export",
+      progress: 0,
+      jobId: null,
+      downloadUrl: null,
+      error: null,
+    });
+    try {
+      const payload = {
+        state: buildExportState(),
+        output: exportDimensions,
+        fps: 30,
+        duration: projectDuration,
+        fonts: exportFonts,
+        name: projectName,
+      };
+      const response = await fetch("/api/editor/export", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Export failed.");
+      }
+      const nextJobId =
+        typeof data?.jobId === "string"
+          ? data.jobId
+          : typeof data?.id === "string"
+            ? data.id
+            : null;
+      setExportUi((prev) => ({
+        ...prev,
+        status: data?.status ?? "queued",
+        stage: data?.stage ?? "Queued",
+        progress:
+          typeof data?.progress === "number"
+            ? clamp(data.progress, 0, 1)
+            : 0,
+        jobId: nextJobId,
+        downloadUrl:
+          typeof data?.downloadUrl === "string" ? data.downloadUrl : null,
+      }));
+      if (nextJobId) {
+        startExportPolling(nextJobId);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Export failed.";
+      setExportUi((prev) => ({
+        ...prev,
+        status: "error",
+        stage: "Export failed",
+        error: message,
+      }));
+    }
+  }, [
+    buildExportState,
+    exportDimensions,
+    exportFonts,
+    exportUi.status,
+    projectDuration,
+    projectName,
+    startExportPolling,
+    timeline.length,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      stopExportPolling();
+    };
+  }, [stopExportPolling]);
+
+  useEffect(() => {
+    if (
+      exportUi.status !== "complete" ||
+      !exportUi.downloadUrl ||
+      exportAutoDownloaded
+    ) {
+      return;
+    }
+    triggerExportDownload(exportUi.downloadUrl);
+    setExportAutoDownloaded(true);
+  }, [exportAutoDownloaded, exportUi.downloadUrl, exportUi.status, triggerExportDownload]);
+
+  const exportProgressPercent = Math.round(
+    clamp(exportUi.progress, 0, 1) * 100
+  );
+  const exportInFlight =
+    exportUi.status === "starting" ||
+    exportUi.status === "queued" ||
+    exportUi.status === "loading" ||
+    exportUi.status === "rendering" ||
+    exportUi.status === "encoding" ||
+    exportUi.status === "uploading";
+  const exportDisabled = exportInFlight || timeline.length === 0;
 
   const timelineSpan = useMemo(
     () => Math.max(contentTimelineTotal, projectDuration),
@@ -6274,29 +7223,44 @@ export default function AdvancedEditorPage() {
     fileInputRef.current?.click();
   }, []);
 
-  const buildAssetsFromFiles = async (files: File[]) =>
-    Promise.all(
+  const buildAssetsFromFiles = async (files: File[]) => {
+    const uploaded = await Promise.all(
       files.map(async (file) => {
         const kind = inferMediaKind(file);
-        const url = URL.createObjectURL(file);
-        const meta = await getMediaMeta(kind, url);
+        const previewUrl = URL.createObjectURL(file);
+        const meta = await getMediaMeta(kind, previewUrl);
+        URL.revokeObjectURL(previewUrl);
         const resolvedAspectRatio =
           meta.aspectRatio ??
           (meta.width && meta.height ? meta.width / meta.height : undefined);
-        return {
-          id: crypto.randomUUID(),
-          name: file.name,
+        const stored = await uploadAssetFile(file, {
+          name: file.name || "Uploaded asset",
           kind,
-          url,
-          size: file.size,
+          source: "upload",
           duration: meta.duration,
           width: meta.width,
           height: meta.height,
           aspectRatio: resolvedAspectRatio,
-          createdAt: Date.now(),
+        });
+        if (!stored) {
+          return null;
+        }
+        return {
+          id: stored.id,
+          name: stored.name,
+          kind: stored.kind,
+          url: stored.url,
+          size: stored.size,
+          duration: stored.duration,
+          width: stored.width,
+          height: stored.height,
+          aspectRatio: stored.aspectRatio,
+          createdAt: stored.createdAt,
         };
       })
     );
+    return uploaded.filter((item): item is MediaAsset => Boolean(item));
+  };
 
   const resolveDropLaneId = (
     laneType: LaneType,
@@ -6786,11 +7750,22 @@ export default function AdvancedEditorPage() {
         resolvedWidth && resolvedHeight
           ? resolvedWidth / resolvedHeight
           : undefined;
-      const videoAsset: MediaAsset = {
-        id: crypto.randomUUID(),
+      const libraryAsset = await createExternalAsset({
+        url: video.url,
         name: video.name,
         kind: "video",
-        url: video.url,
+        source: "stock",
+        size: video.size,
+        duration: resolvedDuration ?? undefined,
+        width: resolvedWidth,
+        height: resolvedHeight,
+        aspectRatio,
+      });
+      const videoAsset: MediaAsset = {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name: video.name,
+        kind: "video",
+        url: libraryAsset?.url ?? video.url,
         size: video.size,
         duration: resolvedDuration ?? undefined,
         width: resolvedWidth,
@@ -6857,6 +7832,10 @@ export default function AdvancedEditorPage() {
       if (!assetUrl) {
         throw new Error("No downloadable format found.");
       }
+      const assetId =
+        typeof payload?.assetId === "string" && payload.assetId.length > 0
+          ? payload.assetId
+          : null;
 
       const title =
         typeof payload?.title === "string" && payload.title.trim().length > 0
@@ -6880,9 +7859,11 @@ export default function AdvancedEditorPage() {
           ? payload.size
           : 0;
 
-      const existing = assetsRef.current.find(
-        (asset) => asset.kind === "video" && asset.url === assetUrl
-      );
+      const existing = assetId
+        ? assetsRef.current.find((asset) => asset.id === assetId)
+        : assetsRef.current.find(
+            (asset) => asset.kind === "video" && asset.url === assetUrl
+          );
       if (existing) {
         addToTimeline(existing.id);
         return;
@@ -6893,7 +7874,7 @@ export default function AdvancedEditorPage() {
       const aspectRatio =
         width && height ? width / height : undefined;
       const videoAsset: MediaAsset = {
-        id: crypto.randomUUID(),
+        id: assetId ?? crypto.randomUUID(),
         name: title,
         kind: "video",
         url: assetUrl,
@@ -7011,9 +7992,11 @@ export default function AdvancedEditorPage() {
           ? payload.size
           : 0;
 
-      const existing = assetsRef.current.find(
-        (asset) => asset.kind === "video" && asset.url === assetUrl
-      );
+      const existing = assetId
+        ? assetsRef.current.find((asset) => asset.id === assetId)
+        : assetsRef.current.find(
+            (asset) => asset.kind === "video" && asset.url === assetUrl
+          );
       if (existing) {
         addToTimeline(existing.id);
         return;
@@ -7024,7 +8007,7 @@ export default function AdvancedEditorPage() {
       const aspectRatio =
         width && height ? width / height : undefined;
       const videoAsset: MediaAsset = {
-        id: crypto.randomUUID(),
+        id: assetId ?? crypto.randomUUID(),
         name: title,
         kind: "video",
         url: assetUrl,
@@ -7078,7 +8061,15 @@ export default function AdvancedEditorPage() {
   );
 
   const handleAddExternalVideo = useCallback(
-    async ({ url, name }: { url: string; name?: string }) => {
+    async ({
+      url,
+      name,
+      source = "external",
+    }: {
+      url: string;
+      name?: string;
+      source?: "external" | "autoclip" | "upload" | "stock" | "generated";
+    }) => {
       if (!url) {
         return;
       }
@@ -7106,11 +8097,21 @@ export default function AdvancedEditorPage() {
       pushHistory();
       const aspectRatio =
         width && height ? width / height : undefined;
-      const videoAsset: MediaAsset = {
-        id: crypto.randomUUID(),
+      const libraryAsset = await createExternalAsset({
+        url,
         name: name?.trim() || "Imported video",
         kind: "video",
-        url,
+        source,
+        duration: durationSeconds ?? undefined,
+        width,
+        height,
+        aspectRatio,
+      });
+      const videoAsset: MediaAsset = {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name: name?.trim() || "Imported video",
+        kind: "video",
+        url: libraryAsset?.url ?? url,
         size: 0,
         duration: durationSeconds ?? undefined,
         width,
@@ -7148,22 +8149,35 @@ export default function AdvancedEditorPage() {
       if (!value || typeof value !== "object") {
         return null;
       }
-      const payload = value as { url?: string; name?: string };
+      const payload = value as {
+        url?: string;
+        name?: string;
+        source?: string;
+      };
       const assetUrl =
         typeof payload.url === "string" ? payload.url : "";
       if (!assetUrl) {
         return null;
       }
+      const source =
+        payload.source === "autoclip" ||
+        payload.source === "external" ||
+        payload.source === "upload" ||
+        payload.source === "stock" ||
+        payload.source === "generated"
+          ? payload.source
+          : undefined;
       return {
         url: assetUrl,
         name:
           typeof payload.name === "string" && payload.name.trim().length > 0
             ? payload.name
             : "AutoClip Highlight",
+        source,
       };
     };
 
-    const assets: Array<{ url: string; name: string }> = [];
+    const assets: Array<{ url: string; name: string; source?: string }> = [];
     if (storedList) {
       try {
         const parsed = JSON.parse(storedList);
@@ -7217,11 +8231,19 @@ export default function AdvancedEditorPage() {
       }
       setIsBackgroundSelected(false);
       pushHistory();
-      const audioAsset: MediaAsset = {
-        id: crypto.randomUUID(),
+      const libraryAsset = await createExternalAsset({
+        url: track.url,
         name: track.name,
         kind: "audio",
-        url: track.url,
+        source: "stock",
+        size: track.size,
+        duration: resolvedDuration ?? undefined,
+      });
+      const audioAsset: MediaAsset = {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name: track.name,
+        kind: "audio",
+        url: libraryAsset?.url ?? track.url,
         size: track.size,
         duration: resolvedDuration ?? undefined,
         createdAt: Date.now(),
@@ -7237,26 +8259,39 @@ export default function AdvancedEditorPage() {
     [addToTimeline, createClip, pushHistory]
   );
 
-  const createGifAsset = useCallback((payload: GifDragPayload): MediaAsset => {
-    const aspectRatio =
-      payload.width && payload.height
-        ? payload.width / payload.height
-        : undefined;
-    return {
-      id: crypto.randomUUID(),
-      name: payload.title?.trim() || "GIF",
-      kind: "image",
-      url: payload.url,
-      size: payload.size ?? 0,
-      width: payload.width,
-      height: payload.height,
-      aspectRatio,
-      createdAt: Date.now(),
-    };
-  }, []);
+  const createGifMediaAsset = useCallback(
+    async (payload: GifDragPayload): Promise<MediaAsset> => {
+      const aspectRatio =
+        payload.width && payload.height
+          ? payload.width / payload.height
+          : undefined;
+      const libraryAsset = await createExternalAsset({
+        url: payload.url,
+        name: payload.title?.trim() || "GIF",
+        kind: "image",
+        source: "external",
+        size: payload.size ?? 0,
+        width: payload.width,
+        height: payload.height,
+        aspectRatio,
+      });
+      return {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name: payload.title?.trim() || "GIF",
+        kind: "image",
+        url: libraryAsset?.url ?? payload.url,
+        size: payload.size ?? 0,
+        width: payload.width,
+        height: payload.height,
+        aspectRatio,
+        createdAt: Date.now(),
+      };
+    },
+    []
+  );
 
   const handleAddGif = useCallback(
-    (gif: IGif) => {
+    async (gif: IGif) => {
       const payload = buildGifPayload(gif);
       if (!payload) {
         return;
@@ -7270,7 +8305,7 @@ export default function AdvancedEditorPage() {
       }
       setIsBackgroundSelected(false);
       pushHistory();
-      const gifAsset = createGifAsset(payload);
+      const gifAsset = await createGifMediaAsset(payload);
       const nextLanes = [...lanesRef.current];
       const laneId = createLaneId("video", nextLanes);
       const clip = createClip(gifAsset.id, laneId, 0, gifAsset);
@@ -7279,11 +8314,11 @@ export default function AdvancedEditorPage() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(gifAsset.id);
     },
-    [addToTimeline, createClip, createGifAsset, pushHistory]
+    [addToTimeline, createClip, createGifMediaAsset, pushHistory]
   );
 
   const handleAddSticker = useCallback(
-    (sticker: IGif) => {
+    async (sticker: IGif) => {
       const assetImage = resolveGiphyAssetImage(sticker);
       if (!assetImage) {
         return;
@@ -7302,11 +8337,21 @@ export default function AdvancedEditorPage() {
         assetImage.width && assetImage.height
           ? assetImage.width / assetImage.height
           : undefined;
-      const stickerAsset: MediaAsset = {
-        id: crypto.randomUUID(),
+      const libraryAsset = await createExternalAsset({
+        url: assetImage.url,
         name,
         kind: "image",
-        url: assetImage.url,
+        source: "external",
+        size: assetImage.size,
+        width: assetImage.width,
+        height: assetImage.height,
+        aspectRatio,
+      });
+      const stickerAsset: MediaAsset = {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name,
+        kind: "image",
+        url: libraryAsset?.url ?? assetImage.url,
         size: assetImage.size,
         width: assetImage.width,
         height: assetImage.height,
@@ -8240,12 +9285,18 @@ export default function AdvancedEditorPage() {
         return next;
       });
       setAssets(nextAssets);
+      if (projectBackgroundImage?.assetId === assetId) {
+        setProjectBackgroundImage(null);
+      }
+      deleteAssetById(assetId).catch(() => {});
       if (asset.url.startsWith("blob:")) {
         URL.revokeObjectURL(asset.url);
       }
     },
     [
       activeAssetId,
+      deleteAssetById,
+      projectBackgroundImage?.assetId,
       pushHistory,
       selectedClipId,
       selectedClipIds,
@@ -10579,8 +11630,8 @@ export default function AdvancedEditorPage() {
     event.preventDefault();
     const droppedFiles = Array.from(event.dataTransfer.files ?? []);
     if (droppedFiles.length > 0) {
-      await handleDroppedFiles(droppedFiles, { target: "canvas" });
       setDragOverCanvas(false);
+      await handleDroppedFiles(droppedFiles, { target: "canvas" });
       return;
     }
     const gifPayload =
@@ -10597,7 +11648,7 @@ export default function AdvancedEditorPage() {
       }
       setIsBackgroundSelected(false);
       pushHistory();
-      const gifAsset = createGifAsset(gifPayload);
+      const gifAsset = await createGifMediaAsset(gifPayload);
       const nextLanes = [...lanesRef.current];
       const laneId = createLaneId("video", nextLanes);
       const clip = createClip(gifAsset.id, laneId, 0, gifAsset);
@@ -10624,8 +11675,8 @@ export default function AdvancedEditorPage() {
     event.preventDefault();
     const droppedFiles = Array.from(event.dataTransfer.files ?? []);
     if (droppedFiles.length > 0) {
-      await handleDroppedFiles(droppedFiles, { target: "timeline", event });
       setDragOverTimeline(false);
+      await handleDroppedFiles(droppedFiles, { target: "timeline", event });
       return;
     }
     const gifPayload =
@@ -10635,7 +11686,7 @@ export default function AdvancedEditorPage() {
       const existing = assetsRef.current.find(
         (asset) => asset.kind === "image" && asset.url === gifPayload.url
       );
-      const gifAsset = existing ?? createGifAsset(gifPayload);
+      const gifAsset = existing ?? (await createGifMediaAsset(gifPayload));
       if (!existing) {
         setAssets((prev) => [gifAsset, ...prev]);
       }
@@ -11228,6 +12279,7 @@ export default function AdvancedEditorPage() {
       >
         <div
           ref={stageRef}
+          data-export-stage
           className={`relative overflow-visible ${dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
             }`}
           style={{
@@ -11247,11 +12299,16 @@ export default function AdvancedEditorPage() {
           onDrop={handleCanvasDrop}
         >
           <div className="relative flex h-full w-full items-center justify-center">
-            <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
-              <div
-                className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
-                style={{ backgroundColor: "#f2f3fa" }}
-              />
+            <div
+              className="relative flex h-full w-full items-center justify-center overflow-hidden"
+              style={isExportMode ? { backgroundColor: canvasBackground } : undefined}
+            >
+              {!isExportMode && (
+                <div
+                  className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
+                  style={{ backgroundColor: "#f2f3fa" }}
+                />
+              )}
               {dragOverCanvas && (
                 <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm font-semibold text-[#335CFF]">
                   Drop to add to timeline
@@ -11294,18 +12351,25 @@ export default function AdvancedEditorPage() {
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold">
-                      Drop your first clip
+                      {showUploadingState ? "Uploading clip" : "Drop your first clip"}
                     </h2>
                     <p className="text-sm text-gray-500">
-                      Upload media to preview it here
+                      {showUploadingState
+                        ? "Hang tight while we add your media."
+                        : "Upload media to preview it here"}
                     </p>
                   </div>
                   <button
                     type="button"
-                    className="rounded-lg bg-[#335CFF] px-4 py-2 text-sm font-semibold text-white"
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                      showUploadingState
+                        ? "cursor-wait bg-[#9DB5FF]"
+                        : "bg-[#335CFF]"
+                    }`}
                     onClick={handleUploadClick}
+                    disabled={showUploadingState}
                   >
-                    Upload media
+                    {showUploadingState ? "Uploading..." : "Upload media"}
                   </button>
                 </div>
               ) : visualStack.length > 0 ? (
@@ -13578,15 +14642,39 @@ export default function AdvancedEditorPage() {
     timelineThumbnails,
   ]);
 
+  const resolvedExportViewport = exportViewport ?? exportDimensions;
+
+  if (isExportMode) {
+    return (
+      <div
+        className="flex items-center justify-center overflow-hidden bg-black"
+        style={{
+          width: `${resolvedExportViewport.width}px`,
+          height: `${resolvedExportViewport.height}px`,
+        }}
+      >
+        <main ref={mainRef} className="flex h-full w-full">
+          {renderStage()}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-[#F2F4FA] text-[#0E121B]">
       <EditorHeader
         projectName={projectName}
-        onProjectNameChange={(value) => setProjectName(value)}
+        onProjectNameChange={handleProjectNameCommit}
+        projectSaveState={projectSaveState}
+        projectStarted={projectStarted}
+        showSaveIndicator={showSaveIndicator}
         canUndo={historyState.canUndo}
         canRedo={historyState.canRedo}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        onExport={handleStartExport}
+        exportDisabled={exportDisabled}
+        exportBusy={exportInFlight}
       />
       <input
         ref={fileInputRef}
@@ -13619,6 +14707,92 @@ export default function AdvancedEditorPage() {
           </div>
         </div>
       </div>
+      {exportUi.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
+                    <path
+                      d="M12 4v10m0 0-4-4m4 4 4-4M5 18h14"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {exportUi.status === "complete"
+                      ? "Export ready"
+                      : exportUi.status === "error"
+                        ? "Export failed"
+                        : "Exporting"}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {exportUi.stage || "Preparing export..."}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-gray-500 transition hover:bg-gray-50"
+                onClick={() => setExportUi((prev) => ({ ...prev, open: false }))}
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-6">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest text-gray-400">
+                <span>Progress</span>
+                <span className="text-gray-600">{exportProgressPercent}%</span>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className={`h-full transition-all duration-500 ease-out ${
+                    exportUi.status === "error"
+                      ? "bg-rose-500"
+                      : "bg-[#335CFF]"
+                  }`}
+                  style={{ width: `${exportProgressPercent}%` }}
+                />
+              </div>
+              {exportUi.error && (
+                <p className="mt-3 text-sm text-rose-600">{exportUi.error}</p>
+              )}
+            </div>
+            <div className="mt-6 flex items-center gap-3">
+              {exportUi.status === "complete" && exportUi.downloadUrl ? (
+                <button
+                  type="button"
+                  className="flex-1 rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+                  onClick={() => triggerExportDownload(exportUi.downloadUrl!)}
+                >
+                  Download MP4
+                </button>
+              ) : exportUi.status === "error" ? (
+                <button
+                  type="button"
+                  className="flex-1 rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+                  onClick={handleStartExport}
+                >
+                  Try again
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="flex-1 cursor-wait rounded-full bg-[#9DB5FF] px-4 py-2.5 text-sm font-semibold text-white"
+                  disabled
+                >
+                  Exporting...
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

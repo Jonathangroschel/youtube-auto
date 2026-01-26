@@ -1,36 +1,85 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 type EditorHeaderProps = {
   projectName: string;
   onProjectNameChange: (value: string) => void;
+  projectSaveState: "idle" | "saving" | "saved" | "error";
+  projectStarted: boolean;
+  showSaveIndicator: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  onExport?: () => void;
+  exportDisabled?: boolean;
+  exportBusy?: boolean;
+  exportLabel?: string;
 };
 
 export const EditorHeader = ({
   projectName,
   onProjectNameChange,
+  projectSaveState,
+  projectStarted,
+  showSaveIndicator,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
+  onExport,
+  exportDisabled,
+  exportBusy,
+  exportLabel,
 }: EditorHeaderProps) => {
   const undoDisabled = !canUndo;
   const redoDisabled = !canRedo;
+  const [draftProjectName, setDraftProjectName] = useState(projectName);
+  const nameSaveTimeoutRef = useRef<number | null>(null);
+  const resolvedExportLabel = exportLabel ?? (exportBusy ? "Exporting..." : "Export");
+  const saveStatus = (() => {
+    if (!projectStarted) {
+      return null;
+    }
+    if (!showSaveIndicator) {
+      return null;
+    }
+    if (projectSaveState === "saving") {
+      return { label: "Saving...", className: "text-amber-600" };
+    }
+    if (projectSaveState === "error") {
+      return { label: "Save failed", className: "text-rose-600" };
+    }
+    if (projectSaveState === "saved") {
+      return { label: "Saved", className: "text-emerald-600" };
+    }
+    return null;
+  })();
+
+  useEffect(() => {
+    setDraftProjectName(projectName);
+  }, [projectName]);
+
+  useEffect(() => {
+    return () => {
+      if (nameSaveTimeoutRef.current) {
+        window.clearTimeout(nameSaveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <header className="min-h-16 border-b border-gray-200 bg-white px-5 py-2">
       <div className="flex w-full items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button
+          <a
             className="flex h-10 w-10 items-center justify-center"
-            type="button"
+            href="/dashboard"
             aria-label="Home"
           >
             <img src="/icon.svg" alt="Home" className="h-9 w-9 ml-[-2px]" />
-          </button>
+          </a>
           <div className="flex h-10 items-center gap-2 rounded-full bg-gray-100/80 px-3.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
               Project
@@ -41,9 +90,36 @@ export const EditorHeader = ({
             <input
               id="project-name-input"
               className="w-44 bg-transparent text-[15px] font-semibold text-gray-900 outline-none"
-              value={projectName}
-              onChange={(event) => onProjectNameChange(event.target.value)}
+              value={draftProjectName}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setDraftProjectName(nextValue);
+                if (nameSaveTimeoutRef.current) {
+                  window.clearTimeout(nameSaveTimeoutRef.current);
+                }
+                nameSaveTimeoutRef.current = window.setTimeout(() => {
+                  onProjectNameChange(nextValue);
+                }, 600);
+              }}
+              onBlur={(event) => {
+                if (nameSaveTimeoutRef.current) {
+                  window.clearTimeout(nameSaveTimeoutRef.current);
+                  nameSaveTimeoutRef.current = null;
+                }
+                const nextValue = event.target.value;
+                if (nextValue !== projectName) {
+                  onProjectNameChange(nextValue);
+                }
+              }}
             />
+            {saveStatus ? (
+              <span
+                className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${saveStatus.className}`}
+                aria-live="polite"
+              >
+                {saveStatus.label}
+              </span>
+            ) : null}
           </div>
           <button
             className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
@@ -107,10 +183,22 @@ export const EditorHeader = ({
         </div>
         <div className="flex items-center justify-end">
           <button
-            className="h-10 rounded-full bg-[#335CFF] px-5 text-sm font-semibold text-white shadow-[0_8px_16px_rgba(51,92,255,0.22)]"
+            className={`flex h-10 items-center gap-2 rounded-full px-5 text-sm font-semibold text-white shadow-[0_8px_16px_rgba(51,92,255,0.22)] transition ${
+              exportDisabled
+                ? "cursor-not-allowed bg-[#9DB5FF] shadow-none"
+                : "bg-[#335CFF] hover:brightness-105"
+            }`}
             type="button"
+            disabled={exportDisabled}
+            onClick={onExport}
           >
-            Export
+            {exportBusy ? (
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/70" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+              </span>
+            ) : null}
+            {resolvedExportLabel}
           </button>
         </div>
       </div>

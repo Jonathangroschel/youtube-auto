@@ -28,6 +28,8 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 OPENAI_API_KEY=your-openai-key
 WORKER_SECRET=generate-a-random-secret-here
+EDITOR_RENDER_URL=https://your-app-url.vercel.app
+EDITOR_EXPORT_BUCKET=autoclip-files
 ```
 
 Generate a secure secret:
@@ -80,6 +82,8 @@ All endpoints require `Authorization: Bearer {WORKER_SECRET}` header.
 - `POST /preview` - Generate preview clip
 - `POST /download-url` - Get signed download URL
 - `POST /cleanup` - Delete session files
+- `POST /editor-export/start` - Queue editor export (headless Chromium + FFmpeg)
+- `GET /editor-export/status/:jobId` - Export status and download URL
 
 ## Cost Estimates
 

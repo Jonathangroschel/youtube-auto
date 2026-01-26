@@ -7,6 +7,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import { chromium } from "playwright";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -49,6 +50,20 @@ const RENDER_HEIGHT = toEven(MAX_RENDER_HEIGHT);
 const RENDER_WIDTH = toEven(Math.round(RENDER_HEIGHT * 9 / 16));
 
 let activeRenders = 0;
+let activeExports = 0;
+
+const EXPORT_RENDER_URL =
+  process.env.EDITOR_RENDER_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const EXPORT_BUCKET = process.env.EDITOR_EXPORT_BUCKET || BUCKET;
+const EXPORT_FPS_DEFAULT = toPositiveInt(process.env.EDITOR_EXPORT_FPS, 30);
+const EXPORT_JPEG_QUALITY = toPositiveInt(process.env.EDITOR_EXPORT_JPEG_QUALITY, 90);
+const MAX_EXPORT_CONCURRENCY = toPositiveInt(
+  process.env.EDITOR_EXPORT_CONCURRENCY,
+  1
+);
+
+const exportQueue = [];
+const exportJobs = new Map();
 
 // Supabase client
 const supabase = createClient(
@@ -61,7 +76,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "25mb" }));
 
 // Auth middleware
 const authMiddleware = (req, res, next) => {
@@ -80,6 +95,426 @@ const upload = multer({
 
 // Ensure temp directory exists
 await fs.mkdir(TEMP_DIR, { recursive: true });
+
+const exportTempDir = path.join(TEMP_DIR, "exports");
+await fs.mkdir(exportTempDir, { recursive: true });
+
+const updateExportJob = (jobId, patch) => {
+  const existing = exportJobs.get(jobId);
+  if (!existing) {
+    return null;
+  }
+  const next = {
+    ...existing,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  exportJobs.set(jobId, next);
+  return next;
+};
+
+const enqueueExportJob = (payload) => {
+  const jobId = uuidv4().slice(0, 12);
+  const now = new Date().toISOString();
+  const job = {
+    id: jobId,
+    status: "queued",
+    stage: "Queued",
+    progress: 0,
+    createdAt: now,
+    updatedAt: now,
+    payload,
+    framesRendered: 0,
+    framesTotal: 0,
+    downloadUrl: null,
+    error: null,
+  };
+  exportJobs.set(jobId, job);
+  exportQueue.push(jobId);
+  processExportQueue().catch(() => {});
+  return job;
+};
+
+const buildAtempoFilters = (speed) => {
+  const filters = [];
+  let remaining = speed;
+  while (remaining > 2.0) {
+    filters.push("atempo=2.0");
+    remaining /= 2.0;
+  }
+  while (remaining > 0 && remaining < 0.5) {
+    filters.push("atempo=0.5");
+    remaining /= 0.5;
+  }
+  if (remaining > 0 && Math.abs(remaining - 1) > 0.001) {
+    filters.push(`atempo=${remaining.toFixed(3)}`);
+  }
+  return filters;
+};
+
+const buildAudioMix = async ({ jobId, state, duration }) => {
+  const snapshot = state?.snapshot;
+  if (!snapshot?.timeline || !snapshot?.assets) {
+    return null;
+  }
+  const assetsById = new Map(snapshot.assets.map((asset) => [asset.id, asset]));
+  const clipSettings = snapshot.clipSettings ?? {};
+  const audioSources = snapshot.timeline
+    .map((clip) => {
+      const asset = assetsById.get(clip.assetId);
+      if (!asset) {
+        return null;
+      }
+      if (asset.kind !== "audio" && asset.kind !== "video") {
+        return null;
+      }
+      if (!asset.url) {
+        return null;
+      }
+      if (!Number.isFinite(clip.duration) || clip.duration <= 0) {
+        return null;
+      }
+      const settings = clipSettings[clip.id] || {};
+      const muted = settings.muted === true;
+      const volume = typeof settings.volume === "number" ? settings.volume : 100;
+      if (muted || volume <= 0) {
+        return null;
+      }
+      const speed = typeof settings.speed === "number" && settings.speed > 0 ? settings.speed : 1;
+      const fadeEnabled = settings.fadeEnabled === true;
+      const fadeIn = typeof settings.fadeIn === "number" ? settings.fadeIn : 0;
+      const fadeOut = typeof settings.fadeOut === "number" ? settings.fadeOut : 0;
+      return {
+        url: asset.url,
+        startTime: clip.startTime ?? 0,
+        startOffset: clip.startOffset ?? 0,
+        duration: clip.duration ?? 0,
+        speed,
+        volume,
+        fadeEnabled,
+        fadeIn,
+        fadeOut,
+      };
+    })
+    .filter(Boolean);
+
+  if (!audioSources.length) {
+    return null;
+  }
+
+  const audioPath = path.join(exportTempDir, `${jobId}_audio.wav`);
+  const filterParts = [];
+  audioSources.forEach((source, index) => {
+    const inputLabel = `[${index}:a]`;
+    const trimmedDuration = Math.max(0, source.duration * source.speed);
+    let filter = `${inputLabel}atrim=start=${source.startOffset}:duration=${trimmedDuration},asetpts=PTS-STARTPTS`;
+    const tempoFilters = buildAtempoFilters(source.speed);
+    if (tempoFilters.length) {
+      filter += `,${tempoFilters.join(",")}`;
+    }
+    const volume = Math.max(0, source.volume / 100);
+    if (Math.abs(volume - 1) > 0.001) {
+      filter += `,volume=${volume.toFixed(3)}`;
+    }
+    if (source.fadeEnabled) {
+      if (source.fadeIn > 0) {
+        filter += `,afade=t=in:st=0:d=${source.fadeIn}`;
+      }
+      if (source.fadeOut > 0) {
+        const fadeOutStart = Math.max(0, source.duration - source.fadeOut);
+        if (fadeOutStart >= 0) {
+          filter += `,afade=t=out:st=${fadeOutStart}:d=${source.fadeOut}`;
+        }
+      }
+    }
+    const delayMs = Math.max(0, Math.round(source.startTime * 1000));
+    if (delayMs > 0) {
+      filter += `,adelay=${delayMs}|${delayMs}`;
+    }
+    filter += `[a${index}]`;
+    filterParts.push(filter);
+  });
+  const mixInputs = audioSources.map((_, index) => `[a${index}]`).join("");
+  const mix = `${mixInputs}amix=inputs=${audioSources.length}:normalize=0[aout]`;
+  const filterComplex = [...filterParts, mix].join(";");
+
+  await new Promise((resolve, reject) => {
+    const ffmpeg = spawn("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-y",
+      ...audioSources.flatMap((source) => ["-i", source.url]),
+      "-filter_complex", filterComplex,
+      "-map", "[aout]",
+      "-t", String(duration),
+      "-ac", "2",
+      "-ar", "48000",
+      "-c:a", "pcm_s16le",
+      audioPath,
+    ]);
+    let stderr = "";
+    ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+    ffmpeg.on("close", (code, signal) => {
+      if (code === 0) return resolve();
+      const reason = signal ? `signal ${signal}` : `code ${code}`;
+      reject(new Error(`Audio mix failed (${reason}): ${stderr.slice(-500)}`));
+    });
+    ffmpeg.on("error", (err) =>
+      reject(new Error(`Audio mix spawn error: ${err.message}`))
+    );
+  });
+
+  return audioPath;
+};
+
+const runEditorExportJob = async (job) => {
+  const payload = job.payload || {};
+  const state = payload.state;
+  const output = payload.output || {};
+  const fps = toPositiveInt(payload.fps, EXPORT_FPS_DEFAULT);
+  const duration = Number(payload.duration) || 0;
+  const renderUrl = payload.renderUrl || EXPORT_RENDER_URL;
+  const fonts = Array.isArray(payload.fonts) ? payload.fonts : [];
+  let browser = null;
+  let context = null;
+  let page = null;
+
+  if (!state || !output?.width || !output?.height || duration <= 0) {
+    throw new Error("Invalid export payload.");
+  }
+
+  const width = toEven(output.width);
+  const height = toEven(output.height);
+  const framesTotal = Math.max(1, Math.ceil(duration * fps));
+
+  updateExportJob(job.id, {
+    status: "loading",
+    stage: "Preparing render",
+    progress: 0.03,
+    framesTotal,
+    framesRendered: 0,
+  });
+
+  let videoPath = null;
+  let finalPath = null;
+  let audioPath = null;
+  try {
+    browser = await chromium.launch({
+      args: ["--disable-dev-shm-usage", "--no-sandbox"],
+    });
+
+    context = await browser.newContext({
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+    });
+    page = await context.newPage();
+
+    await page.addInitScript((payload) => {
+      window.__EDITOR_EXPORT__ = payload;
+    }, {
+      state,
+      output: { width, height },
+      fps,
+      duration,
+      fonts,
+    });
+
+    updateExportJob(job.id, {
+      stage: "Booting renderer",
+      progress: 0.05,
+    });
+
+    await page.goto(`${renderUrl}/editor/advanced?export=1`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForFunction(
+      () => window.__EDITOR_EXPORT_API__ && typeof window.__EDITOR_EXPORT_API__.waitForReady === "function",
+      { timeout: 120000 }
+    );
+    await page.evaluate(() => window.__EDITOR_EXPORT_API__.waitForReady());
+
+    const stageHandle = await page.$("[data-export-stage]");
+    if (!stageHandle) {
+      throw new Error("Export stage not found.");
+    }
+
+    updateExportJob(job.id, {
+      status: "rendering",
+      stage: "Rendering frames",
+      progress: 0.05,
+    });
+
+    videoPath = path.join(exportTempDir, `${job.id}_video.mp4`);
+    const ffmpeg = spawn("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-y",
+      "-f", "image2pipe",
+      "-vcodec", "mjpeg",
+      "-r", String(fps),
+      "-i", "pipe:0",
+      "-an",
+      "-c:v", "libx264",
+      "-preset", RENDER_PRESET,
+      "-crf", "18",
+      "-pix_fmt", "yuv420p",
+      "-threads", String(FFMPEG_THREADS),
+      "-movflags", "+faststart",
+      videoPath,
+    ]);
+
+    const writeFrame = (buffer) =>
+      new Promise((resolve) => {
+        const canWrite = ffmpeg.stdin.write(buffer);
+        if (canWrite) {
+          resolve();
+        } else {
+          ffmpeg.stdin.once("drain", resolve);
+        }
+      });
+
+    for (let i = 0; i < framesTotal; i += 1) {
+      const time = i / fps;
+      await page.evaluate((value) => window.__EDITOR_EXPORT_API__.setTime(value), time);
+      const buffer = await stageHandle.screenshot({
+        type: "jpeg",
+        quality: EXPORT_JPEG_QUALITY,
+      });
+      await writeFrame(buffer);
+      const framesRendered = i + 1;
+      updateExportJob(job.id, {
+        framesRendered,
+        progress: 0.05 + (framesRendered / framesTotal) * 0.85,
+      });
+    }
+
+    ffmpeg.stdin.end();
+    await new Promise((resolve, reject) => {
+      let stderr = "";
+      ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+      ffmpeg.on("close", (code, signal) => {
+        if (code === 0) return resolve();
+        const reason = signal ? `signal ${signal}` : `code ${code}`;
+        reject(new Error(`FFmpeg encode failed (${reason}): ${stderr.slice(-500)}`));
+      });
+      ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
+    });
+
+    updateExportJob(job.id, {
+      status: "encoding",
+      stage: "Finalizing video",
+      progress: 0.93,
+    });
+
+    audioPath = await buildAudioMix({ jobId: job.id, state, duration });
+    finalPath = videoPath;
+
+    if (audioPath) {
+      const muxPath = path.join(exportTempDir, `${job.id}_final.mp4`);
+      updateExportJob(job.id, {
+        stage: "Muxing audio",
+        progress: 0.95,
+      });
+      await new Promise((resolve, reject) => {
+        const mux = spawn("ffmpeg", [
+          "-hide_banner", "-loglevel", "error",
+          "-y",
+          "-i", videoPath,
+          "-i", audioPath,
+          "-c:v", "copy",
+          "-c:a", "aac",
+          "-b:a", "192k",
+          "-shortest",
+          "-movflags", "+faststart",
+          muxPath,
+        ]);
+        let stderr = "";
+        mux.stderr.on("data", (data) => (stderr += data.toString()));
+        mux.on("close", (code, signal) => {
+          if (code === 0) return resolve();
+          const reason = signal ? `signal ${signal}` : `code ${code}`;
+          reject(new Error(`Audio mux failed (${reason}): ${stderr.slice(-500)}`));
+        });
+        mux.on("error", (err) =>
+          reject(new Error(`FFmpeg mux spawn error: ${err.message}`))
+        );
+      });
+      finalPath = muxPath;
+    }
+
+    updateExportJob(job.id, {
+      status: "uploading",
+      stage: "Preparing download",
+      progress: 0.97,
+    });
+
+    const exportKey = `exports/${job.id}/export.mp4`;
+    const buffer = await fs.readFile(finalPath);
+    const { error: uploadError } = await supabase.storage
+      .from(EXPORT_BUCKET)
+      .upload(exportKey, buffer, {
+        contentType: "video/mp4",
+        upsert: true,
+      });
+    if (uploadError) {
+      throw uploadError;
+    }
+    const { data: urlData } = await supabase.storage
+      .from(EXPORT_BUCKET)
+      .createSignedUrl(exportKey, 60 * 60 * 24);
+
+    updateExportJob(job.id, {
+      status: "complete",
+      stage: "Ready",
+      progress: 1,
+      downloadUrl: urlData?.signedUrl ?? null,
+    });
+  } finally {
+    if (page) {
+      await page.close().catch(() => {});
+    }
+    if (context) {
+      await context.close().catch(() => {});
+    }
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+    await Promise.all([
+      videoPath ? fs.unlink(videoPath).catch(() => {}) : Promise.resolve(),
+      audioPath ? fs.unlink(audioPath).catch(() => {}) : Promise.resolve(),
+      finalPath && finalPath !== videoPath
+        ? fs.unlink(finalPath).catch(() => {})
+        : Promise.resolve(),
+    ]);
+  }
+};
+
+const processExportQueue = async () => {
+  if (activeExports >= MAX_EXPORT_CONCURRENCY) {
+    return;
+  }
+  const nextId = exportQueue.shift();
+  if (!nextId) {
+    return;
+  }
+  const job = exportJobs.get(nextId);
+  if (!job) {
+    processExportQueue().catch(() => {});
+    return;
+  }
+  activeExports += 1;
+  try {
+    await runEditorExportJob(job);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Export failed.";
+    updateExportJob(job.id, {
+      status: "error",
+      stage: "Export failed",
+      error: message,
+    });
+  } finally {
+    activeExports = Math.max(0, activeExports - 1);
+    processExportQueue().catch(() => {});
+  }
+};
 
 // Health check
 app.get("/health", (req, res) => {
@@ -526,6 +961,43 @@ app.post("/render", authMiddleware, async (req, res) => {
   } finally {
     activeRenders = Math.max(0, activeRenders - 1);
   }
+});
+
+// Editor export (DOM render + FFmpeg)
+app.post("/editor-export/start", authMiddleware, async (req, res) => {
+  try {
+    const payload = req.body || {};
+    if (!payload.state || !payload.output || !payload.duration) {
+      return res.status(400).json({ error: "Missing export payload." });
+    }
+    const job = enqueueExportJob(payload);
+    res.json({
+      jobId: job.id,
+      status: job.status,
+      stage: job.stage,
+      progress: job.progress,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to queue export." });
+  }
+});
+
+app.get("/editor-export/status/:jobId", authMiddleware, (req, res) => {
+  const jobId = req.params.jobId;
+  const job = exportJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ error: "Export job not found." });
+  }
+  res.json({
+    jobId: job.id,
+    status: job.status,
+    stage: job.stage,
+    progress: job.progress,
+    framesRendered: job.framesRendered,
+    framesTotal: job.framesTotal,
+    downloadUrl: job.downloadUrl,
+    error: job.error,
+  });
 });
 
 // Generate preview clip
