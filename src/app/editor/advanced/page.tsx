@@ -3575,6 +3575,9 @@ function AdvancedEditorContent() {
   }, [timelineLayout]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     const videoEntries = timelineLayout.filter(
       (entry) => entry.asset.kind === "video"
     );
@@ -3648,9 +3651,12 @@ function AdvancedEditorContent() {
     return () => {
       cancelled = true;
     };
-  }, [timelineLayout, timelineScale]);
+  }, [isExportMode, timelineLayout, timelineScale]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     const audioEntries = timelineLayout.filter(
       (entry) => entry.asset.kind === "audio"
     );
@@ -3741,7 +3747,7 @@ function AdvancedEditorContent() {
     return () => {
       cancelled = true;
     };
-  }, [getAudioContext, timelineLayout]);
+  }, [getAudioContext, isExportMode, timelineLayout]);
 
   const getAudioClipWaveformBars = useCallback(
     (clip: TimelineClip, asset: MediaAsset, width: number) => {
