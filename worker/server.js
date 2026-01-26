@@ -54,6 +54,8 @@ let activeExports = 0;
 
 const EXPORT_RENDER_URL =
   process.env.EDITOR_RENDER_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const EXPORT_RENDER_SECRET =
+  process.env.EDITOR_RENDER_SECRET || WORKER_SECRET;
 const EXPORT_BUCKET = process.env.EDITOR_EXPORT_BUCKET || BUCKET;
 const EXPORT_FPS_DEFAULT = toPositiveInt(process.env.EDITOR_EXPORT_FPS, 30);
 const EXPORT_JPEG_QUALITY = toPositiveInt(process.env.EDITOR_EXPORT_JPEG_QUALITY, 90);
@@ -323,7 +325,11 @@ const runEditorExportJob = async (job) => {
       progress: 0.05,
     });
 
-    await page.goto(`${renderUrl}/editor/advanced?export=1`, {
+    const renderParams = new URLSearchParams({ export: "1" });
+    if (EXPORT_RENDER_SECRET) {
+      renderParams.set("renderKey", EXPORT_RENDER_SECRET);
+    }
+    await page.goto(`${renderUrl}/editor/advanced?${renderParams.toString()}`, {
       waitUntil: "domcontentloaded",
     });
     await page.waitForFunction(

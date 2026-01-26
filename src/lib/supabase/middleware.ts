@@ -45,7 +45,16 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname.startsWith(`${path}/`)
   );
 
-  if (!user && isProtectedPath) {
+  const renderSecret =
+    process.env.EDITOR_RENDER_SECRET || process.env.WORKER_SECRET || "";
+  const isExportRenderRequest =
+    request.nextUrl.pathname.startsWith("/editor/advanced") &&
+    request.nextUrl.searchParams.get("export") === "1";
+  const renderKey = request.nextUrl.searchParams.get("renderKey") || "";
+  const allowRenderBypass =
+    Boolean(renderSecret) && isExportRenderRequest && renderKey === renderSecret;
+
+  if (!user && isProtectedPath && !allowRenderBypass) {
     // Redirect to login
     const url = request.nextUrl.clone();
     url.pathname = "/login";
