@@ -1715,8 +1715,8 @@ function AdvancedEditorContent() {
       const nextHeight = Number(payload.output.height);
       if (Number.isFinite(nextWidth) && Number.isFinite(nextHeight)) {
         setExportViewport({
-          width: Math.max(2, Math.round(nextWidth)),
-          height: Math.max(2, Math.round(nextHeight)),
+          width: ensureEven(nextWidth),
+          height: ensureEven(nextHeight),
         });
       }
     }
@@ -1725,8 +1725,8 @@ function AdvancedEditorContent() {
       const previewHeight = Number(payload.preview.height);
       if (Number.isFinite(previewWidth) && Number.isFinite(previewHeight)) {
         setExportPreview({
-          width: Math.max(2, Math.round(previewWidth)),
-          height: Math.max(2, Math.round(previewHeight)),
+          width: ensureEven(previewWidth),
+          height: ensureEven(previewHeight),
         });
       }
     }
@@ -5427,12 +5427,14 @@ function AdvancedEditorContent() {
         stageDisplay.width > 0 && stageDisplay.height > 0
           ? stageDisplay
           : exportDimensions;
+      const previewWidth = ensureEven(previewSize.width);
+      const previewHeight = ensureEven(previewSize.height);
       const payload = {
         state: exportState,
         output: exportDimensions,
         preview: {
-          width: Math.round(previewSize.width),
-          height: Math.round(previewSize.height),
+          width: previewWidth,
+          height: previewHeight,
         },
         fps: 30,
         duration: projectDuration,

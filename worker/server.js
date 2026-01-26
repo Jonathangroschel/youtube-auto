@@ -457,6 +457,7 @@ const runEditorExportJob = async (job) => {
       "-r", String(fps),
       "-i", "pipe:0",
       "-an",
+      "-vf", `scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=${SCALE_FLAGS}`,
       "-c:v", "libx264",
       "-preset", RENDER_PRESET,
       "-crf", "18",
