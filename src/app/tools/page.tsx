@@ -250,7 +250,7 @@ const quickTools: QuickTool[] = [
   {
     title: "Youtube Downloader",
     description: "Download Youtube videos",
-    href: "/editor/advanced",
+    href: "/editor/advanced?new=1",
     icon: (
       <svg
         aria-hidden="true"
@@ -265,7 +265,7 @@ const quickTools: QuickTool[] = [
   {
     title: "Tiktok Downloader",
     description: "Download TikTok videos",
-    href: "/editor/advanced",
+    href: "/editor/advanced?new=1",
     icon: (
       <svg
         aria-hidden="true"

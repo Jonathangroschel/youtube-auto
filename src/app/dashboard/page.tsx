@@ -154,7 +154,7 @@ const mainActions: MainAction[] = [
     title: "Create new project in editor",
     subtitle: "Start from scratch now",
     tone: "primary",
-    href: "/editor/advanced",
+    href: "/editor/advanced?new=1",
     icon: (
       <svg
         aria-hidden="true"
@@ -315,7 +315,7 @@ const toolCards: ToolCard[] = [
   },
   {
     label: "YouTube Downloader",
-    href: "/editor/advanced",
+    href: "/editor/advanced?new=1",
     icon: (
       <svg
         aria-hidden="true"

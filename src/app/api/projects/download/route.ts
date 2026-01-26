@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import { getProjectById } from "@/lib/projects/library";
+import { createClient } from "@/lib/supabase/server-client";
+import { supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -12,26 +12,46 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing id." }, { status: 400 });
   }
 
-  const project = await getProjectById(projectId);
-  if (!project?.assetPath) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const { data: project, error } = await supabaseServer
+    .from("projects")
+    .select("id,output_bucket,output_path,user_id")
+    .eq("id", projectId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (error || !project?.output_bucket || !project?.output_path) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
 
-  let buffer: Buffer;
-  try {
-    buffer = await fs.readFile(project.assetPath);
-  } catch {
+  const { data, error: downloadError } = await supabaseServer.storage
+    .from(project.output_bucket)
+    .download(project.output_path);
+  if (downloadError || !data) {
     return NextResponse.json(
       { error: "Project file not found." },
       { status: 404 }
     );
   }
+
   const disposition =
     dispositionParam === "inline" ? "inline" : "attachment";
+  const filename =
+    project.output_path.split("/").pop() ?? "project.mp4";
+  const contentType = data.type || "video/mp4";
+  const buffer = await data.arrayBuffer();
+
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": "video/mp4",
-      "Content-Disposition": `${disposition}; filename="${project.assetFilename ?? "project.mp4"}"`,
+      "Content-Type": contentType,
+      "Content-Disposition": `${disposition}; filename="${filename}"`,
     },
   });
 }

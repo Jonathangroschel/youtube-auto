@@ -2,7 +2,6 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import {
-  addAssetsToLibrary,
   buildAssetLibraryItem,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
@@ -1857,7 +1856,6 @@ export default function AutoClipPage() {
       if (!assets.length) {
         return;
       }
-      addAssetsToLibrary(assets);
       try {
         window.localStorage.setItem(
           "autoclip:assets",
@@ -1867,7 +1865,7 @@ export default function AutoClipPage() {
       } catch (error) {
         // Ignore localStorage failures.
       }
-      window.location.href = "/editor/advanced";
+      window.location.href = "/editor/advanced?new=1";
     },
     [buildClipAsset]
   );

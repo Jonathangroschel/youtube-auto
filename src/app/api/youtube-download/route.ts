@@ -1,12 +1,24 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { supabaseServer } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server-client";
 
 export const runtime = "nodejs";
 
-const SUPABASE_BUCKET = "youtube-downloads";
+const SUPABASE_BUCKET = "user-assets";
 const YOUTUBE_DOWNLOADER_STANDBY_URL =
   process.env.APIFY_YOUTUBE_DOWNLOADER_STANDBY_URL ||
   "https://youtube-download-api--youtube-video-downloader.apify.actor";
+
+const sanitizeFilename = (value: string) => {
+  const trimmed = value.trim() || "asset";
+  const sanitized = trimmed.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const collapsed = sanitized.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  return collapsed || "asset";
+};
+
+const buildStoragePath = (userId: string, assetId: string, filename: string) =>
+  `${userId}/assets/${assetId}/${sanitizeFilename(filename)}`;
 
 type ApifyResultItem = {
   title?: string;
@@ -26,12 +38,12 @@ type ApifyResultItem = {
 // Upload video buffer to Supabase storage
 const uploadToSupabase = async (
   buffer: ArrayBuffer,
-  fileName: string,
+  path: string,
   contentType: string
 ): Promise<string | null> => {
-  const { data, error } = await supabaseServer.storage
+  const { error } = await supabaseServer.storage
     .from(SUPABASE_BUCKET)
-    .upload(fileName, buffer, {
+    .upload(path, buffer, {
       contentType,
       upsert: true,
     });
@@ -41,11 +53,7 @@ const uploadToSupabase = async (
     return null;
   }
 
-  const { data: publicUrlData } = supabaseServer.storage
-    .from(SUPABASE_BUCKET)
-    .getPublicUrl(data.path);
-
-  return publicUrlData.publicUrl;
+  return path;
 };
 
 // Extract video ID from YouTube URL
@@ -304,6 +312,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   let payload: { url?: string; quality?: string; format?: string } | null = null;
   try {
     payload = await request.json();
@@ -416,26 +432,74 @@ export async function POST(request: Request) {
     // Upload to Supabase
     const baseName = videoId ? `yt-${videoId}` : `yt-${Date.now()}`;
     const fileName = `${baseName}-${Date.now()}.${extension}`;
+    const assetId = crypto.randomUUID();
+    const storagePath = buildStoragePath(user.id, assetId, fileName);
 
-    const publicUrl = await uploadToSupabase(videoBuffer, fileName, contentType);
+    const storedPath = await uploadToSupabase(
+      videoBuffer,
+      storagePath,
+      contentType
+    );
 
-    if (!publicUrl) {
+    if (!storedPath) {
       return NextResponse.json(
         { error: "Failed to upload video to storage." },
         { status: 502 }
       );
     }
 
-    // Get metadata from first item if available
+    const durationSeconds =
+      typeof firstItem.duration === "number" ? firstItem.duration : null;
+    const width = typeof firstItem.width === "number" ? firstItem.width : null;
+    const height =
+      typeof firstItem.height === "number" ? firstItem.height : null;
+    const aspectRatio =
+      width && height ? width / height : null;
+
+    const { error: insertError } = await supabaseServer.from("assets").insert({
+      id: assetId,
+      user_id: user.id,
+      name: getString(firstItem.title) || title,
+      kind: "video",
+      source: "external",
+      storage_bucket: SUPABASE_BUCKET,
+      storage_path: storedPath,
+      external_url: null,
+      mime_type: contentType,
+      size_bytes: fileSize,
+      duration_seconds: durationSeconds,
+      width,
+      height,
+      aspect_ratio: aspectRatio,
+    });
+
+    if (insertError) {
+      return NextResponse.json(
+        { error: "Failed to save asset metadata." },
+        { status: 502 }
+      );
+    }
+
+    const { data: signedData } = await supabaseServer.storage
+      .from(SUPABASE_BUCKET)
+      .createSignedUrl(storedPath, 60 * 60);
+    const assetUrl = signedData?.signedUrl || "";
+    if (!assetUrl) {
+      return NextResponse.json(
+        { error: "Failed to generate asset URL." },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({
       title: getString(firstItem.title) || title,
       videoId: videoId ?? null,
       downloadUrl,
-      assetUrl: publicUrl,
-      durationSeconds: typeof firstItem.duration === "number" ? firstItem.duration : null,
-      width: typeof firstItem.width === "number" ? firstItem.width : null,
-      height: typeof firstItem.height === "number" ? firstItem.height : null,
+      assetId,
+      assetUrl,
+      durationSeconds,
+      width,
+      height,
       size: fileSize,
       qualityLabel:
         getString(firstItem.quality) ||

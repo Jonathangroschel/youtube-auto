@@ -339,19 +339,16 @@ export default function ProjectsPage() {
     []
   );
 
-  const handleOpenPreview = useCallback((project: ProjectLibraryItem) => {
-    setOpenProjectMenuIndex(null);
-    setPreviewProject(project);
-  }, []);
-
-  const handleClosePreview = useCallback(() => {
-    setPreviewProject(null);
-  }, []);
-
   const handleOpenProjectInEditor = useCallback(
     (project: ProjectLibraryItem) => {
+      if (project.kind === "editor") {
+        window.location.href = `/editor/advanced?projectId=${encodeURIComponent(
+          project.id
+        )}`;
+        return;
+      }
       const assetUrl = buildProjectVideoUrl(project.id, "inline");
-      const payload = { url: assetUrl, name: project.title };
+      const payload = { url: assetUrl, name: project.title, source: "autoclip" };
       try {
         window.localStorage.setItem(
           "autoclip:asset",
@@ -360,13 +357,32 @@ export default function ProjectsPage() {
       } catch (error) {
         // Ignore localStorage failures.
       }
-      window.location.href = "/editor/advanced";
+      window.location.href = "/editor/advanced?new=1";
     },
     [buildProjectVideoUrl]
   );
 
+  const handleOpenPreview = useCallback(
+    (project: ProjectLibraryItem) => {
+      setOpenProjectMenuIndex(null);
+      if (project.kind === "editor") {
+        handleOpenProjectInEditor(project);
+        return;
+      }
+      setPreviewProject(project);
+    },
+    [handleOpenProjectInEditor]
+  );
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewProject(null);
+  }, []);
+
   const handleDownloadProject = useCallback(
     (project: ProjectLibraryItem) => {
+      if (project.kind !== "clip") {
+        return;
+      }
       const url = buildProjectVideoUrl(project.id, "attachment");
       window.open(url, "_blank", "noopener,noreferrer");
     },
@@ -491,7 +507,7 @@ export default function ProjectsPage() {
     };
   }, [previewProject]);
 
-  const previewVideoUrl = previewProject
+  const previewVideoUrl = previewProject?.kind === "clip"
     ? buildProjectVideoUrl(previewProject.id, "inline")
     : null;
   const previewCreatedLabel = previewProject
@@ -923,7 +939,7 @@ export default function ProjectsPage() {
                         <div className="flex min-w-[100px] flex-1 items-center gap-2">
                           <p className="truncate">{project.title}</p>
                           <div className="inline-flex items-center rounded-full border border-transparent bg-gray-100 px-2.5 py-0.5 text-[10px] font-semibold text-gray-500">
-                            {project.type}
+                            {project.kind === "editor" ? "Draft" : "Exported"}
                           </div>
                         </div>
                         <div className="relative" data-project-menu>
@@ -970,7 +986,9 @@ export default function ProjectsPage() {
                                 handleOpenProjectInEditor(project);
                               }}
                             >
-                              Open advanced editor
+                              {project.kind === "editor"
+                                ? "Continue editing"
+                                : "Open advanced editor"}
                             </button>
                             <button
                               className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50"
@@ -995,7 +1013,7 @@ export default function ProjectsPage() {
                 ))
               ) : (
                 <div className="col-span-full rounded-xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
-                  No projects yet. Save a clip to see it here.
+                  No projects yet. Start editing to see them here.
                 </div>
               )}
             </div>

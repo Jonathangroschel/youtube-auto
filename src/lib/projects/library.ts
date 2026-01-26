@@ -107,10 +107,11 @@ export const addProjectFromClip = async ({
     previewImage = null;
   }
 
-  const item: StoredProjectLibraryItem = {
+const item: StoredProjectLibraryItem = {
     id,
     title: safeTitle,
     type: "VIDEO",
+    kind: "clip",
     createdAt: nowIso(),
     previewImage,
     assetPath: storedPath,
@@ -128,6 +129,7 @@ export const toProjectSummary = (
   id: item.id,
   title: item.title,
   type: item.type,
+  kind: item.kind,
   createdAt: item.createdAt,
   previewImage: item.previewImage ?? null,
 });
