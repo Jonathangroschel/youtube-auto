@@ -46,7 +46,10 @@ export async function updateSession(request: NextRequest) {
   );
 
   const renderSecret =
-    process.env.EDITOR_RENDER_SECRET || process.env.WORKER_SECRET || "";
+    process.env.EDITOR_RENDER_SECRET ||
+    process.env.AUTOCLIP_WORKER_SECRET ||
+    process.env.WORKER_SECRET ||
+    "";
   const isExportRenderRequest =
     request.nextUrl.pathname.startsWith("/editor/advanced") &&
     request.nextUrl.searchParams.get("export") === "1";

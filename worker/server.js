@@ -55,7 +55,9 @@ let activeExports = 0;
 const EXPORT_RENDER_URL =
   process.env.EDITOR_RENDER_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 const EXPORT_RENDER_SECRET =
-  process.env.EDITOR_RENDER_SECRET || WORKER_SECRET;
+  process.env.EDITOR_RENDER_SECRET ||
+  process.env.AUTOCLIP_WORKER_SECRET ||
+  WORKER_SECRET;
 const EXPORT_BUCKET = process.env.EDITOR_EXPORT_BUCKET || BUCKET;
 const EXPORT_FPS_DEFAULT = toPositiveInt(process.env.EDITOR_EXPORT_FPS, 30);
 const EXPORT_JPEG_QUALITY = toPositiveInt(process.env.EDITOR_EXPORT_JPEG_QUALITY, 90);
@@ -309,6 +311,21 @@ const runEditorExportJob = async (job) => {
       deviceScaleFactor: 1,
     });
     page = await context.newPage();
+    page.setDefaultTimeout(120000);
+    page.setDefaultNavigationTimeout(120000);
+    page.on("console", (msg) => {
+      const text = msg.text();
+      if (text?.includes("Download the React DevTools")) {
+        return;
+      }
+      console.log(`[export][console] ${msg.type()}: ${text}`);
+    });
+    page.on("pageerror", (err) => {
+      console.error("[export][pageerror]", err);
+    });
+    page.on("requestfailed", (request) => {
+      console.error("[export][requestfailed]", request.url(), request.failure()?.errorText);
+    });
 
     await page.addInitScript((payload) => {
       window.__EDITOR_EXPORT__ = payload;
@@ -329,9 +346,14 @@ const runEditorExportJob = async (job) => {
     if (EXPORT_RENDER_SECRET) {
       renderParams.set("renderKey", EXPORT_RENDER_SECRET);
     }
-    await page.goto(`${renderUrl}/editor/advanced?${renderParams.toString()}`, {
+    const renderTarget = `${renderUrl}/editor/advanced?${renderParams.toString()}`;
+    console.log("[export] goto", renderTarget);
+    const response = await page.goto(renderTarget, {
       waitUntil: "domcontentloaded",
     });
+    if (response) {
+      console.log("[export] goto status", response.status(), response.url());
+    }
     await page.waitForFunction(
       () => window.__EDITOR_EXPORT_API__ && typeof window.__EDITOR_EXPORT_API__.waitForReady === "function",
       { timeout: 120000 }
