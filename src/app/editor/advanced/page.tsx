@@ -1,8 +1,11 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import {
   useEffect,
   useCallback,
+  Suspense,
   useMemo,
   useRef,
   useState,
@@ -20,7 +23,6 @@ import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import type { IGif } from "@giphy/js-types";
 import {
-  consumeDeletedAssetIds,
   createExternalAsset,
   DELETED_ASSETS_EVENT,
   deleteAssetById,
@@ -450,7 +452,26 @@ const ensureEven = (value: number) => {
   return rounded % 2 === 0 ? rounded : rounded + 1;
 };
 
-export default function AdvancedEditorPage() {
+const consumeDeletedAssetIds = (): string[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem("satura:deleted-assets");
+    if (!raw) {
+      return [];
+    }
+    window.localStorage.removeItem("satura:deleted-assets");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string")
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+function AdvancedEditorContent() {
   const textMinLayerSize = 24;
   const textPresetPreviewCount = 6;
   const gifPreviewCount = 6;
@@ -7227,6 +7248,8 @@ export default function AdvancedEditorPage() {
     const uploaded = await Promise.all(
       files.map(async (file) => {
         const kind = inferMediaKind(file);
+        const uploadKind: "video" | "audio" | "image" =
+          kind === "text" ? "video" : kind;
         const previewUrl = URL.createObjectURL(file);
         const meta = await getMediaMeta(kind, previewUrl);
         URL.revokeObjectURL(previewUrl);
@@ -7235,7 +7258,7 @@ export default function AdvancedEditorPage() {
           (meta.width && meta.height ? meta.width / meta.height : undefined);
         const stored = await uploadAssetFile(file, {
           name: file.name || "Uploaded asset",
-          kind,
+          kind: uploadKind,
           source: "upload",
           duration: meta.duration,
           width: meta.width,
@@ -7245,10 +7268,10 @@ export default function AdvancedEditorPage() {
         if (!stored) {
           return null;
         }
-        return {
+        const asset: MediaAsset = {
           id: stored.id,
           name: stored.name,
-          kind: stored.kind,
+          kind,
           url: stored.url,
           size: stored.size,
           duration: stored.duration,
@@ -7257,6 +7280,7 @@ export default function AdvancedEditorPage() {
           aspectRatio: stored.aspectRatio,
           createdAt: stored.createdAt,
         };
+        return asset;
       })
     );
     return uploaded.filter((item): item is MediaAsset => Boolean(item));
@@ -7969,6 +7993,10 @@ export default function AdvancedEditorPage() {
       if (!assetUrl) {
         throw new Error("No downloadable format found.");
       }
+      const assetId =
+        typeof payload?.assetId === "string" && payload.assetId.length > 0
+          ? payload.assetId
+          : null;
 
       const title =
         typeof payload?.title === "string" && payload.title.trim().length > 0
@@ -8152,7 +8180,7 @@ export default function AdvancedEditorPage() {
       const payload = value as {
         url?: string;
         name?: string;
-        source?: string;
+        source?: "autoclip" | "external" | "upload" | "stock" | "generated";
       };
       const assetUrl =
         typeof payload.url === "string" ? payload.url : "";
@@ -8177,7 +8205,11 @@ export default function AdvancedEditorPage() {
       };
     };
 
-    const assets: Array<{ url: string; name: string; source?: string }> = [];
+    const assets: Array<{
+      url: string;
+      name: string;
+      source?: "autoclip" | "external" | "upload" | "stock" | "generated";
+    }> = [];
     if (storedList) {
       try {
         const parsed = JSON.parse(storedList);
@@ -14794,5 +14826,15 @@ export default function AdvancedEditorPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdvancedEditorPage() {
+  return (
+    <Suspense
+      fallback={<div className="h-screen w-full bg-[#F2F4FA]" />}
+    >
+      <AdvancedEditorContent />
+    </Suspense>
   );
 }
