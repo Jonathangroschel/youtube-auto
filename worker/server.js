@@ -303,6 +303,21 @@ const runEditorExportJob = async (job) => {
 
   const width = toEven(output.width);
   const height = toEven(output.height);
+  const preview = payload.preview || {};
+  const previewWidth = toEven(toPositiveInt(preview.width, width));
+  const previewHeight = toEven(toPositiveInt(preview.height, height));
+  const scaleX = previewWidth > 0 ? width / previewWidth : 1;
+  const scaleY = previewHeight > 0 ? height / previewHeight : 1;
+  const canDeviceScale =
+    scaleX >= 1 &&
+    scaleY >= 1 &&
+    Number.isFinite(scaleX) &&
+    Number.isFinite(scaleY) &&
+    Math.abs(scaleX - scaleY) <= 0.02;
+  const renderScaleMode = canDeviceScale ? "device" : "css";
+  const viewportWidth = renderScaleMode === "device" ? previewWidth : width;
+  const viewportHeight = renderScaleMode === "device" ? previewHeight : height;
+  const deviceScaleFactor = renderScaleMode === "device" ? scaleX : 1;
   const framesTotal = Math.max(1, Math.ceil(duration * fps));
   const exportStart = Date.now();
   let lastProgressLog = 0;
@@ -359,8 +374,8 @@ const runEditorExportJob = async (job) => {
     });
 
     context = await browser.newContext({
-      viewport: { width, height },
-      deviceScaleFactor: 1,
+      viewport: { width: viewportWidth, height: viewportHeight },
+      deviceScaleFactor,
     });
     page = await context.newPage();
     page.setDefaultTimeout(120000);
@@ -395,12 +410,17 @@ const runEditorExportJob = async (job) => {
       console.error("[export][page] closed");
     });
 
+    const previewPayload =
+      previewWidth && previewHeight
+        ? { width: previewWidth, height: previewHeight }
+        : null;
     await page.addInitScript((payload) => {
       window.__EDITOR_EXPORT__ = payload;
     }, {
       state,
       output: { width, height },
-      preview: payload.preview ?? null,
+      preview: previewPayload,
+      renderScaleMode,
       fps,
       duration,
       fonts,
@@ -457,7 +477,7 @@ const runEditorExportJob = async (job) => {
       "-r", String(fps),
       "-i", "pipe:0",
       "-an",
-      "-vf", `scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=${SCALE_FLAGS}`,
+      "-vf", `scale=${width}:${height}:flags=${SCALE_FLAGS}`,
       "-c:v", "libx264",
       "-preset", RENDER_PRESET,
       "-crf", "18",

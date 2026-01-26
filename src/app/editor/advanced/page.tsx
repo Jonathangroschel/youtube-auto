@@ -685,6 +685,7 @@ function AdvancedEditorContent() {
     null
   );
   const [exportPreview, setExportPreview] = useState<ExportOutput | null>(null);
+  const [exportScaleMode, setExportScaleMode] = useState<"css" | "device">("css");
   const exportPollRef = useRef<number | null>(null);
   const exportHydratedRef = useRef(false);
   const exportMediaCacheRef = useRef<Set<string>>(new Set());
@@ -1707,6 +1708,7 @@ function AdvancedEditorContent() {
   useEffect(() => {
     if (!isExportMode || typeof window === "undefined") {
       exportHydratedRef.current = false;
+      setExportScaleMode("css");
       return;
     }
     exportHydratedRef.current = false;
@@ -1720,6 +1722,7 @@ function AdvancedEditorContent() {
       exportHydratedRef.current = true;
     };
     const payload = (window as any).__EDITOR_EXPORT__;
+    setExportScaleMode(payload?.renderScaleMode === "device" ? "device" : "css");
     if (payload?.output && typeof payload.output === "object") {
       const nextWidth = Number(payload.output.width);
       const nextHeight = Number(payload.output.height);
@@ -2151,6 +2154,9 @@ function AdvancedEditorContent() {
   }, [textSettings, loadFontFamily]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     setLanes((prev) => {
       const laneIdsInUse = new Set(timeline.map((clip) => clip.laneId));
       const next = prev.filter((lane) => laneIdsInUse.has(lane.id));
@@ -2170,7 +2176,7 @@ function AdvancedEditorContent() {
       });
       return next;
     });
-  }, [timeline]);
+  }, [timeline, isExportMode]);
 
   useEffect(() => {
     return () => {
@@ -3266,6 +3272,9 @@ function AdvancedEditorContent() {
   }, []);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (lanes.length < 2) {
       return;
     }
@@ -3274,7 +3283,7 @@ function AdvancedEditorContent() {
     if (!isSameOrder) {
       setLanes(sorted);
     }
-  }, [lanes, sortLanesByType]);
+  }, [lanes, sortLanesByType, isExportMode]);
 
   const filteredAssets = useMemo(() => {
     if (assetFilter === "All") {
@@ -3885,6 +3894,25 @@ function AdvancedEditorContent() {
     return new Map(lanes.map((lane, index) => [lane.id, index]));
   }, [lanes]);
 
+  const clipZStride = useMemo(
+    () => Math.max(1000, timelineLayout.length + 10),
+    [timelineLayout.length]
+  );
+
+  const getClipZIndex = useCallback(
+    (entry: TimelineLayoutEntry) => {
+      const laneIndex = laneIndexMap.get(entry.clip.laneId) ?? 0;
+      const laneRank = Math.max(1, lanes.length - laneIndex);
+      const orderValue = clipOrder[entry.clip.id];
+      const orderRank =
+        Number.isFinite(orderValue) && (orderValue as number) > 0
+          ? (orderValue as number)
+          : 0;
+      return laneRank * clipZStride + orderRank + 2;
+    },
+    [clipOrder, laneIndexMap, lanes.length, clipZStride]
+  );
+
   useEffect(() => {
     if (timelineLayout.length === 0) {
       return;
@@ -4437,7 +4465,10 @@ function AdvancedEditorContent() {
       if (aOrder !== bOrder) {
         return aOrder - bOrder;
       }
-      return a.left - b.left;
+      if (a.left !== b.left) {
+        return a.left - b.left;
+      }
+      return a.clip.id.localeCompare(b.clip.id);
     });
   }, [laneIndexMap, clipOrder]);
 
@@ -12818,7 +12849,7 @@ function AdvancedEditorContent() {
                 </div>
               ) : visualStack.length > 0 ? (
                 <div className="relative z-10 h-full w-full">
-                  {visualStack.map((entry, index) => {
+                  {visualStack.map((entry) => {
                     const transform = resolveClipTransform(
                       entry.clip.id,
                       entry.asset
@@ -12843,7 +12874,7 @@ function AdvancedEditorContent() {
                       : null;
                     const noiseLevel = videoSettings?.noise ?? 0;
                     const vignetteLevel = videoSettings?.vignette ?? 0;
-                    const clipZ = index + 2;
+                    const clipZ = getClipZIndex(entry);
                     const clipRotation = transform.rotation ?? 0;
                     // ALWAYS skip rendering subtitle clips - they're shown via subtitle overlay system
                     // This prevents double-rendering both during playback AND when paused
@@ -13032,7 +13063,7 @@ function AdvancedEditorContent() {
                     className="cursor-grab"
                     style={{
                       position: 'absolute',
-                      zIndex: 999,
+                      zIndex: 100000,
                       opacity: 0,
                       visibility: 'hidden',
                       pointerEvents: 'none',
@@ -13222,7 +13253,7 @@ function AdvancedEditorContent() {
                 )}
               {visualStack.length > 0 && (
                 <div className="relative h-full w-full">
-                  {visualStack.map((entry, index) => {
+                  {visualStack.map((entry) => {
                     const transform = resolveClipTransform(
                       entry.clip.id,
                       entry.asset
@@ -13232,7 +13263,7 @@ function AdvancedEditorContent() {
                     if (!isSelected && !isActive) {
                       return null;
                     }
-                    const clipZ = index + 2;
+                    const clipZ = getClipZIndex(entry);
                     const clipRotation = transform.rotation ?? 0;
                     return (
                       <div
@@ -15095,14 +15126,18 @@ function AdvancedEditorContent() {
           resolvedExportViewport.height / exportPreviewViewport.height
         )
       : 1;
+  const useCssExportScale = exportScaleMode !== "device";
+  const exportContainerViewport = useCssExportScale
+    ? resolvedExportViewport
+    : exportPreviewViewport;
 
   if (isExportMode) {
     return (
       <div
         className="flex items-center justify-center overflow-hidden bg-black"
         style={{
-          width: `${resolvedExportViewport.width}px`,
-          height: `${resolvedExportViewport.height}px`,
+          width: `${exportContainerViewport.width}px`,
+          height: `${exportContainerViewport.height}px`,
         }}
       >
         <main ref={mainRef} className="flex h-full w-full items-center justify-center">
@@ -15110,8 +15145,14 @@ function AdvancedEditorContent() {
             style={{
               width: `${exportPreviewViewport.width}px`,
               height: `${exportPreviewViewport.height}px`,
-              transform: exportScale !== 1 ? `scale(${exportScale})` : undefined,
-              transformOrigin: "top left",
+              transform:
+                useCssExportScale && exportScale !== 1
+                  ? `scale(${exportScale})`
+                  : undefined,
+              transformOrigin:
+                useCssExportScale && exportScale !== 1
+                  ? "top left"
+                  : undefined,
             }}
           >
             {renderStage()}
