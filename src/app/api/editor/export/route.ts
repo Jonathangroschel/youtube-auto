@@ -128,6 +128,19 @@ export async function POST(request: Request) {
     }))
   );
 
+  const missingUploads = hydratedAssets.filter(
+    (asset) => typeof asset.url === "string" && asset.url.startsWith("blob:")
+  );
+  if (missingUploads.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Some assets are not uploaded yet. Please wait for uploads to finish and try again.",
+      },
+      { status: 400 }
+    );
+  }
+
   const hydratedState = {
     ...body.state,
     snapshot: {

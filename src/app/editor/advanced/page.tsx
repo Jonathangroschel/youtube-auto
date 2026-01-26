@@ -683,7 +683,6 @@ function AdvancedEditorContent() {
   const [exportViewport, setExportViewport] = useState<ExportOutput | null>(
     null
   );
-  const [exportAutoDownloaded, setExportAutoDownloaded] = useState(false);
   const exportPollRef = useRef<number | null>(null);
   const resolvedProjectSize = useMemo(
     () =>
@@ -5107,7 +5106,7 @@ function AdvancedEditorContent() {
   }, []);
 
   const triggerExportDownload = useCallback(
-    (url: string) => {
+    async (url: string) => {
       if (typeof document === "undefined") {
         return;
       }
@@ -5115,13 +5114,24 @@ function AdvancedEditorContent() {
         .trim()
         .replace(/[^a-zA-Z0-9-_]+/g, "-")
         .replace(/-+/g, "-");
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${safeName || "export"}.mp4`;
-      anchor.rel = "noreferrer";
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error("Download failed.");
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = `${safeName || "export"}.mp4`;
+        anchor.rel = "noreferrer";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
     },
     [projectName]
   );
@@ -5184,7 +5194,24 @@ function AdvancedEditorContent() {
     ) {
       return;
     }
-    setExportAutoDownloaded(false);
+    const exportState = buildExportState();
+    const blobAssets =
+      exportState.snapshot?.assets?.filter(
+        (asset) => typeof asset.url === "string" && asset.url.startsWith("blob:")
+      ) ?? [];
+    if (blobAssets.length > 0) {
+      setExportUi({
+        open: true,
+        status: "error",
+        stage: "Upload required",
+        progress: 0,
+        jobId: null,
+        downloadUrl: null,
+        error:
+          "Some assets are still local. Please re-upload or wait for uploads to finish before exporting.",
+      });
+      return;
+    }
     setExportUi({
       open: true,
       status: "starting",
@@ -5196,7 +5223,7 @@ function AdvancedEditorContent() {
     });
     try {
       const payload = {
-        state: buildExportState(),
+        state: exportState,
         output: exportDimensions,
         fps: 30,
         duration: projectDuration,
@@ -5261,18 +5288,6 @@ function AdvancedEditorContent() {
       stopExportPolling();
     };
   }, [stopExportPolling]);
-
-  useEffect(() => {
-    if (
-      exportUi.status !== "complete" ||
-      !exportUi.downloadUrl ||
-      exportAutoDownloaded
-    ) {
-      return;
-    }
-    triggerExportDownload(exportUi.downloadUrl);
-    setExportAutoDownloaded(true);
-  }, [exportAutoDownloaded, exportUi.downloadUrl, exportUi.status, triggerExportDownload]);
 
   const exportProgressPercent = Math.round(
     clamp(exportUi.progress, 0, 1) * 100
@@ -9534,41 +9549,54 @@ function AdvancedEditorContent() {
       pushHistory();
       setUploading(true);
       try {
-        const url = URL.createObjectURL(file);
-        const meta = await getMediaMeta("video", url);
+        const previewUrl = URL.createObjectURL(file);
+        const meta = await getMediaMeta("video", previewUrl);
+        URL.revokeObjectURL(previewUrl);
         const resolvedAspectRatio =
           meta.aspectRatio ??
           (meta.width && meta.height ? meta.width / meta.height : undefined);
-        const newAsset: MediaAsset = {
-          id: crypto.randomUUID(),
-          name: file.name,
+        const stored = await uploadAssetFileSafe(file, {
+          name: file.name || "Replacement video",
           kind: "video",
-          url,
-          size: file.size,
+          source: "upload",
           duration: meta.duration,
           width: meta.width,
           height: meta.height,
           aspectRatio: resolvedAspectRatio,
-          createdAt: Date.now(),
+        });
+        if (!stored) {
+          console.error("[assets] replace video upload failed");
+          return;
+        }
+        const newAsset: MediaAsset = {
+          id: stored.id,
+          name: stored.name,
+          kind: "video",
+          url: stored.url,
+          size: stored.size,
+          duration: stored.duration,
+          width: stored.width,
+          height: stored.height,
+          aspectRatio: stored.aspectRatio,
+          createdAt: stored.createdAt,
         };
         setAssets((prev) => [newAsset, ...prev]);
-      const playbackRate = getClipPlaybackRate(selectedVideoEntry.clip.id);
-      const maxDuration =
-        getAssetDurationSeconds(newAsset) / playbackRate;
-      setTimeline((prev) =>
-        prev.map((clip) => {
-          if (clip.id !== selectedVideoEntry.clip.id) {
-            return clip;
-          }
-          const nextDuration = Math.min(clip.duration, maxDuration);
-          return {
-            ...clip,
-            assetId: newAsset.id,
-            duration: nextDuration,
-            startOffset: 0,
-          };
-        })
-      );
+        const playbackRate = getClipPlaybackRate(selectedVideoEntry.clip.id);
+        const maxDuration = getAssetDurationSeconds(newAsset) / playbackRate;
+        setTimeline((prev) =>
+          prev.map((clip) => {
+            if (clip.id !== selectedVideoEntry.clip.id) {
+              return clip;
+            }
+            const nextDuration = Math.min(clip.duration, maxDuration);
+            return {
+              ...clip,
+              assetId: newAsset.id,
+              duration: nextDuration,
+              startOffset: 0,
+            };
+          })
+        );
         setActiveAssetId(newAsset.id);
       } finally {
         setUploading(false);
@@ -9592,23 +9620,39 @@ function AdvancedEditorContent() {
     pushHistory();
     setUploading(true);
     try {
-      const url = URL.createObjectURL(file);
       const kind = inferMediaKind(file);
-      const meta = await getMediaMeta(kind, url);
+      const assetKind: "video" | "audio" | "image" =
+        kind === "text" ? "video" : kind;
+      const previewUrl = URL.createObjectURL(file);
+      const meta = await getMediaMeta(assetKind, previewUrl);
+      URL.revokeObjectURL(previewUrl);
       const resolvedAspectRatio =
         meta.aspectRatio ??
         (meta.width && meta.height ? meta.width / meta.height : undefined);
-      const newAsset: MediaAsset = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        kind,
-        url,
-        size: file.size,
+      const stored = await uploadAssetFileSafe(file, {
+        name: file.name || "Replacement asset",
+        kind: assetKind,
+        source: "upload",
         duration: meta.duration,
         width: meta.width,
         height: meta.height,
         aspectRatio: resolvedAspectRatio,
-        createdAt: Date.now(),
+      });
+      if (!stored) {
+        console.error("[assets] replace asset upload failed");
+        return;
+      }
+      const newAsset: MediaAsset = {
+        id: stored.id,
+        name: stored.name,
+        kind: assetKind,
+        url: stored.url,
+        size: stored.size,
+        duration: stored.duration,
+        width: stored.width,
+        height: stored.height,
+        aspectRatio: stored.aspectRatio,
+        createdAt: stored.createdAt,
       };
       setAssets((prev) => [newAsset, ...prev]);
       
