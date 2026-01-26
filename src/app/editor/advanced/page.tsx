@@ -2149,6 +2149,9 @@ function AdvancedEditorContent() {
   }, [activeTool]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "audio" || !hasSupabase) {
       return;
     }
@@ -2317,9 +2320,12 @@ function AdvancedEditorContent() {
       }
       cancelled = true;
     };
-  }, [activeTool, hasSupabase, stockMusicReloadKey]);
+  }, [activeTool, hasSupabase, isExportMode, stockMusicReloadKey]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "audio" || !hasSupabase) {
       return;
     }
@@ -2488,9 +2494,12 @@ function AdvancedEditorContent() {
       }
       cancelled = true;
     };
-  }, [activeTool, hasSupabase, soundFxReloadKey]);
+  }, [activeTool, hasSupabase, isExportMode, soundFxReloadKey]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "video" || !hasSupabase) {
       return;
     }
@@ -2665,7 +2674,7 @@ function AdvancedEditorContent() {
       }
       cancelled = true;
     };
-  }, [activeTool, hasSupabase, stockVideoReloadKey]);
+  }, [activeTool, hasSupabase, isExportMode, stockVideoReloadKey]);
 
   useEffect(() => {
     if (!["video", "audio", "image"].includes(activeTool)) {
@@ -2709,6 +2718,9 @@ function AdvancedEditorContent() {
   }, [isStickerLibraryExpanded]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "image" || !giphyFetch || !hasGiphy) {
       return;
     }
@@ -2737,9 +2749,13 @@ function AdvancedEditorContent() {
     gifTrendingStatus,
     giphyFetch,
     hasGiphy,
+    isExportMode,
   ]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "image" || !giphyFetch || !hasGiphy) {
       return;
     }
@@ -2765,9 +2781,13 @@ function AdvancedEditorContent() {
     gifPreviewCount,
     giphyFetch,
     hasGiphy,
+    isExportMode,
   ]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "image" || !giphyFetch || !hasGiphy) {
       return;
     }
@@ -2805,9 +2825,12 @@ function AdvancedEditorContent() {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [activeTool, gifSearch, gifSearchLimit, giphyFetch, hasGiphy]);
+  }, [activeTool, gifSearch, gifSearchLimit, giphyFetch, hasGiphy, isExportMode]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "elements" || !giphyFetch || !hasGiphy) {
       return;
     }
@@ -2839,9 +2862,13 @@ function AdvancedEditorContent() {
     hasGiphy,
     stickerTrending.length,
     stickerTrendingStatus,
+    isExportMode,
   ]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     if (activeTool !== "elements" || !giphyFetch || !hasGiphy) {
       return;
     }
@@ -2879,7 +2906,7 @@ function AdvancedEditorContent() {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [activeTool, stickerSearch, gifSearchLimit, giphyFetch, hasGiphy]);
+  }, [activeTool, stickerSearch, gifSearchLimit, giphyFetch, hasGiphy, isExportMode]);
 
   useEffect(() => {
     const viewport = stageViewportRef.current;
@@ -5005,33 +5032,61 @@ function AdvancedEditorContent() {
     }
     const images = Array.from(stage.querySelectorAll("img"));
     const videos = Array.from(stage.querySelectorAll("video"));
+    const withTimeout = (promise: Promise<void>, label: string) =>
+      new Promise<void>((resolve) => {
+        let done = false;
+        const timeoutId = window.setTimeout(() => {
+          if (!done) {
+            console.warn(`[export] media timeout: ${label}`);
+            done = true;
+            resolve();
+          }
+        }, 8000);
+        promise
+          .catch(() => {})
+          .finally(() => {
+            if (done) {
+              return;
+            }
+            done = true;
+            window.clearTimeout(timeoutId);
+            resolve();
+          });
+      });
     await Promise.all(
       images.map(
         (img) =>
-          new Promise<void>((resolve) => {
-            if (img.complete && img.naturalWidth > 0) {
-              resolve();
-              return;
-            }
-            const done = () => resolve();
-            img.addEventListener("load", done, { once: true });
-            img.addEventListener("error", done, { once: true });
-          })
+          withTimeout(
+            new Promise<void>((resolve) => {
+              if (img.complete && img.naturalWidth > 0) {
+                resolve();
+                return;
+              }
+              const done = () => resolve();
+              img.addEventListener("load", done, { once: true });
+              img.addEventListener("error", done, { once: true });
+            }),
+            img.currentSrc || img.src || "image"
+          )
       )
     );
     await Promise.all(
       videos.map(
         (video) =>
-          new Promise<void>((resolve) => {
-            if (video.readyState >= 2 && !video.seeking) {
-              resolve();
-              return;
-            }
-            const done = () => resolve();
-            video.addEventListener("loadeddata", done, { once: true });
-            video.addEventListener("seeked", done, { once: true });
-            video.addEventListener("error", done, { once: true });
-          })
+          withTimeout(
+            new Promise<void>((resolve) => {
+              if (video.readyState >= 2 && !video.seeking) {
+                resolve();
+                return;
+              }
+              const done = () => resolve();
+              video.addEventListener("loadeddata", done, { once: true });
+              video.addEventListener("canplay", done, { once: true });
+              video.addEventListener("seeked", done, { once: true });
+              video.addEventListener("error", done, { once: true });
+            }),
+            video.currentSrc || video.src || "video"
+          )
       )
     );
     await new Promise<void>((resolve) =>

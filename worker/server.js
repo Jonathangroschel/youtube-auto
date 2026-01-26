@@ -326,6 +326,12 @@ const runEditorExportJob = async (job) => {
     page.on("requestfailed", (request) => {
       console.error("[export][requestfailed]", request.url(), request.failure()?.errorText);
     });
+    page.on("response", (response) => {
+      const status = response.status();
+      if (status >= 400) {
+        console.error("[export][response]", status, response.url());
+      }
+    });
 
     await page.addInitScript((payload) => {
       window.__EDITOR_EXPORT__ = payload;

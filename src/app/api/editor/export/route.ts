@@ -95,10 +95,51 @@ export async function POST(request: Request) {
   const rows = assetRows.data ?? [];
   const assetMap = new Map(rows.map((row) => [row.id, row]));
   const signedUrlCache = new Map<string, string>();
+  const supabaseStorageMatch = (value: string) => {
+    try {
+      const url = new URL(value);
+      const match = url.pathname.match(
+        /^\/storage\/v1\/object\/(public|sign)\/([^/]+)\/(.+)$/
+      );
+      if (!match) {
+        return null;
+      }
+      const bucket = match[2];
+      const path = decodeURIComponent(match[3]);
+      return { bucket, path };
+    } catch {
+      return null;
+    }
+  };
+  const resolveSupabaseStorageUrl = async (value: string) => {
+    const match = supabaseStorageMatch(value);
+    if (!match) {
+      return null;
+    }
+    const cacheKey = `${match.bucket}:${match.path}`;
+    const cached = signedUrlCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const { data } = await supabaseServer.storage
+      .from(match.bucket)
+      .createSignedUrl(match.path, 60 * 60 * 6);
+    const signedUrl = data?.signedUrl ?? null;
+    if (signedUrl) {
+      signedUrlCache.set(cacheKey, signedUrl);
+    }
+    return signedUrl;
+  };
 
   const resolveAssetUrl = async (asset: { id: string; url: string }) => {
     const row = assetMap.get(asset.id);
     if (!row) {
+      if (asset.url) {
+        const signed = await resolveSupabaseStorageUrl(asset.url);
+        if (signed) {
+          return signed;
+        }
+      }
       return asset.url;
     }
     if (row.storage_bucket && row.storage_path) {
@@ -117,6 +158,10 @@ export async function POST(request: Request) {
       }
     }
     if (row.external_url) {
+      const signed = await resolveSupabaseStorageUrl(row.external_url);
+      if (signed) {
+        return signed;
+      }
       return row.external_url;
     }
     return asset.url;
@@ -158,6 +203,17 @@ export async function POST(request: Request) {
       hydratedState.project.backgroundImage = {
         ...hydratedState.project.backgroundImage,
         url: backgroundAsset.url,
+      };
+    }
+  }
+  if (hydratedState.project?.backgroundImage?.url) {
+    const signed = await resolveSupabaseStorageUrl(
+      hydratedState.project.backgroundImage.url
+    );
+    if (signed) {
+      hydratedState.project.backgroundImage = {
+        ...hydratedState.project.backgroundImage,
+        url: signed,
       };
     }
   }
