@@ -4,6 +4,7 @@ import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
@@ -28,11 +29,15 @@ const toEven = (value) => {
   return safe - (safe % 2);
 };
 
+const CPU_COUNT = Math.max(1, os.cpus()?.length ?? 1);
 const MAX_RENDER_CONCURRENCY = toPositiveInt(
   process.env.AUTOCLIP_RENDER_CONCURRENCY,
-  1
+  Math.max(1, Math.min(2, Math.floor(CPU_COUNT / 2)))
 );
-const FFMPEG_THREADS = toPositiveInt(process.env.AUTOCLIP_FFMPEG_THREADS, 1);
+const FFMPEG_THREADS = toPositiveInt(
+  process.env.AUTOCLIP_FFMPEG_THREADS,
+  Math.max(1, CPU_COUNT)
+);
 const MAX_RENDER_FPS = toPositiveInt(process.env.AUTOCLIP_MAX_RENDER_FPS, 30);
 const MAX_RENDER_HEIGHT = toPositiveInt(
   process.env.AUTOCLIP_MAX_RENDER_HEIGHT,
@@ -61,9 +66,17 @@ const EXPORT_RENDER_SECRET =
 const EXPORT_BUCKET = process.env.EDITOR_EXPORT_BUCKET || BUCKET;
 const EXPORT_FPS_DEFAULT = toPositiveInt(process.env.EDITOR_EXPORT_FPS, 30);
 const EXPORT_JPEG_QUALITY = toPositiveInt(process.env.EDITOR_EXPORT_JPEG_QUALITY, 90);
+const EXPORT_FRAME_TIMEOUT_MS = toPositiveInt(
+  process.env.EDITOR_EXPORT_FRAME_TIMEOUT_MS,
+  20000
+);
+const EXPORT_PROGRESS_LOG_MS = toPositiveInt(
+  process.env.EDITOR_EXPORT_PROGRESS_LOG_MS,
+  5000
+);
 const MAX_EXPORT_CONCURRENCY = toPositiveInt(
   process.env.EDITOR_EXPORT_CONCURRENCY,
-  1
+  Math.max(1, Math.min(2, Math.floor(CPU_COUNT / 2)))
 );
 
 const exportQueue = [];
@@ -289,6 +302,38 @@ const runEditorExportJob = async (job) => {
   const width = toEven(output.width);
   const height = toEven(output.height);
   const framesTotal = Math.max(1, Math.ceil(duration * fps));
+  const exportStart = Date.now();
+  let lastProgressLog = 0;
+
+  const withTimeout = async (promise, ms, label) => {
+    let timeoutId;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${ms}ms`));
+          }, ms);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  };
+
+  const maybeLogProgress = (framesRendered) => {
+    const now = Date.now();
+    if (now - lastProgressLog < EXPORT_PROGRESS_LOG_MS) {
+      return;
+    }
+    lastProgressLog = now;
+    const percent = ((framesRendered / framesTotal) * 100).toFixed(1);
+    console.log(
+      `[export] ${job.id} ${framesRendered}/${framesTotal} (${percent}%) elapsed=${Math.round((now - exportStart) / 1000)}s`
+    );
+  };
 
   updateExportJob(job.id, {
     status: "loading",
@@ -332,6 +377,12 @@ const runEditorExportJob = async (job) => {
         console.error("[export][response]", status, response.url());
       }
     });
+    page.on("crash", () => {
+      console.error("[export][page] crashed");
+    });
+    page.on("close", () => {
+      console.error("[export][page] closed");
+    });
 
     await page.addInitScript((payload) => {
       window.__EDITOR_EXPORT__ = payload;
@@ -361,11 +412,19 @@ const runEditorExportJob = async (job) => {
     if (response) {
       console.log("[export] goto status", response.status(), response.url());
     }
-    await page.waitForFunction(
-      () => window.__EDITOR_EXPORT_API__ && typeof window.__EDITOR_EXPORT_API__.waitForReady === "function",
-      { timeout: 120000 }
+    await withTimeout(
+      page.waitForFunction(
+        () => window.__EDITOR_EXPORT_API__ && typeof window.__EDITOR_EXPORT_API__.waitForReady === "function",
+        { timeout: 120000 }
+      ),
+      120000,
+      "waitForExportApi"
     );
-    await page.evaluate(() => window.__EDITOR_EXPORT_API__.waitForReady());
+    await withTimeout(
+      page.evaluate(() => window.__EDITOR_EXPORT_API__.waitForReady()),
+      120000,
+      "waitForReady"
+    );
 
     const stageHandle = await page.$("[data-export-stage]");
     if (!stageHandle) {
@@ -397,7 +456,11 @@ const runEditorExportJob = async (job) => {
     ]);
 
     const writeFrame = (buffer) =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
+        if (ffmpeg.exitCode !== null) {
+          reject(new Error(`FFmpeg exited early with code ${ffmpeg.exitCode}`));
+          return;
+        }
         const canWrite = ffmpeg.stdin.write(buffer);
         if (canWrite) {
           resolve();
@@ -408,17 +471,30 @@ const runEditorExportJob = async (job) => {
 
     for (let i = 0; i < framesTotal; i += 1) {
       const time = i / fps;
-      await page.evaluate((value) => window.__EDITOR_EXPORT_API__.setTime(value), time);
-      const buffer = await stageHandle.screenshot({
-        type: "jpeg",
-        quality: EXPORT_JPEG_QUALITY,
-      });
-      await writeFrame(buffer);
+      await withTimeout(
+        page.evaluate((value) => window.__EDITOR_EXPORT_API__.setTime(value), time),
+        EXPORT_FRAME_TIMEOUT_MS,
+        `setTime frame ${i + 1}`
+      );
+      const buffer = await withTimeout(
+        stageHandle.screenshot({
+          type: "jpeg",
+          quality: EXPORT_JPEG_QUALITY,
+        }),
+        EXPORT_FRAME_TIMEOUT_MS,
+        `screenshot frame ${i + 1}`
+      );
+      await withTimeout(
+        writeFrame(buffer),
+        EXPORT_FRAME_TIMEOUT_MS,
+        `encode frame ${i + 1}`
+      );
       const framesRendered = i + 1;
       updateExportJob(job.id, {
         framesRendered,
         progress: 0.05 + (framesRendered / framesTotal) * 0.85,
       });
+      maybeLogProgress(framesRendered);
     }
 
     ffmpeg.stdin.end();

@@ -687,6 +687,7 @@ function AdvancedEditorContent() {
   const exportPollRef = useRef<number | null>(null);
   const exportHydratedRef = useRef(false);
   const exportMediaCacheRef = useRef<Set<string>>(new Set());
+  const exportMediaFailedRef = useRef<Set<string>>(new Set());
   const resolvedProjectSize = useMemo(
     () =>
       projectSizeOptions.find((option) => option.id === projectSizeId) ??
@@ -1700,6 +1701,7 @@ function AdvancedEditorContent() {
     }
     exportHydratedRef.current = false;
     exportMediaCacheRef.current.clear();
+    exportMediaFailedRef.current.clear();
     let cancelled = false;
     const markHydrated = () => {
       if (cancelled) {
@@ -5124,41 +5126,47 @@ function AdvancedEditorContent() {
       );
     });
     const withTimeout = (promise: Promise<void>, label: string) =>
-      new Promise<void>((resolve) => {
+      new Promise<boolean>((resolve) => {
         let done = false;
         const timeoutId = window.setTimeout(() => {
           if (!done) {
             console.warn(`[export] media timeout: ${label}`);
             done = true;
-            resolve();
+            resolve(false);
           }
         }, 8000);
         promise
-          .catch(() => {})
-          .finally(() => {
+          .then(() => {
             if (done) {
               return;
             }
             done = true;
             window.clearTimeout(timeoutId);
-            resolve();
+            resolve(true);
+          })
+          .catch(() => {
+            if (done) {
+              return;
+            }
+            done = true;
+            window.clearTimeout(timeoutId);
+            resolve(false);
           });
       });
     await Promise.all(
-      images.map(
-        (img) =>
-          withTimeout(
-            new Promise<void>((resolve) => {
-              if (img.complete && img.naturalWidth > 0) {
-                resolve();
-                return;
-              }
-              const done = () => resolve();
-              img.addEventListener("load", done, { once: true });
-              img.addEventListener("error", done, { once: true });
-            }),
-            img.currentSrc || img.src || "image"
-          )
+      images.map((img) =>
+        withTimeout(
+          new Promise<void>((resolve) => {
+            if (img.complete && img.naturalWidth > 0) {
+              resolve();
+              return;
+            }
+            const done = () => resolve();
+            img.addEventListener("load", done, { once: true });
+            img.addEventListener("error", done, { once: true });
+          }),
+          img.currentSrc || img.src || "image"
+        )
       )
     );
     const cachedBackgrounds = exportMediaCacheRef.current;
@@ -5184,24 +5192,33 @@ function AdvancedEditorContent() {
           )
         )
     );
+    const failedMedia = exportMediaFailedRef.current;
     await Promise.all(
-      videos.map(
-        (video) =>
-          withTimeout(
-            new Promise<void>((resolve) => {
-              if (video.readyState >= 2 && !video.seeking) {
-                resolve();
-                return;
-              }
-              const done = () => resolve();
-              video.addEventListener("loadeddata", done, { once: true });
-              video.addEventListener("canplay", done, { once: true });
-              video.addEventListener("seeked", done, { once: true });
-              video.addEventListener("error", done, { once: true });
-            }),
-            video.currentSrc || video.src || "video"
-          )
-      )
+      videos.map(async (video) => {
+        const label = video.currentSrc || video.src || "video";
+        if (failedMedia.has(label)) {
+          return;
+        }
+        const ok = await withTimeout(
+          new Promise<void>((resolve, reject) => {
+            if (video.readyState >= 2 && !video.seeking) {
+              resolve();
+              return;
+            }
+            const done = () => resolve();
+            const fail = () => reject(new Error("video error"));
+            video.addEventListener("loadeddata", done, { once: true });
+            video.addEventListener("canplay", done, { once: true });
+            video.addEventListener("seeked", done, { once: true });
+            video.addEventListener("error", fail, { once: true });
+          }),
+          label
+        );
+        if (!ok) {
+          failedMedia.add(label);
+          console.warn(`[export] skipping further waits for ${label}`);
+        }
+      })
     );
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
