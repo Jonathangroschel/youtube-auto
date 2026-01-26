@@ -257,6 +257,7 @@ type EditorProjectState = {
     videoBackground?: string;
   };
   snapshot: EditorSnapshot;
+  subtitleSegments?: SubtitleSegment[];
 };
 
 type ProjectSaveState = "idle" | "saving" | "saved" | "error";
@@ -1213,6 +1214,10 @@ function AdvancedEditorContent() {
         };
         return next;
       });
+      // Avoid mutating timeline/transforms during export renders.
+      if (isExportMode) {
+        return;
+      }
       // Also update the clip duration if it was based on fallback duration
       if (videoDuration != null) {
         setTimeline((prev) => {
@@ -1287,7 +1292,7 @@ function AdvancedEditorContent() {
         };
       });
     },
-    []
+    [isExportMode]
   );
 
   // PERFORMANCE: Cache ref callbacks to prevent React from re-registering refs on every render
@@ -1635,6 +1640,7 @@ function AdvancedEditorContent() {
         videoBackground,
       },
       snapshot: createSnapshot(),
+      subtitleSegments,
     }),
     [
       projectName,
@@ -1646,6 +1652,7 @@ function AdvancedEditorContent() {
       canvasBackground,
       videoBackground,
       createSnapshot,
+      subtitleSegments,
     ]
   );
 
@@ -1654,6 +1661,9 @@ function AdvancedEditorContent() {
       const snapshot = payload?.snapshot;
       if (snapshot) {
         applySnapshot(snapshot);
+      }
+      if (Array.isArray(payload?.subtitleSegments)) {
+        setSubtitleSegments(payload.subtitleSegments);
       }
       const project = payload?.project;
       if (project) {
@@ -1748,6 +1758,11 @@ function AdvancedEditorContent() {
           }
         : payload.state;
       applyProjectState(sanitizedState as EditorProjectState);
+      if (sanitizedSnapshot?.clipTransforms) {
+        clipTransformTouchedRef.current = new Set(
+          Object.keys(sanitizedSnapshot.clipTransforms)
+        );
+      }
       setProjectReady(true);
       setProjectStarted(true);
       setIsPlaying(false);
@@ -3583,7 +3598,7 @@ function AdvancedEditorContent() {
     return new Map(
       timelineLayout.map((entry) => [entry.clip.id, entry.asset.kind])
     );
-  }, [timelineLayout]);
+  }, [timelineLayout, isExportMode]);
 
   const subtitleClipIdSet = useMemo(() => {
     return new Set(subtitleSegments.map((segment) => segment.clipId));
@@ -3606,7 +3621,7 @@ function AdvancedEditorContent() {
 
   const visualTimelineEntries = useMemo(() => {
     return timelineLayout.filter((entry) => entry.asset.kind !== "audio");
-  }, [timelineLayout]);
+  }, [timelineLayout, isExportMode]);
 
   const visualEntries = useMemo(() => {
     if (subtitleClipIdSet.size === 0) {
@@ -3874,6 +3889,9 @@ function AdvancedEditorContent() {
     if (timelineLayout.length === 0) {
       return;
     }
+    if (isExportMode) {
+      return;
+    }
     setClipSettings((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -3895,6 +3913,9 @@ function AdvancedEditorContent() {
     if (timelineLayout.length === 0) {
       return;
     }
+    if (isExportMode) {
+      return;
+    }
     setTextSettings((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -3913,6 +3934,9 @@ function AdvancedEditorContent() {
   }, [timelineLayout]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
     setClipOrder((prev) => {
       const validIds = new Set(timelineLayout.map((entry) => entry.clip.id));
       const existing = Object.entries(prev)
@@ -3941,7 +3965,7 @@ function AdvancedEditorContent() {
       }
       return next;
     });
-  }, [timelineLayout]);
+  }, [timelineLayout, isExportMode]);
 
 
   const getClipAtTime = useCallback(
@@ -4881,6 +4905,9 @@ function AdvancedEditorContent() {
     if (timelineClips.length === 0) {
       return;
     }
+    if (isExportMode) {
+      return;
+    }
     if (stageSize.width === 0 || stageSize.height === 0) {
       return;
     }
@@ -4899,10 +4926,13 @@ function AdvancedEditorContent() {
       });
       return changed ? next : prev;
     });
-  }, [timelineClips, stageAspectRatio]);
+  }, [timelineClips, stageAspectRatio, isExportMode]);
 
   useEffect(() => {
     if (timelineLayout.length === 0) {
+      return;
+    }
+    if (isExportMode) {
       return;
     }
     if (stageSize.width === 0 || stageSize.height === 0) {
@@ -4975,6 +5005,7 @@ function AdvancedEditorContent() {
   }, [
     dragTransformState,
     fallbackTextSettings,
+    isExportMode,
     resizeTransformState,
     stageAspectRatio,
     stageSize.height,
