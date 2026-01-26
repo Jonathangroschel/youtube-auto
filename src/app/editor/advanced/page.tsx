@@ -491,6 +491,26 @@ const consumeDeletedAssetIds = (): string[] => {
 
 const DELETED_ASSETS_EVENT = "satura:assets-deleted";
 
+const isAssetDebugEnabled = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  try {
+    return (
+      window.localStorage?.getItem("assetDebug") === "1" ||
+      process.env.NEXT_PUBLIC_ASSET_DEBUG === "1"
+    );
+  } catch {
+    return process.env.NEXT_PUBLIC_ASSET_DEBUG === "1";
+  }
+};
+
+const logAssetDebug = (...args: unknown[]) => {
+  if (isAssetDebugEnabled()) {
+    console.info(...args);
+  }
+};
+
 const createExternalAssetSafe = async (
   payload: ExternalAssetPayload
 ): Promise<AssetLibraryItem | null> => {
@@ -499,10 +519,12 @@ const createExternalAssetSafe = async (
       createExternalAsset?: (value: ExternalAssetPayload) => Promise<AssetLibraryItem | null>;
     };
     if (typeof mod.createExternalAsset === "function") {
+      logAssetDebug("[assets] createExternalAsset via library");
       return mod.createExternalAsset(payload);
     }
-  } catch {
-    // Ignore when module export is unavailable.
+    console.warn("[assets] createExternalAsset export missing");
+  } catch (error) {
+    console.error("[assets] createExternalAsset failed", error);
   }
   return null;
 };
@@ -513,10 +535,13 @@ const deleteAssetByIdSafe = async (assetId: string) => {
       deleteAssetById?: (id: string) => Promise<void>;
     };
     if (typeof mod.deleteAssetById === "function") {
+      logAssetDebug("[assets] deleteAssetById via library");
       await mod.deleteAssetById(assetId);
+      return;
     }
-  } catch {
-    // Ignore when module export is unavailable.
+    console.warn("[assets] deleteAssetById export missing");
+  } catch (error) {
+    console.error("[assets] deleteAssetById failed", error);
   }
 };
 
@@ -529,10 +554,16 @@ const uploadAssetFileSafe = async (
       uploadAssetFile?: (file: File, meta?: UploadAssetMeta) => Promise<AssetLibraryItem | null>;
     };
     if (typeof mod.uploadAssetFile === "function") {
+      logAssetDebug("[assets] uploadAssetFile via library", {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
       return await mod.uploadAssetFile(file, meta);
     }
-  } catch {
-    // Ignore when module export is unavailable.
+    console.warn("[assets] uploadAssetFile export missing");
+  } catch (error) {
+    console.error("[assets] uploadAssetFile failed", error);
   }
   return null;
 };
@@ -7313,43 +7344,64 @@ function AdvancedEditorContent() {
   const buildAssetsFromFiles = async (files: File[]) => {
     const uploaded = await Promise.all(
       files.map(async (file) => {
-        const kind = inferMediaKind(file);
-        const uploadKind: "video" | "audio" | "image" =
-          kind === "text" ? "video" : kind;
-        const previewUrl = URL.createObjectURL(file);
-        const meta = await getMediaMeta(kind, previewUrl);
-        URL.revokeObjectURL(previewUrl);
-        const resolvedAspectRatio =
-          meta.aspectRatio ??
-          (meta.width && meta.height ? meta.width / meta.height : undefined);
-        const stored = await uploadAssetFileSafe(file, {
-          name: file.name || "Uploaded asset",
-          kind: uploadKind,
-          source: "upload",
-          duration: meta.duration,
-          width: meta.width,
-          height: meta.height,
-          aspectRatio: resolvedAspectRatio,
-        });
-        if (!stored) {
+        const fileInfo = { name: file.name, size: file.size, type: file.type };
+        try {
+          const kind = inferMediaKind(file);
+          const uploadKind: "video" | "audio" | "image" =
+            kind === "text" ? "video" : kind;
+          logAssetDebug("[assets] prepare upload", {
+            ...fileInfo,
+            kind,
+            uploadKind,
+          });
+          const previewUrl = URL.createObjectURL(file);
+          const meta = await getMediaMeta(kind, previewUrl);
+          URL.revokeObjectURL(previewUrl);
+          const resolvedAspectRatio =
+            meta.aspectRatio ??
+            (meta.width && meta.height ? meta.width / meta.height : undefined);
+          const stored = await uploadAssetFileSafe(file, {
+            name: file.name || "Uploaded asset",
+            kind: uploadKind,
+            source: "upload",
+            duration: meta.duration,
+            width: meta.width,
+            height: meta.height,
+            aspectRatio: resolvedAspectRatio,
+          });
+          if (!stored) {
+            console.warn("[assets] upload returned null", fileInfo);
+            return null;
+          }
+          const asset: MediaAsset = {
+            id: stored.id,
+            name: stored.name,
+            kind,
+            url: stored.url,
+            size: stored.size,
+            duration: stored.duration,
+            width: stored.width,
+            height: stored.height,
+            aspectRatio: stored.aspectRatio,
+            createdAt: stored.createdAt,
+          };
+          logAssetDebug("[assets] upload success", {
+            ...fileInfo,
+            assetId: asset.id,
+          });
+          return asset;
+        } catch (error) {
+          console.error("[assets] upload failed", fileInfo, error);
           return null;
         }
-        const asset: MediaAsset = {
-          id: stored.id,
-          name: stored.name,
-          kind,
-          url: stored.url,
-          size: stored.size,
-          duration: stored.duration,
-          width: stored.width,
-          height: stored.height,
-          aspectRatio: stored.aspectRatio,
-          createdAt: stored.createdAt,
-        };
-        return asset;
       })
     );
-    return uploaded.filter((item): item is MediaAsset => Boolean(item));
+    const filtered = uploaded.filter((item): item is MediaAsset => Boolean(item));
+    logAssetDebug("[assets] upload batch complete", {
+      total: files.length,
+      success: filtered.length,
+    });
+    return filtered;
   };
 
   const resolveDropLaneId = (
@@ -7451,6 +7503,10 @@ function AdvancedEditorContent() {
     if (files.length === 0) {
       return;
     }
+    logAssetDebug("[assets] handleDroppedFiles", {
+      count: files.length,
+      target: options.target,
+    });
     setIsBackgroundSelected(false);
     pushHistory();
     setUploading(true);
@@ -7495,6 +7551,7 @@ function AdvancedEditorContent() {
     if (!files.length) {
       return;
     }
+    logAssetDebug("[assets] handleFiles", { count: files.length });
     setIsBackgroundSelected(false);
     pushHistory();
     setUploading(true);
