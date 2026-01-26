@@ -683,6 +683,7 @@ function AdvancedEditorContent() {
   const [exportViewport, setExportViewport] = useState<ExportOutput | null>(
     null
   );
+  const [exportPreview, setExportPreview] = useState<ExportOutput | null>(null);
   const exportPollRef = useRef<number | null>(null);
   const resolvedProjectSize = useMemo(
     () =>
@@ -1698,6 +1699,16 @@ function AdvancedEditorContent() {
         setExportViewport({
           width: Math.max(2, Math.round(nextWidth)),
           height: Math.max(2, Math.round(nextHeight)),
+        });
+      }
+    }
+    if (payload?.preview && typeof payload.preview === "object") {
+      const previewWidth = Number(payload.preview.width);
+      const previewHeight = Number(payload.preview.height);
+      if (Number.isFinite(previewWidth) && Number.isFinite(previewHeight)) {
+        setExportPreview({
+          width: Math.max(2, Math.round(previewWidth)),
+          height: Math.max(2, Math.round(previewHeight)),
         });
       }
     }
@@ -5064,8 +5075,9 @@ function AdvancedEditorContent() {
         setIsPlaying(false);
         setCurrentTime(time);
         await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => resolve())
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         );
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         await waitForExportMedia();
       },
       getStageSelector: () => "[data-export-stage]",
@@ -5222,9 +5234,17 @@ function AdvancedEditorContent() {
       error: null,
     });
     try {
+      const previewSize =
+        stageDisplay.width > 0 && stageDisplay.height > 0
+          ? stageDisplay
+          : exportDimensions;
       const payload = {
         state: exportState,
         output: exportDimensions,
+        preview: {
+          width: Math.round(previewSize.width),
+          height: Math.round(previewSize.height),
+        },
         fps: 30,
         duration: projectDuration,
         fonts: exportFonts,
@@ -5279,6 +5299,8 @@ function AdvancedEditorContent() {
     exportUi.status,
     projectDuration,
     projectName,
+    stageDisplay.height,
+    stageDisplay.width,
     startExportPolling,
     timeline.length,
   ]);
@@ -14842,6 +14864,14 @@ function AdvancedEditorContent() {
   ]);
 
   const resolvedExportViewport = exportViewport ?? exportDimensions;
+  const exportPreviewViewport = exportPreview ?? resolvedExportViewport;
+  const exportScale =
+    exportPreviewViewport.width > 0 && exportPreviewViewport.height > 0
+      ? Math.min(
+          resolvedExportViewport.width / exportPreviewViewport.width,
+          resolvedExportViewport.height / exportPreviewViewport.height
+        )
+      : 1;
 
   if (isExportMode) {
     return (
@@ -14852,8 +14882,17 @@ function AdvancedEditorContent() {
           height: `${resolvedExportViewport.height}px`,
         }}
       >
-        <main ref={mainRef} className="flex h-full w-full">
-          {renderStage()}
+        <main ref={mainRef} className="flex h-full w-full items-center justify-center">
+          <div
+            style={{
+              width: `${exportPreviewViewport.width}px`,
+              height: `${exportPreviewViewport.height}px`,
+              transform: exportScale !== 1 ? `scale(${exportScale})` : undefined,
+              transformOrigin: "top left",
+            }}
+          >
+            {renderStage()}
+          </div>
         </main>
       </div>
     );

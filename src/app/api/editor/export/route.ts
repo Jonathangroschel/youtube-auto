@@ -44,6 +44,7 @@ type ExportRequest = {
     };
   };
   output: { width: number; height: number };
+  preview?: { width: number; height: number };
   fps?: number;
   duration?: number;
   fonts?: string[];
@@ -172,6 +173,15 @@ export async function POST(request: Request) {
         width: outputWidth,
         height: outputHeight,
       },
+      preview:
+        body.preview &&
+        Number.isFinite(body.preview.width) &&
+        Number.isFinite(body.preview.height)
+          ? {
+              width: Math.max(2, Math.round(body.preview.width)),
+              height: Math.max(2, Math.round(body.preview.height)),
+            }
+          : undefined,
       fps,
       duration,
       fonts: Array.isArray(body.fonts) ? body.fonts : [],

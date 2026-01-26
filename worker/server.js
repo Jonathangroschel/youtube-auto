@@ -332,6 +332,7 @@ const runEditorExportJob = async (job) => {
     }, {
       state,
       output: { width, height },
+      preview: payload.preview ?? null,
       fps,
       duration,
       fonts,
