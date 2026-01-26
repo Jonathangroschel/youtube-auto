@@ -23,7 +23,6 @@ import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import type { IGif } from "@giphy/js-types";
 import {
-  createExternalAsset,
   DELETED_ASSETS_EVENT,
   deleteAssetById,
   loadAssetLibrary,
@@ -291,6 +290,18 @@ type ExportUiState = {
   error: string | null;
 };
 
+type ExternalAssetPayload = {
+  url: string;
+  name: string;
+  kind: "video" | "audio" | "image";
+  source?: "autoclip" | "external" | "upload" | "stock" | "generated";
+  size?: number;
+  duration?: number;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+};
+
 const projectSizeOptions: ProjectSizeOption[] = [
   {
     id: "original",
@@ -469,6 +480,22 @@ const consumeDeletedAssetIds = (): string[] => {
   } catch {
     return [];
   }
+};
+
+const createExternalAssetSafe = async (
+  payload: ExternalAssetPayload
+): Promise<AssetLibraryItem | null> => {
+  try {
+    const mod = (await import("@/lib/assets/library")) as {
+      createExternalAsset?: (value: ExternalAssetPayload) => Promise<AssetLibraryItem | null>;
+    };
+    if (typeof mod.createExternalAsset === "function") {
+      return mod.createExternalAsset(payload);
+    }
+  } catch {
+    // Ignore when module export is unavailable.
+  }
+  return null;
 };
 
 function AdvancedEditorContent() {
@@ -7774,7 +7801,7 @@ function AdvancedEditorContent() {
         resolvedWidth && resolvedHeight
           ? resolvedWidth / resolvedHeight
           : undefined;
-      const libraryAsset = await createExternalAsset({
+      const libraryAsset = await createExternalAssetSafe({
         url: video.url,
         name: video.name,
         kind: "video",
@@ -8125,7 +8152,7 @@ function AdvancedEditorContent() {
       pushHistory();
       const aspectRatio =
         width && height ? width / height : undefined;
-      const libraryAsset = await createExternalAsset({
+      const libraryAsset = await createExternalAssetSafe({
         url,
         name: name?.trim() || "Imported video",
         kind: "video",
@@ -8263,7 +8290,7 @@ function AdvancedEditorContent() {
       }
       setIsBackgroundSelected(false);
       pushHistory();
-      const libraryAsset = await createExternalAsset({
+      const libraryAsset = await createExternalAssetSafe({
         url: track.url,
         name: track.name,
         kind: "audio",
@@ -8297,7 +8324,7 @@ function AdvancedEditorContent() {
         payload.width && payload.height
           ? payload.width / payload.height
           : undefined;
-      const libraryAsset = await createExternalAsset({
+      const libraryAsset = await createExternalAssetSafe({
         url: payload.url,
         name: payload.title?.trim() || "GIF",
         kind: "image",
@@ -8369,7 +8396,7 @@ function AdvancedEditorContent() {
         assetImage.width && assetImage.height
           ? assetImage.width / assetImage.height
           : undefined;
-      const libraryAsset = await createExternalAsset({
+      const libraryAsset = await createExternalAssetSafe({
         url: assetImage.url,
         name,
         kind: "image",
