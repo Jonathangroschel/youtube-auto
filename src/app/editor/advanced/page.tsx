@@ -24,7 +24,6 @@ import { GiphyFetch } from "@giphy/js-fetch-api";
 import type { IGif } from "@giphy/js-types";
 import {
   loadAssetLibrary,
-  uploadAssetFile,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
 import { createClient } from "@/lib/supabase/client";
@@ -300,6 +299,16 @@ type ExternalAssetPayload = {
   aspectRatio?: number;
 };
 
+type UploadAssetMeta = {
+  name?: string;
+  kind?: "video" | "audio" | "image";
+  source?: "upload" | "autoclip" | "external" | "stock" | "generated";
+  duration?: number;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+};
+
 const projectSizeOptions: ProjectSizeOption[] = [
   {
     id: "original",
@@ -509,6 +518,23 @@ const deleteAssetByIdSafe = async (assetId: string) => {
   } catch {
     // Ignore when module export is unavailable.
   }
+};
+
+const uploadAssetFileSafe = async (
+  file: File,
+  meta?: UploadAssetMeta
+): Promise<AssetLibraryItem | null> => {
+  try {
+    const mod = (await import("@/lib/assets/library")) as {
+      uploadAssetFile?: (file: File, meta?: UploadAssetMeta) => Promise<AssetLibraryItem | null>;
+    };
+    if (typeof mod.uploadAssetFile === "function") {
+      return await mod.uploadAssetFile(file, meta);
+    }
+  } catch {
+    // Ignore when module export is unavailable.
+  }
+  return null;
 };
 
 function AdvancedEditorContent() {
@@ -870,7 +896,7 @@ function AdvancedEditorContent() {
       const previewUrl = URL.createObjectURL(file);
       const meta = await getMediaMeta("image", previewUrl);
       URL.revokeObjectURL(previewUrl);
-      const stored = await uploadAssetFile(file, {
+      const stored = await uploadAssetFileSafe(file, {
         name: file.name || "Background image",
         kind: "image",
         source: "upload",
@@ -7296,7 +7322,7 @@ function AdvancedEditorContent() {
         const resolvedAspectRatio =
           meta.aspectRatio ??
           (meta.width && meta.height ? meta.width / meta.height : undefined);
-        const stored = await uploadAssetFile(file, {
+        const stored = await uploadAssetFileSafe(file, {
           name: file.name || "Uploaded asset",
           kind: uploadKind,
           source: "upload",
