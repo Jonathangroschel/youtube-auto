@@ -2,9 +2,9 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import {
-  addAssetsToLibrary,
-  buildAssetLibraryItem,
+  deleteAssetById,
   loadAssetLibrary,
+  uploadAssetFile,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
 import {
@@ -235,16 +235,6 @@ const mobileFooterActions: MobileFooterAction[] = [
 
 const assetTabs = ["All", "Video", "Images", "Audio"];
 
-const inferAssetKind = (file: File): AssetLibraryItem["kind"] => {
-  if (file.type.startsWith("audio/")) {
-    return "audio";
-  }
-  if (file.type.startsWith("image/")) {
-    return "image";
-  }
-  return "video";
-};
-
 export default function AssetsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -296,33 +286,37 @@ export default function AssetsPage() {
   }, []);
 
   const refreshAssets = useCallback(() => {
-    setAssets(loadAssetLibrary());
+    loadAssetLibrary()
+      .then((items) => setAssets(items))
+      .catch(() => setAssets([]));
   }, []);
 
   const handleUploadAssets = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
+    async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files ?? []);
       if (!files.length) {
         return;
       }
-      const incoming = files
-        .map((file) =>
-          buildAssetLibraryItem({
+      await Promise.all(
+        files.map(async (file) => {
+          await uploadAssetFile(file, {
             name: file.name || "Uploaded asset",
-            kind: inferAssetKind(file),
-            url: URL.createObjectURL(file),
-            size: file.size,
             source: "upload",
-          })
-        )
-        .filter((item): item is AssetLibraryItem => Boolean(item));
-      if (incoming.length) {
-        const next = addAssetsToLibrary(incoming);
-        setAssets(next);
-      }
+          });
+        })
+      );
+      refreshAssets();
       event.target.value = "";
     },
-    []
+    [refreshAssets]
+  );
+
+  const handleDeleteAsset = useCallback(
+    async (assetId: string) => {
+      setAssets((prev) => prev.filter((asset) => asset.id !== assetId));
+      await deleteAssetById(assetId);
+    },
+    [deleteAssetById]
   );
 
   const filteredAssets = useMemo(() => {
@@ -812,9 +806,9 @@ export default function AssetsPage() {
                 filteredAssets.map((asset) => (
                   <div
                     key={asset.id}
-                    className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                    className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
                   >
-                    <div className="h-40 w-full overflow-hidden bg-gray-100">
+                    <div className="relative h-40 w-full overflow-hidden bg-gray-100">
                       {asset.kind === "image" ? (
                         <img
                           src={asset.url}
@@ -836,6 +830,27 @@ export default function AssetsPage() {
                           preload="metadata"
                         />
                       )}
+                      <button
+                        type="button"
+                        className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-white hover:text-gray-700"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleDeleteAsset(asset.id);
+                        }}
+                        aria-label={`Delete ${asset.name}`}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-3 w-3">
+                          <path
+                            d="M12 4 4 12M4 4l8 8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
                     </div>
                     <div className="flex flex-1 flex-col gap-1 p-3">
                       <p className="text-sm font-medium text-gray-900">
