@@ -23,7 +23,6 @@ import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import type { IGif } from "@giphy/js-types";
 import {
-  DELETED_ASSETS_EVENT,
   deleteAssetById,
   loadAssetLibrary,
   uploadAssetFile,
@@ -481,6 +480,8 @@ const consumeDeletedAssetIds = (): string[] => {
     return [];
   }
 };
+
+const DELETED_ASSETS_EVENT = "satura:assets-deleted";
 
 const createExternalAssetSafe = async (
   payload: ExternalAssetPayload
