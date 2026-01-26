@@ -685,6 +685,8 @@ function AdvancedEditorContent() {
   );
   const [exportPreview, setExportPreview] = useState<ExportOutput | null>(null);
   const exportPollRef = useRef<number | null>(null);
+  const exportHydratedRef = useRef(false);
+  const exportMediaCacheRef = useRef<Set<string>>(new Set());
   const resolvedProjectSize = useMemo(
     () =>
       projectSizeOptions.find((option) => option.id === projectSizeId) ??
@@ -695,6 +697,10 @@ function AdvancedEditorContent() {
   const projectBackgroundUrlRef = useRef<string | null>(null);
   const projectNameRef = useRef(projectName);
   const projectNameSavePendingRef = useRef(false);
+  const projectAssetsSyncRef = useRef<{
+    projectId: string | null;
+    assetKey: string;
+  }>({ projectId: null, assetKey: "" });
   const saveStatusTimeoutRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1689,8 +1695,18 @@ function AdvancedEditorContent() {
 
   useEffect(() => {
     if (!isExportMode || typeof window === "undefined") {
+      exportHydratedRef.current = false;
       return;
     }
+    exportHydratedRef.current = false;
+    exportMediaCacheRef.current.clear();
+    let cancelled = false;
+    const markHydrated = () => {
+      if (cancelled) {
+        return;
+      }
+      exportHydratedRef.current = true;
+    };
     const payload = (window as any).__EDITOR_EXPORT__;
     if (payload?.output && typeof payload.output === "object") {
       const nextWidth = Number(payload.output.width);
@@ -1733,9 +1749,18 @@ function AdvancedEditorContent() {
       setProjectReady(true);
       setProjectStarted(true);
       setIsPlaying(false);
-      return;
+      requestAnimationFrame(() => requestAnimationFrame(markHydrated));
+      return () => {
+        cancelled = true;
+        exportHydratedRef.current = false;
+      };
     }
     setProjectReady(true);
+    markHydrated();
+    return () => {
+      cancelled = true;
+      exportHydratedRef.current = false;
+    };
   }, [applyProjectState, isExportMode]);
 
   const handleProjectNameCommit = useCallback((value: string) => {
@@ -1811,14 +1836,28 @@ function AdvancedEditorContent() {
         .map((asset) => asset.id)
         .filter((assetId): assetId is string => typeof assetId === "string");
       if (assetIds.length) {
-        const payload = assetIds.map((assetId) => ({
-          project_id: resolvedId,
-          asset_id: assetId,
-          role: "source",
-        }));
-        await supabase
-          .from("project_assets")
-          .upsert(payload, { onConflict: "project_id,asset_id" });
+        const uniqueAssetIds = Array.from(new Set(assetIds)).sort();
+        const assetKey = uniqueAssetIds.join(",");
+        const lastSync = projectAssetsSyncRef.current;
+        if (lastSync.projectId !== resolvedId || lastSync.assetKey !== assetKey) {
+          const response = await fetch("/api/projects/assets", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              projectId: resolvedId,
+              assetIds: uniqueAssetIds,
+              role: "source",
+            }),
+          });
+          if (response.ok) {
+            projectAssetsSyncRef.current = {
+              projectId: resolvedId,
+              assetKey,
+            };
+          }
+        }
       }
       if (notifyNameSave) {
         setProjectSaveState("saved");
@@ -2914,6 +2953,12 @@ function AdvancedEditorContent() {
       return;
     }
     const updateSize = () => {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      if (width > 0 && height > 0) {
+        setStageViewport({ width, height });
+        return;
+      }
       const rect = viewport.getBoundingClientRect();
       setStageViewport({ width: rect.width, height: rect.height });
     };
@@ -5028,6 +5073,21 @@ function AdvancedEditorContent() {
     }
   }, []);
 
+  const waitForExportState = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const start = performance.now();
+    const waitFrame = () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    while (performance.now() - start < 15000) {
+      if (exportHydratedRef.current) {
+        return;
+      }
+      await waitFrame();
+    }
+  }, []);
+
   const waitForExportMedia = useCallback(async () => {
     if (typeof window === "undefined") {
       return;
@@ -5038,6 +5098,31 @@ function AdvancedEditorContent() {
     }
     const images = Array.from(stage.querySelectorAll("img"));
     const videos = Array.from(stage.querySelectorAll("video"));
+    const extractBackgroundUrls = (value: string) => {
+      const urls: string[] = [];
+      if (!value || value === "none") {
+        return urls;
+      }
+      const regex = /url\((['"]?)(.*?)\1\)/g;
+      let match = regex.exec(value);
+      while (match) {
+        const url = match[2];
+        if (url) {
+          urls.push(url);
+        }
+        match = regex.exec(value);
+      }
+      return urls;
+    };
+    const backgroundUrls = new Set<string>();
+    const backgroundElements = Array.from(
+      stage.querySelectorAll<HTMLElement>("[style*='background-image']")
+    );
+    backgroundElements.forEach((element) => {
+      extractBackgroundUrls(element.style.backgroundImage).forEach((url) =>
+        backgroundUrls.add(url)
+      );
+    });
     const withTimeout = (promise: Promise<void>, label: string) =>
       new Promise<void>((resolve) => {
         let done = false;
@@ -5075,6 +5160,29 @@ function AdvancedEditorContent() {
             img.currentSrc || img.src || "image"
           )
       )
+    );
+    const cachedBackgrounds = exportMediaCacheRef.current;
+    await Promise.all(
+      Array.from(backgroundUrls)
+        .filter((url) => !cachedBackgrounds.has(url))
+        .map((url) =>
+          withTimeout(
+            new Promise<void>((resolve) => {
+              const image = new Image();
+              const done = () => {
+                cachedBackgrounds.add(url);
+                resolve();
+              };
+              image.addEventListener("load", done, { once: true });
+              image.addEventListener("error", done, { once: true });
+              image.src = url;
+              if (image.complete) {
+                done();
+              }
+            }),
+            url
+          )
+        )
     );
     await Promise.all(
       videos.map(
@@ -5129,6 +5237,7 @@ function AdvancedEditorContent() {
     (window as any).__EDITOR_EXPORT_API__ = {
       waitForReady: async () => {
         await waitForExportStage();
+        await waitForExportState();
         await waitForExportFonts(fonts);
         await waitForExportMedia();
       },
@@ -5140,6 +5249,7 @@ function AdvancedEditorContent() {
         );
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         await waitForExportMedia();
+        updateSubtitleForTimeRef.current(time);
       },
       getStageSelector: () => "[data-export-stage]",
     };
@@ -5150,6 +5260,7 @@ function AdvancedEditorContent() {
     isExportMode,
     waitForExportFonts,
     waitForExportMedia,
+    waitForExportState,
     waitForExportStage,
   ]);
 
@@ -5328,6 +5439,9 @@ function AdvancedEditorContent() {
           : typeof data?.id === "string"
             ? data.id
             : null;
+      if (!nextJobId) {
+        throw new Error(data?.error || "Export did not return a job id.");
+      }
       setExportUi((prev) => ({
         ...prev,
         status: data?.status ?? "queued",
@@ -5340,9 +5454,7 @@ function AdvancedEditorContent() {
         downloadUrl:
           typeof data?.downloadUrl === "string" ? data.downloadUrl : null,
       }));
-      if (nextJobId) {
-        startExportPolling(nextJobId);
-      }
+      startExportPolling(nextJobId);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Export failed.";

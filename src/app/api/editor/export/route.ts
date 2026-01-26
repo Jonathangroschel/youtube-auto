@@ -56,6 +56,11 @@ export async function POST(request: Request) {
   if (!body?.state || !body.state.snapshot) {
     return NextResponse.json({ error: "Missing project state." }, { status: 400 });
   }
+  const requestOrigin = new URL(request.url).origin;
+  const renderUrl =
+    process.env.EDITOR_RENDER_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    requestOrigin;
 
   const supabase = await createServerClient();
   const { data: userData } = await supabase.auth.getUser();
@@ -243,6 +248,7 @@ export async function POST(request: Request) {
       fonts: Array.isArray(body.fonts) ? body.fonts : [],
       name: body.name,
       requestedBy: user.id,
+      renderUrl,
     }),
   });
 
