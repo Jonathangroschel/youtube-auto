@@ -686,6 +686,7 @@ function AdvancedEditorContent() {
   );
   const [exportPreview, setExportPreview] = useState<ExportOutput | null>(null);
   const [exportScaleMode, setExportScaleMode] = useState<"css" | "device">("css");
+  const exportSubtitleScaleRef = useRef(1);
   const exportPollRef = useRef<number | null>(null);
   const exportHydratedRef = useRef(false);
   const exportMediaCacheRef = useRef<Set<string>>(new Set());
@@ -4673,27 +4674,65 @@ function AdvancedEditorContent() {
     
     // Apply text styles efficiently
     const s = cached.styles.textStyle;
-    textEl.style.fontFamily = s.fontFamily as string || '';
-    textEl.style.fontSize = typeof s.fontSize === 'number' ? `${s.fontSize}px` : (s.fontSize as string || '');
-    textEl.style.fontWeight = String(s.fontWeight || '');
-    textEl.style.fontStyle = s.fontStyle as string || '';
-    textEl.style.lineHeight = String(s.lineHeight || '');
-    textEl.style.letterSpacing = typeof s.letterSpacing === 'number' ? `${s.letterSpacing}px` : (s.letterSpacing as string || '');
-    textEl.style.color = s.color as string || '';
-    textEl.style.textShadow = s.textShadow as string || 'none';
-    textEl.style.textAlign = s.textAlign as string || 'center';
+    const exportScale = isExportMode ? exportSubtitleScaleRef.current : 1;
+    const scaleTextShadow = (shadow: string, scale: number) => {
+      if (!shadow || shadow === "none" || scale === 1) {
+        return shadow || "none";
+      }
+      const trimmed = shadow.trim();
+      const match = trimmed.match(
+        /^(-?\d*\.?\d+)px\s+(-?\d*\.?\d+)px\s+(-?\d*\.?\d+)px\s+(.+)$/
+      );
+      if (!match) {
+        return shadow;
+      }
+      const [, x, y, blur, color] = match;
+      const nextX = Number(x) * scale;
+      const nextY = Number(y) * scale;
+      const nextBlur = Number(blur) * scale;
+      return `${nextX}px ${nextY}px ${nextBlur}px ${color}`;
+    };
+    const fontSize =
+      typeof s.fontSize === "number"
+        ? `${s.fontSize * exportScale}px`
+        : (s.fontSize as string || "");
+    const letterSpacing =
+      typeof s.letterSpacing === "number"
+        ? `${s.letterSpacing * exportScale}px`
+        : (s.letterSpacing as string || "");
+    const textShadowBase = (s.textShadow as string) || "none";
+    const textShadow =
+      exportScale !== 1
+        ? scaleTextShadow(textShadowBase, exportScale)
+        : textShadowBase;
+    textEl.style.fontFamily = (s.fontFamily as string) || "";
+    textEl.style.fontSize = fontSize;
+    textEl.style.fontWeight = String(s.fontWeight || "");
+    textEl.style.fontStyle = (s.fontStyle as string) || "";
+    textEl.style.lineHeight = String(s.lineHeight || "");
+    textEl.style.letterSpacing = letterSpacing;
+    textEl.style.color = (s.color as string) || "";
+    textEl.style.textShadow = textShadow;
+    textEl.style.textAlign = (s.textAlign as string) || "center";
     if (s.WebkitTextStrokeWidth) {
-      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeWidth = typeof s.WebkitTextStrokeWidth === 'number' ? `${s.WebkitTextStrokeWidth}px` : s.WebkitTextStrokeWidth;
-      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeColor = s.WebkitTextStrokeColor as string || '';
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeWidth =
+        typeof s.WebkitTextStrokeWidth === "number"
+          ? `${s.WebkitTextStrokeWidth * exportScale}px`
+          : s.WebkitTextStrokeWidth;
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeColor =
+        (s.WebkitTextStrokeColor as string) || "";
     } else {
-      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeWidth = '';
-      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeColor = '';
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeWidth = "";
+      (textEl.style as unknown as Record<string, unknown>).webkitTextStrokeColor = "";
     }
     // Background styles
     if (s.backgroundColor) {
       textEl.style.backgroundColor = s.backgroundColor as string;
       textEl.style.padding = s.padding as string || '';
-      textEl.style.borderRadius = typeof s.borderRadius === 'number' ? `${s.borderRadius}px` : (s.borderRadius as string || '');
+      textEl.style.borderRadius =
+        typeof s.borderRadius === "number"
+          ? `${s.borderRadius * exportScale}px`
+          : (s.borderRadius as string || "");
     } else {
       textEl.style.backgroundColor = '';
       textEl.style.padding = '';
@@ -4705,7 +4744,7 @@ function AdvancedEditorContent() {
       textEl.textContent = cached.text;
       activeSubtitleWordIndexRef.current = -1;
     }
-  }, [updateSubtitleWordHighlight]);
+  }, [isExportMode, updateSubtitleWordHighlight]);
 
   // Binary search for finding active subtitle - optimized for sequential playback
   // Uses cache for O(1) sequential access, falls back to O(log n) binary search
@@ -4894,6 +4933,36 @@ function AdvancedEditorContent() {
       };
     });
   }, [stageDisplay.height, stageDisplay.width]);
+
+  useEffect(() => {
+    if (!isExportMode) {
+      exportSubtitleScaleRef.current = 1;
+      return;
+    }
+    const previewWidth = exportPreview?.width ?? 0;
+    const previewHeight = exportPreview?.height ?? 0;
+    if (
+      previewWidth > 0 &&
+      previewHeight > 0 &&
+      stageDisplay.width > 0 &&
+      stageDisplay.height > 0
+    ) {
+      const nextScale = Math.min(
+        stageDisplay.width / previewWidth,
+        stageDisplay.height / previewHeight
+      );
+      exportSubtitleScaleRef.current =
+        Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
+      return;
+    }
+    exportSubtitleScaleRef.current = 1;
+  }, [
+    exportPreview?.height,
+    exportPreview?.width,
+    isExportMode,
+    stageDisplay.height,
+    stageDisplay.width,
+  ]);
 
   const stageAspectRatio = useMemo<number>(() => {
     if (stageSize.width > 0 && stageSize.height > 0) {
