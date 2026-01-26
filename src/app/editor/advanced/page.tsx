@@ -23,7 +23,6 @@ import { Magnet, ChevronsLeftRightEllipsis } from "lucide-react";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import type { IGif } from "@giphy/js-types";
 import {
-  deleteAssetById,
   loadAssetLibrary,
   uploadAssetFile,
   type AssetLibraryItem,
@@ -497,6 +496,19 @@ const createExternalAssetSafe = async (
     // Ignore when module export is unavailable.
   }
   return null;
+};
+
+const deleteAssetByIdSafe = async (assetId: string) => {
+  try {
+    const mod = (await import("@/lib/assets/library")) as {
+      deleteAssetById?: (id: string) => Promise<void>;
+    };
+    if (typeof mod.deleteAssetById === "function") {
+      await mod.deleteAssetById(assetId);
+    }
+  } catch {
+    // Ignore when module export is unavailable.
+  }
 };
 
 function AdvancedEditorContent() {
@@ -9348,14 +9360,14 @@ function AdvancedEditorContent() {
       if (projectBackgroundImage?.assetId === assetId) {
         setProjectBackgroundImage(null);
       }
-      deleteAssetById(assetId).catch(() => {});
+      deleteAssetByIdSafe(assetId).catch(() => {});
       if (asset.url.startsWith("blob:")) {
         URL.revokeObjectURL(asset.url);
       }
     },
     [
       activeAssetId,
-      deleteAssetById,
+      deleteAssetByIdSafe,
       projectBackgroundImage?.assetId,
       pushHistory,
       selectedClipId,
