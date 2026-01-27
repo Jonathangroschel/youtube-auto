@@ -3402,9 +3402,39 @@ function AdvancedEditorContent() {
     };
   };
 
-  const createLaneId = (type: LaneType, draft: TimelineLane[]) => {
+  const createLaneId = (
+    type: LaneType,
+    draft: TimelineLane[],
+    options?: { placement?: "top" | "bottom" }
+  ) => {
     const lane = { id: crypto.randomUUID(), type };
+    const placement = options?.placement ?? "bottom";
     // Lane order: text on top, video in the middle, audio on bottom.
+    if (placement === "top") {
+      if (type === "text") {
+        const firstTextIndex = draft.findIndex((item) => item.type === "text");
+        if (firstTextIndex === -1) {
+          draft.unshift(lane);
+        } else {
+          draft.splice(firstTextIndex, 0, lane);
+        }
+      } else if (type === "video") {
+        const firstNonTextIndex = draft.findIndex((item) => item.type !== "text");
+        if (firstNonTextIndex === -1) {
+          draft.push(lane);
+        } else {
+          draft.splice(firstNonTextIndex, 0, lane);
+        }
+      } else {
+        const firstAudioIndex = draft.findIndex((item) => item.type === "audio");
+        if (firstAudioIndex === -1) {
+          draft.push(lane);
+        } else {
+          draft.splice(firstAudioIndex, 0, lane);
+        }
+      }
+      return lane.id;
+    }
     if (type === "text") {
       const firstNonTextIndex = draft.findIndex((item) => item.type !== "text");
       if (firstNonTextIndex === -1) {
@@ -8393,8 +8423,8 @@ function AdvancedEditorContent() {
     const totalHeight = sectionCursor - laneGap;
 
     if (offsetY < 0) {
-      // Dragging above all lanes - create new lane
-      laneId = createLaneId(laneType, draftLanes);
+      // Dragging above all lanes - create new lane at top of section
+      laneId = createLaneId(laneType, draftLanes, { placement: "top" });
     } else if (offsetY > totalHeight + laneGap) {
       // Dragging below all lanes - create new lane (will be positioned correctly)
       laneId = createLaneId(laneType, draftLanes);
@@ -11765,7 +11795,9 @@ function AdvancedEditorContent() {
             // Dragging above all lanes - create new lane at top of appropriate section
             if (!createdLaneId && assetLaneType) {
               const nextLanes = [...lanesRef.current];
-              createdLaneId = createLaneId(assetLaneType, nextLanes);
+              createdLaneId = createLaneId(assetLaneType, nextLanes, {
+                placement: "top",
+              });
               setLanes(nextLanes);
             }
             foundLaneId = createdLaneId ?? null;
@@ -13005,8 +13037,8 @@ function AdvancedEditorContent() {
       const totalHeight = sectionCursor - laneGap;
 
       if (offsetY < 0) {
-        // Dragging above all lanes - create new lane
-        laneId = createLaneId(laneType, nextLanes);
+        // Dragging above all lanes - create new lane at top of section
+        laneId = createLaneId(laneType, nextLanes, { placement: "top" });
       } else if (offsetY > totalHeight + laneGap) {
         // Dragging below all lanes - create new lane (will be positioned correctly)
         laneId = createLaneId(laneType, nextLanes);
