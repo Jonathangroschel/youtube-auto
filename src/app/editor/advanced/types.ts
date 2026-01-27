@@ -62,6 +62,10 @@ export type ClipDragState = {
   createdLaneId?: string;
   previewTime?: number;
   previewLaneId?: string;
+  pendingLaneInsert?: {
+    type: LaneType;
+    index: number;
+  };
   group?: ClipDragGroup;
 };
 

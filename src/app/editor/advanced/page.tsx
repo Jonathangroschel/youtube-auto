@@ -973,6 +973,7 @@ function AdvancedEditorContent() {
   const [dragClipState, setDragClipState] = useState<ClipDragState | null>(
     null
   );
+  const [topCreateZoneActive, setTopCreateZoneActive] = useState(false);
   const [dragOverCanvas, setDragOverCanvas] = useState(false);
   const [dragOverTimeline, setDragOverTimeline] = useState(false);
   const [trimState, setTrimState] = useState<TrimState | null>(null);
@@ -3453,6 +3454,33 @@ function AdvancedEditorContent() {
       draft.push(lane);
     }
     return lane.id;
+  };
+
+  const insertLaneAtIndex = (
+    type: LaneType,
+    draft: TimelineLane[],
+    index: number
+  ) => {
+    const lane = { id: crypto.randomUUID(), type };
+    const safeIndex = Math.max(0, Math.min(index, draft.length));
+    draft.splice(safeIndex, 0, lane);
+    return lane.id;
+  };
+
+  const canInsertLaneBetween = (
+    laneType: LaneType,
+    beforeType: LaneType,
+    afterType: LaneType
+  ) => {
+    const order: Record<LaneType, number> = {
+      text: 0,
+      video: 1,
+      audio: 2,
+    };
+    return (
+      order[beforeType] <= order[laneType] &&
+      order[laneType] <= order[afterType]
+    );
   };
 
   const sortLanesByType = useCallback((items: TimelineLane[]) => {
@@ -7588,6 +7616,66 @@ function AdvancedEditorContent() {
     [audioLaneHeight]
   );
 
+  const resolveTopCreateZonePx = useCallback(
+    (rows: Array<{ height: number }>) => {
+      if (rows.length === 0) {
+        return 0;
+      }
+      const topHeight = rows[0].height;
+      return Math.min(24, Math.max(10, Math.round(topHeight * 0.2)));
+    },
+    []
+  );
+
+  const resolveTopInsertIndex = useCallback(
+    (laneType: LaneType, rows: Array<{ type: LaneType }>) => {
+      if (rows.length === 0) {
+        return 0;
+      }
+      if (laneType === "text") {
+        const firstText = rows.findIndex((row) => row.type === "text");
+        return firstText === -1 ? 0 : firstText;
+      }
+      if (laneType === "video") {
+        const firstNonText = rows.findIndex((row) => row.type !== "text");
+        return firstNonText === -1 ? rows.length : firstNonText;
+      }
+      const firstAudio = rows.findIndex((row) => row.type === "audio");
+      return firstAudio === -1 ? rows.length : firstAudio;
+    },
+    []
+  );
+
+  const resolveBottomInsertIndex = useCallback(
+    (laneType: LaneType, rows: Array<{ type: LaneType }>) => {
+      if (rows.length === 0) {
+        return 0;
+      }
+      if (laneType === "text") {
+        const firstNonText = rows.findIndex((row) => row.type !== "text");
+        return firstNonText === -1 ? rows.length : firstNonText;
+      }
+      if (laneType === "video") {
+        const firstAudio = rows.findIndex((row) => row.type === "audio");
+        return firstAudio === -1 ? rows.length : firstAudio;
+      }
+      return rows.length;
+    },
+    []
+  );
+
+  const resolveInsertTopPx = useCallback(
+    (rows: Array<{ height: number }>, index: number) => {
+      const clampedIndex = Math.max(0, Math.min(index, rows.length));
+      let top = 0;
+      for (let i = 0; i < clampedIndex; i += 1) {
+        top += rows[i].height + laneGap;
+      }
+      return top;
+    },
+    []
+  );
+
   const laneRows = useMemo(() => {
     const counts: Record<LaneType, number> = {
       video: 0,
@@ -7611,6 +7699,11 @@ function AdvancedEditorContent() {
     });
   }, [getLaneHeight, lanes]);
 
+  const topCreateZonePx = useMemo(
+    () => resolveTopCreateZonePx(laneRows),
+    [laneRows, resolveTopCreateZonePx]
+  );
+
   const lastAudioLaneId = useMemo(() => {
     for (let index = laneRows.length - 1; index >= 0; index -= 1) {
       if (laneRows[index].type === "audio") {
@@ -7621,7 +7714,7 @@ function AdvancedEditorContent() {
   }, [laneRows]);
 
   const dragPreview = useMemo(() => {
-    if (!dragClipState) {
+    if (!dragClipState || dragClipState.pendingLaneInsert) {
       return null;
     }
     const clip = timeline.find((item) => item.id === dragClipState.clipId);
@@ -7637,6 +7730,34 @@ function AdvancedEditorContent() {
       duration: clip.duration,
     };
   }, [dragClipState, timeline]);
+
+  const pendingInsertPreview = useMemo(() => {
+    if (!dragClipState?.pendingLaneInsert) {
+      return null;
+    }
+    const clip = timeline.find((item) => item.id === dragClipState.clipId);
+    if (!clip) {
+      return null;
+    }
+    const { type, index } = dragClipState.pendingLaneInsert;
+    const laneHeight = getLaneHeight(type);
+    const laneTop = resolveInsertTopPx(laneRows, index);
+    const laneClipInsetY =
+      type === "video" ? 0 : Math.max(4, Math.round(laneHeight * 0.12));
+    const laneClipHeight =
+      type === "video"
+        ? laneHeight
+        : Math.max(18, laneHeight - laneClipInsetY * 2);
+    return {
+      laneTop,
+      laneHeight,
+      clipTop: laneTop + laneClipInsetY,
+      clipHeight: laneClipHeight,
+      startTime: dragClipState.previewTime ?? clip.startTime,
+      duration: clip.duration,
+      type,
+    };
+  }, [dragClipState, getLaneHeight, laneRows, resolveInsertTopPx, timeline]);
 
   const laneBounds = useMemo(() => {
     const bounds = new Map<string, { top: number; bottom: number }>();
@@ -8422,18 +8543,38 @@ function AdvancedEditorContent() {
     }
     const totalHeight = sectionCursor - laneGap;
 
-    if (offsetY < 0) {
-      // Dragging above all lanes - create new lane at top of section
+    const topCreateZonePx = resolveTopCreateZonePx(rows);
+    const wantsTopLane =
+      offsetY < 0 ||
+      (laneType !== "audio" && topCreateZonePx > 0 && offsetY <= topCreateZonePx);
+
+    if (wantsTopLane) {
+      // Dragging above all lanes or into top create zone - create new lane at top of section
       laneId = createLaneId(laneType, draftLanes, { placement: "top" });
     } else if (offsetY > totalHeight + laneGap) {
       // Dragging below all lanes - create new lane (will be positioned correctly)
       laneId = createLaneId(laneType, draftLanes);
     } else {
       // Find which lane we're hovering over
+      const gapCreatePadding = Math.min(12, Math.max(6, Math.round(laneGap * 0.8)));
       for (let i = 0; i < rows.length; i++) {
         const lane = rows[i];
         const laneTop = cursor;
+        const laneVisualBottom = cursor + lane.height;
         const laneBottom = cursor + lane.height + laneGap;
+        const gapStart = laneVisualBottom - gapCreatePadding;
+        const gapEnd = laneBottom + gapCreatePadding;
+        const inGapZone = offsetY >= gapStart && offsetY <= gapEnd && i < rows.length - 1;
+
+        if (inGapZone) {
+          const nextLane = rows[i + 1];
+          if (canInsertLaneBetween(laneType, lane.type, nextLane.type)) {
+            laneId = insertLaneAtIndex(laneType, draftLanes, i + 1);
+            foundLaneIndex = -1;
+            break;
+          }
+        }
+
         if (offsetY >= laneTop && offsetY <= laneBottom) {
           laneId = lane.id;
           foundLaneIndex = i;
@@ -11769,9 +11910,15 @@ function AdvancedEditorContent() {
       let targetLaneId = dragClipState.targetLaneId ?? dragClipState.startLaneId;
       let createdLaneId = dragClipState.createdLaneId;
       const assetLaneType = asset ? getLaneType(asset) : null;
+      let pendingLaneInsert: { type: LaneType; index: number } | null = null;
       if (track) {
         const rect = track.getBoundingClientRect();
         const offsetY = event.clientY - rect.top - timelinePadding;
+        const wantsTopLane =
+          offsetY < 0 ||
+          (assetLaneType !== "audio" &&
+            topCreateZonePx > 0 &&
+            offsetY <= topCreateZonePx);
         let cursor = 0;
         let foundLaneId: string | null = null;
         let foundLaneIndex = -1;
@@ -11791,54 +11938,62 @@ function AdvancedEditorContent() {
           }
           const totalHeight = sectionCursor - laneGap;
 
-          if (offsetY < 0) {
-            // Dragging above all lanes - create new lane at top of appropriate section
-            if (!createdLaneId && assetLaneType) {
-              const nextLanes = [...lanesRef.current];
-              createdLaneId = createLaneId(assetLaneType, nextLanes, {
-                placement: "top",
-              });
-              setLanes(nextLanes);
-            }
-            foundLaneId = createdLaneId ?? null;
-          } else if (offsetY > totalHeight + laneGap) {
+          const topInsertIndex = assetLaneType
+            ? resolveTopInsertIndex(assetLaneType, laneRows)
+            : 0;
+          const bottomInsertIndex = assetLaneType
+            ? resolveBottomInsertIndex(assetLaneType, laneRows)
+            : laneRows.length;
+
+          if (wantsTopLane && assetLaneType) {
+            // Dragging above all lanes or into top create zone
+            pendingLaneInsert = { type: assetLaneType, index: topInsertIndex };
+          } else if (offsetY > totalHeight + laneGap && assetLaneType) {
             // Dragging below all lanes - create new lane
-            if (!createdLaneId && assetLaneType) {
-              const nextLanes = [...lanesRef.current];
-              createdLaneId = createLaneId(assetLaneType, nextLanes);
-              setLanes(nextLanes);
-            }
-            foundLaneId = createdLaneId ?? null;
+            pendingLaneInsert = { type: assetLaneType, index: bottomInsertIndex };
           } else {
             // Find which lane we're hovering over
-            // Use reduced hit area - bottom 50% of gap triggers "create new lane"
-            const gapThreshold = 0.5; // Top 50% of gap belongs to lane, bottom 50% creates new lane
+            // Use an expanded gap zone so inserting between lanes feels effortless.
+            const gapCreatePadding = Math.min(
+              12,
+              Math.max(6, Math.round(laneGap * 0.8))
+            );
             let wantsNewLane = false;
+            let insertLaneIndex: number | null = null;
             
             for (let i = 0; i < laneRows.length; i++) {
               const lane = laneRows[i];
               const laneTop = cursor;
               const laneVisualBottom = cursor + lane.height;
               const laneHitBottom = cursor + lane.height + laneGap;
-              const gapSplit = laneVisualBottom + laneGap * gapThreshold;
+              const gapStart = laneVisualBottom - gapCreatePadding;
+              const gapEnd = laneHitBottom + gapCreatePadding;
               
-              if (offsetY >= laneTop && offsetY <= laneHitBottom) {
-                // Check if we're in the "create new lane" zone (bottom part of gap)
-                if (offsetY > gapSplit && i < laneRows.length - 1) {
-                  // In the bottom portion of the gap - user wants to create new lane
+              // Check if we're in the expanded "create new lane" zone
+              if (
+                offsetY >= gapStart &&
+                offsetY <= gapEnd &&
+                i < laneRows.length - 1
+              ) {
+                const nextLane = laneRows[i + 1];
+                if (
+                  assetLaneType &&
+                  canInsertLaneBetween(assetLaneType, lane.type, nextLane.type)
+                ) {
                   wantsNewLane = true;
-                  // But only if the next lane is the same type (otherwise we're crossing into different section)
-                  const nextLane = laneRows[i + 1];
-                  if (nextLane.type !== assetLaneType) {
-                    // Next lane is different type - don't create, just use current
-                    foundLaneId = lane.id;
-                    foundLaneIndex = i;
-                    wantsNewLane = false;
-                  }
+                  insertLaneIndex = i + 1;
                 } else {
+                  // Lane type mismatch - don't create, just use current
                   foundLaneId = lane.id;
                   foundLaneIndex = i;
+                  wantsNewLane = false;
                 }
+                break;
+              }
+
+              if (offsetY >= laneTop && offsetY <= laneHitBottom) {
+                foundLaneId = lane.id;
+                foundLaneIndex = i;
                 break;
               }
               cursor += lane.height + laneGap;
@@ -11846,32 +12001,33 @@ function AdvancedEditorContent() {
             
             // Create new lane if user dragged into gap zone
             if (wantsNewLane && assetLaneType) {
-              if (!createdLaneId) {
-                const nextLanes = [...lanesRef.current];
-                createdLaneId = createLaneId(assetLaneType, nextLanes);
-                setLanes(nextLanes);
-              }
-              foundLaneId = createdLaneId;
+              pendingLaneInsert = {
+                type: assetLaneType,
+                index: insertLaneIndex ?? bottomInsertIndex,
+              };
             }
             
             // Check if we're in the gap between video section and audio section
             // This is where users drag to create a new video lane
-            if (!foundLaneId && assetLaneType !== "audio" && audioSectionStart > 0) {
+            if (
+              !pendingLaneInsert &&
+              !foundLaneId &&
+              assetLaneType !== "audio" &&
+              audioSectionStart > 0
+            ) {
               if (offsetY >= videoSectionEnd && offsetY < audioSectionStart) {
                 // In the gap - create new video/text lane
-                if (!createdLaneId) {
-                  const nextLanes = [...lanesRef.current];
-                  createdLaneId = createLaneId(assetLaneType!, nextLanes);
-                  setLanes(nextLanes);
-                }
-                foundLaneId = createdLaneId;
+                pendingLaneInsert = {
+                  type: assetLaneType!,
+                  index: bottomInsertIndex,
+                };
               }
             }
           }
         }
         // Check lane type compatibility - enforce lane ordering rules
         // Audio lanes stay at bottom, video/text lanes stay above audio
-        if (foundLaneId && foundLaneIndex >= 0 && assetLaneType) {
+        if (!pendingLaneInsert && foundLaneId && foundLaneIndex >= 0 && assetLaneType) {
           const foundLane = laneRows[foundLaneIndex];
           if (foundLane && foundLane.type !== assetLaneType) {
             // Lane type mismatch - find nearest compatible lane respecting ordering rules
@@ -11909,19 +12065,29 @@ function AdvancedEditorContent() {
             
             // If no compatible lane found, create a new one (will be inserted at correct position)
             if (!compatibleLaneId) {
-              if (!createdLaneId) {
-                const nextLanes = [...lanesRef.current];
-                createdLaneId = createLaneId(assetLaneType, nextLanes);
-                setLanes(nextLanes);
-              }
-              compatibleLaneId = createdLaneId;
+              pendingLaneInsert = {
+                type: assetLaneType,
+                index:
+                  assetLaneType === "audio"
+                    ? resolveTopInsertIndex(assetLaneType, laneRows)
+                    : resolveBottomInsertIndex(assetLaneType, laneRows),
+              };
             }
             
-            foundLaneId = compatibleLaneId;
+            if (compatibleLaneId) {
+              foundLaneId = compatibleLaneId;
+            } else {
+              foundLaneId = null;
+              foundLaneIndex = -1;
+            }
           }
         }
-        if (foundLaneId) {
+        setTopCreateZoneActive(wantsTopLane);
+        if (!pendingLaneInsert && foundLaneId) {
           targetLaneId = foundLaneId;
+        }
+        if (pendingLaneInsert) {
+          targetLaneId = dragClipState.startLaneId;
         }
       }
       const resolveNonOverlappingStart = (
@@ -11986,18 +12152,22 @@ function AdvancedEditorContent() {
           collision: true,
         };
       };
-      const resolved = resolveNonOverlappingStart(
-        liveTime,
-        dragged.duration,
-        targetLaneId,
-        dragDirection
-      );
+      const isPendingInsert = Boolean(pendingLaneInsert);
+      const resolved = isPendingInsert
+        ? { start: liveTime, collision: false }
+        : resolveNonOverlappingStart(
+            liveTime,
+            dragged.duration,
+            targetLaneId,
+            dragDirection
+          );
       const nextDragState = {
         ...dragClipState,
         targetLaneId,
         createdLaneId,
         previewTime: resolved.start,
-        previewLaneId: targetLaneId,
+        previewLaneId: isPendingInsert ? undefined : targetLaneId,
+        pendingLaneInsert: pendingLaneInsert ?? undefined,
       };
       dragClipStateRef.current = nextDragState;
       setDragClipState((prev) => (prev ? nextDragState : prev));
@@ -12008,42 +12178,48 @@ function AdvancedEditorContent() {
         setTimelineCollisionGuide(null);
         setTimelineCollisionActive(false);
       }
+      if (isPendingInsert && timelineCollisionGuide !== null) {
+        setTimelineCollisionGuide(null);
+        setTimelineCollisionActive(false);
+      }
       if (snapGuide !== null) {
         setTimelineSnapGuide(snapGuide);
       } else if (timelineSnapGuide !== null) {
         setTimelineSnapGuide(null);
       }
-      const attachedSubtitleIds = subtitleSourceClipMap.get(dragged.id);
-      setTimeline((prev) => {
-        const current = prev.find((clip) => clip.id === dragged.id);
-        const currentStart = current?.startTime ?? dragged.startTime;
-        const delta = liveTime - currentStart;
-        const shouldShiftSubtitles =
-          attachedSubtitleIds && attachedSubtitleIds.length > 0;
-        const attachedSet = shouldShiftSubtitles
-          ? new Set(attachedSubtitleIds)
-          : null;
-        return prev.map((clip) => {
-          if (clip.id === dragged.id) {
-            return {
-              ...clip,
-              startTime: liveTime,
-              laneId: targetLaneId,
-            };
-          }
-          if (
-            attachedSet &&
-            attachedSet.has(clip.id) &&
-            Math.abs(delta) >= timelineClipEpsilon
-          ) {
-            return {
-              ...clip,
-              startTime: Math.max(0, clip.startTime + delta),
-            };
-          }
-          return clip;
+      if (!isPendingInsert) {
+        const attachedSubtitleIds = subtitleSourceClipMap.get(dragged.id);
+        setTimeline((prev) => {
+          const current = prev.find((clip) => clip.id === dragged.id);
+          const currentStart = current?.startTime ?? dragged.startTime;
+          const delta = liveTime - currentStart;
+          const shouldShiftSubtitles =
+            attachedSubtitleIds && attachedSubtitleIds.length > 0;
+          const attachedSet = shouldShiftSubtitles
+            ? new Set(attachedSubtitleIds)
+            : null;
+          return prev.map((clip) => {
+            if (clip.id === dragged.id) {
+              return {
+                ...clip,
+                startTime: liveTime,
+                laneId: targetLaneId,
+              };
+            }
+            if (
+              attachedSet &&
+              attachedSet.has(clip.id) &&
+              Math.abs(delta) >= timelineClipEpsilon
+            ) {
+              return {
+                ...clip,
+                startTime: Math.max(0, clip.startTime + delta),
+              };
+            }
+            return clip;
+          });
         });
-      });
+      }
     };
     const handleUp = () => {
       const dragState = dragClipStateRef.current;
@@ -12055,19 +12231,29 @@ function AdvancedEditorContent() {
         setTimelineSnapGuide(null);
         setTimelineCollisionGuide(null);
         setTimelineCollisionActive(false);
+        setTopCreateZoneActive(false);
         setDragClipState(null);
         dragClipStateRef.current = null;
         return;
+      }
+      let resolvedTargetLaneId =
+        dragState.previewLaneId ??
+        dragState.targetLaneId ??
+        dragState.startLaneId;
+      if (dragState.pendingLaneInsert) {
+        const nextLanes = [...lanesRef.current];
+        resolvedTargetLaneId = insertLaneAtIndex(
+          dragState.pendingLaneInsert.type,
+          nextLanes,
+          dragState.pendingLaneInsert.index
+        );
+        setLanes(nextLanes);
       }
       setTimeline((prev) => {
         const dragged = prev.find((clip) => clip.id === dragState.clipId);
         if (!dragged) {
           return prev;
         }
-        const targetLaneId =
-          dragState.previewLaneId ??
-          dragState.targetLaneId ??
-          dragState.startLaneId;
         const resolvedStart = clamp(
           normalizeTimelineTime(dragState.previewTime ?? dragged.startTime),
           0,
@@ -12075,11 +12261,16 @@ function AdvancedEditorContent() {
         );
         const laneClips = prev
           .filter(
-            (clip) => clip.laneId === targetLaneId || clip.id === dragged.id
+            (clip) =>
+              clip.laneId === resolvedTargetLaneId || clip.id === dragged.id
           )
           .map((clip) =>
             clip.id === dragged.id
-              ? { ...clip, laneId: targetLaneId, startTime: resolvedStart }
+              ? {
+                  ...clip,
+                  laneId: resolvedTargetLaneId,
+                  startTime: resolvedStart,
+                }
               : { ...clip }
           )
           .sort((a, b) => {
@@ -12138,7 +12329,7 @@ function AdvancedEditorContent() {
             if (clip.id === dragged.id) {
               return {
                 ...clip,
-                laneId: targetLaneId,
+                laneId: resolvedTargetLaneId,
                 startTime: nextStart,
               };
             }
@@ -12164,6 +12355,7 @@ function AdvancedEditorContent() {
       setTimelineSnapGuide(null);
       setTimelineCollisionGuide(null);
       setTimelineCollisionActive(false);
+      setTopCreateZoneActive(false);
       setDragClipState(null);
       dragClipStateRef.current = null;
     };
@@ -12181,10 +12373,19 @@ function AdvancedEditorContent() {
     timelineDuration,
     laneRows,
     isTimelineSnappingEnabled,
+    topCreateZonePx,
+    resolveTopInsertIndex,
+    resolveBottomInsertIndex,
     timelineSnapGuide,
     timelineCollisionGuide,
     subtitleSourceClipMap,
   ]);
+
+  useEffect(() => {
+    if (!dragClipState) {
+      setTopCreateZoneActive(false);
+    }
+  }, [dragClipState]);
 
   useEffect(() => {
     if (!activeCanvasClipId) {
@@ -13017,6 +13218,10 @@ function AdvancedEditorContent() {
     const rect = track.getBoundingClientRect();
     const offsetX = event.clientX - rect.left - timelinePadding;
     const offsetY = event.clientY - rect.top - timelinePadding;
+    const topCreateZonePx = resolveTopCreateZonePx(laneRows);
+    const wantsTopLane =
+      offsetY < 0 ||
+      (laneType !== "audio" && topCreateZonePx > 0 && offsetY <= topCreateZonePx);
     let laneId: string | null = null;
     let foundLaneIndex = -1;
     let cursor = 0;
@@ -13036,18 +13241,34 @@ function AdvancedEditorContent() {
       }
       const totalHeight = sectionCursor - laneGap;
 
-      if (offsetY < 0) {
-        // Dragging above all lanes - create new lane at top of section
+      if (wantsTopLane) {
+        // Dragging above all lanes or into top create zone - create new lane at top of section
         laneId = createLaneId(laneType, nextLanes, { placement: "top" });
       } else if (offsetY > totalHeight + laneGap) {
         // Dragging below all lanes - create new lane (will be positioned correctly)
         laneId = createLaneId(laneType, nextLanes);
       } else {
         // Find which lane we're hovering over
+        const gapCreatePadding = Math.min(12, Math.max(6, Math.round(laneGap * 0.8)));
         for (let i = 0; i < laneRows.length; i++) {
           const lane = laneRows[i];
           const laneTop = cursor;
+          const laneVisualBottom = cursor + lane.height;
           const laneBottom = cursor + lane.height + laneGap;
+          const gapStart = laneVisualBottom - gapCreatePadding;
+          const gapEnd = laneBottom + gapCreatePadding;
+          const inGapZone =
+            offsetY >= gapStart && offsetY <= gapEnd && i < laneRows.length - 1;
+
+          if (inGapZone) {
+            const nextLane = laneRows[i + 1];
+            if (canInsertLaneBetween(laneType, lane.type, nextLane.type)) {
+              laneId = insertLaneAtIndex(laneType, nextLanes, i + 1);
+              foundLaneIndex = -1;
+              break;
+            }
+          }
+
           if (offsetY >= laneTop && offsetY <= laneBottom) {
             laneId = lane.id;
             foundLaneIndex = i;
@@ -15507,6 +15728,36 @@ function AdvancedEditorContent() {
                 Drop to add to timeline
               </div>
             )}
+            {dragClipState && topCreateZoneActive && topCreateZonePx > 0 && (
+              <div
+                className="pointer-events-none absolute left-0 right-0 top-0 z-30"
+                style={{ height: `${topCreateZonePx}px` }}
+              >
+                <div className="absolute inset-0 rounded-t-2xl bg-[#335CFF]/8" />
+                <div className="absolute left-0 right-0 bottom-0 h-px bg-[#335CFF]/40" />
+              </div>
+            )}
+            {pendingInsertPreview && (
+              <div
+                className="pointer-events-none absolute left-0 right-0 z-30"
+                style={{
+                  top: `${pendingInsertPreview.laneTop}px`,
+                  height: `${pendingInsertPreview.laneHeight}px`,
+                }}
+              >
+                <div className="absolute left-0 right-0 top-0 h-px bg-[#335CFF]/35" />
+                <div className="absolute left-0 right-0 bottom-0 h-px bg-[#335CFF]/25" />
+                <div
+                  className="absolute rounded-sm border-2 border-dashed border-[#335CFF]/40 bg-[#335CFF]/10"
+                  style={{
+                    left: `${pendingInsertPreview.startTime * timelineScale}px`,
+                    width: `${pendingInsertPreview.duration * timelineScale}px`,
+                    top: `${pendingInsertPreview.clipTop - pendingInsertPreview.laneTop}px`,
+                    height: `${pendingInsertPreview.clipHeight}px`,
+                  }}
+                />
+              </div>
+            )}
             {rangeSelection && (
               <div
                 className="pointer-events-none absolute z-30 rounded-lg border border-[#2DD4BF] bg-[#2DD4BF]/25 shadow-[0_0_0_1px_rgba(45,212,191,0.6)]"
@@ -16083,9 +16334,11 @@ function AdvancedEditorContent() {
                       previewTime: left,
                       previewLaneId: clip.laneId,
                       group: dragGroup,
+                      pendingLaneInsert: undefined,
                     };
                     dragClipStateRef.current = nextDragState;
                     setDragClipState(nextDragState);
+                    setTopCreateZoneActive(false);
                   }}
                 >
                   {lane.type === "video" && (
