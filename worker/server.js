@@ -66,6 +66,13 @@ const EXPORT_RENDER_SECRET =
 const EXPORT_BUCKET = process.env.EDITOR_EXPORT_BUCKET || BUCKET;
 const EXPORT_FPS_DEFAULT = toPositiveInt(process.env.EDITOR_EXPORT_FPS, 30);
 const EXPORT_JPEG_QUALITY = toPositiveInt(process.env.EDITOR_EXPORT_JPEG_QUALITY, 90);
+const EXPORT_FRAME_FORMAT_RAW = (process.env.EDITOR_EXPORT_FRAME_FORMAT || "png").toLowerCase();
+const EXPORT_FRAME_FORMAT =
+  EXPORT_FRAME_FORMAT_RAW === "jpeg" || EXPORT_FRAME_FORMAT_RAW === "jpg"
+    ? "jpeg"
+    : "png";
+const EXPORT_FRAME_CODEC = EXPORT_FRAME_FORMAT === "jpeg" ? "mjpeg" : "png";
+const EXPORT_SCALE_FLAGS = process.env.EDITOR_EXPORT_SCALE_FLAGS || "lanczos";
 const EXPORT_FRAME_TIMEOUT_MS = toPositiveInt(
   process.env.EDITOR_EXPORT_FRAME_TIMEOUT_MS,
   20000
@@ -469,15 +476,19 @@ const runEditorExportJob = async (job) => {
     });
 
     videoPath = path.join(exportTempDir, `${job.id}_video.mp4`);
+    const screenshotOptions =
+      EXPORT_FRAME_FORMAT === "jpeg"
+        ? { type: "jpeg", quality: EXPORT_JPEG_QUALITY }
+        : { type: "png" };
     const ffmpeg = spawn("ffmpeg", [
       "-hide_banner", "-loglevel", "error",
       "-y",
       "-f", "image2pipe",
-      "-vcodec", "mjpeg",
+      "-vcodec", EXPORT_FRAME_CODEC,
       "-r", String(fps),
       "-i", "pipe:0",
       "-an",
-      "-vf", `scale=${width}:${height}:flags=${SCALE_FLAGS}`,
+      "-vf", `scale=${width}:${height}:flags=${EXPORT_SCALE_FLAGS}`,
       "-c:v", "libx264",
       "-preset", RENDER_PRESET,
       "-crf", "18",
@@ -549,8 +560,7 @@ const runEditorExportJob = async (job) => {
         }
         const buffer = await withTimeout(
           stageHandle.screenshot({
-            type: "jpeg",
-            quality: EXPORT_JPEG_QUALITY,
+            ...screenshotOptions,
           }),
           EXPORT_FRAME_TIMEOUT_MS,
           `screenshot frame ${i + 1}`

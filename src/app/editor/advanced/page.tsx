@@ -4786,6 +4786,27 @@ function AdvancedEditorContent() {
     }
   }, [exportScaleMode, isExportMode, updateSubtitleWordHighlight]);
 
+  const refreshSubtitleRender = useCallback(() => {
+    if (!subtitleCacheReadyRef.current) {
+      return;
+    }
+    const clipId = lastRenderedSubtitleIdRef.current;
+    if (!clipId) {
+      return;
+    }
+    let entry: { segment: SubtitleSegment; startTime: number } | null = null;
+    const activeIdx = activeSubtitleIndexRef.current;
+    if (activeIdx >= 0 && activeIdx < sortedSubtitleClips.length) {
+      entry = sortedSubtitleClips[activeIdx];
+    } else {
+      entry =
+        sortedSubtitleClips.find(
+          (item) => item.segment.clipId === clipId
+        ) ?? null;
+    }
+    updateSubtitleDOM(clipId, entry, playbackTimeRef.current);
+  }, [sortedSubtitleClips, updateSubtitleDOM]);
+
   // Binary search for finding active subtitle - optimized for sequential playback
   // Uses cache for O(1) sequential access, falls back to O(log n) binary search
   const findActiveSubtitleIndex = useCallback((time: number): number => {
@@ -4976,7 +4997,11 @@ function AdvancedEditorContent() {
 
   useEffect(() => {
     if (!isExportMode || exportScaleMode === "css") {
+      const prevScale = exportSubtitleScaleRef.current;
       exportSubtitleScaleRef.current = 1;
+      if (prevScale !== 1) {
+        refreshSubtitleRender();
+      }
       return;
     }
     const previewWidth = exportPreview?.width ?? 0;
@@ -4991,16 +5016,26 @@ function AdvancedEditorContent() {
         stageDisplay.width / previewWidth,
         stageDisplay.height / previewHeight
       );
-      exportSubtitleScaleRef.current =
+      const resolvedScale =
         Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
+      const prevScale = exportSubtitleScaleRef.current;
+      exportSubtitleScaleRef.current = resolvedScale;
+      if (Math.abs(prevScale - resolvedScale) > 0.001) {
+        refreshSubtitleRender();
+      }
       return;
     }
+    const prevScale = exportSubtitleScaleRef.current;
     exportSubtitleScaleRef.current = 1;
+    if (prevScale !== 1) {
+      refreshSubtitleRender();
+    }
   }, [
     exportPreview?.height,
     exportPreview?.width,
     exportScaleMode,
     isExportMode,
+    refreshSubtitleRender,
     stageDisplay.height,
     stageDisplay.width,
   ]);
@@ -5300,17 +5335,31 @@ function AdvancedEditorContent() {
               rect.width / exportPreview.width,
               rect.height / exportPreview.height
             );
-            exportSubtitleScaleRef.current =
+            const resolvedScale =
               Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
+            const prevScale = exportSubtitleScaleRef.current;
+            exportSubtitleScaleRef.current = resolvedScale;
+            if (Math.abs(prevScale - resolvedScale) > 0.001) {
+              refreshSubtitleRender();
+            }
             return;
           }
+          const prevScale = exportSubtitleScaleRef.current;
           exportSubtitleScaleRef.current = 1;
+          if (prevScale !== 1) {
+            refreshSubtitleRender();
+          }
           return;
         }
       }
       await waitFrame();
     }
-  }, [exportPreview?.height, exportPreview?.width, exportScaleMode]);
+  }, [
+    exportPreview?.height,
+    exportPreview?.width,
+    exportScaleMode,
+    refreshSubtitleRender,
+  ]);
 
   const waitForExportSubtitles = useCallback(async () => {
     if (typeof window === "undefined") {
