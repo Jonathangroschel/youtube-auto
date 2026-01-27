@@ -37,6 +37,22 @@ export type TimelineLayoutEntry = {
   left: number;
 };
 
+export type ClipDragGroup = {
+  clips: Array<{
+    id: string;
+    startTime: number;
+    duration: number;
+    laneId: string;
+  }>;
+  minStart: number;
+  maxEnd: number;
+  attachedSubtitles: Array<{
+    id: string;
+    startTime: number;
+    duration: number;
+  }>;
+};
+
 export type ClipDragState = {
   clipId: string;
   startX: number;
@@ -46,6 +62,7 @@ export type ClipDragState = {
   createdLaneId?: string;
   previewTime?: number;
   previewLaneId?: string;
+  group?: ClipDragGroup;
 };
 
 export type TrimEdge = "start" | "end";

@@ -229,6 +229,15 @@ type GifDragPayload = {
   size?: number;
 };
 
+type StockAudioDragPayload = {
+  payloadType: "stock-audio";
+  id: string;
+  name: string;
+  url: string;
+  size: number;
+  duration?: number | null;
+};
+
 type ProjectSizeOption = {
   id: string;
   label: string;
@@ -439,6 +448,17 @@ const buildGifPayload = (gif: IGif): GifDragPayload | null => {
   };
 };
 
+const buildStockAudioPayload = (track: StockAudioTrack): StockAudioDragPayload => {
+  return {
+    payloadType: "stock-audio",
+    id: track.id,
+    name: track.name,
+    url: track.url,
+    size: track.size,
+    duration: track.duration ?? null,
+  };
+};
+
 const subtitleLanguages: SubtitleLanguageOption[] = [
   { code: "en", label: "English", detail: "English (US)", region: "US" },
   { code: "es", label: "Spanish", detail: "Spanish (ES)", region: "ES" },
@@ -586,6 +606,7 @@ function AdvancedEditorContent() {
   const gifSearchLimit = 30;
   const gifPreviewIntervalMs = 15000;
   const gifDragType = "application/x-gif-asset";
+  const stockAudioDragType = "application/x-stock-audio";
   const searchParams = useSearchParams();
   const isExportMode = searchParams.get("export") === "1";
   const [activeTool, setActiveTool] = useState("video");
@@ -8544,10 +8565,13 @@ function AdvancedEditorContent() {
     assetId: string,
     laneId: string,
     startTime: number,
-    assetOverride?: MediaAsset
+    assetOverride?: MediaAsset,
+    options?: { skipHistory?: boolean }
   ) => {
     setIsBackgroundSelected(false);
-    pushHistory();
+    if (!options?.skipHistory) {
+      pushHistory();
+    }
     const clip = createClip(
       assetId,
       laneId,
@@ -9299,6 +9323,51 @@ function AdvancedEditorContent() {
     });
   }, [assetLibraryReady, handleAddExternalVideo]);
 
+  const ensureStockAudioAsset = useCallback(
+    async (payload: StockAudioDragPayload): Promise<MediaAsset> => {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "audio" && asset.url === payload.url
+      );
+      if (existing) {
+        return existing;
+      }
+      let resolvedDuration =
+        typeof payload.duration === "number" && Number.isFinite(payload.duration)
+          ? payload.duration
+          : undefined;
+      if (resolvedDuration == null) {
+        if (stockDurationCacheRef.current.has(payload.id)) {
+          const cached = stockDurationCacheRef.current.get(payload.id);
+          resolvedDuration = cached ?? undefined;
+        } else {
+          const meta = await getMediaMeta("audio", payload.url);
+          resolvedDuration = meta.duration;
+          stockDurationCacheRef.current.set(payload.id, meta.duration ?? null);
+        }
+      }
+      const libraryAsset = await createExternalAssetSafe({
+        url: payload.url,
+        name: payload.name,
+        kind: "audio",
+        source: "stock",
+        size: payload.size,
+        duration: resolvedDuration ?? undefined,
+      });
+      const audioAsset: MediaAsset = {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name: payload.name,
+        kind: "audio",
+        url: libraryAsset?.url ?? payload.url,
+        size: payload.size,
+        duration: resolvedDuration ?? undefined,
+        createdAt: Date.now(),
+      };
+      setAssets((prev) => [audioAsset, ...prev]);
+      return audioAsset;
+    },
+    [setAssets]
+  );
+
   const handleAddStockAudio = useCallback(
     async (track: StockAudioTrack) => {
       const existing = assetsRef.current.find(
@@ -9308,46 +9377,52 @@ function AdvancedEditorContent() {
         addToTimeline(existing.id);
         return;
       }
-      let resolvedDuration = track.duration;
-      if (resolvedDuration == null) {
-        if (stockDurationCacheRef.current.has(track.id)) {
-          const cached = stockDurationCacheRef.current.get(track.id);
-          resolvedDuration = cached ?? undefined;
-        } else {
-          const meta = await getMediaMeta("audio", track.url);
-          resolvedDuration = meta.duration;
-          stockDurationCacheRef.current.set(track.id, meta.duration ?? null);
-        }
-      }
       setIsBackgroundSelected(false);
       pushHistory();
-      const libraryAsset = await createExternalAssetSafe({
-        url: track.url,
-        name: track.name,
-        kind: "audio",
-        source: "stock",
-        size: track.size,
-        duration: resolvedDuration ?? undefined,
-      });
-      const audioAsset: MediaAsset = {
-        id: libraryAsset?.id ?? crypto.randomUUID(),
-        name: track.name,
-        kind: "audio",
-        url: libraryAsset?.url ?? track.url,
-        size: track.size,
-        duration: resolvedDuration ?? undefined,
-        createdAt: Date.now(),
-      };
+      const audioAsset = await ensureStockAudioAsset(
+        buildStockAudioPayload(track)
+      );
       const nextLanes = [...lanesRef.current];
       const laneId = createLaneId("audio", nextLanes);
       const clip = createClip(audioAsset.id, laneId, 0, audioAsset);
       setLanes(nextLanes);
-      setAssets((prev) => [audioAsset, ...prev]);
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(audioAsset.id);
     },
-    [addToTimeline, createClip, pushHistory]
+    [addToTimeline, createClip, ensureStockAudioAsset, pushHistory]
   );
+
+  const handleStockAudioDrop = async (
+    payload: StockAudioDragPayload,
+    target: "canvas" | "timeline",
+    event?: DragEvent<HTMLDivElement>
+  ) => {
+    const existing = assetsRef.current.find(
+      (asset) => asset.kind === "audio" && asset.url === payload.url
+    );
+    if (existing) {
+      if (target === "timeline" && event) {
+        addAssetToTimelineFromDrop(existing, event);
+      } else {
+        addToTimeline(existing.id);
+      }
+      return;
+    }
+    setIsBackgroundSelected(false);
+    pushHistory();
+    const audioAsset = await ensureStockAudioAsset(payload);
+    if (target === "timeline" && event) {
+      addAssetToTimelineFromDrop(audioAsset, event, { skipHistory: true });
+      setActiveAssetId(audioAsset.id);
+      return;
+    }
+    const nextLanes = [...lanesRef.current];
+    const laneId = createLaneId("audio", nextLanes);
+    const clip = createClip(audioAsset.id, laneId, 0, audioAsset);
+    setLanes(nextLanes);
+    setTimeline((prev) => [...prev, clip]);
+    setActiveAssetId(audioAsset.id);
+  };
 
   const createGifMediaAsset = useCallback(
     async (payload: GifDragPayload): Promise<MediaAsset> => {
@@ -11121,59 +11196,160 @@ function AdvancedEditorContent() {
         pushHistory();
         trimHistoryRef.current = true;
       }
+      const clip = timeline.find((item) => item.id === trimState.clipId);
+      if (!clip) {
+        return;
+      }
       const deltaSeconds = (event.clientX - trimState.startX) / timelineScale;
-      setTimeline((prev) =>
-        prev.map((clip) => {
-          if (clip.id !== trimState.clipId) {
-            return clip;
-          }
-          const asset = assetsRef.current.find(
-            (item) => item.id === clip.assetId
-          );
-          const assetDuration = getAssetMaxDurationSeconds(asset);
-          const playbackRate = getClipPlaybackRate(clip.id);
-          if (trimState.edge === "end") {
-            const nextDuration = clamp(
-              trimState.startDuration + deltaSeconds,
-              minClipDuration,
-              (assetDuration - trimState.startOffset) / playbackRate
-            );
-            return { ...clip, duration: nextDuration };
-          }
-          const nextStartTime = clamp(
-            trimState.startTime + deltaSeconds,
-            0,
-            trimState.startTime + trimState.startDuration - minClipDuration
-          );
-          const appliedDelta = nextStartTime - trimState.startTime;
-          const maxStartOffset = Math.max(
-            0,
-            assetDuration - minClipDuration * playbackRate
-          );
-          const nextStartOffset = clamp(
-            trimState.startOffset + appliedDelta * playbackRate,
-            0,
-            maxStartOffset
-          );
-          const maxDuration =
-            (assetDuration - nextStartOffset) / playbackRate;
-          const nextDuration = clamp(
-            trimState.startDuration - appliedDelta,
-            minClipDuration,
-            maxDuration
-          );
-          return {
-            ...clip,
-            startTime: nextStartTime,
-            startOffset: nextStartOffset,
-            duration: nextDuration,
-          };
-        })
+      const snapThresholdSeconds = snapThresholdPx / timelineScale;
+      const frameThresholdSeconds = frameStepSeconds;
+      const candidateEdges: number[] = [0, timelineDuration];
+      timeline.forEach((clip) => {
+        if (clip.id === trimState.clipId) {
+          return;
+        }
+        candidateEdges.push(clip.startTime, clip.startTime + clip.duration);
+      });
+      const asset = assetsRef.current.find(
+        (item) => item.id === clip.assetId
       );
+      const assetDuration = getAssetMaxDurationSeconds(asset);
+      const playbackRate = getClipPlaybackRate(clip.id);
+      let nextClip: Partial<TimelineClip> | null = null;
+      let snapGuide: number | null = null;
+      if (trimState.edge === "end") {
+        const maxDuration =
+          (assetDuration - trimState.startOffset) / playbackRate;
+        const rawDuration = clamp(
+          trimState.startDuration + deltaSeconds,
+          minClipDuration,
+          maxDuration
+        );
+        let targetEdge = trimState.startTime + rawDuration;
+        if (!event.altKey && isTimelineSnappingEnabled) {
+          targetEdge = Math.round(targetEdge / snapInterval) * snapInterval;
+          let bestDistance = snapThresholdSeconds + 1;
+          let bestEdge: number | null = null;
+          candidateEdges.forEach((edge) => {
+            const distance = Math.abs(
+              trimState.startTime + rawDuration - edge
+            );
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestEdge = edge;
+            }
+          });
+          if (bestEdge !== null && bestDistance <= snapThresholdSeconds) {
+            targetEdge = bestEdge;
+            snapGuide = bestEdge;
+          } else {
+            let frameDistance = frameThresholdSeconds + 1;
+            let frameEdge: number | null = null;
+            candidateEdges.forEach((edge) => {
+              const distance = Math.abs(
+                trimState.startTime + rawDuration - edge
+              );
+              if (distance < frameDistance) {
+                frameDistance = distance;
+                frameEdge = edge;
+              }
+            });
+            if (frameEdge !== null && frameDistance <= frameThresholdSeconds) {
+              targetEdge = frameEdge;
+              snapGuide = frameEdge;
+            }
+          }
+        }
+        const clampedEdge = clamp(
+          targetEdge,
+          trimState.startTime + minClipDuration,
+          trimState.startTime + maxDuration
+        );
+        const nextDuration = clamp(
+          clampedEdge - trimState.startTime,
+          minClipDuration,
+          maxDuration
+        );
+        nextClip = { duration: nextDuration };
+      } else {
+        const nextStartTime = clamp(
+          trimState.startTime + deltaSeconds,
+          0,
+          trimState.startTime + trimState.startDuration - minClipDuration
+        );
+        let snappedStartTime = nextStartTime;
+        if (!event.altKey && isTimelineSnappingEnabled) {
+          snappedStartTime =
+            Math.round(nextStartTime / snapInterval) * snapInterval;
+          let bestDistance = snapThresholdSeconds + 1;
+          let bestEdge: number | null = null;
+          candidateEdges.forEach((edge) => {
+            const distance = Math.abs(nextStartTime - edge);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestEdge = edge;
+            }
+          });
+          if (bestEdge !== null && bestDistance <= snapThresholdSeconds) {
+            snappedStartTime = bestEdge;
+            snapGuide = bestEdge;
+          } else {
+            let frameDistance = frameThresholdSeconds + 1;
+            let frameEdge: number | null = null;
+            candidateEdges.forEach((edge) => {
+              const distance = Math.abs(nextStartTime - edge);
+              if (distance < frameDistance) {
+                frameDistance = distance;
+                frameEdge = edge;
+              }
+            });
+            if (frameEdge !== null && frameDistance <= frameThresholdSeconds) {
+              snappedStartTime = frameEdge;
+              snapGuide = frameEdge;
+            }
+          }
+        }
+        snappedStartTime = clamp(
+          snappedStartTime,
+          0,
+          trimState.startTime + trimState.startDuration - minClipDuration
+        );
+        const appliedDelta = snappedStartTime - trimState.startTime;
+        const maxStartOffset = Math.max(
+          0,
+          assetDuration - minClipDuration * playbackRate
+        );
+        const nextStartOffset = clamp(
+          trimState.startOffset + appliedDelta * playbackRate,
+          0,
+          maxStartOffset
+        );
+        const maxDuration =
+          (assetDuration - nextStartOffset) / playbackRate;
+        const nextDuration = clamp(
+          trimState.startDuration - appliedDelta,
+          minClipDuration,
+          maxDuration
+        );
+        nextClip = {
+          startTime: snappedStartTime,
+          startOffset: nextStartOffset,
+          duration: nextDuration,
+        };
+      }
+      setTimelineSnapGuide(snapGuide);
+      if (nextClip) {
+        setTimeline((prev) =>
+          prev.map((entry) =>
+            entry.id === trimState.clipId ? { ...entry, ...nextClip } : entry
+          )
+        );
+      }
     };
     const handleUp = () => {
       setTrimState(null);
       trimHistoryRef.current = false;
+      setTimelineSnapGuide(null);
     };
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
@@ -11181,7 +11357,16 @@ function AdvancedEditorContent() {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [getClipPlaybackRate, minClipDuration, pushHistory, timelineScale, trimState]);
+  }, [
+    getClipPlaybackRate,
+    isTimelineSnappingEnabled,
+    minClipDuration,
+    pushHistory,
+    timeline,
+    timelineDuration,
+    timelineScale,
+    trimState,
+  ]);
 
   useEffect(() => {
     setTimelineHeight((prev) =>
@@ -11402,6 +11587,10 @@ function AdvancedEditorContent() {
       if (!dragged) {
         return;
       }
+      const dragGroup = dragClipState.group;
+      const dragGroupIds = dragGroup
+        ? new Set(dragGroup.clips.map((entry) => entry.id))
+        : null;
       if (!dragClipHistoryRef.current) {
         pushHistory();
         dragClipHistoryRef.current = true;
@@ -11421,6 +11610,9 @@ function AdvancedEditorContent() {
       const candidateEdges: number[] = [0];
       timeline.forEach((clip) => {
         if (clip.id === dragged.id) {
+          return;
+        }
+        if (dragGroupIds && dragGroupIds.has(clip.id)) {
           return;
         }
         candidateEdges.push(clip.startTime, clip.startTime + clip.duration);
@@ -11482,6 +11674,67 @@ function AdvancedEditorContent() {
       if (event.altKey || !isTimelineSnappingEnabled) {
         liveTime = clamp(normalizeTimelineTime(rawTime), 0, maxStart);
         snapGuide = null;
+      }
+      if (dragGroup && dragGroup.clips.length > 1) {
+        const delta = liveTime - dragClipState.startLeft;
+        const minDelta = -dragGroup.minStart;
+        const maxDelta = maxStart - dragGroup.maxEnd;
+        const clampedDelta = clamp(delta, minDelta, maxDelta);
+        const previewTime = dragClipState.startLeft + clampedDelta;
+        const nextDragState = {
+          ...dragClipState,
+          previewTime,
+          previewLaneId: dragClipState.startLaneId,
+          targetLaneId: dragClipState.startLaneId,
+        };
+        dragClipStateRef.current = nextDragState;
+        setDragClipState((prev) => (prev ? nextDragState : prev));
+        if (snapGuide !== null) {
+          setTimelineSnapGuide(snapGuide);
+        } else if (timelineSnapGuide !== null) {
+          setTimelineSnapGuide(null);
+        }
+        if (timelineCollisionGuide !== null) {
+          setTimelineCollisionGuide(null);
+        }
+        setTimelineCollisionActive(false);
+        const groupStartMap = new Map(
+          dragGroup.clips.map((entry) => [entry.id, entry.startTime])
+        );
+        const subtitleStartMap = new Map(
+          dragGroup.attachedSubtitles.map((entry) => [
+            entry.id,
+            entry.startTime,
+          ])
+        );
+        setTimeline((prev) =>
+          prev.map((clip) => {
+            const groupStart = groupStartMap.get(clip.id);
+            if (groupStart !== undefined) {
+              const nextStart = Math.max(
+                0,
+                normalizeTimelineTime(groupStart + clampedDelta)
+              );
+              if (Math.abs(nextStart - clip.startTime) < timelineClipEpsilon) {
+                return clip;
+              }
+              return { ...clip, startTime: nextStart };
+            }
+            const subtitleStart = subtitleStartMap.get(clip.id);
+            if (subtitleStart !== undefined) {
+              const nextStart = Math.max(
+                0,
+                normalizeTimelineTime(subtitleStart + clampedDelta)
+              );
+              if (Math.abs(nextStart - clip.startTime) < timelineClipEpsilon) {
+                return clip;
+              }
+              return { ...clip, startTime: nextStart };
+            }
+            return clip;
+          })
+        );
+        return;
       }
       let targetLaneId = dragClipState.targetLaneId ?? dragClipState.startLaneId;
       let createdLaneId = dragClipState.createdLaneId;
@@ -11763,6 +12016,15 @@ function AdvancedEditorContent() {
     const handleUp = () => {
       const dragState = dragClipStateRef.current;
       if (!dragState) {
+        return;
+      }
+      if (dragState.group && dragState.group.clips.length > 1) {
+        dragClipHistoryRef.current = false;
+        setTimelineSnapGuide(null);
+        setTimelineCollisionGuide(null);
+        setTimelineCollisionActive(false);
+        setDragClipState(null);
+        dragClipStateRef.current = null;
         return;
       }
       setTimeline((prev) => {
@@ -12608,9 +12870,16 @@ function AdvancedEditorContent() {
     try {
       const parsed = JSON.parse(raw) as {
         payload?: Partial<GifDragPayload>;
+        payloadType?: string;
       } & Partial<GifDragPayload>;
       const payload = parsed.payload ?? parsed;
       if (!payload || typeof payload.url !== "string") {
+        return null;
+      }
+      if (
+        typeof (payload as { payloadType?: string }).payloadType === "string" &&
+        (payload as { payloadType?: string }).payloadType !== "gif"
+      ) {
         return null;
       }
       return {
@@ -12634,6 +12903,49 @@ function AdvancedEditorContent() {
     }
   };
 
+  const parseStockAudioDragPayload = (
+    raw: string
+  ): StockAudioDragPayload | null => {
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as {
+        payload?: Partial<StockAudioDragPayload>;
+      } & Partial<StockAudioDragPayload>;
+      const payload = parsed.payload ?? parsed;
+      if (!payload || payload.payloadType !== "stock-audio") {
+        return null;
+      }
+      if (typeof payload.url !== "string" || typeof payload.name !== "string") {
+        return null;
+      }
+      if (typeof payload.id !== "string") {
+        return null;
+      }
+      const size =
+        typeof payload.size === "number" && Number.isFinite(payload.size)
+          ? payload.size
+          : 0;
+      const duration =
+        typeof payload.duration === "number" && Number.isFinite(payload.duration)
+          ? payload.duration
+          : payload.duration === null
+            ? null
+            : undefined;
+      return {
+        payloadType: "stock-audio",
+        id: payload.id,
+        name: payload.name,
+        url: payload.url,
+        size,
+        duration,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const handleGifDragStart = useCallback(
     (event: DragEvent<HTMLElement>, gif: IGif) => {
       const payload = buildGifPayload(gif);
@@ -12648,9 +12960,21 @@ function AdvancedEditorContent() {
     [gifDragType]
   );
 
+  const handleStockAudioDragStart = useCallback(
+    (event: DragEvent<HTMLElement>, track: StockAudioTrack) => {
+      const payload = buildStockAudioPayload(track);
+      const encoded = JSON.stringify(payload);
+      event.dataTransfer.setData(stockAudioDragType, encoded);
+      event.dataTransfer.setData("text/plain", encoded);
+      event.dataTransfer.effectAllowed = "copy";
+    },
+    [stockAudioDragType]
+  );
+
   const addAssetToTimelineFromDrop = (
     asset: MediaAsset,
-    event: DragEvent<HTMLDivElement>
+    event: DragEvent<HTMLDivElement>,
+    options?: { skipHistory?: boolean }
   ) => {
     const track = timelineTrackRef.current;
     if (!track) {
@@ -12742,7 +13066,7 @@ function AdvancedEditorContent() {
     }
     setLanes(nextLanes);
     const startTime = offsetX / timelineScale;
-    addClipAtPosition(asset.id, laneId, startTime, asset);
+    addClipAtPosition(asset.id, laneId, startTime, asset, options);
   };
 
   const handleCanvasDrop = async (event: DragEvent<HTMLDivElement>) => {
@@ -12751,6 +13075,14 @@ function AdvancedEditorContent() {
     if (droppedFiles.length > 0) {
       setDragOverCanvas(false);
       await handleDroppedFiles(droppedFiles, { target: "canvas" });
+      return;
+    }
+    const stockAudioPayload =
+      parseStockAudioDragPayload(event.dataTransfer.getData(stockAudioDragType)) ??
+      parseStockAudioDragPayload(event.dataTransfer.getData("text/plain"));
+    if (stockAudioPayload) {
+      await handleStockAudioDrop(stockAudioPayload, "canvas");
+      setDragOverCanvas(false);
       return;
     }
     const gifPayload =
@@ -12796,6 +13128,14 @@ function AdvancedEditorContent() {
     if (droppedFiles.length > 0) {
       setDragOverTimeline(false);
       await handleDroppedFiles(droppedFiles, { target: "timeline", event });
+      return;
+    }
+    const stockAudioPayload =
+      parseStockAudioDragPayload(event.dataTransfer.getData(stockAudioDragType)) ??
+      parseStockAudioDragPayload(event.dataTransfer.getData("text/plain"));
+    if (stockAudioPayload) {
+      await handleStockAudioDrop(stockAudioPayload, "timeline", event);
+      setDragOverTimeline(false);
       return;
     }
     const gifPayload =
@@ -12898,6 +13238,15 @@ function AdvancedEditorContent() {
     }
     if (event.target !== event.currentTarget) {
       return;
+    }
+    if (!event.shiftKey) {
+      setSelectedClipIds([]);
+      setSelectedClipId(null);
+      setActiveCanvasClipId(null);
+      setActiveAssetId(null);
+      setIsBackgroundSelected(false);
+      closeFloatingMenu();
+      closeTimelineContextMenu();
     }
     const scrollEl = timelineScrollRef.current;
     if (!scrollEl) {
@@ -13169,6 +13518,7 @@ function AdvancedEditorContent() {
     handleAddTiktokVideo,
     handleAssetDragStart,
     handleGifDragStart,
+    handleStockAudioDragStart,
     handleDeleteSelected,
     handleDeleteAsset,
     handleDetachAudio,
@@ -14806,7 +15156,26 @@ function AdvancedEditorContent() {
           <span className="absolute left-0 right-0 top-0 h-0.5 bg-[#335CFF]" />
         )}
       </div>
-      <div className="flex h-14 items-center px-3">
+      <div
+        className="flex h-14 items-center px-3"
+        onMouseDown={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (
+            target?.closest(
+              'button, input, select, textarea, [role="button"]'
+            )
+          ) {
+            return;
+          }
+          setSelectedClipIds([]);
+          setSelectedClipId(null);
+          setActiveCanvasClipId(null);
+          setActiveAssetId(null);
+          setIsBackgroundSelected(false);
+          closeFloatingMenu();
+          closeTimelineContextMenu();
+        }}
+      >
         <div className="flex flex-1 items-center gap-2">
           <button
             className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -15578,9 +15947,102 @@ function AdvancedEditorContent() {
                       });
                       return;
                     }
-                    setSelectedClipIds([clip.id]);
-                    setSelectedClipId(clip.id);
+                    const preserveGroupSelection =
+                      selectedClipIdsSet.has(clip.id) &&
+                      selectedClipIds.length > 1;
+                    if (!preserveGroupSelection) {
+                      setSelectedClipIds([clip.id]);
+                      setSelectedClipId(clip.id);
+                    } else {
+                      setSelectedClipId(clip.id);
+                    }
                     dragClipHistoryRef.current = false;
+                    const dragGroupIds = preserveGroupSelection
+                      ? selectedClipIds
+                      : [clip.id];
+                    const dragGroupIdSet = new Set(dragGroupIds);
+                    const dragGroupClips = dragGroupIds
+                      .map((id) => {
+                        const entry = timelineLayout.find(
+                          (item) => item.clip.id === id
+                        );
+                        if (!entry) {
+                          return null;
+                        }
+                        return {
+                          id,
+                          startTime: entry.clip.startTime,
+                          duration: entry.clip.duration,
+                          laneId: entry.clip.laneId,
+                        };
+                      })
+                      .filter(
+                        (
+                          entry
+                        ): entry is {
+                          id: string;
+                          startTime: number;
+                          duration: number;
+                          laneId: string;
+                        } => Boolean(entry)
+                      );
+                    const dragGroup =
+                      dragGroupClips.length > 1
+                        ? (() => {
+                            const attachedSubtitleIds = new Set<string>();
+                            const attachedSubtitles: Array<{
+                              id: string;
+                              startTime: number;
+                              duration: number;
+                            }> = [];
+                            dragGroupClips.forEach((entry) => {
+                              const attached = subtitleSourceClipMap.get(
+                                entry.id
+                              );
+                              if (!attached || attached.length === 0) {
+                                return;
+                              }
+                              attached.forEach((subtitleId) => {
+                                if (
+                                  dragGroupIdSet.has(subtitleId) ||
+                                  attachedSubtitleIds.has(subtitleId)
+                                ) {
+                                  return;
+                                }
+                                const subtitleEntry = timelineLayout.find(
+                                  (item) => item.clip.id === subtitleId
+                                );
+                                if (!subtitleEntry) {
+                                  return;
+                                }
+                                attachedSubtitleIds.add(subtitleId);
+                                attachedSubtitles.push({
+                                  id: subtitleId,
+                                  startTime: subtitleEntry.clip.startTime,
+                                  duration: subtitleEntry.clip.duration,
+                                });
+                              });
+                            });
+                            const minStart = Math.min(
+                              ...dragGroupClips.map((entry) => entry.startTime),
+                              ...attachedSubtitles.map((entry) => entry.startTime)
+                            );
+                            const maxEnd = Math.max(
+                              ...dragGroupClips.map(
+                                (entry) => entry.startTime + entry.duration
+                              ),
+                              ...attachedSubtitles.map(
+                                (entry) => entry.startTime + entry.duration
+                              )
+                            );
+                            return {
+                              clips: dragGroupClips,
+                              minStart,
+                              maxEnd,
+                              attachedSubtitles,
+                            };
+                          })()
+                        : undefined;
                     const nextDragState = {
                       clipId: clip.id,
                       startX: event.clientX,
@@ -15588,6 +16050,7 @@ function AdvancedEditorContent() {
                       startLaneId: clip.laneId,
                       previewTime: left,
                       previewLaneId: clip.laneId,
+                      group: dragGroup,
                     };
                     dragClipStateRef.current = nextDragState;
                     setDragClipState(nextDragState);
@@ -15762,7 +16225,9 @@ function AdvancedEditorContent() {
     isResizingAudioLane,
     laneRows,
     lastAudioLaneId,
+    selectedClipIds,
     selectedClipIdsSet,
+    subtitleSourceClipMap,
     timelineCollisionActive,
     timelineLayout,
     timelineScale,

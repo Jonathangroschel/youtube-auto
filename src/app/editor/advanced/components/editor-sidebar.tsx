@@ -119,6 +119,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleAddTiktokVideo,
     handleAssetDragStart,
     handleGifDragStart,
+    handleStockAudioDragStart,
     handleDeleteSelected,
     handleDeleteAsset,
     handleDetachAudio,
@@ -5772,9 +5773,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       return (
                                         <div
                                           key={track.id}
-                                          className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+                                          className="group flex cursor-grab items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:cursor-grabbing"
                                           onMouseEnter={() =>
                                             requestStockAudioDuration(track)
+                                          }
+                                          draggable
+                                          onDragStart={(event) =>
+                                            handleStockAudioDragStart(event, track)
                                           }
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -6029,9 +6034,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       return (
                                         <div
                                           key={track.id}
-                                          className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"
+                                          className="group flex cursor-grab items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:cursor-grabbing"
                                           onMouseEnter={() =>
                                             requestStockAudioDuration(track)
+                                          }
+                                          draggable
+                                          onDragStart={(event) =>
+                                            handleStockAudioDragStart(event, track)
                                           }
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -6439,6 +6448,104 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 </>
               ) : activeTool === "elements" ? (
                 <div className="space-y-4">
+                  <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <GiphyLogo className="h-4 w-auto" />
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          GIFs
+                        </h3>
+                      </div>
+                      <button
+                        className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                        type="button"
+                        onClick={() => {
+                          setIsAssetLibraryExpanded(false);
+                          setIsGifLibraryExpanded(true);
+                        }}
+                      >
+                        View All
+                        <svg viewBox="0 0 16 16" className="h-3 w-3">
+                          <path
+                            d="m6 12 4-4-4-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="mt-3">
+                      {!hasGiphy ? (
+                        <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                          Add a GIPHY API key to enable GIFs.
+                        </div>
+                      ) : (gifTrendingStatus === "idle" ||
+                        gifTrendingStatus === "loading") &&
+                        gifPreviewItems.length === 0 ? (
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-3">
+                          {Array.from({ length: gifPreviewCount }).map(
+                            (_, index) => (
+                              <div
+                                key={`gif-preview-skeleton-${index}`}
+                                className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                              />
+                            )
+                          )}
+                        </div>
+                      ) : gifTrendingStatus === "error" ? (
+                        <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                          <p>{gifTrendingError ?? "Unable to load GIFs."}</p>
+                          <button
+                            type="button"
+                            className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                            onClick={handleGifTrendingRetry}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : gifPreviewItems.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                          No GIFs available right now.
+                        </div>
+                      ) : (
+                        <div className="grid h-[384px] grid-cols-2 gap-3 auto-rows-[0px] grid-rows-3 md:h-[142px] md:grid-cols-4 md:grid-rows-1 lg:h-[180px] lg:grid-cols-3 lg:grid-rows-2">
+                          {gifPreviewItems.map((gif: IGif) => {
+                            const previewUrl = resolveGiphyPreviewUrl(gif);
+                            const title = gif.title?.trim() || "GIF";
+                            return (
+                              <button
+                                key={gif.id}
+                                type="button"
+                                className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                                onClick={() => handleAddGif(gif)}
+                                draggable
+                                onDragStart={(event) =>
+                                  handleGifDragStart(event, gif)
+                                }
+                                aria-label={`Add ${title}`}
+                              >
+                                {previewUrl ? (
+                                  <img
+                                    src={previewUrl}
+                                    alt={`Preview of gif ${title}`}
+                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                    GIF
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
