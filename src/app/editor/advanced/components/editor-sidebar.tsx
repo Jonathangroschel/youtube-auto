@@ -833,10 +833,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       return filteredAssets;
     }
     const capped = filteredAssets.slice(0, assetGridLimit);
-    if (!activeAssetId || capped.some((asset) => asset.id === activeAssetId)) {
+    if (
+      !activeAssetId ||
+      capped.some((asset: MediaAsset) => asset.id === activeAssetId)
+    ) {
       return capped;
     }
-    const activeAsset = filteredAssets.find((asset) => asset.id === activeAssetId);
+    const activeAsset = filteredAssets.find(
+      (asset: MediaAsset) => asset.id === activeAssetId
+    );
     if (!activeAsset) {
       return capped;
     }
