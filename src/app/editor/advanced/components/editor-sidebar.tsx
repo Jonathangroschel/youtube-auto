@@ -368,6 +368,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [tiktokUrl, setTiktokUrl] = useState("");
   const [tiktokError, setTiktokError] = useState<string | null>(null);
   const [tiktokLoading, setTiktokLoading] = useState(false);
+  const [isAssetGridSmUp, setIsAssetGridSmUp] = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    return window.matchMedia("(min-width: 640px)").matches;
+  });
   const downloadLoader = (
     <div className="flex items-center justify-center py-6">
       <div className="relative h-16 w-16">
@@ -506,6 +512,21 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   useEffect(() => {
     setBackgroundHexDraft(videoBackground);
   }, [videoBackground]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const mediaQuery = window.matchMedia("(min-width: 640px)");
+    const handleChange = () => setIsAssetGridSmUp(mediaQuery.matches);
+    handleChange();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
 
   const openSubtitleRowMenu = (
     event: ReactMouseEvent<HTMLButtonElement>,
@@ -804,6 +825,25 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const isAudioTool = activeTool === "audio";
   const isSettingsTool = activeTool === "settings";
   const useAudioLibraryLayout = isAudioTool && !isAssetLibraryExpanded;
+  const assetGridRowLimit = 3;
+  const assetGridColumnCount = isAssetGridSmUp ? 3 : 2;
+  const assetGridLimit = assetGridRowLimit * assetGridColumnCount;
+  const visibleAssetGridItems = useMemo(() => {
+    if (filteredAssets.length <= assetGridLimit) {
+      return filteredAssets;
+    }
+    const capped = filteredAssets.slice(0, assetGridLimit);
+    if (!activeAssetId || capped.some((asset) => asset.id === activeAssetId)) {
+      return capped;
+    }
+    const activeAsset = filteredAssets.find((asset) => asset.id === activeAssetId);
+    if (!activeAsset) {
+      return capped;
+    }
+    const next = capped.slice(0, Math.max(0, capped.length - 1));
+    next.push(activeAsset);
+    return next;
+  }, [activeAssetId, assetGridLimit, filteredAssets]);
   const [isSubtitleSourceOpen, setIsSubtitleSourceOpen] = useState(false);
   const [isSubtitleLanguageOpen, setIsSubtitleLanguageOpen] = useState(false);
   const resolvedSubtitleSource = useMemo(() => {
@@ -5400,7 +5440,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                     ) : (
                       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {filteredAssets.map((asset: MediaAsset) => (
+                        {visibleAssetGridItems.map((asset: MediaAsset) => (
                           <div
                             key={asset.id}
                             className="group relative space-y-2"

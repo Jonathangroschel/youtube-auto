@@ -6224,6 +6224,11 @@ function AdvancedEditorContent() {
   const timelineDuration = useMemo(() => {
     return Math.max(10, Math.ceil(timelineSpan + 1));
   }, [timelineSpan]);
+  const clampedCurrentTime = clamp(currentTime, 0, timelineDuration);
+  const playheadLeftAbsolutePx =
+    clampedCurrentTime * timelineScale + timelinePadding;
+  const playheadLeftContentPx = playheadLeftAbsolutePx - timelinePadding;
+  const playheadOverlayZIndex = 2147483647;
 
   const tickStep = useMemo(() => {
     if (timelineDuration <= 60) {
@@ -15082,7 +15087,7 @@ function AdvancedEditorContent() {
           </div>
           <div
             ref={timelineTrackRef}
-            className={`relative mt-2 rounded-2xl border border-gray-200 bg-[linear-gradient(90deg,_rgba(148,163,184,0.15)_1px,_transparent_1px)] p-4 transition ${dragOverTimeline ? "ring-2 ring-[#335CFF]" : ""
+            className={`relative isolate mt-2 rounded-2xl border border-gray-200 bg-[linear-gradient(90deg,_rgba(148,163,184,0.15)_1px,_transparent_1px)] p-4 transition ${dragOverTimeline ? "ring-2 ring-[#335CFF]" : ""
               }`}
             style={{
               backgroundSize: `${timelineScale * tickStep}px 100%`,
@@ -15174,40 +15179,6 @@ function AdvancedEditorContent() {
                 }}
               />
             )}
-            {timelineSnapGuide !== null && (
-              <div
-                className="pointer-events-none absolute top-4 bottom-4 w-px bg-amber-400/90 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]"
-                style={{
-                  left: `${timelineSnapGuide * timelineScale + timelinePadding}px`,
-                }}
-              />
-            )}
-            {timelineCollisionGuide !== null && (
-              <div
-                className="pointer-events-none absolute top-4 bottom-4 w-px border-l border-dashed border-amber-300/90"
-                style={{
-                  left: `${timelineCollisionGuide * timelineScale + timelinePadding}px`,
-                }}
-              />
-            )}
-            {timelineLayout.length > 0 && (
-              <button
-                type="button"
-                aria-label="Drag playhead"
-                className="absolute top-4 bottom-4 w-6 -translate-x-1/2 cursor-ew-resize border-0 bg-transparent p-0 focus:outline-none"
-                style={{
-                  left: `${clamp(
-                    currentTime,
-                    0,
-                    timelineDuration
-                  ) * timelineScale + timelinePadding}px`,
-                }}
-                onPointerDown={handlePlayheadPointerDown}
-              >
-                <span className="absolute left-1/2 h-full w-px -translate-x-1/2 bg-[#335CFF]" />
-                <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#335CFF] shadow-[0_0_0_2px_rgba(255,255,255,0.85)]" />
-              </button>
-            )}
             {timelineLayout.length === 0 ? (
               <button
                 type="button"
@@ -15220,12 +15191,54 @@ function AdvancedEditorContent() {
                 Add media to this project
               </button>
             ) : (
-              <div
-                className="relative flex flex-col"
-                style={{ gap: `${laneGap}px` }}
-              >
-                {timelineLaneRows}
-              </div>
+              <>
+                <div
+                  className="relative z-0 flex flex-col"
+                  style={{ gap: `${laneGap}px` }}
+                >
+                  {timelineLaneRows}
+                  <span
+                    className="pointer-events-none absolute top-0 bottom-0 w-[2px] -translate-x-1/2 bg-[#335CFF]"
+                    style={{
+                      left: `${playheadLeftContentPx}px`,
+                      zIndex: 50,
+                    }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{ zIndex: playheadOverlayZIndex }}
+                >
+                  {timelineSnapGuide !== null && (
+                    <div
+                      className="absolute top-4 bottom-4 w-px bg-amber-400/90 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]"
+                      style={{
+                        left: `${timelineSnapGuide * timelineScale + timelinePadding}px`,
+                      }}
+                    />
+                  )}
+                  {timelineCollisionGuide !== null && (
+                    <div
+                      className="absolute top-4 bottom-4 w-px border-l border-dashed border-amber-300/90"
+                      style={{
+                        left: `${timelineCollisionGuide * timelineScale + timelinePadding}px`,
+                      }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Drag playhead"
+                    className="pointer-events-auto absolute top-4 bottom-4 w-6 -translate-x-1/2 cursor-ew-resize border-0 bg-transparent p-0 focus:outline-none"
+                    style={{
+                      left: `${playheadLeftAbsolutePx}px`,
+                    }}
+                    onPointerDown={handlePlayheadPointerDown}
+                  >
+                    <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#335CFF] shadow-[0_0_0_2px_rgba(255,255,255,0.85)]" />
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
