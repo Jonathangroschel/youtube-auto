@@ -1970,7 +1970,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       <>
         {!isAudioTool &&
           !(isStockVideoExpanded && activeTool === "video") &&
-          !(isGifLibraryExpanded && activeTool === "image") &&
+          !(isGifLibraryExpanded &&
+            (activeTool === "image" || activeTool === "elements")) &&
           !(isStickerLibraryExpanded && activeTool === "elements") && (
           <div
             className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" || activeTool === "settings" ? "px-6 py-6" : "px-5 py-5"
@@ -2482,7 +2483,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 )}
               </div>
             </div>
-          ) : isGifLibraryExpanded && activeTool === "image" ? (
+          ) : isGifLibraryExpanded &&
+          (activeTool === "image" || activeTool === "elements") ? (
             <div className="flex min-h-full flex-col">
               <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <div className="flex items-center justify-between">
