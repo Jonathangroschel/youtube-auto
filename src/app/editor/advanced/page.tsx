@@ -196,6 +196,15 @@ type SubtitleSegment = {
   words?: TimedWord[];
 };
 
+type TranscriptSegment = {
+  id: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  sourceClipId: string | null;
+  words?: TimedWord[];
+};
+
 type TimedEntry = {
   start?: number;
   end?: number;
@@ -924,10 +933,20 @@ function AdvancedEditorContent() {
   const [subtitleSegments, setSubtitleSegments] = useState<SubtitleSegment[]>(
     []
   );
+  const [transcriptStatus, setTranscriptStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>(
+    []
+  );
   const [subtitleLanguage, setSubtitleLanguage] = useState(
     subtitleLanguages[0]
   );
   const [subtitleSource, setSubtitleSource] = useState<"project" | string>(
+    "project"
+  );
+  const [transcriptSource, setTranscriptSource] = useState<"project" | string>(
     "project"
   );
   const [subtitleActiveTab, setSubtitleActiveTab] = useState<
@@ -6335,6 +6354,7 @@ function AdvancedEditorContent() {
         label: "Full project",
         duration: projectDuration,
         kind: "project",
+        startTime: 0,
       },
     ];
     timelineClips
@@ -6349,6 +6369,7 @@ function AdvancedEditorContent() {
           label: entry.asset.name || `Clip ${index + 1}`,
           duration: entry.clip.duration,
           kind: entry.asset.kind,
+          startTime: entry.clip.startTime,
         });
       });
     return options;
@@ -6362,6 +6383,42 @@ function AdvancedEditorContent() {
       setSubtitleSource("project");
     }
   }, [subtitleSource, subtitleSourceOptions]);
+
+  const transcriptSourceOptions = subtitleSourceOptions;
+
+  useEffect(() => {
+    if (
+      transcriptSource !== "project" &&
+      !transcriptSourceOptions.some((option) => option.id === transcriptSource)
+    ) {
+      setTranscriptSource("project");
+    }
+  }, [transcriptSource, transcriptSourceOptions]);
+
+  const transcriptSourceClipIds = useMemo(() => {
+    return new Set(
+      transcriptSourceOptions
+        .filter((option) => option.id !== "project")
+        .map((option) => option.id)
+    );
+  }, [transcriptSourceOptions]);
+
+  useEffect(() => {
+    setTranscriptSegments((prev) => {
+      const next = prev.filter(
+        (segment) =>
+          segment.sourceClipId == null ||
+          transcriptSourceClipIds.has(segment.sourceClipId)
+      );
+      if (next.length === prev.length) {
+        return prev;
+      }
+      if (next.length === 0) {
+        setTranscriptStatus("idle");
+      }
+      return next;
+    });
+  }, [transcriptSourceClipIds]);
 
   const subtitleSourceClips = useMemo(() => {
     return timelineClips.filter(
@@ -6998,42 +7055,10 @@ function AdvancedEditorContent() {
     [pushHistory, subtitleSegments]
   );
 
-  const handleGenerateSubtitles = useCallback(async () => {
-    if (subtitleStatus === "loading") {
-      return;
-    }
-    const sourceEntries =
-      subtitleSource === "project"
-        ? subtitleSourceClips
-        : subtitleSourceClips.filter(
-            (entry) => entry.clip.id === subtitleSource
-          );
-    if (sourceEntries.length === 0) {
-      setSubtitleStatus("error");
-      setSubtitleError("Add an audio or video clip to transcribe.");
-      return;
-    }
-    setSubtitleStatus("loading");
-    setSubtitleError(null);
-    pushHistory();
-    try {
-      const nextLanes = [...lanesRef.current];
-      const laneId =
-        subtitleLaneIdRef.current &&
-        nextLanes.some((lane) => lane.id === subtitleLaneIdRef.current)
-          ? subtitleLaneIdRef.current
-          : createLaneId("text", nextLanes);
-      subtitleLaneIdRef.current = laneId;
-      const existingSubtitleClipIds = new Set(
-        subtitleSegments.map((segment) => segment.clipId)
-      );
-      const nextAssets: MediaAsset[] = [];
-      const nextClips: TimelineClip[] = [];
-      const nextTextSettings: Record<string, TextClipSettings> = {};
-      const nextClipTransforms: Record<string, ClipTransform> = {};
-      const nextSegments: SubtitleSegment[] = [];
-      // Pre-compute the subtitle transform once for all clips (same position/size)
-      const subtitleTransform = createSubtitleTransform(stageAspectRatio);
+  const transcribeSourceEntries = useCallback(
+    async (
+      sourceEntries: Array<{ clip: TimelineClip; asset: MediaAsset }>
+    ): Promise<TranscriptSegment[]> => {
       const sortedSources = [...sourceEntries].sort(
         (a, b) => a.clip.startTime - b.clip.startTime
       );
@@ -7355,6 +7380,7 @@ function AdvancedEditorContent() {
         }
         return { chunks, assetDuration: resolvedAssetDuration, clipEndOffset };
       };
+      const nextSegments: TranscriptSegment[] = [];
       for (const entry of sortedSources) {
         const blob = await fetch(entry.asset.url).then((res) => res.blob());
         const clipStartOffset = entry.clip.startOffset ?? 0;
@@ -7477,7 +7503,7 @@ function AdvancedEditorContent() {
             return;
           }
           const cleanedText = rawText
-            .replace(/^(?:speaker|spk)\s*\d+[:\-]\s*/i, "")
+            .replace(/^(?:speaker|spk)\s*\d+[:\\-]\\s*/i, "")
             .trim();
           if (!cleanedText) {
             return;
@@ -7533,18 +7559,8 @@ function AdvancedEditorContent() {
                   } => word !== null
                 )
             : undefined;
-          const asset = {
-            ...createTextAsset("Subtitle"),
-            duration: Math.max(0.01, timelineEnd - timelineStart),
-          };
-          const clip = createClip(asset.id, laneId, timelineStart, asset);
-          nextAssets.push(asset);
-          nextClips.push(clip);
-          nextTextSettings[clip.id] = resolveSubtitleSettings(cleanedText);
-          nextClipTransforms[clip.id] = subtitleTransform;
           nextSegments.push({
             id: crypto.randomUUID(),
-            clipId: clip.id,
             text: cleanedText,
             startTime: timelineStart,
             endTime: timelineEnd,
@@ -7553,6 +7569,74 @@ function AdvancedEditorContent() {
           });
         });
       }
+      return nextSegments.sort((a, b) => a.startTime - b.startTime);
+    },
+    [
+      buildSubtitleSegmentsFromWords,
+      clipSettings,
+      getAudioContext,
+      splitSubtitleSegmentsByText,
+      subtitleLanguage,
+    ]
+  );
+
+  const handleGenerateSubtitles = useCallback(async () => {
+    if (subtitleStatus === "loading") {
+      return;
+    }
+    const sourceEntries =
+      subtitleSource === "project"
+        ? subtitleSourceClips
+        : subtitleSourceClips.filter(
+            (entry) => entry.clip.id === subtitleSource
+          );
+    if (sourceEntries.length === 0) {
+      setSubtitleStatus("error");
+      setSubtitleError("Add an audio or video clip to transcribe.");
+      return;
+    }
+    setSubtitleStatus("loading");
+    setSubtitleError(null);
+    pushHistory();
+    try {
+      const transcriptEntries = await transcribeSourceEntries(sourceEntries);
+      const nextLanes = [...lanesRef.current];
+      const laneId =
+        subtitleLaneIdRef.current &&
+        nextLanes.some((lane) => lane.id === subtitleLaneIdRef.current)
+          ? subtitleLaneIdRef.current
+          : createLaneId("text", nextLanes);
+      subtitleLaneIdRef.current = laneId;
+      const existingSubtitleClipIds = new Set(
+        subtitleSegments.map((segment) => segment.clipId)
+      );
+      const nextAssets: MediaAsset[] = [];
+      const nextClips: TimelineClip[] = [];
+      const nextTextSettings: Record<string, TextClipSettings> = {};
+      const nextClipTransforms: Record<string, ClipTransform> = {};
+      const nextSegments: SubtitleSegment[] = [];
+      // Pre-compute the subtitle transform once for all clips (same position/size)
+      const subtitleTransform = createSubtitleTransform(stageAspectRatio);
+      transcriptEntries.forEach((segment) => {
+        const asset = {
+          ...createTextAsset("Subtitle"),
+          duration: Math.max(0.01, segment.endTime - segment.startTime),
+        };
+        const clip = createClip(asset.id, laneId, segment.startTime, asset);
+        nextAssets.push(asset);
+        nextClips.push(clip);
+        nextTextSettings[clip.id] = resolveSubtitleSettings(segment.text);
+        nextClipTransforms[clip.id] = subtitleTransform;
+        nextSegments.push({
+          id: segment.id,
+          clipId: clip.id,
+          text: segment.text,
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+          sourceClipId: segment.sourceClipId,
+          words: segment.words,
+        });
+      });
       setLanes(nextLanes);
       setAssets((prev) => [...nextAssets, ...prev]);
       setTimeline((prev) => {
@@ -7587,19 +7671,66 @@ function AdvancedEditorContent() {
       );
     }
   }, [
-    buildSubtitleSegmentsFromWords,
-    clipSettings,
-    subtitleLanguage,
+    pushHistory,
+    resolveSubtitleSettings,
+    stageAspectRatio,
     subtitleSegments,
     subtitleSource,
     subtitleSourceClips,
     subtitleStatus,
-    resolveSubtitleSettings,
-    splitSubtitleSegmentsByText,
-    getAudioContext,
-    pushHistory,
-    stageAspectRatio,
+    transcribeSourceEntries,
   ]);
+
+  const handleGenerateTranscript = useCallback(async () => {
+    if (transcriptStatus === "loading") {
+      return;
+    }
+    const sourceEntries =
+      transcriptSource === "project"
+        ? subtitleSourceClips
+        : subtitleSourceClips.filter(
+            (entry) => entry.clip.id === transcriptSource
+          );
+    if (sourceEntries.length === 0) {
+      setTranscriptStatus("error");
+      setTranscriptError("Add an audio or video clip to transcribe.");
+      return;
+    }
+    setTranscriptStatus("loading");
+    setTranscriptError(null);
+    try {
+      const transcriptEntries = await transcribeSourceEntries(sourceEntries);
+      setTranscriptSegments(transcriptEntries);
+      setTranscriptStatus("ready");
+    } catch (error) {
+      setTranscriptStatus("error");
+      setTranscriptError(
+        error instanceof Error
+          ? error.message
+          : "Transcript generation failed."
+      );
+    }
+  }, [
+    transcriptSource,
+    transcriptStatus,
+    transcribeSourceEntries,
+    subtitleSourceClips,
+  ]);
+
+  const handleClearTranscript = useCallback(
+    (sourceId: string) => {
+      setTranscriptSegments((prev) => {
+        const next =
+          sourceId === "project"
+            ? []
+            : prev.filter((segment) => segment.sourceClipId !== sourceId);
+        setTranscriptStatus(next.length === 0 ? "idle" : "ready");
+        return next;
+      });
+      setTranscriptError(null);
+    },
+    []
+  );
 
   const tickLabelStride = useMemo(() => {
     const minLabelPx = timelineDuration <= 60 ? 32 : 56;
@@ -13918,6 +14049,11 @@ function AdvancedEditorContent() {
     subtitleStylePresets: resolvedSubtitleStylePresets,
     detachedSubtitleIds,
     subtitleMoveTogether,
+    transcriptSegments,
+    transcriptSource,
+    transcriptSourceOptions,
+    transcriptStatus,
+    transcriptError,
     projectAspectRatio,
     projectBackgroundImage,
     projectBackgroundMode,
@@ -13927,6 +14063,8 @@ function AdvancedEditorContent() {
     projectSizeOptions,
     applySubtitleStyle,
     handleGenerateSubtitles,
+    handleGenerateTranscript,
+    handleClearTranscript,
     handleSubtitleAddLine,
     handleSubtitlePreview,
     handleSubtitleDelete,
@@ -13936,6 +14074,7 @@ function AdvancedEditorContent() {
     handleSubtitleStyleUpdate,
     handleSubtitleTextUpdate,
     setSubtitleMoveTogether,
+    setTranscriptSource,
     textFontSizeDisplay,
     textFontSizeOptions,
     textPanelAlign,

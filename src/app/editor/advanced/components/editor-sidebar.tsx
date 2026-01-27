@@ -14,6 +14,17 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
+import {
+  AudioLines,
+  ImageIcon,
+  Lightbulb,
+  Mic,
+  Music,
+  Upload,
+  Video as VideoIcon,
+  type LucideIcon,
+} from "lucide-react";
+
 import { panelButtonClass, panelCardClass, speedPresets } from "../constants";
 
 import {
@@ -31,6 +42,7 @@ import {
   clamp,
   formatDuration,
   formatSize,
+  formatTimelineLabel,
   formatTimeWithTenths,
   parseTimeInput,
 } from "../utils";
@@ -81,8 +93,129 @@ type SubtitleSegmentEntry = {
   text: string;
   startTime: number;
   endTime: number;
+  sourceClipId?: string | null;
   clip?: TimelineClip;
 };
+
+type AiToolInputKind = "prompt" | "dropzone";
+type AiToolOutputKind = "grid" | "list" | "waveform" | "preview";
+
+type AiToolConfig = {
+  id: string;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  gradient: string;
+  inputLabel: string;
+  inputPlaceholder: string;
+  inputKind: AiToolInputKind;
+  actionLabel: string;
+  outputLabel: string;
+  outputHint: string;
+  outputKind: AiToolOutputKind;
+  chipLabel?: string;
+  chips?: string[];
+};
+
+const aiToolConfigs: AiToolConfig[] = [
+  {
+    id: "transcription",
+    title: "Transcription",
+    description: "Turn audio or video into timed captions and transcripts.",
+    icon: AudioLines,
+    gradient: "from-teal-50 to-cyan-100",
+    inputLabel: "Upload media",
+    inputPlaceholder: "Drop audio or video files here",
+    inputKind: "dropzone",
+    actionLabel: "Generate Transcript",
+    outputLabel: "Transcript",
+    outputHint: "Captions and timestamps appear here.",
+    outputKind: "list",
+  },
+  {
+    id: "ai-image",
+    title: "AI Image Generator",
+    description: "Create visuals from text prompts.",
+    icon: ImageIcon,
+    gradient: "from-orange-50 to-amber-100",
+    inputLabel: "Prompt",
+    inputPlaceholder: "Describe the image you want to create...",
+    inputKind: "prompt",
+    actionLabel: "Generate Images",
+    outputLabel: "Image Variations",
+    outputHint: "Generated images show up here.",
+    outputKind: "grid",
+    chipLabel: "Style",
+    chips: ["Cinematic", "Product", "Illustration"],
+  },
+  {
+    id: "ai-voiceover",
+    title: "AI Voiceover Generator",
+    description: "Turn scripts into natural voiceovers.",
+    icon: Mic,
+    gradient: "from-blue-50 to-cyan-100",
+    inputLabel: "Script",
+    inputPlaceholder: "Paste or write the voiceover script...",
+    inputKind: "prompt",
+    actionLabel: "Generate Voiceover",
+    outputLabel: "Voiceover Preview",
+    outputHint: "Audio previews and downloads appear here.",
+    outputKind: "waveform",
+    chipLabel: "Voice style",
+    chips: ["Narrator", "Conversational", "Energetic"],
+  },
+  {
+    id: "ai-video",
+    title: "AI Video Generator",
+    description: "Generate short clips from a prompt.",
+    icon: VideoIcon,
+    gradient: "from-purple-50 to-violet-100",
+    inputLabel: "Scene prompt",
+    inputPlaceholder: "Describe the scene, motion, and mood...",
+    inputKind: "prompt",
+    actionLabel: "Generate Video",
+    outputLabel: "Preview",
+    outputHint: "Clips appear here for review.",
+    outputKind: "preview",
+    chipLabel: "Length",
+    chips: ["5s", "10s", "15s"],
+  },
+  {
+    id: "ai-vocal-remover",
+    title: "AI Vocal Remover",
+    description: "Separate vocals and instrumental stems.",
+    icon: Music,
+    gradient: "from-indigo-50 to-blue-100",
+    inputLabel: "Upload audio",
+    inputPlaceholder: "Drop a song to isolate stems",
+    inputKind: "dropzone",
+    actionLabel: "Separate Stems",
+    outputLabel: "Stems",
+    outputHint: "Vocals and instrumental files appear here.",
+    outputKind: "list",
+    chipLabel: "Output",
+    chips: ["Vocals", "Instrumental", "Both"],
+  },
+  {
+    id: "ai-brainstormer",
+    title: "AI Brainstormer",
+    description: "Generate hooks, outlines, and titles.",
+    icon: Lightbulb,
+    gradient: "from-yellow-50 to-amber-100",
+    inputLabel: "Topic",
+    inputPlaceholder: "What should we brainstorm?",
+    inputKind: "prompt",
+    actionLabel: "Generate Ideas",
+    outputLabel: "Ideas",
+    outputHint: "We will suggest hooks, titles, and outlines.",
+    outputKind: "list",
+    chipLabel: "Focus",
+    chips: ["Hooks", "Titles", "Outline"],
+  },
+];
+
+const aiWaveformHeights = [8, 14, 10, 18, 12, 20, 11, 16, 9, 15];
+const aiListWidths = [92, 78, 64];
 
 export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const {
@@ -126,6 +259,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleEndTimeCommit,
     handleGifTrendingRetry,
     handleGenerateSubtitles,
+    handleGenerateTranscript,
+    handleClearTranscript,
     handleReplaceVideo,
     handleSetEndAtPlayhead,
     handleSetStartAtPlayhead,
@@ -236,6 +371,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     setSubtitleSource,
     setSubtitleStyleFilter,
     setSubtitleMoveTogether,
+    setTranscriptSource,
     setVideoBackground,
     setVideoPanelView,
     showAllSoundFxTags,
@@ -276,6 +412,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     subtitleStylePresets,
     detachedSubtitleIds,
     subtitleMoveTogether,
+    transcriptSegments: transcriptSegmentsRaw,
+    transcriptSource,
+    transcriptSourceOptions,
+    transcriptStatus,
+    transcriptError,
     projectAspectRatio,
     projectBackgroundImage,
     projectBackgroundMode,
@@ -333,6 +474,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const settingsSizeButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsSizeMenuRef = useRef<HTMLDivElement | null>(null);
   const backgroundImageInputRef = useRef<HTMLInputElement | null>(null);
+  const transcriptCopyTimeoutRef = useRef<number | null>(null);
   const [subtitleProgress, setSubtitleProgress] = useState(0);
   const [subtitleSettingsOpen, setSubtitleSettingsOpen] = useState(false);
   const [settingsSizeOpen, setSettingsSizeOpen] = useState(false);
@@ -341,6 +483,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   );
   const [isDurationEditing, setIsDurationEditing] = useState(false);
   const [backgroundHexDraft, setBackgroundHexDraft] = useState(videoBackground);
+  const [activeAiToolId, setActiveAiToolId] = useState<string | null>(null);
+  const [isAiTranscriptSourceOpen, setIsAiTranscriptSourceOpen] = useState(false);
+  const [includeAiTranscriptTimestamps, setIncludeAiTranscriptTimestamps] =
+    useState(true);
+  const [isTranscriptCopied, setIsTranscriptCopied] = useState(false);
+  const [transcriptDraft, setTranscriptDraft] = useState("");
+  const [transcriptHasEdits, setTranscriptHasEdits] = useState(false);
   const [subtitleRowMenu, setSubtitleRowMenu] = useState<{
     open: boolean;
     segmentId: string | null;
@@ -441,6 +590,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     }
   };
 
+
   useEffect(() => {
     if (subtitleStatus !== "loading") {
       setSubtitleProgress(0);
@@ -513,6 +663,20 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   useEffect(() => {
     setBackgroundHexDraft(videoBackground);
   }, [videoBackground]);
+
+  useEffect(() => {
+    if (activeTool !== "ai") {
+      setActiveAiToolId(null);
+    }
+  }, [activeTool]);
+
+  useEffect(() => {
+    return () => {
+      if (transcriptCopyTimeoutRef.current) {
+        window.clearTimeout(transcriptCopyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -824,6 +988,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   );
 
   const isAudioTool = activeTool === "audio";
+  const isAiTool = activeTool === "ai";
   const isSettingsTool = activeTool === "settings";
   const useAudioLibraryLayout = isAudioTool && !isAssetLibraryExpanded;
   const assetGridRowLimit = 3;
@@ -850,6 +1015,153 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     next.push(activeAsset);
     return next;
   }, [activeAssetId, assetGridLimit, filteredAssets]);
+  const activeAiTool = useMemo(
+    () => aiToolConfigs.find((tool) => tool.id === activeAiToolId) ?? null,
+    [activeAiToolId]
+  );
+  const ActiveAiToolIcon = activeAiTool?.icon ?? null;
+  const activeAiToolInputId = activeAiTool
+    ? `ai-tool-${activeAiTool.id}-input`
+    : null;
+  const aiTranscriptSegments = useMemo(() => {
+    if (!Array.isArray(transcriptSegmentsRaw) || transcriptSegmentsRaw.length === 0) {
+      return [];
+    }
+    if (transcriptSource === "project") {
+      return [...transcriptSegmentsRaw].sort(
+        (a, b) => a.startTime - b.startTime || a.endTime - b.endTime
+      );
+    }
+    return transcriptSegmentsRaw
+      .filter((segment) => segment.sourceClipId === transcriptSource)
+      .sort((a, b) => a.startTime - b.startTime || a.endTime - b.endTime);
+  }, [transcriptSegmentsRaw, transcriptSource]);
+  const transcriptSourceStartTime = useMemo(() => {
+    if (transcriptSource === "project") {
+      return 0;
+    }
+    const sourceOption = transcriptSourceOptions?.find(
+      (option: any) => option.id === transcriptSource
+    );
+    const start = Number(sourceOption?.startTime);
+    return Number.isFinite(start) ? start : 0;
+  }, [transcriptSource, transcriptSourceOptions]);
+  const generatedTranscriptText = useMemo(() => {
+    if (aiTranscriptSegments.length === 0) {
+      return "";
+    }
+    return aiTranscriptSegments
+      .map((segment) => {
+        const text = segment.text?.trim();
+        if (!text) {
+          return "";
+        }
+        if (!includeAiTranscriptTimestamps) {
+          return text;
+        }
+        const timestamp = formatTimelineLabel(
+          Math.max(0, segment.startTime - transcriptSourceStartTime)
+        );
+        return `[${timestamp}] ${text}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+  }, [
+    includeAiTranscriptTimestamps,
+    aiTranscriptSegments,
+    transcriptSourceStartTime,
+  ]);
+  const transcriptFileName = useMemo(() => {
+    const sourceOption = transcriptSourceOptions?.find(
+      (option: any) => option.id === transcriptSource
+    );
+    const baseLabel =
+      typeof sourceOption?.label === "string" ? sourceOption.label : "transcript";
+    const safeLabel = baseLabel
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    const dateTag = new Date().toISOString().slice(0, 10);
+    return `${safeLabel || "transcript"}-${dateTag}.txt`;
+  }, [transcriptSource, transcriptSourceOptions]);
+  const resolvedTranscriptSource = useMemo(() => {
+    if (
+      !Array.isArray(transcriptSourceOptions) ||
+      transcriptSourceOptions.length === 0
+    ) {
+      return {
+        id: "project",
+        label: "Full project",
+        duration: 0,
+        kind: "project",
+      };
+    }
+    return (
+      transcriptSourceOptions.find(
+        (option: any) => option.id === transcriptSource
+      ) ?? transcriptSourceOptions[0]
+    );
+  }, [transcriptSource, transcriptSourceOptions]);
+  useEffect(() => {
+    if (transcriptStatus === "loading") {
+      return;
+    }
+    if (!generatedTranscriptText) {
+      setTranscriptDraft("");
+      setTranscriptHasEdits(false);
+      return;
+    }
+    if (!transcriptHasEdits) {
+      setTranscriptDraft(generatedTranscriptText);
+    }
+  }, [generatedTranscriptText, transcriptHasEdits, transcriptStatus]);
+  useEffect(() => {
+    setTranscriptHasEdits(false);
+    setTranscriptDraft(generatedTranscriptText);
+  }, [transcriptSource]);
+  const handleCopyTranscript = useCallback(async () => {
+    if (!transcriptDraft.trim()) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(transcriptDraft);
+      setIsTranscriptCopied(true);
+      if (transcriptCopyTimeoutRef.current) {
+        window.clearTimeout(transcriptCopyTimeoutRef.current);
+      }
+      transcriptCopyTimeoutRef.current = window.setTimeout(() => {
+        setIsTranscriptCopied(false);
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to copy transcript", error);
+    }
+  }, [transcriptDraft]);
+
+  const handleDownloadTranscript = useCallback(() => {
+    if (!transcriptDraft.trim()) {
+      return;
+    }
+    const blob = new Blob([transcriptDraft], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = transcriptFileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  }, [transcriptDraft, transcriptFileName]);
+  const handleResetTranscriptDraft = useCallback(() => {
+    setTranscriptDraft(generatedTranscriptText);
+    setTranscriptHasEdits(false);
+  }, [generatedTranscriptText]);
+  const handleGenerateTranscriptClick = useCallback(() => {
+    setTranscriptHasEdits(false);
+    setTranscriptDraft("");
+    handleGenerateTranscript();
+  }, [handleGenerateTranscript]);
   const [isSubtitleSourceOpen, setIsSubtitleSourceOpen] = useState(false);
   const [isSubtitleLanguageOpen, setIsSubtitleLanguageOpen] = useState(false);
   const resolvedSubtitleSource = useMemo(() => {
@@ -1948,25 +2260,27 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </span>
                   )}
                 </div>
-                <div className="mt-5">
-                  <button
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-transparent bg-[#F3F4F8] px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#ECEFF6]"
-                    type="button"
-                    onClick={handleUploadClick}
-                  >
-                    <svg viewBox="0 0 16 16" className="h-4 w-4">
-                      <path
-                        d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    Upload
-                  </button>
-                </div>
+                {!isAiTool && (
+                  <div className="mt-5">
+                    <button
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-transparent bg-[#F3F4F8] px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#ECEFF6]"
+                      type="button"
+                      onClick={handleUploadClick}
+                    >
+                      <svg viewBox="0 0 16 16" className="h-4 w-4">
+                        <path
+                          d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      Upload
+                    </button>
+                  </div>
+                )}
                 {isBackgroundSelected && (
                   <div className="mt-5 rounded-2xl border border-gray-100 bg-[#F8FAFF] px-4 py-3">
                     <div className="flex items-center justify-between">
@@ -2015,7 +2329,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
         )}
 
         <div
-          className={`flex-1 min-h-0 overflow-y-auto ${activeTool === "text" || isSettingsTool
+          className={`flex-1 min-h-0 overflow-y-auto ${activeTool === "text" || isSettingsTool || activeTool === "ai"
             ? "bg-white"
             : isAudioTool
               ? "bg-gray-50"
@@ -6644,6 +6958,395 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       )}
                     </div>
                   </div>
+                </div>
+              ) : activeTool === "ai" ? (
+                <div className="space-y-4">
+                  {activeAiTool ? (
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-3">
+                        <button
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                          type="button"
+                          aria-label="Back to AI tools"
+                          onClick={() => setActiveAiToolId(null)}
+                        >
+                          <svg viewBox="0 0 16 16" className="h-5 w-5">
+                            <path
+                              d="M10 4 6 8l4 4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        <div className="flex-1 space-y-1">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {activeAiTool.title}
+                          </h3>
+                          <p className="text-xs text-gray-500">
+                            {activeAiTool.description}
+                          </p>
+                        </div>
+                        <div
+                          className={`relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${activeAiTool.gradient}`}
+                        >
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-[0_8px_16px_rgba(15,23,42,0.12)]">
+                            {ActiveAiToolIcon && (
+                              <ActiveAiToolIcon className="h-4 w-4 text-[#1a1240]" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {activeAiTool.id === "transcription" ? (
+                        <div className="space-y-4">
+                          <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+                            <div className="flex flex-col gap-2">
+                              <div className="text-sm font-semibold text-gray-900">
+                                What do you want to transcribe?
+                              </div>
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-gray-50 px-3 text-sm font-semibold text-gray-800 shadow-sm transition focus:border-[#5B6CFF] focus:outline-none"
+                                  onClick={() =>
+                                    setIsAiTranscriptSourceOpen((prev) => !prev)
+                                  }
+                                  aria-expanded={isAiTranscriptSourceOpen}
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="truncate">
+                                      {resolvedTranscriptSource.label}
+                                    </span>
+                                    <span className="text-xs font-semibold text-gray-400">
+                                      {resolvedTranscriptSource.duration
+                                        ? formatDuration(
+                                            resolvedTranscriptSource.duration
+                                          )
+                                        : "--:--"}
+                                    </span>
+                                  </div>
+                                  <svg
+                                    viewBox="0 0 16 16"
+                                    className="h-4 w-4 text-gray-500"
+                                  >
+                                    <path
+                                      d="M5 10.936 8 14l3-3.064m0-5.872L8 2 5 5.064"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.4"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </button>
+                                {isAiTranscriptSourceOpen && (
+                                  <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-100 bg-white py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                                    {transcriptSourceOptions.map((option: any) => (
+                                      <button
+                                        key={option.id}
+                                        type="button"
+                                        className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                        onClick={() => {
+                                          setTranscriptSource(option.id);
+                                          setIsAiTranscriptSourceOpen(false);
+                                        }}
+                                      >
+                                        <span className="truncate">
+                                          {option.label}
+                                        </span>
+                                        <span className="text-xs text-gray-400">
+                                          {option.duration
+                                            ? formatDuration(option.duration)
+                                            : "--:--"}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="mt-4 flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  Include timestamps
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  Add timecodes to each line.
+                                </p>
+                              </div>
+                              <ToggleSwitch
+                                checked={includeAiTranscriptTimestamps}
+                                onChange={setIncludeAiTranscriptTimestamps}
+                                ariaLabel="Include timestamps in transcript"
+                              />
+                            </div>
+                            {transcriptError && (
+                              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                                {transcriptError}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
+                                transcriptStatus === "loading"
+                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
+                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                              }`}
+                              onClick={handleGenerateTranscriptClick}
+                              disabled={transcriptStatus === "loading"}
+                            >
+                              {transcriptStatus === "loading"
+                                ? "Generating Transcript..."
+                                : "Generate Transcript"}
+                            </button>
+                          </div>
+                          <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    Transcript
+                                  </p>
+                                  {transcriptHasEdits && (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                      Edited
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-400">
+                                  {aiTranscriptSegments.length} lines
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {transcriptHasEdits && (
+                                  <button
+                                    type="button"
+                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+                                    onClick={handleResetTranscriptDraft}
+                                  >
+                                    Reset
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                    transcriptDraft.trim()
+                                      ? "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                      : "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-400"
+                                  }`}
+                                  onClick={handleCopyTranscript}
+                                  disabled={!transcriptDraft.trim()}
+                                >
+                                  {isTranscriptCopied ? "Copied" : "Copy"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                    transcriptDraft.trim()
+                                      ? "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                      : "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-400"
+                                  }`}
+                                  onClick={handleDownloadTranscript}
+                                  disabled={!transcriptDraft.trim()}
+                                >
+                                  Download
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                    aiTranscriptSegments.length > 0 ||
+                                    transcriptDraft.trim()
+                                      ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                                      : "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-400"
+                                  }`}
+                                  onClick={() =>
+                                    handleClearTranscript(transcriptSource)
+                                  }
+                                  disabled={
+                                    aiTranscriptSegments.length === 0 &&
+                                    !transcriptDraft.trim()
+                                  }
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-3 max-h-[280px] overflow-y-auto rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3">
+                              {transcriptStatus === "loading" ? (
+                                <div className="flex items-center justify-center gap-2 py-8 text-sm font-medium text-gray-500">
+                                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                  Generating transcript...
+                                </div>
+                              ) : aiTranscriptSegments.length > 0 || transcriptHasEdits ? (
+                                <textarea
+                                  value={transcriptDraft}
+                                  onChange={(event) => {
+                                    setTranscriptDraft(event.target.value);
+                                    setTranscriptHasEdits(true);
+                                  }}
+                                  rows={10}
+                                  disabled={transcriptStatus === "loading"}
+                                  placeholder="Edit transcript..."
+                                  className="min-h-[220px] w-full resize-none bg-transparent text-xs leading-relaxed text-gray-700 placeholder:text-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                                />
+                              ) : (
+                                <p className="text-xs text-gray-400">
+                                  Generate a transcript to see the text here.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <label
+                                htmlFor={
+                                  activeAiTool.inputKind === "prompt"
+                                    ? activeAiToolInputId ?? undefined
+                                    : undefined
+                                }
+                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400"
+                              >
+                                {activeAiTool.inputLabel}
+                              </label>
+                              <span className="text-[10px] font-semibold text-gray-400">
+                                Input
+                              </span>
+                            </div>
+                            {activeAiTool.inputKind === "dropzone" ? (
+                              <button
+                                type="button"
+                                className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-6 text-center transition hover:border-gray-300 hover:bg-gray-50"
+                                aria-label={activeAiTool.inputPlaceholder}
+                              >
+                                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
+                                  <Upload className="h-5 w-5 text-[#1a1240]" />
+                                </span>
+                                <span className="text-xs font-semibold text-gray-700">
+                                  Drop files to upload
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  {activeAiTool.inputPlaceholder}
+                                </span>
+                              </button>
+                            ) : (
+                              <textarea
+                                id={activeAiToolInputId ?? undefined}
+                                placeholder={activeAiTool.inputPlaceholder}
+                                rows={4}
+                                className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:border-[#5B6CFF] focus:outline-none"
+                              />
+                            )}
+                            {activeAiTool.chips && (
+                              <div className="mt-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                  {activeAiTool.chipLabel}
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {activeAiTool.chips.map((chip) => (
+                                    <button
+                                      key={chip}
+                                      type="button"
+                                      className="rounded-full bg-[#EEF2FF] px-3 py-1.5 text-[11px] font-semibold text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                                    >
+                                      {chip}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              className="mt-4 w-full rounded-xl bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition hover:bg-[#274BFF]"
+                            >
+                              {activeAiTool.actionLabel}
+                            </button>
+                          </div>
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                {activeAiTool.outputLabel}
+                              </p>
+                              <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-semibold text-gray-500">
+                                Preview
+                              </span>
+                            </div>
+                            <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                              {activeAiTool.outputKind === "grid" ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                  {Array.from({ length: 4 }).map((_, index) => (
+                                    <div
+                                      key={`ai-grid-${index}`}
+                                      className="aspect-[4/3] rounded-lg border border-gray-100 bg-white shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
+                                    />
+                                  ))}
+                                </div>
+                              ) : activeAiTool.outputKind === "preview" ? (
+                                <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-gradient-to-br from-gray-100 to-gray-200">
+                                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-400">
+                                    Preview
+                                  </div>
+                                </div>
+                              ) : activeAiTool.outputKind === "waveform" ? (
+                                <div className="flex h-16 items-end gap-1">
+                                  {aiWaveformHeights.map((height, index) => (
+                                    <div
+                                      key={`ai-wave-${index}`}
+                                      className="w-2 rounded-full bg-[#CBD5F5]"
+                                      style={{ height: `${height}px` }}
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {aiListWidths.map((width, index) => (
+                                    <div
+                                      key={`ai-line-${index}`}
+                                      className="h-2 rounded-full bg-[#E2E8F0]"
+                                      style={{ width: `${width}%` }}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <p className="mt-2 text-[11px] text-gray-400">
+                              {activeAiTool.outputHint}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      {aiToolConfigs.map((tool) => {
+                        const Icon = tool.icon;
+                        return (
+                          <button
+                            key={tool.id}
+                            type="button"
+                            className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                            onClick={() => setActiveAiToolId(tool.id)}
+                            aria-label={`Open ${tool.title}`}
+                          >
+                            <div
+                              className={`relative flex h-24 items-center justify-center rounded-xl bg-gradient-to-br ${tool.gradient}`}
+                            >
+                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-lg">
+                                <Icon className="h-5 w-5 text-[#1a1240]" />
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm font-semibold text-gray-900">
+                              {tool.title}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
