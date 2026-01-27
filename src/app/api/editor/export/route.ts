@@ -29,12 +29,56 @@ const IN_FLIGHT_EXPORT_STATUSES = new Set([
   "uploading",
 ]);
 
-const deriveProjectStatus = (exportStatus: string | null) => {
-  if (!exportStatus) return "draft";
-  if (exportStatus === "complete") return "rendered";
-  if (exportStatus === "error") return "error";
-  if (IN_FLIGHT_EXPORT_STATUSES.has(exportStatus)) return "rendering";
-  return "draft";
+const COMPLETE_EXPORT_STATUSES = new Set([
+  "complete",
+  "completed",
+  "success",
+  "succeeded",
+  "done",
+  "rendered",
+]);
+
+const ERROR_EXPORT_STATUSES = new Set([
+  "error",
+  "failed",
+  "failure",
+  "cancelled",
+  "canceled",
+]);
+
+const normalizeExportStatus = (value: string | null | undefined) => {
+  if (!value) {
+    return "idle" as const;
+  }
+  const normalized = value.toLowerCase();
+  if (COMPLETE_EXPORT_STATUSES.has(normalized)) {
+    return "complete" as const;
+  }
+  if (ERROR_EXPORT_STATUSES.has(normalized)) {
+    return "error" as const;
+  }
+  if (IN_FLIGHT_EXPORT_STATUSES.has(normalized)) {
+    return normalized;
+  }
+  if (normalized === "idle") {
+    return "idle" as const;
+  }
+  // Unknown non-terminal statuses should still be treated as in-flight.
+  return "rendering" as const;
+};
+
+const deriveProjectStatus = ({
+  exportStatus,
+  hasJobId,
+}: {
+  exportStatus: string | null | undefined;
+  hasJobId: boolean;
+}) => {
+  if (!hasJobId) return "draft";
+  const normalizedStatus = normalizeExportStatus(exportStatus);
+  if (normalizedStatus === "complete") return "rendered";
+  if (normalizedStatus === "error") return "error";
+  return "rendering";
 };
 
 type PersistedExportState = {
@@ -60,7 +104,7 @@ const buildExportState = ({
   downloadUrl: string | null;
 }): PersistedExportState => ({
   jobId,
-  status,
+  status: normalizeExportStatus(status),
   stage,
   progress: clamp(progress, 0, 1),
   downloadUrl,
@@ -372,7 +416,10 @@ export async function POST(request: Request) {
         user_id: user.id,
         kind: "editor",
         title: resolvedTitle,
-        status: deriveProjectStatus(exportStatus),
+        status: deriveProjectStatus({
+          exportStatus,
+          hasJobId: true,
+        }),
         project_state: mergedState,
       });
     }

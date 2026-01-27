@@ -45,6 +45,44 @@ const IN_FLIGHT_EXPORT_STATUSES = new Set([
   "uploading",
 ]);
 
+const COMPLETE_EXPORT_STATUSES = new Set([
+  "complete",
+  "completed",
+  "success",
+  "succeeded",
+  "done",
+  "rendered",
+]);
+
+const ERROR_EXPORT_STATUSES = new Set([
+  "error",
+  "failed",
+  "failure",
+  "cancelled",
+  "canceled",
+]);
+
+const normalizeExportStatus = (value: string | null) => {
+  if (!value) {
+    return "idle" as const;
+  }
+  const normalized = value.toLowerCase();
+  if (COMPLETE_EXPORT_STATUSES.has(normalized)) {
+    return "complete" as const;
+  }
+  if (ERROR_EXPORT_STATUSES.has(normalized)) {
+    return "error" as const;
+  }
+  if (IN_FLIGHT_EXPORT_STATUSES.has(normalized)) {
+    return normalized;
+  }
+  if (normalized === "idle") {
+    return "idle" as const;
+  }
+  // Unknown non-terminal statuses should still be treated as in-flight.
+  return "rendering" as const;
+};
+
 const resolveRenderStatus = ({
   status,
   exportStatus,
@@ -54,21 +92,29 @@ const resolveRenderStatus = ({
   exportStatus: string | null;
   hasOutput: boolean;
 }) => {
-  if (hasOutput && (exportStatus === "complete" || status === "rendered")) {
+  const normalizedExportStatus = normalizeExportStatus(exportStatus);
+  const exportInFlight =
+    normalizedExportStatus !== "idle" &&
+    normalizedExportStatus !== "complete" &&
+    normalizedExportStatus !== "error";
+  if (
+    hasOutput &&
+    (normalizedExportStatus === "complete" || status === "rendered")
+  ) {
     return "complete" as const;
   }
   if (
-    exportStatus === "error" ||
+    normalizedExportStatus === "error" ||
     status === "error" ||
     status === "failed"
   ) {
     return "error" as const;
   }
-  if (
-    (exportStatus && IN_FLIGHT_EXPORT_STATUSES.has(exportStatus)) ||
-    status === "rendering"
-  ) {
+  if (exportInFlight || status === "rendering") {
     return "rendering" as const;
+  }
+  if (normalizedExportStatus === "complete") {
+    return "complete" as const;
   }
   return "idle" as const;
 };

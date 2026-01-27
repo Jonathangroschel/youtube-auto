@@ -1747,19 +1747,41 @@ function AdvancedEditorContent() {
       }
       const exportState = payload?.export;
       if (exportState && typeof exportState === "object") {
-        const nextStatus = isValidExportStatus(exportState.status)
-          ? exportState.status
-          : "idle";
         const nextJobId =
           typeof exportState.jobId === "string" && exportState.jobId.trim().length > 0
             ? exportState.jobId
             : null;
-        const nextStage =
+        const stageRaw =
           typeof exportState.stage === "string" ? exportState.stage : "";
-        const nextProgress =
+        const progressRaw =
           typeof exportState.progress === "number"
             ? clamp(exportState.progress, 0, 1)
-            : 0;
+            : null;
+        const hasSignal =
+          Boolean(nextJobId) ||
+          (typeof exportState.status === "string" && exportState.status !== "idle") ||
+          (typeof progressRaw === "number" && progressRaw > 0) ||
+          (typeof stageRaw === "string" && stageRaw.trim().length > 0);
+        const nextStatus = normalizeExportStatus({
+          value: exportState.status,
+          hasSignal,
+        });
+        const nextProgress =
+          typeof progressRaw === "number"
+            ? progressRaw
+            : nextStatus === "complete"
+              ? 1
+              : 0;
+        const nextStage =
+          stageRaw.trim().length > 0
+            ? stageRaw
+            : nextStatus === "complete"
+              ? "Export ready"
+              : nextStatus === "error"
+                ? "Export failed"
+                : hasSignal
+                  ? "Exporting"
+                  : "";
         const nextDownloadUrl =
           typeof exportState.downloadUrl === "string"
             ? exportState.downloadUrl
@@ -1785,7 +1807,10 @@ function AdvancedEditorContent() {
           progress: nextExportState.progress,
           jobId: nextExportState.jobId,
           downloadUrl: nextExportState.downloadUrl,
-          error: nextExportState.status === "error" ? nextExportState.stage : null,
+          error:
+            nextExportState.status === "error"
+              ? nextExportState.stage || "Export failed"
+              : null,
         }));
       }
       historyRef.current.past = [];
@@ -1928,9 +1953,13 @@ function AdvancedEditorContent() {
       const mergedState: EditorProjectState = exportState
         ? { ...state, export: exportState }
         : state;
-      const derivedStatus = deriveProjectStatusFromExportStatus(
-        exportState?.status ?? null
-      );
+      const exportSignal =
+        Boolean(exportState?.jobId) ||
+        (typeof exportState?.status === "string" && exportState.status !== "idle");
+      const derivedStatus = deriveProjectStatusFromExportStatus({
+        status: exportState?.status ?? null,
+        hasSignal: exportSignal,
+      });
       const { error } = await supabase.from("projects").upsert({
         id: resolvedId,
         user_id: user.id,
@@ -5710,18 +5739,66 @@ function AdvancedEditorContent() {
     "uploading",
   ]);
 
-  const isValidExportStatus = (value: unknown): value is ExportStatus =>
-    typeof value === "string" && EXPORT_STATUS_SET.has(value as ExportStatus);
+  const COMPLETE_EXPORT_STATUSES = new Set([
+    "complete",
+    "completed",
+    "success",
+    "succeeded",
+    "done",
+    "rendered",
+  ]);
+
+  const ERROR_EXPORT_STATUSES = new Set([
+    "error",
+    "failed",
+    "failure",
+    "cancelled",
+    "canceled",
+  ]);
 
   const isExportInFlightStatus = (status: ExportStatus) =>
     EXPORT_IN_FLIGHT_SET.has(status);
 
-  const deriveProjectStatusFromExportStatus = (status: ExportStatus | null) => {
-    if (!status) return "draft";
+  const normalizeExportStatus = ({
+    value,
+    hasSignal,
+  }: {
+    value: unknown;
+    hasSignal: boolean;
+  }): ExportStatus => {
+    if (typeof value !== "string") {
+      return hasSignal ? "rendering" : "idle";
+    }
+    const normalized = value.toLowerCase();
+    if (COMPLETE_EXPORT_STATUSES.has(normalized)) {
+      return "complete";
+    }
+    if (ERROR_EXPORT_STATUSES.has(normalized)) {
+      return "error";
+    }
+    if (EXPORT_STATUS_SET.has(normalized as ExportStatus)) {
+      return normalized as ExportStatus;
+    }
+    if (normalized === "idle") {
+      return hasSignal ? "rendering" : "idle";
+    }
+    // Unknown non-terminal statuses should still be treated as in-flight.
+    return hasSignal ? "rendering" : "idle";
+  };
+
+  const deriveProjectStatusFromExportStatus = ({
+    status,
+    hasSignal,
+  }: {
+    status: ExportStatus | null;
+    hasSignal: boolean;
+  }) => {
+    if (!status && !hasSignal) return "draft";
     if (status === "complete") return "rendered";
     if (status === "error") return "error";
-    if (isExportInFlightStatus(status)) return "rendering";
-    return "draft";
+    if (status === "idle") return hasSignal ? "rendering" : "draft";
+    if (status && isExportInFlightStatus(status)) return "rendering";
+    return hasSignal ? "rendering" : "draft";
   };
 
   const parseExportJobIdFromPath = (value: string | null | undefined) => {
@@ -5776,10 +5853,13 @@ function AdvancedEditorContent() {
   };
 
   const persistExportUiState = (next: ExportUiState) => {
-    const status = isValidExportStatus(next.status) ? next.status : "idle";
     const jobId = typeof next.jobId === "string" && next.jobId.trim().length > 0
       ? next.jobId
       : null;
+    const hasSignal =
+      Boolean(jobId) ||
+      (typeof next.status === "string" && next.status !== "idle");
+    const status = normalizeExportStatus({ value: next.status, hasSignal });
     if (!jobId && status === "idle") {
       exportPersistedRef.current = null;
       return;
@@ -5862,11 +5942,13 @@ function AdvancedEditorContent() {
       if (!response.ok) {
         throw new Error(payload?.error || "Export status check failed.");
       }
+      const normalizedStatus = normalizeExportStatus({
+        value: payload?.status,
+        hasSignal: true,
+      });
       updateExportUi((prev) => ({
         ...prev,
-        status: isValidExportStatus(payload?.status)
-          ? payload.status
-          : prev.status,
+        status: normalizedStatus,
         stage: typeof payload?.stage === "string" ? payload.stage : prev.stage,
         progress:
           typeof payload?.progress === "number"
@@ -5879,7 +5961,7 @@ function AdvancedEditorContent() {
         error:
           typeof payload?.error === "string" ? payload.error : prev.error,
       }));
-      return payload?.status;
+      return normalizedStatus;
     },
     [updateExportUi]
   );
@@ -5985,14 +6067,30 @@ function AdvancedEditorContent() {
       if (!nextJobId) {
         throw new Error(data?.error || "Export did not return a job id.");
       }
+      const normalizedStatus = normalizeExportStatus({
+        value: data?.status,
+        hasSignal: true,
+      });
+      const stageRaw = typeof data?.stage === "string" ? data.stage : "";
+      const nextStage =
+        stageRaw.trim().length > 0
+          ? stageRaw
+          : normalizedStatus === "complete"
+            ? "Export ready"
+            : normalizedStatus === "error"
+              ? "Export failed"
+              : "Exporting";
+      const nextProgress =
+        typeof data?.progress === "number"
+          ? clamp(data.progress, 0, 1)
+          : normalizedStatus === "complete"
+            ? 1
+            : 0;
       updateExportUi((prev) => ({
         ...prev,
-        status: data?.status ?? "queued",
-        stage: data?.stage ?? "Queued",
-        progress:
-          typeof data?.progress === "number"
-            ? clamp(data.progress, 0, 1)
-            : 0,
+        status: normalizedStatus,
+        stage: nextStage,
+        progress: nextProgress,
         jobId: nextJobId,
         downloadUrl:
           typeof data?.downloadUrl === "string" ? data.downloadUrl : null,

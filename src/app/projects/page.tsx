@@ -288,6 +288,15 @@ type ProjectRenderUiState = {
   canDownload: boolean;
 };
 
+type ProjectRenderUpdate = {
+  id: string;
+  renderStatus: ProjectRenderStatus;
+  renderStage: string | null;
+  renderProgress: number | null;
+  downloadAvailable: boolean;
+  hasOutput: boolean;
+};
+
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
 const resolveRenderStatus = (project: ProjectLibraryItem): ProjectRenderStatus =>
@@ -412,6 +421,8 @@ export default function ProjectsPage() {
   const navItemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const projectsLoadingRef = useRef(false);
+  const projectsRef = useRef<ProjectLibraryItem[]>([]);
+  const renderPollInFlightRef = useRef(false);
   const isUnmountedRef = useRef(false);
   const activeNavIndex = navItems.findIndex((item) => item.active);
   const resolvedNavIndex =
@@ -553,6 +564,10 @@ export default function ProjectsPage() {
   }, [resolvedNavIndex, updateIndicator]);
 
   useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
     return () => {
       isUnmountedRef.current = true;
     };
@@ -604,6 +619,101 @@ export default function ProjectsPage() {
     loadProjects();
   }, [loadProjects]);
 
+  const pollRenderingProjects = useCallback(async () => {
+    if (renderPollInFlightRef.current) {
+      return;
+    }
+    renderPollInFlightRef.current = true;
+    try {
+      const currentProjects = projectsRef.current;
+      const renderingProjectsWithJobs = currentProjects.filter((project) => {
+        if (!resolveProjectRenderUi(project).isRendering) {
+          return false;
+        }
+        return (
+          typeof project.renderJobId === "string" &&
+          project.renderJobId.trim().length > 0
+        );
+      });
+
+      if (renderingProjectsWithJobs.length === 0) {
+        await loadProjects({ silent: true });
+        return;
+      }
+
+      const updates = await Promise.all<ProjectRenderUpdate | null>(
+        renderingProjectsWithJobs.map(async (project) => {
+          const jobId = project.renderJobId?.trim();
+          if (!jobId) {
+            return null;
+          }
+          const params = new URLSearchParams({
+            jobId,
+            projectId: project.id,
+          });
+          try {
+            const response = await fetch(
+              `/api/editor/export/status?${params.toString()}`
+            );
+            if (!response.ok) {
+              return null;
+            }
+            const data = await response.json().catch(() => ({}));
+            const statusRaw =
+              typeof data?.status === "string" ? data.status : "rendering";
+            const renderStatus: ProjectRenderStatus =
+              statusRaw === "complete"
+                ? "complete"
+                : statusRaw === "error"
+                  ? "error"
+                  : "rendering";
+            const renderStage =
+              typeof data?.stage === "string" && data.stage.trim().length > 0
+                ? data.stage
+                : project.renderStage ?? null;
+            const renderProgress =
+              typeof data?.progress === "number"
+                ? clamp01(data.progress)
+                : project.renderProgress ?? null;
+            return {
+              id: project.id,
+              renderStatus,
+              renderStage,
+              renderProgress,
+              downloadAvailable:
+                renderStatus === "complete"
+                  ? true
+                  : project.downloadAvailable ?? false,
+              hasOutput:
+                renderStatus === "complete" ? true : project.hasOutput ?? false,
+            };
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const updatesById = new Map(
+        updates
+          .filter((update): update is ProjectRenderUpdate => update != null)
+          .map((update) => [update.id, update])
+      );
+
+      if (updatesById.size > 0 && !isUnmountedRef.current) {
+        setProjects((prev) =>
+          prev.map((project) => {
+            const update = updatesById.get(project.id);
+            return update ? { ...project, ...update } : project;
+          })
+        );
+      }
+
+      await loadProjects({ silent: true });
+    } finally {
+      renderPollInFlightRef.current = false;
+    }
+  }, [loadProjects]);
+
   const hasRenderingProjects = projects.some(
     (project) => resolveProjectRenderUi(project).isRendering
   );
@@ -612,13 +722,24 @@ export default function ProjectsPage() {
     if (!hasRenderingProjects) {
       return;
     }
+    pollRenderingProjects();
     const intervalId = window.setInterval(() => {
-      loadProjects({ silent: true });
-    }, 2500);
+      pollRenderingProjects();
+    }, 4000);
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [hasRenderingProjects, loadProjects]);
+  }, [hasRenderingProjects, pollRenderingProjects]);
+
+  useEffect(() => {
+    if (!previewProject) {
+      return;
+    }
+    const updated = projects.find((project) => project.id === previewProject.id);
+    if (updated && updated !== previewProject) {
+      setPreviewProject(updated);
+    }
+  }, [previewProject, projects]);
 
   useEffect(() => {
     if (!previewProject) {
