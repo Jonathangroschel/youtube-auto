@@ -1747,6 +1747,7 @@ function AdvancedEditorContent() {
       return;
     }
     exportHydratedRef.current = false;
+    subtitleCacheReadyRef.current = false;
     exportMediaCacheRef.current.clear();
     exportMediaFailedRef.current.clear();
     let cancelled = false;
@@ -4577,6 +4578,7 @@ function AdvancedEditorContent() {
     wordHighlightEnabled: boolean;
     wordHighlightColor: string;
   }>>(new Map());
+  const subtitleCacheReadyRef = useRef(false);
   
   // Pre-compute styles for all subtitles when they change
   useEffect(() => {
@@ -4605,6 +4607,7 @@ function AdvancedEditorContent() {
     });
     
     subtitleStyleCacheRef.current = cache;
+    subtitleCacheReadyRef.current = true;
     
     // Reset tracking refs when subtitle data changes to avoid stale matches
     activeSubtitleIndexRef.current = -1;
@@ -4708,7 +4711,10 @@ function AdvancedEditorContent() {
     
     // Apply text styles efficiently
     const s = cached.styles.textStyle;
-    const exportScale = isExportMode ? exportSubtitleScaleRef.current : 1;
+    const exportScale =
+      isExportMode && exportScaleMode === "device"
+        ? exportSubtitleScaleRef.current
+        : 1;
     const scaleTextShadow = (shadow: string, scale: number) => {
       if (!shadow || shadow === "none" || scale === 1) {
         return shadow || "none";
@@ -4778,7 +4784,7 @@ function AdvancedEditorContent() {
       textEl.textContent = cached.text;
       activeSubtitleWordIndexRef.current = -1;
     }
-  }, [isExportMode, updateSubtitleWordHighlight]);
+  }, [exportScaleMode, isExportMode, updateSubtitleWordHighlight]);
 
   // Binary search for finding active subtitle - optimized for sequential playback
   // Uses cache for O(1) sequential access, falls back to O(log n) binary search
@@ -5285,8 +5291,37 @@ function AdvancedEditorContent() {
       if (stage) {
         const rect = stage.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
+          if (exportScaleMode === "device") {
+            if (!exportPreview?.width || !exportPreview?.height) {
+              await waitFrame();
+              continue;
+            }
+            const nextScale = Math.min(
+              rect.width / exportPreview.width,
+              rect.height / exportPreview.height
+            );
+            exportSubtitleScaleRef.current =
+              Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
+            return;
+          }
+          exportSubtitleScaleRef.current = 1;
           return;
         }
+      }
+      await waitFrame();
+    }
+  }, [exportPreview?.height, exportPreview?.width, exportScaleMode]);
+
+  const waitForExportSubtitles = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const start = performance.now();
+    const waitFrame = () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    while (performance.now() - start < 15000) {
+      if (subtitleCacheReadyRef.current) {
+        return;
       }
       await waitFrame();
     }
@@ -5472,6 +5507,7 @@ function AdvancedEditorContent() {
       waitForReady: async () => {
         await waitForExportStage();
         await waitForExportState();
+        await waitForExportSubtitles();
         await waitForExportFonts(fonts);
         await waitForExportMedia();
       },
@@ -5496,6 +5532,7 @@ function AdvancedEditorContent() {
     waitForExportMedia,
     waitForExportState,
     waitForExportStage,
+    waitForExportSubtitles,
   ]);
 
   const buildExportState = useCallback(() => {
