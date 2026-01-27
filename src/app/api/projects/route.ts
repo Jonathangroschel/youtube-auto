@@ -33,6 +33,46 @@ const sanitizeFilename = (value: string) => {
 const buildStoragePath = (userId: string, projectId: string, filename: string) =>
   `${userId}/projects/${projectId}/renders/${sanitizeFilename(filename)}`;
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const IN_FLIGHT_EXPORT_STATUSES = new Set([
+  "starting",
+  "queued",
+  "loading",
+  "rendering",
+  "encoding",
+  "uploading",
+]);
+
+const resolveRenderStatus = ({
+  status,
+  exportStatus,
+  hasOutput,
+}: {
+  status: string | null;
+  exportStatus: string | null;
+  hasOutput: boolean;
+}) => {
+  if (hasOutput && (exportStatus === "complete" || status === "rendered")) {
+    return "complete" as const;
+  }
+  if (
+    exportStatus === "error" ||
+    status === "error" ||
+    status === "failed"
+  ) {
+    return "error" as const;
+  }
+  if (
+    (exportStatus && IN_FLIGHT_EXPORT_STATUSES.has(exportStatus)) ||
+    status === "rendering"
+  ) {
+    return "rendering" as const;
+  }
+  return "idle" as const;
+};
+
 async function getSignedUrl(key: string): Promise<string | null> {
   try {
     const response = await fetch(`${WORKER_URL}/download-url`, {
@@ -62,7 +102,9 @@ export async function GET() {
 
   const { data, error } = await supabaseServer
     .from("projects")
-    .select("id,title,created_at,preview_bucket,preview_path,kind")
+    .select(
+      "id,title,created_at,preview_bucket,preview_path,kind,status,output_bucket,output_path,project_state"
+    )
     .eq("user_id", user.id)
     .in("kind", ["clip", "editor"])
     .order("updated_at", { ascending: false });
@@ -97,6 +139,40 @@ export async function GET() {
         kind === "clip" && project.preview_bucket && project.preview_path
           ? `${project.preview_bucket}:${project.preview_path}`
           : null;
+      const status = typeof project.status === "string" ? project.status : null;
+      const hasOutput = Boolean(project.output_bucket && project.output_path);
+      const exportState =
+        project.project_state &&
+        typeof project.project_state === "object" &&
+        "export" in project.project_state
+          ? (project.project_state as { export?: Record<string, unknown> }).export
+          : null;
+      const exportStatus =
+        exportState && typeof exportState.status === "string"
+          ? exportState.status
+          : null;
+      const renderStatus = resolveRenderStatus({
+        status,
+        exportStatus,
+        hasOutput,
+      });
+      const renderStage =
+        exportState && typeof exportState.stage === "string"
+          ? exportState.stage
+          : renderStatus === "rendering"
+            ? "Rendering"
+            : renderStatus === "complete"
+              ? "Ready"
+              : null;
+      const renderProgress =
+        exportState && typeof exportState.progress === "number"
+          ? clamp(exportState.progress, 0, 1)
+          : null;
+      const renderJobId =
+        exportState && typeof exportState.jobId === "string"
+          ? exportState.jobId
+          : null;
+      const downloadAvailable = hasOutput && renderStatus === "complete";
       return {
         id: project.id,
         title: project.title,
@@ -104,6 +180,13 @@ export async function GET() {
         kind,
         createdAt: project.created_at,
         previewImage: previewKey ? previewsByKey.get(previewKey) ?? null : null,
+        status,
+        renderStatus,
+        renderStage,
+        renderProgress,
+        renderJobId,
+        hasOutput,
+        downloadAvailable,
       };
     }),
   });

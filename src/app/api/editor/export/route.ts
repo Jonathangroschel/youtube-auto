@@ -17,6 +17,56 @@ const workerFetch = (endpoint: string, options: RequestInit = {}) =>
     },
   });
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const IN_FLIGHT_EXPORT_STATUSES = new Set([
+  "starting",
+  "queued",
+  "loading",
+  "rendering",
+  "encoding",
+  "uploading",
+]);
+
+const deriveProjectStatus = (exportStatus: string | null) => {
+  if (!exportStatus) return "draft";
+  if (exportStatus === "complete") return "rendered";
+  if (exportStatus === "error") return "error";
+  if (IN_FLIGHT_EXPORT_STATUSES.has(exportStatus)) return "rendering";
+  return "draft";
+};
+
+type PersistedExportState = {
+  jobId: string;
+  status: string;
+  stage: string;
+  progress: number;
+  downloadUrl: string | null;
+  updatedAt: string;
+};
+
+const buildExportState = ({
+  jobId,
+  status,
+  stage,
+  progress,
+  downloadUrl,
+}: {
+  jobId: string;
+  status: string;
+  stage: string;
+  progress: number;
+  downloadUrl: string | null;
+}): PersistedExportState => ({
+  jobId,
+  status,
+  stage,
+  progress: clamp(progress, 0, 1),
+  downloadUrl,
+  updatedAt: new Date().toISOString(),
+});
+
 type ExportRequest = {
   state: {
     version: number;
@@ -49,6 +99,7 @@ type ExportRequest = {
   duration?: number;
   fonts?: string[];
   name?: string;
+  projectId?: string;
 };
 
 export async function POST(request: Request) {
@@ -258,6 +309,73 @@ export async function POST(request: Request) {
       { error: payload?.error || "Failed to start export." },
       { status: response.status }
     );
+  }
+
+  const projectId =
+    typeof body.projectId === "string" && body.projectId.trim().length > 0
+      ? body.projectId.trim()
+      : null;
+  const nextJobId =
+    typeof payload?.jobId === "string"
+      ? payload.jobId
+      : typeof payload?.id === "string"
+        ? payload.id
+        : null;
+
+  if (projectId && nextJobId) {
+    const { data: existingProject } = await supabaseServer
+      .from("projects")
+      .select("id,user_id,kind,title,project_state")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    const ownedByUser =
+      !existingProject || existingProject.user_id === user.id;
+    const isEditorProject =
+      !existingProject || existingProject.kind === "editor";
+
+    if (ownedByUser && isEditorProject) {
+      const exportStatus =
+        typeof payload?.status === "string" ? payload.status : "queued";
+      const exportStage =
+        typeof payload?.stage === "string" ? payload.stage : "Queued";
+      const exportProgress =
+        typeof payload?.progress === "number" ? payload.progress : 0;
+      const exportDownloadUrl =
+        typeof payload?.downloadUrl === "string" ? payload.downloadUrl : null;
+      const exportState = buildExportState({
+        jobId: nextJobId,
+        status: exportStatus,
+        stage: exportStage,
+        progress: exportProgress,
+        downloadUrl: exportDownloadUrl,
+      });
+      const baseState =
+        body.state && typeof body.state === "object" ? body.state : {};
+      const mergedState = {
+        ...baseState,
+        export: exportState,
+      };
+      const titleFromState =
+        typeof body.state?.project?.name === "string"
+          ? body.state.project.name.trim()
+          : "";
+      const resolvedTitle =
+        titleFromState ||
+        (typeof existingProject?.title === "string"
+          ? existingProject.title
+          : "") ||
+        "Untitled Project";
+
+      await supabaseServer.from("projects").upsert({
+        id: projectId,
+        user_id: user.id,
+        kind: "editor",
+        title: resolvedTitle,
+        status: deriveProjectStatus(exportStatus),
+        project_state: mergedState,
+      });
+    }
   }
 
   return NextResponse.json(payload);

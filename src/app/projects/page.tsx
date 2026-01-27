@@ -8,7 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ProjectLibraryItem } from "@/lib/projects/types";
+import type {
+  ProjectLibraryItem,
+  ProjectRenderStatus,
+} from "@/lib/projects/types";
 
 type NavItem = {
   label: string;
@@ -272,6 +275,107 @@ const formatDateLabel = (value: string) => {
   return date.toLocaleDateString("en-US");
 };
 
+type ProjectRenderUiState = {
+  renderStatus: ProjectRenderStatus;
+  isRendering: boolean;
+  isReady: boolean;
+  isError: boolean;
+  badgeLabel: string;
+  badgeClassName: string;
+  badgeShowPing: boolean;
+  stageLabel: string | null;
+  progressPercent: number | null;
+  canDownload: boolean;
+};
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+const resolveRenderStatus = (project: ProjectLibraryItem): ProjectRenderStatus =>
+  project.renderStatus ?? (project.kind === "clip" ? "complete" : "idle");
+
+const resolveProjectRenderUi = (
+  project: ProjectLibraryItem
+): ProjectRenderUiState => {
+  const renderStatus = resolveRenderStatus(project);
+  const canDownload =
+    project.kind === "clip" || Boolean(project.downloadAvailable);
+  const isRendering = renderStatus === "rendering";
+  const isReady = renderStatus === "complete" && canDownload;
+  const isError = renderStatus === "error";
+  const progressPercent =
+    isRendering && typeof project.renderProgress === "number"
+      ? Math.round(clamp01(project.renderProgress) * 100)
+      : null;
+  const stageLabel = isRendering
+    ? typeof project.renderStage === "string" &&
+      project.renderStage.trim().length > 0
+      ? project.renderStage
+      : "Rendering"
+    : isError
+      ? typeof project.renderStage === "string" &&
+        project.renderStage.trim().length > 0
+        ? project.renderStage
+        : "Export failed"
+      : isReady
+        ? "Ready"
+        : null;
+
+  if (isRendering) {
+    return {
+      renderStatus,
+      isRendering,
+      isReady,
+      isError,
+      badgeLabel: "Rendering",
+      badgeClassName: "border-transparent bg-[#E7EDFF] text-[#335CFF]",
+      badgeShowPing: true,
+      stageLabel,
+      progressPercent,
+      canDownload,
+    };
+  }
+  if (isReady) {
+    return {
+      renderStatus,
+      isRendering,
+      isReady,
+      isError,
+      badgeLabel: project.kind === "clip" ? "Exported" : "Ready",
+      badgeClassName: "border-transparent bg-emerald-50 text-emerald-600",
+      badgeShowPing: false,
+      stageLabel,
+      progressPercent: null,
+      canDownload,
+    };
+  }
+  if (isError) {
+    return {
+      renderStatus,
+      isRendering,
+      isReady,
+      isError,
+      badgeLabel: "Failed",
+      badgeClassName: "border-transparent bg-rose-50 text-rose-600",
+      badgeShowPing: false,
+      stageLabel,
+      progressPercent: null,
+      canDownload,
+    };
+  }
+  return {
+    renderStatus,
+    isRendering,
+    isReady,
+    isError,
+    badgeLabel: project.kind === "editor" ? "Draft" : "Exported",
+    badgeClassName: "border-transparent bg-gray-100 text-gray-500",
+    badgeShowPing: false,
+    stageLabel: null,
+    progressPercent: null,
+    canDownload,
+  };
+};
+
 export default function ProjectsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -307,6 +411,8 @@ export default function ProjectsPage() {
   const navContainerRef = useRef<HTMLDivElement | null>(null);
   const navItemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const projectsLoadingRef = useRef(false);
+  const isUnmountedRef = useRef(false);
   const activeNavIndex = navItems.findIndex((item) => item.active);
   const resolvedNavIndex =
     hoveredNavIndex ?? (activeNavIndex >= 0 ? activeNavIndex : 0);
@@ -380,7 +486,8 @@ export default function ProjectsPage() {
 
   const handleDownloadProject = useCallback(
     (project: ProjectLibraryItem) => {
-      if (project.kind !== "clip") {
+      const renderUi = resolveProjectRenderUi(project);
+      if (!renderUi.isReady) {
         return;
       }
       const url = buildProjectVideoUrl(project.id, "attachment");
@@ -446,9 +553,21 @@ export default function ProjectsPage() {
   }, [resolvedNavIndex, updateIndicator]);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadProjects = async () => {
-      setProjectsLoading(true);
+    return () => {
+      isUnmountedRef.current = true;
+    };
+  }, []);
+
+  const loadProjects = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (projectsLoadingRef.current) {
+        return;
+      }
+      projectsLoadingRef.current = true;
+      const silent = options?.silent === true;
+      if (!silent) {
+        setProjectsLoading(true);
+      }
       setProjectsError(null);
       try {
         const response = await fetch("/api/projects");
@@ -460,28 +579,46 @@ export default function ProjectsPage() {
               : "Unable to load projects.";
           throw new Error(message);
         }
-        if (!cancelled) {
+        if (!isUnmountedRef.current) {
           setProjects(
             Array.isArray(payload?.projects) ? payload.projects : []
           );
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!isUnmountedRef.current) {
           setProjectsError(
             error instanceof Error ? error.message : "Unable to load projects."
           );
         }
       } finally {
-        if (!cancelled) {
+        projectsLoadingRef.current = false;
+        if (!silent && !isUnmountedRef.current) {
           setProjectsLoading(false);
         }
       }
-    };
+    },
+    []
+  );
+
+  useEffect(() => {
     loadProjects();
+  }, [loadProjects]);
+
+  const hasRenderingProjects = projects.some(
+    (project) => resolveProjectRenderUi(project).isRendering
+  );
+
+  useEffect(() => {
+    if (!hasRenderingProjects) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      loadProjects({ silent: true });
+    }, 2500);
     return () => {
-      cancelled = true;
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [hasRenderingProjects, loadProjects]);
 
   useEffect(() => {
     if (!previewProject) {
@@ -507,12 +644,41 @@ export default function ProjectsPage() {
     };
   }, [previewProject]);
 
-  const previewVideoUrl = previewProject?.kind === "clip"
-    ? buildProjectVideoUrl(previewProject.id, "inline")
+  const previewRenderUi = previewProject
+    ? resolveProjectRenderUi(previewProject)
     : null;
+  const previewCanStream = Boolean(previewProject && previewRenderUi?.isReady);
+  const previewVideoUrl =
+    previewProject && previewCanStream
+      ? buildProjectVideoUrl(previewProject.id, "inline")
+      : null;
   const previewCreatedLabel = previewProject
     ? formatDateLabel(previewProject.createdAt)
     : "--";
+  const previewStageLabel = previewRenderUi?.stageLabel ?? null;
+  const previewProgressPercent = previewRenderUi?.progressPercent ?? null;
+  const previewDownloadEnabled = Boolean(previewRenderUi?.isReady);
+  const previewDownloadLabel = previewRenderUi?.isRendering
+    ? "Rendering..."
+    : previewDownloadEnabled
+      ? "Download MP4"
+      : previewRenderUi?.isError
+        ? "Export failed"
+        : "Export to download";
+  const previewStatusLabel = previewRenderUi?.badgeLabel ?? "Draft";
+  const previewStatusClassName = previewRenderUi?.isRendering
+    ? "text-[#335CFF]"
+    : previewRenderUi?.isReady
+      ? "text-emerald-600"
+      : previewRenderUi?.isError
+        ? "text-rose-600"
+        : "text-gray-500";
+  const previewRenderMessage =
+    previewRenderUi?.isRendering && previewStageLabel
+      ? previewProgressPercent != null
+        ? `${previewStageLabel} - ${previewProgressPercent}%`
+        : previewStageLabel
+      : previewStageLabel;
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
@@ -906,111 +1072,160 @@ export default function ProjectsPage() {
                   {projectsError}
                 </div>
               ) : projects.length ? (
-                projects.map((project, index) => (
-                  <div
-                    key={project.id}
-                    className={`relative flex w-full cursor-pointer flex-col rounded-lg border border-gray-200 bg-white ${
-                      openProjectMenuIndex === index ? "z-10" : "z-0"
-                    }`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleOpenPreview(project)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        handleOpenPreview(project);
-                      }
-                    }}
-                  >
-                    <div className="relative w-full overflow-hidden rounded-t-lg">
-                      {project.previewImage ? (
-                        <img
-                          src={project.previewImage}
-                          alt={project.title}
-                          className="h-48 w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
-                      )}
-                    </div>
-                    <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
-                      <div className="flex w-full items-center gap-2">
-                        <div className="flex min-w-[100px] flex-1 items-center gap-2">
-                          <p className="truncate">{project.title}</p>
-                          <div className="inline-flex items-center rounded-full border border-transparent bg-gray-100 px-2.5 py-0.5 text-[10px] font-semibold text-gray-500">
-                            {project.kind === "editor" ? "Draft" : "Exported"}
-                          </div>
-                        </div>
-                        <div className="relative" data-project-menu>
-                          <button
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-black hover:bg-gray-100"
-                            type="button"
-                            aria-label="Project menu"
-                            aria-expanded={openProjectMenuIndex === index}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setOpenProjectMenuIndex((prev) =>
-                                prev === index ? null : index
-                              );
-                            }}
-                          >
-                            <svg
-                              aria-hidden="true"
-                              viewBox="0 0 24 24"
-                              className="h-5 w-5"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                projects.map((project, index) => {
+                  const renderUi = resolveProjectRenderUi(project);
+                  const renderDetailLabel =
+                    renderUi.stageLabel && renderUi.progressPercent != null
+                      ? `${renderUi.stageLabel} - ${renderUi.progressPercent}%`
+                      : renderUi.stageLabel;
+                  return (
+                    <div
+                      key={project.id}
+                      className={`relative flex w-full cursor-pointer flex-col rounded-lg border border-gray-200 bg-white ${
+                        openProjectMenuIndex === index ? "z-10" : "z-0"
+                      }`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleOpenPreview(project)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handleOpenPreview(project);
+                        }
+                      }}
+                    >
+                      <div className="relative w-full overflow-hidden rounded-t-lg">
+                        {project.previewImage ? (
+                          <img
+                            src={project.previewImage}
+                            alt={project.title}
+                            className="h-48 w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
+                        )}
+                      </div>
+                      <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
+                        <div className="flex w-full items-center gap-2">
+                          <div className="flex min-w-[100px] flex-1 items-center gap-2">
+                            <p className="truncate">{project.title}</p>
+                            <div
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${renderUi.badgeClassName}`}
                             >
-                              <circle cx="12" cy="12" r="1" />
-                              <circle cx="19" cy="12" r="1" />
-                              <circle cx="5" cy="12" r="1" />
-                            </svg>
-                          </button>
-                          <div
-                            className={`absolute right-0 top-9 z-30 w-48 rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-md transition-all ${
-                              openProjectMenuIndex === index
-                                ? "pointer-events-auto translate-y-0 opacity-100"
-                                : "pointer-events-none translate-y-1 opacity-0"
-                            }`}
-                          >
+                              {renderUi.badgeShowPing ? (
+                                <span className="relative flex h-1.5 w-1.5">
+                                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#335CFF]/60" />
+                                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#335CFF]" />
+                                </span>
+                              ) : null}
+                              {renderUi.badgeLabel}
+                            </div>
+                          </div>
+                          <div className="relative" data-project-menu>
                             <button
-                              className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-gray-100"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-black hover:bg-gray-100"
                               type="button"
+                              aria-label="Project menu"
+                              aria-expanded={openProjectMenuIndex === index}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                setOpenProjectMenuIndex(null);
-                                handleOpenProjectInEditor(project);
+                                setOpenProjectMenuIndex((prev) =>
+                                  prev === index ? null : index
+                                );
                               }}
                             >
-                              {project.kind === "editor"
-                                ? "Continue editing"
-                                : "Open advanced editor"}
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="19" cy="12" r="1" />
+                                <circle cx="5" cy="12" r="1" />
+                              </svg>
                             </button>
-                            <button
-                              className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50"
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setOpenProjectMenuIndex(null);
-                              }}
+                            <div
+                              className={`absolute right-0 top-9 z-30 w-48 rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-md transition-all ${
+                                openProjectMenuIndex === index
+                                  ? "pointer-events-auto translate-y-0 opacity-100"
+                                  : "pointer-events-none translate-y-1 opacity-0"
+                              }`}
                             >
-                              Delete project
-                            </button>
+                              <button
+                                className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-gray-100"
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setOpenProjectMenuIndex(null);
+                                  handleOpenProjectInEditor(project);
+                                }}
+                              >
+                                {project.kind === "editor"
+                                  ? "Continue editing"
+                                  : "Open advanced editor"}
+                              </button>
+                              <button
+                                className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50"
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setOpenProjectMenuIndex(null);
+                                }}
+                              >
+                                Delete project
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-500">
-                          {formatCreatedLabel(project.createdAt)}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500">
+                            {formatCreatedLabel(project.createdAt)}
+                          </span>
+                        </div>
+                        {renderUi.isRendering && renderDetailLabel ? (
+                          <div className="mt-1 truncate text-[11px] font-medium text-[#335CFF]">
+                            {renderDetailLabel}
+                          </div>
+                        ) : null}
+                        {renderUi.isError && renderUi.stageLabel ? (
+                          <div className="mt-1 truncate text-[11px] font-medium text-rose-600">
+                            {renderUi.stageLabel}
+                          </div>
+                        ) : null}
+                        {renderUi.isRendering || renderUi.isReady ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            {renderUi.isRendering ? (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-full bg-[#E7EDFF] px-3 text-xs font-semibold text-[#335CFF]"
+                                disabled
+                              >
+                                Rendering...
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-full bg-[#335CFF] px-3 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(51,92,255,0.22)] transition hover:brightness-105"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleDownloadProject(project);
+                                }}
+                              >
+                                Download
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="col-span-full rounded-xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
                   No projects yet. Start editing to see them here.
@@ -1266,6 +1481,12 @@ export default function ProjectsPage() {
                           {previewCreatedLabel}
                         </p>
                       </div>
+                      <div className="flex items-center justify-between">
+                        <p>Status</p>
+                        <p className={`font-medium ${previewStatusClassName}`}>
+                          {previewStatusLabel}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex w-full flex-col gap-2 sm:flex-row">
                       <button
@@ -1289,8 +1510,13 @@ export default function ProjectsPage() {
                         Open editor
                       </button>
                       <button
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                          previewDownloadEnabled
+                            ? "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                        }`}
                         type="button"
+                        disabled={!previewDownloadEnabled}
                         onClick={() => handleDownloadProject(previewProject)}
                       >
                         <svg
@@ -1307,7 +1533,7 @@ export default function ProjectsPage() {
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                           <path d="m7 10 5 5 5-5" />
                         </svg>
-                        Download clip
+                        {previewDownloadLabel}
                       </button>
                     </div>
                   </div>
@@ -1321,6 +1547,17 @@ export default function ProjectsPage() {
                         poster={previewProject.previewImage ?? undefined}
                         className="h-full max-h-full w-auto max-w-full rounded-2xl object-contain"
                       />
+                    ) : previewRenderUi?.isRendering ? (
+                      <div className="flex h-full w-full flex-col items-center justify-center text-center text-sm font-medium text-[#335CFF]">
+                        <p>{previewRenderMessage ?? "Rendering"}</p>
+                        <p className="mt-1 text-xs font-normal text-[#335CFF]/80">
+                          You can keep working. We will update this automatically.
+                        </p>
+                      </div>
+                    ) : previewRenderUi?.isError ? (
+                      <div className="flex h-full w-full items-center justify-center text-sm font-medium text-rose-600">
+                        {previewRenderMessage ?? "Export failed"}
+                      </div>
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
                         Preview unavailable

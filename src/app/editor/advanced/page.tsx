@@ -258,6 +258,7 @@ type EditorProjectState = {
   };
   snapshot: EditorSnapshot;
   subtitleSegments?: SubtitleSegment[];
+  export?: ProjectExportState | null;
 };
 
 type ProjectSaveState = "idle" | "saving" | "saved" | "error";
@@ -272,6 +273,15 @@ type ExportStatus =
   | "uploading"
   | "complete"
   | "error";
+
+type ProjectExportState = {
+  jobId: string | null;
+  status: ExportStatus;
+  stage: string;
+  progress: number;
+  downloadUrl: string | null;
+  updatedAt: string;
+};
 
 type ExportOutput = {
   width: number;
@@ -722,6 +732,7 @@ function AdvancedEditorContent() {
   });
   const exportSubtitleScaleRef = useRef(1);
   const exportPollRef = useRef<number | null>(null);
+  const exportPersistedRef = useRef<ProjectExportState | null>(null);
   const exportHydratedRef = useRef(false);
   const exportMediaCacheRef = useRef<Set<string>>(new Set());
   const exportMediaFailedRef = useRef<Set<string>>(new Set());
@@ -1677,6 +1688,7 @@ function AdvancedEditorContent() {
       },
       snapshot: createSnapshot(),
       subtitleSegments,
+      export: exportPersistedRef.current,
     }),
     [
       projectName,
@@ -1732,6 +1744,49 @@ function AdvancedEditorContent() {
         if (typeof project.videoBackground === "string") {
           setVideoBackground(project.videoBackground);
         }
+      }
+      const exportState = payload?.export;
+      if (exportState && typeof exportState === "object") {
+        const nextStatus = isValidExportStatus(exportState.status)
+          ? exportState.status
+          : "idle";
+        const nextJobId =
+          typeof exportState.jobId === "string" && exportState.jobId.trim().length > 0
+            ? exportState.jobId
+            : null;
+        const nextStage =
+          typeof exportState.stage === "string" ? exportState.stage : "";
+        const nextProgress =
+          typeof exportState.progress === "number"
+            ? clamp(exportState.progress, 0, 1)
+            : 0;
+        const nextDownloadUrl =
+          typeof exportState.downloadUrl === "string"
+            ? exportState.downloadUrl
+            : null;
+        const nextExportState: ProjectExportState = {
+          jobId: nextJobId,
+          status: nextStatus,
+          stage: nextStage,
+          progress: nextProgress,
+          downloadUrl: nextDownloadUrl,
+          updatedAt:
+            typeof exportState.updatedAt === "string" &&
+            exportState.updatedAt.trim().length > 0
+              ? exportState.updatedAt
+              : new Date().toISOString(),
+        };
+        exportPersistedRef.current = nextExportState;
+        setExportUi((prev) => ({
+          ...prev,
+          open: false,
+          status: nextExportState.status,
+          stage: nextExportState.stage,
+          progress: nextExportState.progress,
+          jobId: nextExportState.jobId,
+          downloadUrl: nextExportState.downloadUrl,
+          error: nextExportState.status === "error" ? nextExportState.stage : null,
+        }));
       }
       historyRef.current.past = [];
       historyRef.current.future = [];
@@ -1857,7 +1912,7 @@ function AdvancedEditorContent() {
           }, 4000);
           projectNameSavePendingRef.current = false;
         }
-        return;
+        return null;
       }
       let resolvedId = projectIdRef.current;
       if (!resolvedId) {
@@ -1869,13 +1924,20 @@ function AdvancedEditorContent() {
         }
       }
       const title = state.project.name.trim() || "Untitled Project";
+      const exportState = exportPersistedRef.current ?? state.export ?? null;
+      const mergedState: EditorProjectState = exportState
+        ? { ...state, export: exportState }
+        : state;
+      const derivedStatus = deriveProjectStatusFromExportStatus(
+        exportState?.status ?? null
+      );
       const { error } = await supabase.from("projects").upsert({
         id: resolvedId,
         user_id: user.id,
         title,
         kind: "editor",
-        status: "draft",
-        project_state: state,
+        status: derivedStatus,
+        project_state: mergedState,
       });
       if (error) {
         if (notifyNameSave) {
@@ -1885,9 +1947,9 @@ function AdvancedEditorContent() {
           }, 4000);
           projectNameSavePendingRef.current = false;
         }
-        return;
+        return null;
       }
-      const assetIds = state.snapshot.assets
+      const assetIds = mergedState.snapshot.assets
         .filter((asset) => asset.kind !== "text")
         .map((asset) => asset.id)
         .filter((assetId): assetId is string => typeof assetId === "string");
@@ -1922,6 +1984,7 @@ function AdvancedEditorContent() {
         }, 2000);
         projectNameSavePendingRef.current = false;
       }
+      return resolvedId;
     },
     []
   );
@@ -2020,7 +2083,7 @@ function AdvancedEditorContent() {
       const fetchProjectById = async (id: string) => {
         const { data } = await supabase
           .from("projects")
-          .select("id,title,project_state,kind")
+          .select("id,title,project_state,kind,status,output_bucket,output_path")
           .eq("id", id)
           .eq("kind", "editor")
           .limit(1);
@@ -2038,6 +2101,29 @@ function AdvancedEditorContent() {
 
       if (!cancelled && project?.project_state) {
         applyProjectState(project.project_state as EditorProjectState);
+        const hasPersistedExportState =
+          project.project_state &&
+          typeof project.project_state === "object" &&
+          "export" in project.project_state;
+        if (!hasPersistedExportState) {
+          const derivedExportState = deriveExportStateFromProjectRow(project);
+          if (derivedExportState) {
+            exportPersistedRef.current = derivedExportState;
+            setExportUi((prev) => ({
+              ...prev,
+              open: false,
+              status: derivedExportState.status,
+              stage: derivedExportState.stage,
+              progress: derivedExportState.progress,
+              jobId: derivedExportState.jobId,
+              downloadUrl: derivedExportState.downloadUrl,
+              error:
+                derivedExportState.status === "error"
+                  ? derivedExportState.stage
+                  : null,
+            }));
+          }
+        }
         const libraryItems = await loadAssetLibrary();
         if (!cancelled && libraryItems.length) {
           setAssets((prev) => mergeAssetsWithLibrary(prev, libraryItems));
@@ -5586,6 +5672,7 @@ function AdvancedEditorContent() {
 
   const buildExportState = useCallback(() => {
     const state = buildProjectState();
+    const { export: _exportState, ...stateWithoutExport } = state;
     const snapshot = state.snapshot
       ? {
           ...state.snapshot,
@@ -5597,10 +5684,129 @@ function AdvancedEditorContent() {
         }
       : state.snapshot;
     return {
-      ...state,
+      ...stateWithoutExport,
       snapshot,
     };
   }, [buildProjectState]);
+
+  const ALL_EXPORT_STATUSES: ExportStatus[] = [
+    "idle",
+    "starting",
+    "queued",
+    "loading",
+    "rendering",
+    "encoding",
+    "uploading",
+    "complete",
+    "error",
+  ];
+  const EXPORT_STATUS_SET = new Set<ExportStatus>(ALL_EXPORT_STATUSES);
+  const EXPORT_IN_FLIGHT_SET = new Set<ExportStatus>([
+    "starting",
+    "queued",
+    "loading",
+    "rendering",
+    "encoding",
+    "uploading",
+  ]);
+
+  const isValidExportStatus = (value: unknown): value is ExportStatus =>
+    typeof value === "string" && EXPORT_STATUS_SET.has(value as ExportStatus);
+
+  const isExportInFlightStatus = (status: ExportStatus) =>
+    EXPORT_IN_FLIGHT_SET.has(status);
+
+  const deriveProjectStatusFromExportStatus = (status: ExportStatus | null) => {
+    if (!status) return "draft";
+    if (status === "complete") return "rendered";
+    if (status === "error") return "error";
+    if (isExportInFlightStatus(status)) return "rendering";
+    return "draft";
+  };
+
+  const parseExportJobIdFromPath = (value: string | null | undefined) => {
+    if (!value) {
+      return null;
+    }
+    const match = value.match(/exports\/([^/]+)\/export\.mp4$/);
+    return match?.[1] ?? null;
+  };
+
+  const deriveExportStateFromProjectRow = (project: {
+    status?: string | null;
+    output_path?: string | null;
+    output_bucket?: string | null;
+  }): ProjectExportState | null => {
+    const status =
+      typeof project.status === "string" ? project.status : "";
+    const hasOutput = Boolean(project.output_bucket && project.output_path);
+    const jobId = parseExportJobIdFromPath(project.output_path ?? null);
+
+    if (hasOutput || status === "rendered") {
+      return {
+        jobId,
+        status: "complete",
+        stage: "Export ready",
+        progress: 1,
+        downloadUrl: null,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (status === "rendering") {
+      return {
+        jobId,
+        status: "rendering",
+        stage: "Rendering",
+        progress: 0,
+        downloadUrl: null,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (status === "error" || status === "failed") {
+      return {
+        jobId,
+        status: "error",
+        stage: "Export failed",
+        progress: 0,
+        downloadUrl: null,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return null;
+  };
+
+  const persistExportUiState = (next: ExportUiState) => {
+    const status = isValidExportStatus(next.status) ? next.status : "idle";
+    const jobId = typeof next.jobId === "string" && next.jobId.trim().length > 0
+      ? next.jobId
+      : null;
+    if (!jobId && status === "idle") {
+      exportPersistedRef.current = null;
+      return;
+    }
+    exportPersistedRef.current = {
+      jobId,
+      status,
+      stage: typeof next.stage === "string" ? next.stage : "",
+      progress:
+        typeof next.progress === "number" ? clamp(next.progress, 0, 1) : 0,
+      downloadUrl:
+        typeof next.downloadUrl === "string" ? next.downloadUrl : null,
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  const updateExportUi = useCallback(
+    (updater: ExportUiState | ((prev: ExportUiState) => ExportUiState)) => {
+      setExportUi((prev) => {
+        const next =
+          typeof updater === "function" ? updater(prev) : updater;
+        persistExportUiState(next);
+        return next;
+      });
+    },
+    []
+  );
 
   const stopExportPolling = useCallback(() => {
     if (exportPollRef.current) {
@@ -5640,40 +5846,57 @@ function AdvancedEditorContent() {
     [projectName]
   );
 
+  const buildExportStatusUrl = (jobId: string) => {
+    const params = new URLSearchParams({ jobId });
+    const projectId = projectIdRef.current;
+    if (projectId) {
+      params.set("projectId", projectId);
+    }
+    return `/api/editor/export/status?${params.toString()}`;
+  };
+
+  const fetchExportStatus = useCallback(
+    async (jobId: string) => {
+      const response = await fetch(buildExportStatusUrl(jobId));
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Export status check failed.");
+      }
+      updateExportUi((prev) => ({
+        ...prev,
+        status: isValidExportStatus(payload?.status)
+          ? payload.status
+          : prev.status,
+        stage: typeof payload?.stage === "string" ? payload.stage : prev.stage,
+        progress:
+          typeof payload?.progress === "number"
+            ? clamp(payload.progress, 0, 1)
+            : prev.progress,
+        downloadUrl:
+          typeof payload?.downloadUrl === "string"
+            ? payload.downloadUrl
+            : prev.downloadUrl,
+        error:
+          typeof payload?.error === "string" ? payload.error : prev.error,
+      }));
+      return payload?.status;
+    },
+    [updateExportUi]
+  );
+
   const startExportPolling = useCallback(
     (jobId: string) => {
       stopExportPolling();
       exportPollRef.current = window.setInterval(async () => {
         try {
-          const response = await fetch(
-            `/api/editor/export/status?jobId=${jobId}`
-          );
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(payload?.error || "Export status check failed.");
-          }
-          setExportUi((prev) => ({
-            ...prev,
-            status: payload?.status ?? prev.status,
-            stage: payload?.stage ?? prev.stage,
-            progress:
-              typeof payload?.progress === "number"
-                ? clamp(payload.progress, 0, 1)
-                : prev.progress,
-            downloadUrl:
-              typeof payload?.downloadUrl === "string"
-                ? payload.downloadUrl
-                : prev.downloadUrl,
-            error:
-              typeof payload?.error === "string" ? payload.error : prev.error,
-          }));
-          if (payload?.status === "complete" || payload?.status === "error") {
+          const status = await fetchExportStatus(jobId);
+          if (status === "complete" || status === "error") {
             stopExportPolling();
           }
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Export failed.";
-          setExportUi((prev) => ({
+          updateExportUi((prev) => ({
             ...prev,
             status: "error",
             stage: "Export failed",
@@ -5683,19 +5906,11 @@ function AdvancedEditorContent() {
         }
       }, 1000);
     },
-    [stopExportPolling]
+    [fetchExportStatus, stopExportPolling, updateExportUi]
   );
 
   const handleStartExport = useCallback(async () => {
-    if (
-      timeline.length === 0 ||
-      exportUi.status === "starting" ||
-      exportUi.status === "queued" ||
-      exportUi.status === "loading" ||
-      exportUi.status === "rendering" ||
-      exportUi.status === "encoding" ||
-      exportUi.status === "uploading"
-    ) {
+    if (timeline.length === 0 || isExportInFlightStatus(exportUi.status)) {
       return;
     }
     const exportState = buildExportState();
@@ -5704,7 +5919,7 @@ function AdvancedEditorContent() {
         (asset) => typeof asset.url === "string" && asset.url.startsWith("blob:")
       ) ?? [];
     if (blobAssets.length > 0) {
-      setExportUi({
+      updateExportUi({
         open: true,
         status: "error",
         stage: "Upload required",
@@ -5716,7 +5931,12 @@ function AdvancedEditorContent() {
       });
       return;
     }
-    setExportUi({
+    const baseState = buildProjectState();
+    const resolvedProjectId =
+      (await saveProjectState(baseState).catch(() => null)) ??
+      projectIdRef.current;
+
+    updateExportUi({
       open: true,
       status: "starting",
       stage: "Preparing export",
@@ -5743,6 +5963,7 @@ function AdvancedEditorContent() {
         duration: projectDuration,
         fonts: exportFonts,
         name: projectName,
+        projectId: resolvedProjectId ?? undefined,
       };
       const response = await fetch("/api/editor/export", {
         method: "POST",
@@ -5764,7 +5985,7 @@ function AdvancedEditorContent() {
       if (!nextJobId) {
         throw new Error(data?.error || "Export did not return a job id.");
       }
-      setExportUi((prev) => ({
+      updateExportUi((prev) => ({
         ...prev,
         status: data?.status ?? "queued",
         stage: data?.stage ?? "Queued",
@@ -5780,7 +6001,7 @@ function AdvancedEditorContent() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Export failed.";
-      setExportUi((prev) => ({
+      updateExportUi((prev) => ({
         ...prev,
         status: "error",
         stage: "Export failed",
@@ -5789,15 +6010,18 @@ function AdvancedEditorContent() {
     }
   }, [
     buildExportState,
+    buildProjectState,
     exportDimensions,
     exportFonts,
     exportUi.status,
     projectDuration,
     projectName,
+    saveProjectState,
     stageDisplay.height,
     stageDisplay.width,
     startExportPolling,
     timeline.length,
+    updateExportUi,
   ]);
 
   useEffect(() => {
@@ -5806,17 +6030,93 @@ function AdvancedEditorContent() {
     };
   }, [stopExportPolling]);
 
+  useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
+    const jobId = exportUi.jobId;
+    if (!jobId) {
+      return;
+    }
+    if (isExportInFlightStatus(exportUi.status)) {
+      if (!exportPollRef.current) {
+        startExportPolling(jobId);
+      }
+      return;
+    }
+    if (exportUi.status === "complete" && !exportUi.downloadUrl) {
+      fetchExportStatus(jobId).catch(() => {});
+    }
+  }, [
+    exportUi.downloadUrl,
+    exportUi.jobId,
+    exportUi.status,
+    fetchExportStatus,
+    isExportMode,
+    startExportPolling,
+  ]);
+
   const exportProgressPercent = Math.round(
     clamp(exportUi.progress, 0, 1) * 100
   );
-  const exportInFlight =
-    exportUi.status === "starting" ||
-    exportUi.status === "queued" ||
-    exportUi.status === "loading" ||
-    exportUi.status === "rendering" ||
-    exportUi.status === "encoding" ||
-    exportUi.status === "uploading";
-  const exportDisabled = exportInFlight || timeline.length === 0;
+  const exportInFlight = isExportInFlightStatus(exportUi.status);
+  const exportHasDownload =
+    exportUi.status === "complete" &&
+    Boolean(exportUi.jobId || exportUi.downloadUrl);
+  const exportDisabled =
+    timeline.length === 0 && !exportHasDownload && !exportInFlight;
+  const exportLabel = exportHasDownload
+    ? "Download"
+    : exportInFlight
+      ? "Rendering..."
+      : exportUi.status === "error"
+        ? "Export failed"
+        : "Export";
+
+  const handleExportButtonClick = useCallback(async () => {
+    if (exportHasDownload) {
+      let downloadUrl = exportUi.downloadUrl;
+      if (!downloadUrl && exportUi.jobId) {
+        try {
+          await fetchExportStatus(exportUi.jobId);
+        } catch {
+          // Ignore and fall back to opening the overlay.
+        }
+        downloadUrl = exportPersistedRef.current?.downloadUrl ?? downloadUrl;
+      }
+      if (downloadUrl) {
+        triggerExportDownload(downloadUrl);
+        return;
+      }
+      updateExportUi((prev) => ({ ...prev, open: true }));
+      if (exportUi.jobId) {
+        fetchExportStatus(exportUi.jobId).catch(() => {});
+      }
+      return;
+    }
+    if (exportUi.status === "error") {
+      updateExportUi((prev) => ({ ...prev, open: true }));
+      return;
+    }
+    if (exportInFlight) {
+      updateExportUi((prev) => ({ ...prev, open: true }));
+      if (exportUi.jobId) {
+        fetchExportStatus(exportUi.jobId).catch(() => {});
+      }
+      return;
+    }
+    handleStartExport();
+  }, [
+    exportHasDownload,
+    exportInFlight,
+    exportUi.downloadUrl,
+    exportUi.jobId,
+    exportUi.status,
+    fetchExportStatus,
+    handleStartExport,
+    triggerExportDownload,
+    updateExportUi,
+  ]);
 
   const timelineSpan = useMemo(
     () => Math.max(contentTimelineTotal, projectDuration),
@@ -15415,9 +15715,10 @@ function AdvancedEditorContent() {
         canRedo={historyState.canRedo}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onExport={handleStartExport}
+        onExport={handleExportButtonClick}
         exportDisabled={exportDisabled}
         exportBusy={exportInFlight}
+        exportLabel={exportLabel}
       />
       <input
         ref={fileInputRef}
