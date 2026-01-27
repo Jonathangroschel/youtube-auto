@@ -3,6 +3,7 @@
 import SearchOverlay from "@/components/search-overlay";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -431,6 +432,22 @@ function ProjectPreviewMedia({ project }: { project: ProjectLibraryItem }) {
   );
 }
 
+export default function ProjectsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
+          <div className="mx-auto flex w-full max-w-[90rem] px-4 py-10 text-sm text-gray-500 md:px-6">
+            Loading projects...
+          </div>
+        </div>
+      }
+    >
+      <ProjectsPageInner />
+    </Suspense>
+  );
+}
+
 const resolveProjectRenderUi = (
   project: ProjectLibraryItem
 ): ProjectRenderUiState => {
@@ -514,7 +531,7 @@ const resolveProjectRenderUi = (
   };
 };
 
-export default function ProjectsPage() {
+function ProjectsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialPage = parsePageParam(searchParams.get("page"));
