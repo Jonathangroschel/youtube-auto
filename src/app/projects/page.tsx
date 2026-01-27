@@ -1,6 +1,7 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -229,17 +230,63 @@ const mobileFooterActions: MobileFooterAction[] = [
   { label: "Log Out", href: "/logout", tone: "danger" },
 ];
 
-const formatCreatedLabel = (createdAt: string) => {
-  const createdDate = new Date(createdAt);
-  if (Number.isNaN(createdDate.getTime())) {
-    return "Created just now";
+const PAGE_SIZE = 24;
+
+const projectSortOptions = [
+  { key: "updated", label: "Last Updated" },
+  { key: "created", label: "Created" },
+  { key: "title", label: "Title" },
+] as const;
+
+type ProjectSortKey = (typeof projectSortOptions)[number]["key"];
+
+const sortLabelByKey = new Map<ProjectSortKey, string>(
+  projectSortOptions.map((option) => [option.key, option.label])
+);
+
+const parseSortKey = (value: string | null): ProjectSortKey =>
+  value === "created" || value === "title" ? value : "updated";
+
+const parsePageParam = (value: string | null) => {
+  if (!value) {
+    return 1;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+  const rounded = Math.floor(parsed);
+  return rounded > 0 ? rounded : 1;
+};
+
+const clampPage = (value: number, totalPages: number) =>
+  Math.min(Math.max(1, value), Math.max(1, totalPages));
+
+const toNonNegativeInt = (value: unknown, fallback: number) => {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  const rounded = Math.floor(parsed);
+  return rounded >= 0 ? rounded : fallback;
+};
+
+const formatRelativeTimeLabel = (value: string, prefix: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return `${prefix} just now`;
   }
   const diffSeconds = Math.max(
     0,
-    Math.floor((Date.now() - createdDate.getTime()) / 1000)
+    Math.floor((Date.now() - date.getTime()) / 1000)
   );
-  const formatUnit = (value: number, unit: string) =>
-    `Created ${value} ${unit}${value === 1 ? "" : "s"} ago`;
+  const formatUnit = (amount: number, unit: string) =>
+    `${prefix} ${amount} ${unit}${amount === 1 ? "" : "s"} ago`;
   if (diffSeconds < 60) {
     return formatUnit(diffSeconds, "second");
   }
@@ -301,6 +348,88 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
 const resolveRenderStatus = (project: ProjectLibraryItem): ProjectRenderStatus =>
   project.renderStatus ?? (project.kind === "clip" ? "complete" : "idle");
+
+type ProjectsPagination = {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  sort: ProjectSortKey;
+};
+
+const defaultPagination: ProjectsPagination = {
+  page: 1,
+  pageSize: PAGE_SIZE,
+  totalCount: 0,
+  totalPages: 1,
+  sort: "updated",
+};
+
+const safePreviewTime = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+
+function ProjectPreviewMedia({ project }: { project: ProjectLibraryItem }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const previewTime = safePreviewTime(project.previewTimeSeconds);
+
+  const setPreviewFrame = useCallback(
+    (node: HTMLVideoElement | null) => {
+      if (!node || project.previewSourceKind !== "video") {
+        return;
+      }
+      const duration = node.duration;
+      if (!Number.isFinite(duration) || duration <= 0) {
+        return;
+      }
+      const maxTime = Math.max(0, duration - 0.05);
+      const nextTime = Math.min(Math.max(0, previewTime), maxTime);
+      if (Math.abs(node.currentTime - nextTime) < 0.01) {
+        return;
+      }
+      try {
+        node.currentTime = nextTime;
+      } catch {
+        // Ignore preview seek failures.
+      }
+    },
+    [previewTime, project.previewSourceKind]
+  );
+
+  useEffect(() => {
+    setPreviewFrame(videoRef.current);
+  }, [setPreviewFrame, project.previewSourceUrl]);
+
+  if (project.previewSourceUrl && project.previewSourceKind === "video") {
+    return (
+      <video
+        ref={videoRef}
+        src={project.previewSourceUrl}
+        poster={project.previewImage ?? undefined}
+        className="h-48 w-full object-cover"
+        preload="metadata"
+        muted
+        playsInline
+        onLoadedMetadata={(event) => setPreviewFrame(event.currentTarget)}
+      />
+    );
+  }
+
+  const imageSrc = project.previewSourceUrl ?? project.previewImage ?? null;
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt={project.title}
+        className="h-48 w-full object-cover"
+        loading="lazy"
+      />
+    );
+  }
+
+  return (
+    <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
+  );
+}
 
 const resolveProjectRenderUi = (
   project: ProjectLibraryItem
@@ -386,6 +515,10 @@ const resolveProjectRenderUi = (
 };
 
 export default function ProjectsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialPage = parsePageParam(searchParams.get("page"));
+  const initialSort = parseSortKey(searchParams.get("sort"));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
@@ -398,12 +531,23 @@ export default function ProjectsPage() {
       )
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [openProjectMenuIndex, setOpenProjectMenuIndex] = useState<
     number | null
   >(null);
+  const [page, setPage] = useState(initialPage);
+  const [sortKey, setSortKey] = useState<ProjectSortKey>(initialSort);
+  const [pagination, setPagination] = useState<ProjectsPagination>(() => ({
+    ...defaultPagination,
+    page: initialPage,
+    sort: initialSort,
+  }));
   const [projects, setProjects] = useState<ProjectLibraryItem[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
+    null
+  );
   const [previewProject, setPreviewProject] =
     useState<ProjectLibraryItem | null>(null);
   const [hoveredNavIndex, setHoveredNavIndex] = useState<number | null>(null);
@@ -420,7 +564,8 @@ export default function ProjectsPage() {
   const navContainerRef = useRef<HTMLDivElement | null>(null);
   const navItemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
-  const projectsLoadingRef = useRef(false);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
+  const projectsRequestIdRef = useRef(0);
   const projectsRef = useRef<ProjectLibraryItem[]>([]);
   const renderPollInFlightRef = useRef(false);
   const isUnmountedRef = useRef(false);
@@ -456,6 +601,15 @@ export default function ProjectsPage() {
     []
   );
 
+  const buildProjectsUrl = useCallback((nextPage: number, nextSort: ProjectSortKey) => {
+    const params = new URLSearchParams();
+    params.set("page", String(nextPage));
+    if (nextSort !== "updated") {
+      params.set("sort", nextSort);
+    }
+    return `/projects?${params.toString()}`;
+  }, []);
+
   const handleOpenProjectInEditor = useCallback(
     (project: ProjectLibraryItem) => {
       if (project.kind === "editor") {
@@ -471,7 +625,7 @@ export default function ProjectsPage() {
           "autoclip:asset",
           JSON.stringify(payload)
         );
-      } catch (error) {
+      } catch {
         // Ignore localStorage failures.
       }
       window.location.href = "/editor/advanced?new=1";
@@ -507,6 +661,37 @@ export default function ProjectsPage() {
     [buildProjectVideoUrl]
   );
 
+  const handleSortChange = useCallback(
+    (nextSort: ProjectSortKey) => {
+      setSortMenuOpen(false);
+      if (nextSort === sortKey && page === 1) {
+        return;
+      }
+      const nextPage = 1;
+      setOpenProjectMenuIndex(null);
+      setPage(nextPage);
+      setSortKey(nextSort);
+      setPagination((prev) => ({ ...prev, page: nextPage, sort: nextSort }));
+      router.replace(buildProjectsUrl(nextPage, nextSort), { scroll: false });
+    },
+    [buildProjectsUrl, page, router, sortKey]
+  );
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      const clamped = clampPage(nextPage, pagination.totalPages);
+      if (clamped === page) {
+        return;
+      }
+      setOpenProjectMenuIndex(null);
+      setSortMenuOpen(false);
+      setPage(clamped);
+      setPagination((prev) => ({ ...prev, page: clamped }));
+      router.replace(buildProjectsUrl(clamped, sortKey), { scroll: false });
+    },
+    [buildProjectsUrl, page, pagination.totalPages, router, sortKey]
+  );
+
   useEffect(() => {
     if (!profileMenuOpen) {
       return;
@@ -523,6 +708,21 @@ export default function ProjectsPage() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    if (!sortMenuOpen) {
+      return;
+    }
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && sortMenuRef.current?.contains(target)) {
+        return;
+      }
+      setSortMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [sortMenuOpen]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -573,19 +773,34 @@ export default function ProjectsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const nextPage = parsePageParam(searchParams.get("page"));
+    const nextSort = parseSortKey(searchParams.get("sort"));
+    setPage((prev) => (prev === nextPage ? prev : nextPage));
+    setSortKey((prev) => (prev === nextSort ? prev : nextSort));
+    setPagination((prev) =>
+      prev.page === nextPage && prev.sort === nextSort
+        ? prev
+        : { ...prev, page: nextPage, sort: nextSort }
+    );
+  }, [searchParams]);
+
   const loadProjects = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (projectsLoadingRef.current) {
-        return;
-      }
-      projectsLoadingRef.current = true;
+      const requestId = projectsRequestIdRef.current + 1;
+      projectsRequestIdRef.current = requestId;
       const silent = options?.silent === true;
       if (!silent) {
         setProjectsLoading(true);
       }
       setProjectsError(null);
       try {
-        const response = await fetch("/api/projects");
+        const params = new URLSearchParams();
+        params.set("page", String(page));
+        if (sortKey !== "updated") {
+          params.set("sort", sortKey);
+        }
+        const response = await fetch(`/api/projects?${params.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           const message =
@@ -595,9 +810,53 @@ export default function ProjectsPage() {
           throw new Error(message);
         }
         if (!isUnmountedRef.current) {
-          setProjects(
-            Array.isArray(payload?.projects) ? payload.projects : []
-          );
+          const nextProjects = Array.isArray(payload?.projects)
+            ? payload.projects
+            : [];
+          if (requestId !== projectsRequestIdRef.current) {
+            return;
+          }
+          setProjects(nextProjects);
+
+          const paginationPayload = payload?.pagination;
+          if (paginationPayload && typeof paginationPayload === "object") {
+            const nextPage = parsePageParam(
+              typeof paginationPayload.page === "number" ||
+                typeof paginationPayload.page === "string"
+                ? String(paginationPayload.page)
+                : String(page)
+            );
+            const nextSort = parseSortKey(
+              typeof paginationPayload.sort === "string"
+                ? paginationPayload.sort
+                : sortKey
+            );
+            const nextPagination: ProjectsPagination = {
+              page: nextPage,
+              sort: nextSort,
+              pageSize: toNonNegativeInt(paginationPayload.pageSize, PAGE_SIZE) || PAGE_SIZE,
+              totalCount: toNonNegativeInt(paginationPayload.totalCount, nextProjects.length),
+              totalPages:
+                Math.max(1, toNonNegativeInt(paginationPayload.totalPages, 1)) || 1,
+            };
+            setPagination(nextPagination);
+            if (nextPage !== page || nextSort !== sortKey) {
+              router.replace(buildProjectsUrl(nextPage, nextSort), {
+                scroll: false,
+              });
+              setPage(nextPage);
+              setSortKey(nextSort);
+            }
+          } else {
+            setPagination((prev) => ({
+              ...prev,
+              page,
+              sort: sortKey,
+              pageSize: PAGE_SIZE,
+              totalCount: nextProjects.length,
+              totalPages: 1,
+            }));
+          }
         }
       } catch (error) {
         if (!isUnmountedRef.current) {
@@ -606,18 +865,65 @@ export default function ProjectsPage() {
           );
         }
       } finally {
-        projectsLoadingRef.current = false;
-        if (!silent && !isUnmountedRef.current) {
+        if (!silent && !isUnmountedRef.current && requestId === projectsRequestIdRef.current) {
           setProjectsLoading(false);
         }
       }
     },
-    []
+    [buildProjectsUrl, page, router, sortKey]
   );
 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  const handleDeleteProject = useCallback(
+    async (project: ProjectLibraryItem) => {
+      if (deletingProjectId) {
+        return;
+      }
+      const confirmed = window.confirm(
+        `Delete project \"${project.title}\"? This cannot be undone.`
+      );
+      if (!confirmed) {
+        return;
+      }
+      setDeletingProjectId(project.id);
+      setProjectsError(null);
+      try {
+        const response = await fetch(
+          `/api/projects?id=${encodeURIComponent(project.id)}`,
+          {
+            method: "DELETE",
+          }
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message =
+            typeof payload?.error === "string"
+              ? payload.error
+              : "Unable to delete project.";
+          throw new Error(message);
+        }
+        if (!isUnmountedRef.current) {
+          setPreviewProject((prev) => (prev?.id === project.id ? null : prev));
+          setProjects((prev) => prev.filter((item) => item.id !== project.id));
+        }
+        await loadProjects({ silent: true });
+      } catch (error) {
+        if (!isUnmountedRef.current) {
+          setProjectsError(
+            error instanceof Error ? error.message : "Unable to delete project."
+          );
+        }
+      } finally {
+        if (!isUnmountedRef.current) {
+          setDeletingProjectId(null);
+        }
+      }
+    },
+    [deletingProjectId, loadProjects]
+  );
 
   const pollRenderingProjects = useCallback(async () => {
     if (renderPollInFlightRef.current) {
@@ -776,6 +1082,9 @@ export default function ProjectsPage() {
   const previewCreatedLabel = previewProject
     ? formatDateLabel(previewProject.createdAt)
     : "--";
+  const previewUpdatedLabel = previewProject
+    ? formatDateLabel(previewProject.updatedAt ?? previewProject.createdAt)
+    : "--";
   const previewStageLabel = previewRenderUi?.stageLabel ?? null;
   const previewProgressPercent = previewRenderUi?.progressPercent ?? null;
   const previewDownloadEnabled = Boolean(previewRenderUi?.isReady);
@@ -800,6 +1109,20 @@ export default function ProjectsPage() {
         ? `${previewStageLabel} - ${previewProgressPercent}%`
         : previewStageLabel
       : previewStageLabel;
+  const sortLabel = sortLabelByKey.get(sortKey) ?? "Last Updated";
+  const currentPage = pagination.page;
+  const totalPages = Math.max(1, pagination.totalPages);
+  const pageSizeLabel = pagination.pageSize || PAGE_SIZE;
+  const canPreviousPage = currentPage > 1;
+  const canNextPage = currentPage < totalPages;
+  const pageWindowSize = 7;
+  const windowStart = Math.max(1, currentPage - Math.floor(pageWindowSize / 2));
+  const windowEnd = Math.min(totalPages, windowStart + pageWindowSize - 1);
+  const adjustedStart = Math.max(1, windowEnd - pageWindowSize + 1);
+  const pageNumbers = Array.from(
+    { length: windowEnd - adjustedStart + 1 },
+    (_, index) => adjustedStart + index
+  );
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
@@ -1138,33 +1461,81 @@ export default function ProjectsPage() {
 
           <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
             <div className="flex flex-col space-y-3 lg:flex-row lg:items-end lg:justify-between lg:space-y-0">
-              <button
-                className="group w-full lg:w-64"
-                type="button"
-                aria-haspopup="listbox"
-              >
-                <div className="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 transition-colors hover:bg-gray-100">
-                  <p className="text-sm text-gray-800">Last Updated</p>
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4 text-gray-700"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m21 16-4 4-4-4" />
-                    <path d="M17 20V4" />
-                    <path d="m3 8 4-4 4 4" />
-                    <path d="M7 4v16" />
-                  </svg>
+              <div className="relative w-full lg:w-64" ref={sortMenuRef}>
+                <button
+                  className="group w-full"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={sortMenuOpen}
+                  onClick={() => setSortMenuOpen((open) => !open)}
+                >
+                  <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:bg-gray-100">
+                    <p className="text-sm text-gray-800">{sortLabel}</p>
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 text-gray-700"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m21 16-4 4-4-4" />
+                      <path d="M17 20V4" />
+                      <path d="m3 8 4-4 4 4" />
+                      <path d="M7 4v16" />
+                    </svg>
+                  </div>
+                </button>
+                <div
+                  role="listbox"
+                  aria-label="Sort projects"
+                  className={`absolute z-30 mt-2 w-full rounded-lg border border-gray-200 bg-white p-1 text-sm shadow-md transition-all ${
+                    sortMenuOpen
+                      ? "pointer-events-auto translate-y-0 opacity-100"
+                      : "pointer-events-none translate-y-1 opacity-0"
+                  }`}
+                >
+                  {projectSortOptions.map((option) => {
+                    const isSelected = option.key === sortKey;
+                    return (
+                      <button
+                        key={option.key}
+                        role="option"
+                        aria-selected={isSelected}
+                        className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors ${
+                          isSelected
+                            ? "bg-gray-100 text-gray-900"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                        type="button"
+                        onClick={() => handleSortChange(option.key)}
+                      >
+                        <span>{option.label}</span>
+                        {isSelected ? (
+                          <svg
+                            aria-hidden="true"
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4 text-[#335CFF]"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="m20 6-11 11-5-5" />
+                          </svg>
+                        ) : null}
+                      </button>
+                    );
+                  })}
                 </div>
-              </button>
+              </div>
               <button
                 className="hidden max-h-[42px] w-full items-center justify-center gap-2 rounded-lg bg-[#335CFF] px-4 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:flex sm:w-fit"
                 type="button"
+                onClick={() => router.push("/editor/advanced")}
               >
                 <svg
                   aria-hidden="true"
@@ -1199,6 +1570,11 @@ export default function ProjectsPage() {
                     renderUi.stageLabel && renderUi.progressPercent != null
                       ? `${renderUi.stageLabel} - ${renderUi.progressPercent}%`
                       : renderUi.stageLabel;
+                  const isDeleting = deletingProjectId === project.id;
+                  const updatedLabel = formatRelativeTimeLabel(
+                    project.updatedAt ?? project.createdAt,
+                    "Updated"
+                  );
                   return (
                     <div
                       key={project.id}
@@ -1216,16 +1592,7 @@ export default function ProjectsPage() {
                       }}
                     >
                       <div className="relative w-full overflow-hidden rounded-t-lg">
-                        {project.previewImage ? (
-                          <img
-                            src={project.previewImage}
-                            alt={project.title}
-                            className="h-48 w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
-                        )}
+                        <ProjectPreviewMedia project={project} />
                       </div>
                       <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
                         <div className="flex w-full items-center gap-2">
@@ -1292,21 +1659,25 @@ export default function ProjectsPage() {
                                   : "Open advanced editor"}
                               </button>
                               <button
-                                className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50"
+                                className={`mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  isDeleting ? "pointer-events-none" : ""
+                                }`}
                                 type="button"
+                                disabled={isDeleting}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setOpenProjectMenuIndex(null);
+                                  handleDeleteProject(project);
                                 }}
                               >
-                                Delete project
+                                {isDeleting ? "Deleting..." : "Delete project"}
                               </button>
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-gray-500">
-                            {formatCreatedLabel(project.createdAt)}
+                            {updatedLabel}
                           </span>
                         </div>
                         {renderUi.isRendering && renderDetailLabel ? (
@@ -1354,12 +1725,17 @@ export default function ProjectsPage() {
               )}
             </div>
 
-            <div className="flex flex-col items-center space-y-3 sm:hidden">
+            <div className="flex flex-col items-center space-y-2 sm:hidden">
+              <span className="text-xs text-gray-600">
+                Page {currentPage} of {totalPages}
+              </span>
               <div className="flex items-center justify-center gap-1">
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="First page"
+                  disabled={!canPreviousPage}
+                  onClick={() => handlePageChange(1)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1376,9 +1752,11 @@ export default function ProjectsPage() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="Previous page"
+                  disabled={!canPreviousPage}
+                  onClick={() => handlePageChange(currentPage - 1)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1393,16 +1771,30 @@ export default function ProjectsPage() {
                     <path d="m15 18-6-6 6-6" />
                   </svg>
                 </button>
-                <a
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md bg-gray-100 px-1 text-sm text-gray-600"
-                  href="/projects?page=1"
-                >
-                  1
-                </a>
+                {pageNumbers.map((pageNumber) => {
+                  const isCurrent = pageNumber === currentPage;
+                  return (
+                    <button
+                      key={`mobile-page-${pageNumber}`}
+                      className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm transition-colors ${
+                        isCurrent
+                          ? "bg-gray-100 text-gray-900"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                      type="button"
+                      aria-current={isCurrent ? "page" : undefined}
+                      onClick={() => handlePageChange(pageNumber)}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="Next page"
+                  disabled={!canNextPage}
+                  onClick={() => handlePageChange(currentPage + 1)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1418,9 +1810,11 @@ export default function ProjectsPage() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="Last page"
+                  disabled={!canNextPage}
+                  onClick={() => handlePageChange(totalPages)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1441,13 +1835,15 @@ export default function ProjectsPage() {
 
             <div className="relative hidden h-8 items-center justify-center sm:flex">
               <span className="absolute left-0 text-sm text-gray-600">
-                Page 1 of 1
+                Page {currentPage} of {totalPages}
               </span>
               <div className="flex items-center justify-center gap-1">
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="First page"
+                  disabled={!canPreviousPage}
+                  onClick={() => handlePageChange(1)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1464,9 +1860,11 @@ export default function ProjectsPage() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="Previous page"
+                  disabled={!canPreviousPage}
+                  onClick={() => handlePageChange(currentPage - 1)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1481,16 +1879,30 @@ export default function ProjectsPage() {
                     <path d="m15 18-6-6 6-6" />
                   </svg>
                 </button>
-                <a
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md bg-gray-100 px-1 text-sm text-gray-600"
-                  href="/projects?page=1"
-                >
-                  1
-                </a>
+                {pageNumbers.map((pageNumber) => {
+                  const isCurrent = pageNumber === currentPage;
+                  return (
+                    <button
+                      key={`desktop-page-${pageNumber}`}
+                      className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm transition-colors ${
+                        isCurrent
+                          ? "bg-gray-100 text-gray-900"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                      type="button"
+                      aria-current={isCurrent ? "page" : undefined}
+                      onClick={() => handlePageChange(pageNumber)}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="Next page"
+                  disabled={!canNextPage}
+                  onClick={() => handlePageChange(currentPage + 1)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1506,9 +1918,11 @@ export default function ProjectsPage() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
-                  disabled
+                  aria-label="Last page"
+                  disabled={!canNextPage}
+                  onClick={() => handlePageChange(totalPages)}
                 >
                   <svg
                     aria-hidden="true"
@@ -1526,7 +1940,7 @@ export default function ProjectsPage() {
                 </button>
               </div>
               <span className="absolute right-0 text-sm text-gray-600">
-                24 / page
+                {pageSizeLabel} / page
               </span>
             </div>
           </div>
@@ -1599,7 +2013,7 @@ export default function ProjectsPage() {
                       <div className="flex items-center justify-between">
                         <p>Updated on</p>
                         <p className="font-medium text-gray-500">
-                          {previewCreatedLabel}
+                          {previewUpdatedLabel}
                         </p>
                       </div>
                       <div className="flex items-center justify-between">

@@ -8,7 +8,11 @@ export type ProjectLibraryItem = {
   type: "VIDEO" | "EDITOR";
   kind: ProjectKind;
   createdAt: string;
+  updatedAt?: string;
   previewImage?: string | null;
+  previewSourceUrl?: string | null;
+  previewSourceKind?: "video" | "image" | null;
+  previewTimeSeconds?: number | null;
   status?: string | null;
   renderStatus?: ProjectRenderStatus;
   renderStage?: string | null;
