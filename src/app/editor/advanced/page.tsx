@@ -681,11 +681,45 @@ function AdvancedEditorContent() {
     downloadUrl: null,
     error: null,
   });
-  const [exportViewport, setExportViewport] = useState<ExportOutput | null>(
-    null
-  );
-  const [exportPreview, setExportPreview] = useState<ExportOutput | null>(null);
-  const [exportScaleMode, setExportScaleMode] = useState<"css" | "device">("css");
+  const [exportViewport, setExportViewport] = useState<ExportOutput | null>(() => {
+    if (!isExportMode || typeof window === "undefined") {
+      return null;
+    }
+    const payload = (window as any).__EDITOR_EXPORT__;
+    const output = payload?.output;
+    const nextWidth = Number(output?.width);
+    const nextHeight = Number(output?.height);
+    if (Number.isFinite(nextWidth) && Number.isFinite(nextHeight)) {
+      return {
+        width: ensureEven(nextWidth),
+        height: ensureEven(nextHeight),
+      };
+    }
+    return null;
+  });
+  const [exportPreview, setExportPreview] = useState<ExportOutput | null>(() => {
+    if (!isExportMode || typeof window === "undefined") {
+      return null;
+    }
+    const payload = (window as any).__EDITOR_EXPORT__;
+    const preview = payload?.preview;
+    const previewWidth = Number(preview?.width);
+    const previewHeight = Number(preview?.height);
+    if (Number.isFinite(previewWidth) && Number.isFinite(previewHeight)) {
+      return {
+        width: ensureEven(previewWidth),
+        height: ensureEven(previewHeight),
+      };
+    }
+    return null;
+  });
+  const [exportScaleMode, setExportScaleMode] = useState<"css" | "device">(() => {
+    if (!isExportMode || typeof window === "undefined") {
+      return "css";
+    }
+    const mode = (window as any).__EDITOR_EXPORT__?.renderScaleMode;
+    return mode === "device" ? "device" : "css";
+  });
   const exportSubtitleScaleRef = useRef(1);
   const exportPollRef = useRef<number | null>(null);
   const exportHydratedRef = useRef(false);
@@ -4935,7 +4969,7 @@ function AdvancedEditorContent() {
   }, [stageDisplay.height, stageDisplay.width]);
 
   useEffect(() => {
-    if (!isExportMode) {
+    if (!isExportMode || exportScaleMode === "css") {
       exportSubtitleScaleRef.current = 1;
       return;
     }
@@ -4959,6 +4993,7 @@ function AdvancedEditorContent() {
   }, [
     exportPreview?.height,
     exportPreview?.width,
+    exportScaleMode,
     isExportMode,
     stageDisplay.height,
     stageDisplay.width,
@@ -5163,12 +5198,58 @@ function AdvancedEditorContent() {
     textSettings,
   ]);
 
+  const originalExportSize = useMemo<ExportOutput | null>(() => {
+    if (projectSizeId !== "original") {
+      return null;
+    }
+    const visuals = timelineLayout
+      .map((entry) => entry.asset)
+      .filter((asset) => asset.kind === "video" || asset.kind === "image");
+    if (visuals.length === 0) {
+      return null;
+    }
+    const candidates = visuals.filter((asset) => {
+      const width = asset.width ?? 0;
+      const height = asset.height ?? 0;
+      return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+    });
+    if (candidates.length === 0) {
+      return null;
+    }
+    const targetAspect =
+      Number.isFinite(projectAspectRatio) && projectAspectRatio > 0
+        ? projectAspectRatio
+        : null;
+    const tolerance = 0.02;
+    const matching = targetAspect
+      ? candidates.filter((asset) => {
+          const width = asset.width ?? 0;
+          const height = asset.height ?? 1;
+          const ratio = width / height;
+          return Math.abs(ratio - targetAspect) <= tolerance;
+        })
+      : candidates;
+    const pool = matching.length > 0 ? matching : candidates;
+    const best = pool.reduce((current, asset) => {
+      const currentArea = (current.width ?? 0) * (current.height ?? 0);
+      const area = (asset.width ?? 0) * (asset.height ?? 0);
+      return area > currentArea ? asset : current;
+    });
+    return {
+      width: ensureEven(best.width ?? 0),
+      height: ensureEven(best.height ?? 0),
+    };
+  }, [projectAspectRatio, projectSizeId, timelineLayout]);
+
   const exportDimensions = useMemo<ExportOutput>(() => {
     if (resolvedProjectSize?.width && resolvedProjectSize?.height) {
       return {
         width: ensureEven(resolvedProjectSize.width),
         height: ensureEven(resolvedProjectSize.height),
       };
+    }
+    if (originalExportSize) {
+      return originalExportSize;
     }
     const ratio = Number.isFinite(projectAspectRatio) && projectAspectRatio > 0
       ? projectAspectRatio
@@ -5185,7 +5266,12 @@ function AdvancedEditorContent() {
       width: ensureEven(height * ratio),
       height: ensureEven(height),
     };
-  }, [projectAspectRatio, resolvedProjectSize?.height, resolvedProjectSize?.width]);
+  }, [
+    originalExportSize,
+    projectAspectRatio,
+    resolvedProjectSize?.height,
+    resolvedProjectSize?.width,
+  ]);
 
   const waitForExportStage = useCallback(async () => {
     if (typeof window === "undefined") {
