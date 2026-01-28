@@ -1676,6 +1676,9 @@ function AdvancedEditorContent() {
       return false;
     }
     const element = target as HTMLElement;
+    const rootNode = element.getRootNode();
+    const widgetHost =
+      rootNode instanceof ShadowRoot ? rootNode.host : null;
     return (
       element.tagName === "INPUT" ||
       element.tagName === "TEXTAREA" ||
@@ -1684,9 +1687,8 @@ function AdvancedEditorContent() {
       element.getAttribute("role") === "searchbox" ||
       Boolean(element.closest("[contenteditable=\"true\"]")) ||
       Boolean(element.closest("lemon-slice-widget")) ||
-      (element.getRootNode() instanceof ShadowRoot &&
-        element.getRootNode().host instanceof HTMLElement &&
-        element.getRootNode().host.tagName === "LEMON-SLICE-WIDGET")
+      (widgetHost instanceof HTMLElement &&
+        widgetHost.tagName === "LEMON-SLICE-WIDGET")
     );
   }, []);
 
