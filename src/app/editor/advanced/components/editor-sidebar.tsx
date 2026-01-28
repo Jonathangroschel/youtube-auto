@@ -1179,10 +1179,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     typeof aiBackgroundRemovalStatus === "string" ? aiBackgroundRemovalStatus : "idle";
   const resolvedAiBackgroundRemovalError =
     typeof aiBackgroundRemovalError === "string" ? aiBackgroundRemovalError : null;
-  const resolvedAiBackgroundRemovalSelection =
+  const emptyBackgroundRemovalSelection: AiBackgroundRemovalSelection = {
+    state: "empty",
+  };
+  const resolvedAiBackgroundRemovalSelection: AiBackgroundRemovalSelection =
     aiBackgroundRemovalSelection && typeof aiBackgroundRemovalSelection === "object"
-      ? (aiBackgroundRemovalSelection as AiBackgroundRemovalSelection)
-      : { state: "empty" };
+      ? aiBackgroundRemovalSelection
+      : emptyBackgroundRemovalSelection;
   const resolvedAiBackgroundRemovalPreview =
     aiBackgroundRemovalPreview && typeof aiBackgroundRemovalPreview === "object"
       ? (aiBackgroundRemovalPreview as AiBackgroundRemovalPreview)
