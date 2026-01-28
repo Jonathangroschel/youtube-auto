@@ -1672,14 +1672,21 @@ function AdvancedEditorContent() {
   }, [ensureFontStylesheet]);
 
   const isEditableTarget = useCallback((target: EventTarget | null) => {
-    const element = target as HTMLElement | null;
-    if (!element) {
+    if (!(target instanceof HTMLElement)) {
       return false;
     }
+    const element = target as HTMLElement;
     return (
       element.tagName === "INPUT" ||
       element.tagName === "TEXTAREA" ||
-      element.isContentEditable
+      element.isContentEditable ||
+      element.getAttribute("role") === "textbox" ||
+      element.getAttribute("role") === "searchbox" ||
+      Boolean(element.closest("[contenteditable=\"true\"]")) ||
+      Boolean(element.closest("lemon-slice-widget")) ||
+      (element.getRootNode() instanceof ShadowRoot &&
+        element.getRootNode().host instanceof HTMLElement &&
+        element.getRootNode().host.tagName === "LEMON-SLICE-WIDGET")
     );
   }, []);
 

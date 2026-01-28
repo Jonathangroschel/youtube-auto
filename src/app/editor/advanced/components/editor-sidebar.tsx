@@ -17,8 +17,8 @@ import {
 import {
   AudioLines,
   ImageIcon,
-  Lightbulb,
   Mic,
+  Play,
   Sparkles,
   Upload,
   Video as VideoIcon,
@@ -141,6 +141,10 @@ type AiBackgroundRemovalPreview = {
   duration?: number | null;
 };
 
+type LemonSliceWidgetElement = HTMLElement & {
+  sendMessage?: (message: string) => Promise<void> | void;
+};
+
 const aiToolConfigs: AiToolConfig[] = [
   {
     id: "transcription",
@@ -213,20 +217,20 @@ const aiToolConfigs: AiToolConfig[] = [
     outputKind: "preview",
   },
   {
-    id: "ai-brainstormer",
-    title: "Idea Lab",
-    description: "Generate hooks, outlines, and titles.",
-    icon: Lightbulb,
-    gradient: "from-yellow-50 to-amber-100",
-    inputLabel: "Topic",
-    inputPlaceholder: "What should we brainstorm?",
+    id: "ai-deven",
+    title: "AI Deven",
+    description: "YouTube expert for hooks, titles, scripts, and strategy.",
+    icon: Play,
+    gradient: "from-red-50 to-rose-100",
+    inputLabel: "Ask AI Deven",
+    inputPlaceholder: "Ask about hooks, titles, pacing, or thumbnails...",
     inputKind: "prompt",
-    actionLabel: "Generate Ideas",
-    outputLabel: "Ideas",
-    outputHint: "We will suggest hooks, titles, and outlines.",
+    actionLabel: "Open AI Deven",
+    outputLabel: "Insights",
+    outputHint: "AI Deven replies in the chat widget below.",
     outputKind: "list",
-    chipLabel: "Focus",
-    chips: ["Hooks", "Titles", "Outline"],
+    chipLabel: "Quick prompts",
+    chips: ["Hooks", "Titles", "Thumbnails", "Retention"],
   },
 ];
 
@@ -254,6 +258,10 @@ const aiVideoDurationOptions = [
   { value: 6, label: "6s" },
   { value: 8, label: "8s" },
 ];
+
+const lemonSliceWidgetScriptSrc =
+  "https://unpkg.com/@lemonsliceai/lemon-slice-widget";
+const lemonSliceWidgetScriptId = "lemon-slice-widget-script";
 
 export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const {
@@ -570,6 +578,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const settingsSizeButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsSizeMenuRef = useRef<HTMLDivElement | null>(null);
   const backgroundImageInputRef = useRef<HTMLInputElement | null>(null);
+  const lemonSliceWidgetRef = useRef<LemonSliceWidgetElement | null>(null);
+  const aiDevenActivationRef = useRef<"idle" | "loading" | "ready">("idle");
   const transcriptCopyTimeoutRef = useRef<number | null>(null);
   const [subtitleProgress, setSubtitleProgress] = useState(0);
   const [subtitleSettingsOpen, setSubtitleSettingsOpen] = useState(false);
@@ -580,6 +590,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const [isDurationEditing, setIsDurationEditing] = useState(false);
   const [backgroundHexDraft, setBackgroundHexDraft] = useState(videoBackground);
   const [activeAiToolId, setActiveAiToolId] = useState<string | null>(null);
+  const [aiDevenStatus, setAiDevenStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const [isAiTranscriptSourceOpen, setIsAiTranscriptSourceOpen] = useState(false);
   const [includeAiTranscriptTimestamps, setIncludeAiTranscriptTimestamps] =
     useState(true);
@@ -629,6 +642,104 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       <span className="sr-only">Downloading...</span>
     </div>
   );
+
+  const loadLemonSliceWidget = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    if (window.customElements?.get("lemon-slice-widget")) {
+      return true;
+    }
+    const existingScript = document.getElementById(
+      lemonSliceWidgetScriptId
+    ) as HTMLScriptElement | null;
+    if (existingScript) {
+      if (existingScript.dataset.loaded === "true") {
+        return true;
+      }
+      const loaded = await new Promise<boolean>((resolve) => {
+        const handleLoad = () => {
+          existingScript.dataset.loaded = "true";
+          resolve(true);
+        };
+        const handleError = () => resolve(false);
+        existingScript.addEventListener("load", handleLoad, { once: true });
+        existingScript.addEventListener("error", handleError, { once: true });
+      });
+      if (!loaded) {
+        return false;
+      }
+    } else {
+      const loaded = await new Promise<boolean>((resolve) => {
+        const script = document.createElement("script");
+        script.id = lemonSliceWidgetScriptId;
+        script.type = "module";
+        script.src = lemonSliceWidgetScriptSrc;
+        script.addEventListener(
+          "load",
+          () => {
+            script.dataset.loaded = "true";
+            resolve(true);
+          },
+          { once: true }
+        );
+        script.addEventListener(
+          "error",
+          () => {
+            resolve(false);
+          },
+          { once: true }
+        );
+        document.body.appendChild(script);
+      });
+      if (!loaded) {
+        return false;
+      }
+    }
+    if (window.customElements?.get("lemon-slice-widget")) {
+      return true;
+    }
+    if (window.customElements?.whenDefined) {
+      await window.customElements.whenDefined("lemon-slice-widget");
+    }
+    return Boolean(window.customElements?.get("lemon-slice-widget"));
+  }, []);
+
+  const handleAiDevenActivate = useCallback(async () => {
+    if (aiDevenActivationRef.current === "loading") {
+      return;
+    }
+    if (aiDevenActivationRef.current === "ready") {
+      const widget = lemonSliceWidgetRef.current;
+      if (widget && typeof widget.sendMessage === "function") {
+        try {
+          await widget.sendMessage("hey");
+        } catch {
+          // Ignore activation errors; the widget can still be used manually.
+        }
+      }
+      setAiDevenStatus("ready");
+      return;
+    }
+    aiDevenActivationRef.current = "loading";
+    setAiDevenStatus("loading");
+    const loaded = await loadLemonSliceWidget();
+    if (!loaded) {
+      aiDevenActivationRef.current = "idle";
+      setAiDevenStatus("error");
+      return;
+    }
+    aiDevenActivationRef.current = "ready";
+    setAiDevenStatus("ready");
+    const widget = lemonSliceWidgetRef.current;
+    if (widget && typeof widget.sendMessage === "function") {
+      try {
+        await widget.sendMessage("hey");
+      } catch {
+        // Ignore activation errors; the widget can still be used manually.
+      }
+    }
+  }, [loadLemonSliceWidget]);
 
   const handleYoutubeSubmit = async () => {
     if (typeof handleAddYoutubeVideo !== "function") {
@@ -765,6 +876,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       setActiveAiToolId(null);
     }
   }, [activeTool]);
+
+  useEffect(() => {
+    if (activeAiToolId !== "ai-deven") {
+      return;
+    }
+    void handleAiDevenActivate();
+  }, [activeAiToolId, handleAiDevenActivate]);
 
   useEffect(() => {
     return () => {
@@ -1116,6 +1234,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     [activeAiToolId]
   );
   const ActiveAiToolIcon = activeAiTool?.icon ?? null;
+  const isAiDevenActive = activeAiTool?.id === "ai-deven";
   const activeAiToolInputId = activeAiTool
     ? `ai-tool-${activeAiTool.id}-input`
     : null;
@@ -7212,14 +7331,90 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         <div
                           className={`relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${activeAiTool.gradient}`}
                         >
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-[0_8px_16px_rgba(15,23,42,0.12)]">
+                          <div
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg shadow-[0_8px_16px_rgba(15,23,42,0.12)] ${
+                              isAiDevenActive ? "bg-[#FF0033]" : "bg-white"
+                            }`}
+                          >
                             {ActiveAiToolIcon && (
-                              <ActiveAiToolIcon className="h-4 w-4 text-[#1a1240]" />
+                              <ActiveAiToolIcon
+                                className={`h-4 w-4 ${
+                                  isAiDevenActive ? "text-white" : "text-[#1a1240]"
+                                }`}
+                                {...(isAiDevenActive
+                                  ? { fill: "currentColor", stroke: "none" }
+                                  : {})}
+                              />
                             )}
                           </div>
                         </div>
                       </div>
-                      {activeAiTool.id === "transcription" ? (
+                      {activeAiTool.id === "ai-deven" ? (
+                        <div className="space-y-4">
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                AI Deven
+                              </p>
+                              {aiDevenStatus === "error" ? (
+                                <span className="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-600">
+                                  Offline
+                                </span>
+                              ) : aiDevenStatus === "ready" ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-600">
+                                  Ready
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-600">
+                                  Connecting
+                                </span>
+                              )}
+                            </div>
+                            <div className="relative mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                              <div
+                                className={`flex min-h-[480px] items-center justify-center ${
+                                  aiDevenStatus === "error" ? "hidden" : ""
+                                }`}
+                              >
+                                <lemon-slice-widget
+                                  ref={lemonSliceWidgetRef}
+                                  agent-id="agent_d69498ddf579cb6c"
+                                  inline
+                                  custom-minimized-width="200"
+                                  custom-minimized-height="300"
+                                  custom-active-width="320"
+                                  custom-active-height="480"
+                                  video-button-color-opacity="0.15"
+                                  show-minimize-button="false"
+                                  initial-state="minimized"
+                                />
+                              </div>
+                              {aiDevenStatus !== "ready" &&
+                                aiDevenStatus !== "error" && (
+                                  <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-white/70 text-xs font-semibold text-gray-500">
+                                    <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                    Connecting AI Deven...
+                                  </div>
+                                )}
+                              {aiDevenStatus === "error" && (
+                                <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 px-4 py-8 text-center text-xs font-semibold text-rose-500">
+                                  <p>Unable to load AI Deven right now.</p>
+                                  <button
+                                    type="button"
+                                    className="rounded-full bg-rose-100 px-3 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-200"
+                                    onClick={handleAiDevenActivate}
+                                  >
+                                    Retry
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <p className="mt-2 text-[11px] text-gray-400">
+                              Ask about hooks, titles, retention, thumbnails, or script polish.
+                            </p>
+                          </div>
+                        </div>
+                      ) : activeAiTool.id === "transcription" ? (
                         <div className="space-y-4">
                           <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
                             <div className="flex flex-col gap-2">
@@ -8272,6 +8467,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     <div className="grid grid-cols-2 gap-4">
                       {aiToolConfigs.map((tool) => {
                         const Icon = tool.icon;
+                        const isAiDevenCard = tool.id === "ai-deven";
                         return (
                           <button
                             key={tool.id}
@@ -8283,8 +8479,19 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             <div
                               className={`relative flex h-24 items-center justify-center rounded-xl bg-gradient-to-br ${tool.gradient}`}
                             >
-                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-lg">
-                                <Icon className="h-5 w-5 text-[#1a1240]" />
+                              <div
+                                className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-lg ${
+                                  isAiDevenCard ? "bg-[#FF0033]" : "bg-white"
+                                }`}
+                              >
+                                <Icon
+                                  className={`h-5 w-5 ${
+                                    isAiDevenCard ? "text-white" : "text-[#1a1240]"
+                                  }`}
+                                  {...(isAiDevenCard
+                                    ? { fill: "currentColor", stroke: "none" }
+                                    : {})}
+                                />
                               </div>
                             </div>
                             <p className="mt-3 text-sm font-semibold text-gray-900">
