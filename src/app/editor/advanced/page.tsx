@@ -256,6 +256,23 @@ type AiImagePreview = {
   aspectRatio?: number;
 };
 
+type AiVoiceoverVoice = {
+  id: string;
+  name: string;
+  voice: string;
+  url: string;
+  path: string;
+  size: number;
+};
+
+type AiVoiceoverPreview = {
+  url: string;
+  assetId?: string | null;
+  name?: string;
+  duration?: number;
+  voice?: string;
+};
+
 type ProjectSizeOption = {
   id: string;
   label: string;
@@ -398,6 +415,11 @@ const projectSizeOptions: ProjectSizeOption[] = [
 ];
 
 const AI_IMAGE_STORAGE_PREFIX = "satura:ai-image:";
+const AI_VOICEOVER_STORAGE_PREFIX = "satura:ai-voiceover:";
+const TTS_VOICES_BUCKET_NAME =
+  process.env.NEXT_PUBLIC_TTS_VOICES_BUCKET ?? "tts-voices";
+const TTS_VOICES_ROOT_PREFIX =
+  process.env.NEXT_PUBLIC_TTS_VOICES_ROOT?.replace(/^\/+|\/+$/g, "") ?? "";
 
 const escapeSubtitleHtml = (value: string) =>
   value.replace(/[&<>"']/g, (char) => {
@@ -654,6 +676,34 @@ function AdvancedEditorContent() {
   const [aiImageLastAspectRatio, setAiImageLastAspectRatio] = useState<
     string | null
   >(null);
+  const [aiVoiceoverScript, setAiVoiceoverScript] = useState("");
+  const [aiVoiceoverSelectedVoice, setAiVoiceoverSelectedVoice] = useState<
+    string | null
+  >(null);
+  const [aiVoiceoverStatus, setAiVoiceoverStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [aiVoiceoverError, setAiVoiceoverError] = useState<string | null>(null);
+  const [aiVoiceoverPreview, setAiVoiceoverPreview] =
+    useState<AiVoiceoverPreview | null>(null);
+  const [aiVoiceoverSaving, setAiVoiceoverSaving] = useState(false);
+  const [aiVoiceoverLastScript, setAiVoiceoverLastScript] = useState<
+    string | null
+  >(null);
+  const [aiVoiceoverLastVoice, setAiVoiceoverLastVoice] = useState<
+    string | null
+  >(null);
+  const [aiVoiceoverVoices, setAiVoiceoverVoices] = useState<
+    AiVoiceoverVoice[]
+  >([]);
+  const [aiVoiceoverVoicesStatus, setAiVoiceoverVoicesStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [aiVoiceoverVoicesError, setAiVoiceoverVoicesError] = useState<
+    string | null
+  >(null);
+  const [aiVoiceoverVoicesReloadKey, setAiVoiceoverVoicesReloadKey] =
+    useState(0);
   const [isGifLibraryExpanded, setIsGifLibraryExpanded] = useState(false);
   const [isStickerLibraryExpanded, setIsStickerLibraryExpanded] = useState(false);
   const [gifSearch, setGifSearch] = useState("");
@@ -792,6 +842,9 @@ function AdvancedEditorContent() {
   const exportPersistedRef = useRef<ProjectExportState | null>(null);
   const exportHydratedRef = useRef(false);
   const aiImageRequestIdRef = useRef(0);
+  const aiVoiceoverRequestIdRef = useRef(0);
+  const aiVoiceoverVoicesLoadIdRef = useRef(0);
+  const aiVoiceoverVoicesLoadTimeoutRef = useRef<number | null>(null);
   const exportMediaCacheRef = useRef<Set<string>>(new Set());
   const exportMediaFailedRef = useRef<Set<string>>(new Set());
   const resolvedProjectSize = useMemo(
@@ -2260,6 +2313,136 @@ function AdvancedEditorContent() {
   }, [aiImagePreview, assetLibraryReady, assets, projectReady]);
 
   useEffect(() => {
+    if (isExportMode || typeof window === "undefined") {
+      return;
+    }
+    const draftKey = `${AI_VOICEOVER_STORAGE_PREFIX}draft`;
+    const storageKey = projectId
+      ? `${AI_VOICEOVER_STORAGE_PREFIX}${projectId}`
+      : draftKey;
+    if (projectId) {
+      const existing = window.localStorage.getItem(storageKey);
+      if (!existing) {
+        const draft = window.localStorage.getItem(draftKey);
+        if (draft) {
+          window.localStorage.setItem(storageKey, draft);
+          window.localStorage.removeItem(draftKey);
+        }
+      }
+    }
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      setAiVoiceoverScript("");
+      setAiVoiceoverSelectedVoice(null);
+      setAiVoiceoverPreview(null);
+      setAiVoiceoverStatus("idle");
+      setAiVoiceoverError(null);
+      setAiVoiceoverSaving(false);
+      setAiVoiceoverLastScript(null);
+      setAiVoiceoverLastVoice(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as {
+        script?: string;
+        voice?: string;
+        preview?: AiVoiceoverPreview | null;
+        lastScript?: string;
+        lastVoice?: string;
+      };
+      setAiVoiceoverScript(
+        typeof parsed.script === "string" ? parsed.script : ""
+      );
+      setAiVoiceoverSelectedVoice(
+        typeof parsed.voice === "string" ? parsed.voice : null
+      );
+      const preview =
+        parsed.preview && typeof parsed.preview === "object"
+          ? (parsed.preview as AiVoiceoverPreview)
+          : null;
+      setAiVoiceoverPreview(preview);
+      setAiVoiceoverStatus(preview ? "ready" : "idle");
+      setAiVoiceoverError(null);
+      setAiVoiceoverSaving(false);
+      setAiVoiceoverLastScript(
+        typeof parsed.lastScript === "string" ? parsed.lastScript : null
+      );
+      setAiVoiceoverLastVoice(
+        typeof parsed.lastVoice === "string" ? parsed.lastVoice : null
+      );
+    } catch {
+      setAiVoiceoverScript("");
+      setAiVoiceoverSelectedVoice(null);
+      setAiVoiceoverPreview(null);
+      setAiVoiceoverStatus("idle");
+      setAiVoiceoverError(null);
+      setAiVoiceoverSaving(false);
+      setAiVoiceoverLastScript(null);
+      setAiVoiceoverLastVoice(null);
+    }
+  }, [isExportMode, projectId]);
+
+  useEffect(() => {
+    if (isExportMode || typeof window === "undefined") {
+      return;
+    }
+    const storageKey = projectId
+      ? `${AI_VOICEOVER_STORAGE_PREFIX}${projectId}`
+      : `${AI_VOICEOVER_STORAGE_PREFIX}draft`;
+    const payload = {
+      script: aiVoiceoverScript,
+      voice: aiVoiceoverSelectedVoice,
+      preview: aiVoiceoverPreview,
+      lastScript: aiVoiceoverLastScript,
+      lastVoice: aiVoiceoverLastVoice,
+    };
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [
+    aiVoiceoverLastScript,
+    aiVoiceoverLastVoice,
+    aiVoiceoverPreview,
+    aiVoiceoverScript,
+    aiVoiceoverSelectedVoice,
+    isExportMode,
+    projectId,
+  ]);
+
+  useEffect(() => {
+    if (!aiVoiceoverPreview?.assetId) {
+      return;
+    }
+    if (!assetLibraryReady && !projectReady) {
+      return;
+    }
+    const asset = assets.find((item) => item.id === aiVoiceoverPreview.assetId);
+    if (!asset) {
+      setAiVoiceoverPreview(null);
+      setAiVoiceoverStatus("idle");
+      setAiVoiceoverLastScript(null);
+      setAiVoiceoverLastVoice(null);
+      return;
+    }
+    const nextPreview: AiVoiceoverPreview = {
+      url: asset.url,
+      assetId: asset.id,
+      name: asset.name,
+      duration: asset.duration,
+      voice: aiVoiceoverPreview.voice,
+    };
+    const hasDiff =
+      aiVoiceoverPreview.url !== nextPreview.url ||
+      aiVoiceoverPreview.name !== nextPreview.name ||
+      aiVoiceoverPreview.duration !== nextPreview.duration;
+    if (hasDiff) {
+      setAiVoiceoverPreview(nextPreview);
+    }
+  }, [aiVoiceoverPreview, assetLibraryReady, assets, projectReady]);
+
+  useEffect(() => {
     projectNameRef.current = projectName;
   }, [projectName]);
 
@@ -2565,6 +2748,201 @@ function AdvancedEditorContent() {
     }
     setIsPreviewPlaying(false);
   }, [activeTool]);
+
+  useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
+    if (activeTool !== "ai" || !hasSupabase) {
+      return;
+    }
+    if (aiVoiceoverVoicesStatus === "ready" && aiVoiceoverVoices.length > 0) {
+      return;
+    }
+    let cancelled = false;
+    const loadId = aiVoiceoverVoicesLoadIdRef.current + 1;
+    aiVoiceoverVoicesLoadIdRef.current = loadId;
+    const loadVoices = async () => {
+      setAiVoiceoverVoicesStatus("loading");
+      setAiVoiceoverVoicesError(null);
+      if (aiVoiceoverVoicesLoadTimeoutRef.current) {
+        window.clearTimeout(aiVoiceoverVoicesLoadTimeoutRef.current);
+      }
+      aiVoiceoverVoicesLoadTimeoutRef.current = window.setTimeout(() => {
+        setAiVoiceoverVoicesStatus((current) =>
+          current === "loading" ? "error" : current
+        );
+        setAiVoiceoverVoicesError(
+          "Voice previews timed out. Check storage list access."
+        );
+      }, 15000);
+      try {
+        const { supabaseBrowser } = await import("@/lib/supabase/browser");
+        const bucket = supabaseBrowser.storage.from(TTS_VOICES_BUCKET_NAME);
+        const listWithTimeout = async (path: string) => {
+          let timeoutId: number | null = null;
+          const timeoutPromise = new Promise<{
+            data: null;
+            error: Error;
+          }>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+              reject(new Error("Voice preview request timed out."));
+            }, 10000);
+          });
+          const result = (await Promise.race([
+            bucket.list(path, {
+              limit: 1000,
+              sortBy: { column: "name", order: "asc" },
+            }),
+            timeoutPromise,
+          ])) as {
+            data: Array<{
+              id?: string | null;
+              name: string;
+              metadata?: { size?: number; mimetype?: string | null } | null;
+            }> | null;
+            error: Error | null;
+          };
+          if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+          }
+          return result;
+        };
+        const voices: AiVoiceoverVoice[] = [];
+        const seenPaths = new Set<string>();
+        const pushFiles = (
+          items: Array<{
+            id?: string | null;
+            name: string;
+            metadata?: { size?: number; mimetype?: string | null } | null;
+          }>,
+          prefix: string
+        ) => {
+          items.forEach((item) => {
+            const mimeType = item.metadata?.mimetype ?? null;
+            if (!isAudioFile(item.name, mimeType)) {
+              return;
+            }
+            const path = prefix ? `${prefix}/${item.name}` : item.name;
+            if (seenPaths.has(path)) {
+              return;
+            }
+            const { data } = bucket.getPublicUrl(path);
+            if (!data?.publicUrl) {
+              return;
+            }
+            const label = formatStockLabel(item.name);
+            seenPaths.add(path);
+            voices.push({
+              id: path,
+              name: label,
+              voice: label,
+              url: data.publicUrl,
+              path,
+              size: Number(item.metadata?.size ?? 0),
+            });
+          });
+        };
+        const isFileEntry = (item: {
+          id?: string | null;
+          name: string;
+          metadata?: { size?: number; mimetype?: string | null } | null;
+        }) =>
+          Boolean(item.id) ||
+          Boolean(item.metadata) ||
+          isAudioFile(item.name, item.metadata?.mimetype ?? null);
+        const collectVoices = async (path: string) => {
+          const { data, error } = await listWithTimeout(path);
+          if (error) {
+            throw error;
+          }
+          const entries = data ?? [];
+          const files = entries.filter(isFileEntry);
+          if (files.length > 0) {
+            pushFiles(files, path);
+          }
+          const folders = entries.filter((item) => !isFileEntry(item));
+          await Promise.all(
+            folders.map((folder) => {
+              const nextPath = path ? `${path}/${folder.name}` : folder.name;
+              return collectVoices(nextPath);
+            })
+          );
+        };
+        const prefixCandidates = [TTS_VOICES_ROOT_PREFIX];
+        if (!TTS_VOICES_ROOT_PREFIX) {
+          prefixCandidates.push(TTS_VOICES_BUCKET_NAME);
+        }
+        const uniquePrefixes = Array.from(
+          new Set(prefixCandidates.map((prefix) => prefix.trim()))
+        );
+        let lastError: unknown = null;
+        for (const prefix of uniquePrefixes) {
+          try {
+            await collectVoices(prefix);
+          } catch (error) {
+            lastError = error;
+          }
+          if (voices.length > 0) {
+            break;
+          }
+        }
+        if (voices.length === 0 && lastError) {
+          throw lastError;
+        }
+        if (cancelled || loadId !== aiVoiceoverVoicesLoadIdRef.current) {
+          return;
+        }
+        voices.sort((a, b) => a.name.localeCompare(b.name));
+        setAiVoiceoverVoices(voices);
+        setAiVoiceoverVoicesStatus("ready");
+      } catch (error) {
+        if (cancelled || loadId !== aiVoiceoverVoicesLoadIdRef.current) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to load voice previews from Supabase.";
+        setAiVoiceoverVoicesError(message);
+        setAiVoiceoverVoicesStatus("error");
+      } finally {
+        if (aiVoiceoverVoicesLoadTimeoutRef.current) {
+          window.clearTimeout(aiVoiceoverVoicesLoadTimeoutRef.current);
+          aiVoiceoverVoicesLoadTimeoutRef.current = null;
+        }
+      }
+    };
+    loadVoices();
+    return () => {
+      if (aiVoiceoverVoicesLoadTimeoutRef.current) {
+        window.clearTimeout(aiVoiceoverVoicesLoadTimeoutRef.current);
+        aiVoiceoverVoicesLoadTimeoutRef.current = null;
+      }
+      cancelled = true;
+    };
+  }, [
+    activeTool,
+    aiVoiceoverVoices,
+    aiVoiceoverVoicesStatus,
+    aiVoiceoverVoicesReloadKey,
+    hasSupabase,
+    isExportMode,
+  ]);
+
+  useEffect(() => {
+    if (aiVoiceoverVoices.length === 0) {
+      return;
+    }
+    const hasSelection =
+      aiVoiceoverSelectedVoice &&
+      aiVoiceoverVoices.some(
+        (voice) => voice.voice === aiVoiceoverSelectedVoice
+      );
+    if (!hasSelection) {
+      setAiVoiceoverSelectedVoice(aiVoiceoverVoices[0].voice);
+    }
+  }, [aiVoiceoverSelectedVoice, aiVoiceoverVoices]);
 
   useEffect(() => {
     if (isExportMode) {
@@ -9320,6 +9698,46 @@ function AdvancedEditorContent() {
     [applyStockAudioDuration, previewTrackId]
   );
 
+  const handleAiVoiceoverPreviewToggle = useCallback(
+    (voice: AiVoiceoverVoice) => {
+      if (!voice?.url) {
+        return;
+      }
+      const audio = previewAudioRef.current ?? new Audio();
+      previewAudioRef.current = audio;
+      audio.volume = 0.9;
+      if (previewTrackId === voice.id) {
+        if (audio.paused) {
+          const playPromise = audio.play();
+          if (playPromise) {
+            playPromise
+              .then(() => setIsPreviewPlaying(true))
+              .catch(() => setIsPreviewPlaying(false));
+          }
+        } else {
+          audio.pause();
+          setIsPreviewPlaying(false);
+        }
+        return;
+      }
+      audio.pause();
+      setIsPreviewPlaying(false);
+      audio.currentTime = 0;
+      audio.src = voice.url;
+      audio.onended = () => {
+        setIsPreviewPlaying(false);
+      };
+      setPreviewTrackId(voice.id);
+      const playPromise = audio.play();
+      if (playPromise) {
+        playPromise
+          .then(() => setIsPreviewPlaying(true))
+          .catch(() => setIsPreviewPlaying(false));
+      }
+    },
+    [previewTrackId]
+  );
+
   const handleAddStockVideo = useCallback(
     async (video: StockVideoItem) => {
       const existing = assetsRef.current.find(
@@ -10080,6 +10498,13 @@ function AdvancedEditorContent() {
     setSoundFxError(null);
     setSoundFx([]);
     setSoundFxReloadKey((prev) => prev + 1);
+  }, []);
+
+  const handleAiVoiceoverVoicesRetry = useCallback(() => {
+    setAiVoiceoverVoicesStatus("idle");
+    setAiVoiceoverVoicesError(null);
+    setAiVoiceoverVoices([]);
+    setAiVoiceoverVoicesReloadKey((prev) => prev + 1);
   }, []);
 
   const handleSplitClip = () => {
@@ -11179,6 +11604,170 @@ function AdvancedEditorContent() {
     setAiImageLastPrompt(null);
     setAiImageLastAspectRatio(null);
   }, [aiImagePreview?.assetId, handleDeleteAsset]);
+
+  const createGeneratedVoiceoverAsset = useCallback(
+    async (payload: {
+      url: string;
+      script: string;
+      voice: string;
+    }): Promise<MediaAsset> => {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "audio" && asset.url === payload.url
+      );
+      if (existing) {
+        return existing;
+      }
+      const trimmedScript = payload.script.trim() || "Voiceover";
+      const shortScript =
+        trimmedScript.length > 60
+          ? `${trimmedScript.slice(0, 57)}...`
+          : trimmedScript;
+      const voiceLabel = payload.voice.trim() || "AI";
+      const name = `Voiceover - ${voiceLabel} - ${shortScript}`;
+      const meta = await getMediaMeta("audio", payload.url);
+      const libraryAsset = await createExternalAssetSafe({
+        url: payload.url,
+        name,
+        kind: "audio",
+        source: "generated",
+        duration: meta.duration,
+      });
+      return {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name,
+        kind: "audio",
+        url: libraryAsset?.url ?? payload.url,
+        size: libraryAsset?.size ?? 0,
+        duration: meta.duration,
+        createdAt: Date.now(),
+      };
+    },
+    []
+  );
+
+  const handleAiVoiceoverGenerate = useCallback(async () => {
+    const trimmedScript = aiVoiceoverScript.trim();
+    if (!trimmedScript) {
+      setAiVoiceoverError("Enter a script to generate a voiceover.");
+      return;
+    }
+    const resolvedVoice =
+      aiVoiceoverSelectedVoice?.trim() ||
+      aiVoiceoverVoices[0]?.voice?.trim() ||
+      "";
+    if (!resolvedVoice) {
+      setAiVoiceoverError("Select a voice to continue.");
+      return;
+    }
+    const requestId = aiVoiceoverRequestIdRef.current + 1;
+    aiVoiceoverRequestIdRef.current = requestId;
+    setAiVoiceoverError(null);
+    setAiVoiceoverStatus("loading");
+    setAiVoiceoverSaving(false);
+    setAiVoiceoverPreview(null);
+    try {
+      const response = await fetch("/api/ai-voiceover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: trimmedScript,
+          voice: resolvedVoice,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          typeof data?.error === "string" && data.error.length > 0
+            ? data.error
+            : "Voiceover generation failed.";
+        setAiVoiceoverStatus("error");
+        setAiVoiceoverError(message);
+        return;
+      }
+      const audioEntry = data?.audio ?? null;
+      const audioUrl =
+        typeof audioEntry?.url === "string"
+          ? audioEntry.url
+          : typeof data?.audio_url === "string"
+            ? data.audio_url
+            : typeof data?.audioUrl === "string"
+              ? data.audioUrl
+              : typeof data?.audio === "string"
+                ? data.audio
+                : null;
+      if (!audioUrl) {
+        setAiVoiceoverStatus("error");
+        setAiVoiceoverError("Voiceover generation returned no audio.");
+        return;
+      }
+      if (aiVoiceoverRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAiVoiceoverStatus("ready");
+      setAiVoiceoverLastScript(trimmedScript);
+      setAiVoiceoverLastVoice(resolvedVoice);
+      setAiVoiceoverPreview({
+        url: audioUrl,
+        name: "Generated voiceover",
+        voice: resolvedVoice,
+      });
+      setAiVoiceoverSaving(true);
+      const generatedAsset = await createGeneratedVoiceoverAsset({
+        url: audioUrl,
+        script: trimmedScript,
+        voice: resolvedVoice,
+      });
+      if (aiVoiceoverRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAiVoiceoverSaving(false);
+      setAiVoiceoverPreview({
+        url: generatedAsset.url,
+        assetId: generatedAsset.id,
+        name: generatedAsset.name,
+        duration: generatedAsset.duration,
+        voice: resolvedVoice,
+      });
+      setAssets((prev) => {
+        if (prev.some((asset) => asset.id === generatedAsset.id)) {
+          return prev;
+        }
+        return [generatedAsset, ...prev];
+      });
+      setActiveAssetId(generatedAsset.id);
+    } catch (error) {
+      if (aiVoiceoverRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAiVoiceoverStatus("error");
+      setAiVoiceoverError("Voiceover generation failed.");
+      setAiVoiceoverSaving(false);
+    }
+  }, [
+    aiVoiceoverScript,
+    aiVoiceoverSelectedVoice,
+    aiVoiceoverVoices,
+    createGeneratedVoiceoverAsset,
+  ]);
+
+  const handleAiVoiceoverAddToTimeline = useCallback(() => {
+    if (!aiVoiceoverPreview?.assetId) {
+      return;
+    }
+    addToTimeline(aiVoiceoverPreview.assetId);
+  }, [addToTimeline, aiVoiceoverPreview?.assetId]);
+
+  const handleAiVoiceoverClear = useCallback(() => {
+    if (aiVoiceoverPreview?.assetId) {
+      handleDeleteAsset(aiVoiceoverPreview.assetId);
+    }
+    setAiVoiceoverPreview(null);
+    setAiVoiceoverError(null);
+    setAiVoiceoverStatus("idle");
+    setAiVoiceoverSaving(false);
+    setAiVoiceoverLastScript(null);
+    setAiVoiceoverLastVoice(null);
+  }, [aiVoiceoverPreview?.assetId, handleDeleteAsset]);
 
   keyboardStateRef.current = {
     currentTime,
@@ -14541,6 +15130,24 @@ function AdvancedEditorContent() {
     handleAiImageImprovePrompt,
     handleAiImageClear,
     handleAiImageAddToTimeline,
+    aiVoiceoverScript,
+    setAiVoiceoverScript,
+    aiVoiceoverSelectedVoice,
+    setAiVoiceoverSelectedVoice,
+    aiVoiceoverVoices,
+    aiVoiceoverVoicesStatus,
+    aiVoiceoverVoicesError,
+    aiVoiceoverStatus,
+    aiVoiceoverError,
+    aiVoiceoverPreview,
+    aiVoiceoverSaving,
+    aiVoiceoverLastScript,
+    aiVoiceoverLastVoice,
+    handleAiVoiceoverGenerate,
+    handleAiVoiceoverAddToTimeline,
+    handleAiVoiceoverClear,
+    handleAiVoiceoverPreviewToggle,
+    handleAiVoiceoverVoicesRetry,
   };
 
   const handleViewportClick = (event: ReactMouseEvent<HTMLDivElement>) => {

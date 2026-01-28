@@ -158,10 +158,8 @@ const aiToolConfigs: AiToolConfig[] = [
     inputKind: "prompt",
     actionLabel: "Generate Voiceover",
     outputLabel: "Voiceover Preview",
-    outputHint: "Audio previews and downloads appear here.",
+    outputHint: "Generated voiceovers appear here.",
     outputKind: "waveform",
-    chipLabel: "Voice style",
-    chips: ["Narrator", "Conversational", "Energetic"],
   },
   {
     id: "ai-video",
@@ -492,6 +490,24 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleAiImageImprovePrompt,
     handleAiImageClear,
     handleAiImageAddToTimeline,
+    aiVoiceoverScript,
+    setAiVoiceoverScript,
+    aiVoiceoverSelectedVoice,
+    setAiVoiceoverSelectedVoice,
+    aiVoiceoverVoices,
+    aiVoiceoverVoicesStatus,
+    aiVoiceoverVoicesError,
+    aiVoiceoverStatus,
+    aiVoiceoverError,
+    aiVoiceoverPreview,
+    aiVoiceoverSaving,
+    aiVoiceoverLastScript,
+    aiVoiceoverLastVoice,
+    handleAiVoiceoverGenerate,
+    handleAiVoiceoverAddToTimeline,
+    handleAiVoiceoverClear,
+    handleAiVoiceoverPreviewToggle,
+    handleAiVoiceoverVoicesRetry,
   } = props;
 
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1075,6 +1091,32 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const canGenerateAiImage =
     resolvedAiImagePrompt.trim().length > 0 &&
     resolvedAiImageStatus !== "loading";
+  const resolvedAiVoiceoverScript =
+    typeof aiVoiceoverScript === "string" ? aiVoiceoverScript : "";
+  const resolvedAiVoiceoverStatus =
+    typeof aiVoiceoverStatus === "string" ? aiVoiceoverStatus : "idle";
+  const resolvedAiVoiceoverPreview =
+    aiVoiceoverPreview && typeof aiVoiceoverPreview === "object"
+      ? aiVoiceoverPreview
+      : null;
+  const resolvedAiVoiceoverAssetId =
+    typeof resolvedAiVoiceoverPreview?.assetId === "string"
+      ? resolvedAiVoiceoverPreview.assetId
+      : null;
+  const resolvedAiVoiceoverPreviewUrl =
+    typeof resolvedAiVoiceoverPreview?.url === "string"
+      ? resolvedAiVoiceoverPreview.url
+      : null;
+  const resolvedAiVoiceoverSelectedVoice =
+    typeof aiVoiceoverSelectedVoice === "string" ? aiVoiceoverSelectedVoice : "";
+  const resolvedAiVoiceoverVoices = Array.isArray(aiVoiceoverVoices)
+    ? aiVoiceoverVoices
+    : [];
+  const canGenerateAiVoiceover =
+    resolvedAiVoiceoverScript.trim().length > 0 &&
+    resolvedAiVoiceoverStatus !== "loading" &&
+    (resolvedAiVoiceoverSelectedVoice.length > 0 ||
+      resolvedAiVoiceoverVoices.length > 0);
   const aiTranscriptSegments = useMemo(() => {
     if (!Array.isArray(transcriptSegmentsRaw) || transcriptSegmentsRaw.length === 0) {
       return [];
@@ -7437,6 +7479,301 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 {aiImageLastAspectRatio
                                   ? ` · ${aiImageLastAspectRatio}`
                                   : ""}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : activeAiTool.id === "ai-voiceover" ? (
+                        <div className="space-y-4">
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <label
+                                htmlFor={activeAiToolInputId ?? undefined}
+                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400"
+                              >
+                                {activeAiTool.inputLabel}
+                              </label>
+                              <span className="text-[10px] font-semibold text-gray-400">
+                                Input
+                              </span>
+                            </div>
+                            <textarea
+                              id={activeAiToolInputId ?? undefined}
+                              placeholder={activeAiTool.inputPlaceholder}
+                              rows={4}
+                              value={resolvedAiVoiceoverScript}
+                              onChange={(event) => {
+                                if (typeof setAiVoiceoverScript === "function") {
+                                  setAiVoiceoverScript(event.target.value);
+                                }
+                              }}
+                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:border-[#5B6CFF] focus:outline-none"
+                            />
+                            <div className="mt-4">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                  Voice
+                                </p>
+                                <span className="text-[10px] font-semibold text-gray-400">
+                                  {resolvedAiVoiceoverSelectedVoice
+                                    ? `Selected: ${resolvedAiVoiceoverSelectedVoice}`
+                                    : "Select a voice"}
+                                </span>
+                              </div>
+                              <div className="mt-2">
+                                {!hasSupabase ? (
+                                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-4 text-center text-xs text-gray-400">
+                                    Connect Supabase to load voice previews.
+                                  </div>
+                                ) : aiVoiceoverVoicesStatus === "loading" ||
+                                  aiVoiceoverVoicesStatus === "idle" ? (
+                                  <div className="space-y-2">
+                                    {Array.from({ length: 4 }).map((_, index) => (
+                                      <div
+                                        key={`voice-skeleton-${index}`}
+                                        className="h-12 rounded-xl bg-gray-100/80 animate-pulse"
+                                      />
+                                    ))}
+                                  </div>
+                                ) : aiVoiceoverVoicesStatus === "error" ? (
+                                  <div className="rounded-xl border border-dashed border-red-200 bg-red-50/40 px-4 py-4 text-center text-xs text-red-600">
+                                    <p>
+                                      {aiVoiceoverVoicesError ??
+                                        "Unable to load voice previews."}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      className="mt-3 rounded-full bg-red-100 px-3 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-200"
+                                      onClick={() => {
+                                        if (typeof handleAiVoiceoverVoicesRetry === "function") {
+                                          handleAiVoiceoverVoicesRetry();
+                                        }
+                                      }}
+                                    >
+                                      Retry
+                                    </button>
+                                  </div>
+                                ) : resolvedAiVoiceoverVoices.length === 0 ? (
+                                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-4 text-center text-xs text-gray-400">
+                                    No voice previews found.
+                                  </div>
+                                ) : (
+                                  <div className="grid gap-2">
+                                    {resolvedAiVoiceoverVoices.map((voice: any) => {
+                                      const isSelected =
+                                        voice.voice === resolvedAiVoiceoverSelectedVoice;
+                                      const isPlaying =
+                                        previewTrackId === voice.id && isPreviewPlaying;
+                                      return (
+                                        <div
+                                          key={voice.id}
+                                          className={`group flex items-center justify-between rounded-xl border px-3 py-2 transition ${
+                                            isSelected
+                                              ? "border-[#335CFF] bg-[#EEF2FF]"
+                                              : "border-gray-200 bg-white hover:border-[#DDE3FF]"
+                                          }`}
+                                        >
+                                          <button
+                                            type="button"
+                                            className="flex-1 text-left"
+                                            onClick={() => {
+                                              if (
+                                                typeof setAiVoiceoverSelectedVoice ===
+                                                "function"
+                                              ) {
+                                                setAiVoiceoverSelectedVoice(voice.voice);
+                                              }
+                                            }}
+                                            aria-pressed={isSelected}
+                                          >
+                                            <div className="truncate text-sm font-semibold text-gray-900">
+                                              {voice.name}
+                                            </div>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={`ml-3 flex h-9 w-9 items-center justify-center rounded-full border text-[#335CFF] transition ${
+                                              isPlaying
+                                                ? "border-[#335CFF] bg-white shadow-[0_6px_14px_rgba(51,92,255,0.2)]"
+                                                : "border-gray-200 bg-white hover:border-[#C7D2FE]"
+                                            }`}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              if (
+                                                typeof handleAiVoiceoverPreviewToggle ===
+                                                "function"
+                                              ) {
+                                                handleAiVoiceoverPreviewToggle(voice);
+                                              }
+                                            }}
+                                            aria-label={
+                                              isPlaying
+                                                ? "Pause voice preview"
+                                                : "Play voice preview"
+                                            }
+                                          >
+                                            {isPlaying ? (
+                                              <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                <path
+                                                  d="M5.2 3.5h2.1v9H5.2zm3.5 0h2.1v9H8.7z"
+                                                  fill="currentColor"
+                                                />
+                                              </svg>
+                                            ) : (
+                                              <svg viewBox="0 0 16 16" className="h-4 w-4">
+                                                <path
+                                                  d="M3 1.91a.5.5 0 0 1 .768-.421l9.57 6.09a.5.5 0 0 1 0 .843l-9.57 6.089A.5.5 0 0 1 3 14.089z"
+                                                  fill="currentColor"
+                                                />
+                                              </svg>
+                                            )}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
+                                resolvedAiVoiceoverStatus === "loading" || !canGenerateAiVoiceover
+                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
+                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                              }`}
+                              onClick={() => {
+                                if (typeof handleAiVoiceoverGenerate === "function") {
+                                  handleAiVoiceoverGenerate();
+                                }
+                              }}
+                              disabled={
+                                resolvedAiVoiceoverStatus === "loading" ||
+                                !canGenerateAiVoiceover
+                              }
+                            >
+                              {resolvedAiVoiceoverStatus === "loading"
+                                ? "Generating Voiceover..."
+                                : activeAiTool.actionLabel}
+                            </button>
+                          </div>
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                {activeAiTool.outputLabel}
+                              </p>
+                              {aiVoiceoverSaving ? (
+                                <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-600">
+                                  Saving
+                                </span>
+                              ) : resolvedAiVoiceoverAssetId ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-600">
+                                  Saved to Assets
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                              {resolvedAiVoiceoverStatus === "loading" ? (
+                                <div className="flex min-h-[140px] items-center justify-center gap-2 text-xs font-semibold text-gray-400">
+                                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                  Generating voiceover...
+                                </div>
+                              ) : resolvedAiVoiceoverPreviewUrl ? (
+                                <div
+                                  className="rounded-lg border border-gray-100 bg-white p-3 shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
+                                  draggable={Boolean(resolvedAiVoiceoverAssetId)}
+                                  onDragStart={(event) => {
+                                    if (
+                                      resolvedAiVoiceoverAssetId &&
+                                      typeof handleAssetDragStart === "function"
+                                    ) {
+                                      handleAssetDragStart(
+                                        event,
+                                        resolvedAiVoiceoverAssetId
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="truncate text-xs font-semibold text-gray-700">
+                                        {resolvedAiVoiceoverPreview?.name ??
+                                          "Generated voiceover"}
+                                      </p>
+                                      <p className="text-[10px] text-gray-400">
+                                        {resolvedAiVoiceoverPreview?.voice
+                                          ? `Voice: ${resolvedAiVoiceoverPreview.voice}`
+                                          : "Voiceover"}
+                                        {typeof resolvedAiVoiceoverPreview?.duration ===
+                                        "number"
+                                          ? ` · ${formatDuration(
+                                              resolvedAiVoiceoverPreview.duration
+                                            )}`
+                                          : ""}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <audio
+                                    controls
+                                    preload="metadata"
+                                    src={resolvedAiVoiceoverPreviewUrl}
+                                    className="mt-2 w-full"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex min-h-[140px] items-center justify-center text-xs font-semibold text-gray-400">
+                                  Generate a voiceover to hear it here.
+                                </div>
+                              )}
+                            </div>
+                            {aiVoiceoverError && (
+                              <p className="mt-2 text-[11px] font-semibold text-rose-500">
+                                {aiVoiceoverError}
+                              </p>
+                            )}
+                            {resolvedAiVoiceoverPreviewUrl && (
+                              <div className="mt-3 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                                    resolvedAiVoiceoverAssetId
+                                      ? "bg-[#335CFF] text-white hover:bg-[#274BFF]"
+                                      : "cursor-not-allowed bg-gray-200 text-gray-500"
+                                  }`}
+                                  onClick={() => {
+                                    if (
+                                      typeof handleAiVoiceoverAddToTimeline === "function"
+                                    ) {
+                                      handleAiVoiceoverAddToTimeline();
+                                    }
+                                  }}
+                                  disabled={!resolvedAiVoiceoverAssetId}
+                                >
+                                  Add to timeline
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                                  onClick={() => {
+                                    if (typeof handleAiVoiceoverClear === "function") {
+                                      handleAiVoiceoverClear();
+                                    }
+                                  }}
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            )}
+                            {resolvedAiVoiceoverPreviewUrl ? (
+                              <p className="mt-2 text-[11px] text-gray-400">
+                                Drag onto the timeline or click Add to timeline. Clear removes it
+                                from Assets.
+                              </p>
+                            ) : null}
+                            {aiVoiceoverLastScript && (
+                              <p className="mt-2 text-[10px] text-gray-400">
+                                Last script: {aiVoiceoverLastScript}
+                                {aiVoiceoverLastVoice ? ` · ${aiVoiceoverLastVoice}` : ""}
                               </p>
                             )}
                           </div>
