@@ -20,6 +20,7 @@ import {
   Lightbulb,
   Mic,
   Music,
+  Sparkles,
   Upload,
   Video as VideoIcon,
   type LucideIcon,
@@ -141,12 +142,10 @@ const aiToolConfigs: AiToolConfig[] = [
     inputLabel: "Prompt",
     inputPlaceholder: "Describe the image you want to create...",
     inputKind: "prompt",
-    actionLabel: "Generate Images",
-    outputLabel: "Image Variations",
+    actionLabel: "Generate Image",
+    outputLabel: "Generated Image",
     outputHint: "Generated images show up here.",
     outputKind: "grid",
-    chipLabel: "Style",
-    chips: ["Cinematic", "Product", "Illustration"],
   },
   {
     id: "ai-voiceover",
@@ -216,6 +215,17 @@ const aiToolConfigs: AiToolConfig[] = [
 
 const aiWaveformHeights = [8, 14, 10, 18, 12, 20, 11, 16, 9, 15];
 const aiListWidths = [92, 78, 64];
+const aiImageAspectRatioOptions = [
+  { value: "1:1", label: "1:1 - Square" },
+  { value: "16:9", label: "16:9 - YouTube / Widescreen" },
+  { value: "21:9", label: "21:9 - Cinematic" },
+  { value: "4:3", label: "4:3 - Classic" },
+  { value: "3:2", label: "3:2 - Photo" },
+  { value: "2:3", label: "2:3 - Portrait Photo" },
+  { value: "3:4", label: "3:4 - Poster" },
+  { value: "9:16", label: "9:16 - Reels / TikTok" },
+  { value: "9:21", label: "9:21 - Stories" },
+];
 
 export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const {
@@ -466,6 +476,22 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     visibleStockTags,
     visibleStockVideoTags,
     visibleTextPresetGroups,
+    aiImagePrompt,
+    setAiImagePrompt,
+    aiImageAspectRatio,
+    setAiImageAspectRatio,
+    aiImageStatus,
+    aiImageError,
+    aiImagePreview,
+    aiImageSaving,
+    aiImageMagicLoading,
+    aiImageMagicError,
+    aiImageLastPrompt,
+    aiImageLastAspectRatio,
+    handleAiImageGenerate,
+    handleAiImageImprovePrompt,
+    handleAiImageClear,
+    handleAiImageAddToTimeline,
   } = props;
 
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1023,6 +1049,32 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const activeAiToolInputId = activeAiTool
     ? `ai-tool-${activeAiTool.id}-input`
     : null;
+  const resolvedAiImagePrompt =
+    typeof aiImagePrompt === "string" ? aiImagePrompt : "";
+  const resolvedAiImageAspectRatio =
+    typeof aiImageAspectRatio === "string" ? aiImageAspectRatio : "1:1";
+  const resolvedAiImageStatus =
+    typeof aiImageStatus === "string" ? aiImageStatus : "idle";
+  const resolvedAiImagePreview =
+    aiImagePreview && typeof aiImagePreview === "object" ? aiImagePreview : null;
+  const resolvedAiImageAssetId =
+    typeof resolvedAiImagePreview?.assetId === "string"
+      ? resolvedAiImagePreview.assetId
+      : null;
+  const resolvedAiImagePreviewUrl =
+    typeof resolvedAiImagePreview?.url === "string"
+      ? resolvedAiImagePreview.url
+      : null;
+  const isAiImageMagicDisabled =
+    aiImageMagicLoading || resolvedAiImagePrompt.trim().length === 0;
+  const aiImageMagicButtonClass = aiImageMagicLoading
+    ? "cursor-wait bg-gray-100 text-gray-400"
+    : isAiImageMagicDisabled
+      ? "cursor-not-allowed bg-gray-100 text-gray-400"
+      : "bg-white text-gray-600 hover:bg-gray-50";
+  const canGenerateAiImage =
+    resolvedAiImagePrompt.trim().length > 0 &&
+    resolvedAiImageStatus !== "loading";
   const aiTranscriptSegments = useMemo(() => {
     if (!Array.isArray(transcriptSegmentsRaw) || transcriptSegmentsRaw.length === 0) {
       return [];
@@ -7199,6 +7251,194 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </p>
                               )}
                             </div>
+                          </div>
+                        </div>
+                      ) : activeAiTool.id === "ai-image" ? (
+                        <div className="space-y-4">
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <label
+                                htmlFor={activeAiToolInputId ?? undefined}
+                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400"
+                              >
+                                {activeAiTool.inputLabel}
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className={`flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-semibold transition ${aiImageMagicButtonClass}`}
+                                  onClick={() => {
+                                    if (typeof handleAiImageImprovePrompt === "function") {
+                                      handleAiImageImprovePrompt();
+                                    }
+                                  }}
+                                  disabled={isAiImageMagicDisabled}
+                                >
+                                  <Sparkles className="h-3 w-3" />
+                                  {aiImageMagicLoading ? "Enhancing" : "Magic"}
+                                </button>
+                              </div>
+                            </div>
+                            <textarea
+                              id={activeAiToolInputId ?? undefined}
+                              placeholder={activeAiTool.inputPlaceholder}
+                              rows={4}
+                              value={resolvedAiImagePrompt}
+                              onChange={(event) => {
+                                if (typeof setAiImagePrompt === "function") {
+                                  setAiImagePrompt(event.target.value);
+                                }
+                              }}
+                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:border-[#5B6CFF] focus:outline-none"
+                            />
+                            {aiImageMagicError && (
+                              <p className="mt-2 text-[11px] font-semibold text-rose-500">
+                                {aiImageMagicError}
+                              </p>
+                            )}
+                            <div className="mt-4">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                Aspect Ratio
+                              </p>
+                              <p className="mt-1 text-[11px] text-gray-400">
+                                Choose the format that matches where you'll use it.
+                              </p>
+                              <div className="mt-2">
+                                <label className="sr-only" htmlFor="ai-image-aspect">
+                                  Aspect ratio
+                                </label>
+                                <select
+                                  id="ai-image-aspect"
+                                  value={resolvedAiImageAspectRatio}
+                                  onChange={(event) => {
+                                    if (typeof setAiImageAspectRatio === "function") {
+                                      setAiImageAspectRatio(event.target.value);
+                                    }
+                                  }}
+                                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 focus:border-[#5B6CFF] focus:outline-none"
+                                >
+                                  {aiImageAspectRatioOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
+                                resolvedAiImageStatus === "loading" || !canGenerateAiImage
+                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
+                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                              }`}
+                              onClick={() => {
+                                if (typeof handleAiImageGenerate === "function") {
+                                  handleAiImageGenerate();
+                                }
+                              }}
+                              disabled={resolvedAiImageStatus === "loading" || !canGenerateAiImage}
+                            >
+                              {resolvedAiImageStatus === "loading"
+                                ? "Generating Image..."
+                                : activeAiTool.actionLabel}
+                            </button>
+                          </div>
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                {activeAiTool.outputLabel}
+                              </p>
+                              {aiImageSaving ? (
+                                <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-600">
+                                  Saving
+                                </span>
+                              ) : resolvedAiImageAssetId ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-600">
+                                  Saved to Assets
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                              {resolvedAiImageStatus === "loading" ? (
+                                <div className="flex min-h-[140px] items-center justify-center gap-2 text-xs font-semibold text-gray-400">
+                                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                  Generating image...
+                                </div>
+                              ) : resolvedAiImagePreviewUrl ? (
+                                <div
+                                  className="group flex w-full items-center justify-center overflow-hidden rounded-lg border border-gray-100 bg-white p-2 shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
+                                  draggable={Boolean(resolvedAiImageAssetId)}
+                                  onDragStart={(event) => {
+                                    if (
+                                      resolvedAiImageAssetId &&
+                                      typeof handleAssetDragStart === "function"
+                                    ) {
+                                      handleAssetDragStart(event, resolvedAiImageAssetId);
+                                    }
+                                  }}
+                                >
+                                  <img
+                                    src={resolvedAiImagePreviewUrl}
+                                    alt={resolvedAiImagePreview?.name ?? "Generated preview"}
+                                    className="max-h-48 w-full rounded-md object-contain"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex min-h-[140px] items-center justify-center text-xs font-semibold text-gray-400">
+                                  Generate an image to see it here.
+                                </div>
+                              )}
+                            </div>
+                            {aiImageError && (
+                              <p className="mt-2 text-[11px] font-semibold text-rose-500">
+                                {aiImageError}
+                              </p>
+                            )}
+                            {resolvedAiImagePreviewUrl && (
+                              <div className="mt-3 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                                    resolvedAiImageAssetId
+                                      ? "bg-[#335CFF] text-white hover:bg-[#274BFF]"
+                                      : "cursor-not-allowed bg-gray-200 text-gray-500"
+                                  }`}
+                                  onClick={() => {
+                                    if (typeof handleAiImageAddToTimeline === "function") {
+                                      handleAiImageAddToTimeline();
+                                    }
+                                  }}
+                                  disabled={!resolvedAiImageAssetId}
+                                >
+                                  Add to timeline
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                                  onClick={() => {
+                                    if (typeof handleAiImageClear === "function") {
+                                      handleAiImageClear();
+                                    }
+                                  }}
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            )}
+                            {resolvedAiImagePreviewUrl ? (
+                              <p className="mt-2 text-[11px] text-gray-400">
+                                Drag onto the timeline or click Add to timeline. Clear removes it from Assets.
+                              </p>
+                            ) : null}
+                            {aiImageLastPrompt && (
+                              <p className="mt-2 text-[10px] text-gray-400">
+                                Last prompt: {aiImageLastPrompt}
+                                {aiImageLastAspectRatio
+                                  ? ` · ${aiImageLastAspectRatio}`
+                                  : ""}
+                              </p>
+                            )}
                           </div>
                         </div>
                       ) : (

@@ -247,6 +247,15 @@ type StockAudioDragPayload = {
   duration?: number | null;
 };
 
+type AiImagePreview = {
+  url: string;
+  assetId?: string | null;
+  name?: string;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+};
+
 type ProjectSizeOption = {
   id: string;
   label: string;
@@ -387,6 +396,8 @@ const projectSizeOptions: ProjectSizeOption[] = [
     aspectRatio: 21 / 9,
   },
 ];
+
+const AI_IMAGE_STORAGE_PREFIX = "satura:ai-image:";
 
 const escapeSubtitleHtml = (value: string) =>
   value.replace(/[&<>"']/g, (char) => {
@@ -627,6 +638,22 @@ function AdvancedEditorContent() {
   const [isAssetLibraryExpanded, setIsAssetLibraryExpanded] = useState(false);
   const [assetLibraryReady, setAssetLibraryReady] = useState(false);
   const [assetSearch, setAssetSearch] = useState("");
+  const [aiImagePrompt, setAiImagePrompt] = useState("");
+  const [aiImageAspectRatio, setAiImageAspectRatio] = useState("1:1");
+  const [aiImageStatus, setAiImageStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [aiImageError, setAiImageError] = useState<string | null>(null);
+  const [aiImagePreview, setAiImagePreview] = useState<AiImagePreview | null>(
+    null
+  );
+  const [aiImageSaving, setAiImageSaving] = useState(false);
+  const [aiImageMagicLoading, setAiImageMagicLoading] = useState(false);
+  const [aiImageMagicError, setAiImageMagicError] = useState<string | null>(null);
+  const [aiImageLastPrompt, setAiImageLastPrompt] = useState<string | null>(null);
+  const [aiImageLastAspectRatio, setAiImageLastAspectRatio] = useState<
+    string | null
+  >(null);
   const [isGifLibraryExpanded, setIsGifLibraryExpanded] = useState(false);
   const [isStickerLibraryExpanded, setIsStickerLibraryExpanded] = useState(false);
   const [gifSearch, setGifSearch] = useState("");
@@ -764,6 +791,7 @@ function AdvancedEditorContent() {
   const exportPollRef = useRef<number | null>(null);
   const exportPersistedRef = useRef<ProjectExportState | null>(null);
   const exportHydratedRef = useRef(false);
+  const aiImageRequestIdRef = useRef(0);
   const exportMediaCacheRef = useRef<Set<string>>(new Set());
   const exportMediaFailedRef = useRef<Set<string>>(new Set());
   const resolvedProjectSize = useMemo(
@@ -2094,6 +2122,139 @@ function AdvancedEditorContent() {
   useEffect(() => {
     assetsRef.current = assets;
   }, [assets]);
+
+  useEffect(() => {
+    if (isExportMode || typeof window === "undefined") {
+      return;
+    }
+    const draftKey = `${AI_IMAGE_STORAGE_PREFIX}draft`;
+    const storageKey = projectId
+      ? `${AI_IMAGE_STORAGE_PREFIX}${projectId}`
+      : draftKey;
+    if (projectId) {
+      const existing = window.localStorage.getItem(storageKey);
+      if (!existing) {
+        const draft = window.localStorage.getItem(draftKey);
+        if (draft) {
+          window.localStorage.setItem(storageKey, draft);
+          window.localStorage.removeItem(draftKey);
+        }
+      }
+    }
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      setAiImagePrompt("");
+      setAiImageAspectRatio("1:1");
+      setAiImagePreview(null);
+      setAiImageStatus("idle");
+      setAiImageError(null);
+      setAiImageSaving(false);
+      setAiImageLastPrompt(null);
+      setAiImageLastAspectRatio(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as {
+        prompt?: string;
+        aspectRatio?: string;
+        preview?: AiImagePreview | null;
+        lastPrompt?: string;
+        lastAspectRatio?: string;
+      };
+      setAiImagePrompt(typeof parsed.prompt === "string" ? parsed.prompt : "");
+      setAiImageAspectRatio(
+        typeof parsed.aspectRatio === "string" ? parsed.aspectRatio : "1:1"
+      );
+      const preview =
+        parsed.preview && typeof parsed.preview === "object"
+          ? (parsed.preview as AiImagePreview)
+          : null;
+      setAiImagePreview(preview);
+      setAiImageStatus(preview ? "ready" : "idle");
+      setAiImageError(null);
+      setAiImageSaving(false);
+      setAiImageLastPrompt(
+        typeof parsed.lastPrompt === "string" ? parsed.lastPrompt : null
+      );
+      setAiImageLastAspectRatio(
+        typeof parsed.lastAspectRatio === "string"
+          ? parsed.lastAspectRatio
+          : null
+      );
+    } catch {
+      setAiImagePrompt("");
+      setAiImageAspectRatio("1:1");
+      setAiImagePreview(null);
+      setAiImageStatus("idle");
+      setAiImageError(null);
+      setAiImageSaving(false);
+      setAiImageLastPrompt(null);
+      setAiImageLastAspectRatio(null);
+    }
+  }, [isExportMode, projectId]);
+
+  useEffect(() => {
+    if (isExportMode || typeof window === "undefined") {
+      return;
+    }
+    const storageKey = projectId
+      ? `${AI_IMAGE_STORAGE_PREFIX}${projectId}`
+      : `${AI_IMAGE_STORAGE_PREFIX}draft`;
+    const payload = {
+      prompt: aiImagePrompt,
+      aspectRatio: aiImageAspectRatio,
+      preview: aiImagePreview,
+      lastPrompt: aiImageLastPrompt,
+      lastAspectRatio: aiImageLastAspectRatio,
+    };
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [
+    aiImageAspectRatio,
+    aiImageLastAspectRatio,
+    aiImageLastPrompt,
+    aiImagePreview,
+    aiImagePrompt,
+    isExportMode,
+    projectId,
+  ]);
+
+  useEffect(() => {
+    if (!aiImagePreview?.assetId) {
+      return;
+    }
+    if (!assetLibraryReady && !projectReady) {
+      return;
+    }
+    const asset = assets.find((item) => item.id === aiImagePreview.assetId);
+    if (!asset) {
+      setAiImagePreview(null);
+      setAiImageStatus("idle");
+      setAiImageLastPrompt(null);
+      setAiImageLastAspectRatio(null);
+      return;
+    }
+    const nextPreview: AiImagePreview = {
+      url: asset.url,
+      assetId: asset.id,
+      name: asset.name,
+      width: asset.width,
+      height: asset.height,
+      aspectRatio: asset.aspectRatio,
+    };
+    const hasDiff =
+      aiImagePreview.url !== nextPreview.url ||
+      aiImagePreview.name !== nextPreview.name ||
+      aiImagePreview.width !== nextPreview.width ||
+      aiImagePreview.height !== nextPreview.height ||
+      aiImagePreview.aspectRatio !== nextPreview.aspectRatio;
+    if (hasDiff) {
+      setAiImagePreview(nextPreview);
+    }
+  }, [aiImagePreview, assetLibraryReady, assets, projectReady]);
 
   useEffect(() => {
     projectNameRef.current = projectName;
@@ -10772,6 +10933,204 @@ function AdvancedEditorContent() {
     ]
   );
 
+  const createGeneratedImageAsset = useCallback(
+    async (payload: {
+      url: string;
+      prompt: string;
+      width?: number;
+      height?: number;
+    }): Promise<MediaAsset> => {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "image" && asset.url === payload.url
+      );
+      if (existing) {
+        return existing;
+      }
+      const trimmedPrompt = payload.prompt.trim() || "AI Image";
+      const shortPrompt =
+        trimmedPrompt.length > 60
+          ? `${trimmedPrompt.slice(0, 57)}...`
+          : trimmedPrompt;
+      const name = `AI Image - ${shortPrompt}`;
+      const meta =
+        Number.isFinite(payload.width) && Number.isFinite(payload.height)
+          ? {
+              width: payload.width,
+              height: payload.height,
+              aspectRatio:
+                payload.width && payload.height
+                  ? payload.width / payload.height
+                  : undefined,
+            }
+          : await getMediaMeta("image", payload.url);
+      const libraryAsset = await createExternalAssetSafe({
+        url: payload.url,
+        name,
+        kind: "image",
+        source: "generated",
+        size: 0,
+        width: meta.width,
+        height: meta.height,
+        aspectRatio: meta.aspectRatio,
+      });
+      return {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name,
+        kind: "image",
+        url: libraryAsset?.url ?? payload.url,
+        size: libraryAsset?.size ?? 0,
+        width: meta.width,
+        height: meta.height,
+        aspectRatio: meta.aspectRatio,
+        createdAt: Date.now(),
+      };
+    },
+    []
+  );
+
+  const handleAiImageImprovePrompt = useCallback(async () => {
+    const trimmedPrompt = aiImagePrompt.trim();
+    if (!trimmedPrompt) {
+      setAiImageMagicError("Add a prompt to improve.");
+      return;
+    }
+    setAiImageMagicError(null);
+    setAiImageMagicLoading(true);
+    try {
+      const response = await fetch("/api/ai-image/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: trimmedPrompt }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          typeof data?.error === "string" && data.error.length > 0
+            ? data.error
+            : "Prompt enhancement failed.";
+        setAiImageMagicError(message);
+        return;
+      }
+      if (typeof data?.prompt === "string") {
+        setAiImagePrompt(data.prompt);
+      }
+    } catch (error) {
+      setAiImageMagicError("Prompt enhancement failed.");
+    } finally {
+      setAiImageMagicLoading(false);
+    }
+  }, [aiImagePrompt]);
+
+  const handleAiImageGenerate = useCallback(async () => {
+    const trimmedPrompt = aiImagePrompt.trim();
+    if (!trimmedPrompt) {
+      setAiImageError("Enter a prompt to generate an image.");
+      return;
+    }
+    const requestId = aiImageRequestIdRef.current + 1;
+    aiImageRequestIdRef.current = requestId;
+    setAiImageError(null);
+    setAiImageMagicError(null);
+    setAiImageStatus("loading");
+    setAiImageSaving(false);
+    try {
+      const response = await fetch("/api/ai-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: trimmedPrompt,
+          aspectRatio: aiImageAspectRatio,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          typeof data?.error === "string" && data.error.length > 0
+            ? data.error
+            : "Image generation failed.";
+        setAiImageStatus("error");
+        setAiImageError(message);
+        return;
+      }
+      const imageEntry = Array.isArray(data?.images)
+        ? data.images[0]
+        : data?.image ?? null;
+      const imageUrl =
+        typeof imageEntry?.url === "string" ? imageEntry.url : null;
+      if (!imageUrl) {
+        setAiImageStatus("error");
+        setAiImageError("Image generation returned no image.");
+        return;
+      }
+      if (aiImageRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAiImageStatus("ready");
+      setAiImageLastPrompt(trimmedPrompt);
+      setAiImageLastAspectRatio(aiImageAspectRatio);
+      setAiImagePreview({
+        url: imageUrl,
+        name: "Generated image",
+      });
+      setAiImageSaving(true);
+      const generatedAsset = await createGeneratedImageAsset({
+        url: imageUrl,
+        prompt: trimmedPrompt,
+        width:
+          typeof imageEntry?.width === "number" ? imageEntry.width : undefined,
+        height:
+          typeof imageEntry?.height === "number" ? imageEntry.height : undefined,
+      });
+      if (aiImageRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAiImageSaving(false);
+      setAiImagePreview({
+        url: generatedAsset.url,
+        assetId: generatedAsset.id,
+        name: generatedAsset.name,
+        width: generatedAsset.width,
+        height: generatedAsset.height,
+        aspectRatio: generatedAsset.aspectRatio,
+      });
+      setAssets((prev) => {
+        if (prev.some((asset) => asset.id === generatedAsset.id)) {
+          return prev;
+        }
+        return [generatedAsset, ...prev];
+      });
+      setActiveAssetId(generatedAsset.id);
+    } catch (error) {
+      if (aiImageRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAiImageStatus("error");
+      setAiImageError("Image generation failed.");
+      setAiImageSaving(false);
+    }
+  }, [aiImageAspectRatio, aiImagePrompt, createGeneratedImageAsset]);
+
+  const handleAiImageAddToTimeline = useCallback(() => {
+    if (!aiImagePreview?.assetId) {
+      return;
+    }
+    addToTimeline(aiImagePreview.assetId);
+  }, [addToTimeline, aiImagePreview?.assetId]);
+
+  const handleAiImageClear = useCallback(() => {
+    if (aiImagePreview?.assetId) {
+      handleDeleteAsset(aiImagePreview.assetId);
+    }
+    setAiImagePreview(null);
+    setAiImageError(null);
+    setAiImageMagicError(null);
+    setAiImageMagicLoading(false);
+    setAiImageStatus("idle");
+    setAiImageSaving(false);
+    setAiImageLastPrompt(null);
+    setAiImageLastAspectRatio(null);
+  }, [aiImagePreview?.assetId, handleDeleteAsset]);
+
   keyboardStateRef.current = {
     currentTime,
     timelineDuration,
@@ -14117,6 +14476,22 @@ function AdvancedEditorContent() {
     visibleStockTags,
     visibleStockVideoTags,
     visibleTextPresetGroups,
+    aiImagePrompt,
+    setAiImagePrompt,
+    aiImageAspectRatio,
+    setAiImageAspectRatio,
+    aiImageStatus,
+    aiImageError,
+    aiImagePreview,
+    aiImageSaving,
+    aiImageMagicLoading,
+    aiImageMagicError,
+    aiImageLastPrompt,
+    aiImageLastAspectRatio,
+    handleAiImageGenerate,
+    handleAiImageImprovePrompt,
+    handleAiImageClear,
+    handleAiImageAddToTimeline,
   };
 
   const handleViewportClick = (event: ReactMouseEvent<HTMLDivElement>) => {
