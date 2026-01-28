@@ -1,10 +1,10 @@
-import type React from "react";
+import type { DetailedHTMLProps, HTMLAttributes } from "react";
 
-declare global {
+declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
-      "lemon-slice-widget": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement>,
+      "lemon-slice-widget": DetailedHTMLProps<
+        HTMLAttributes<HTMLElement>,
         HTMLElement
       > & {
         "agent-id"?: string;
@@ -20,5 +20,3 @@ declare global {
     }
   }
 }
-
-export {};
