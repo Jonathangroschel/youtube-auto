@@ -286,6 +286,30 @@ type AiVoiceoverPreview = {
   voice?: string;
 };
 
+type AiBackgroundRemovalPreview = {
+  url: string;
+  assetId?: string | null;
+  clipId?: string | null;
+  sourceClipId?: string | null;
+  name?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+};
+
+type AiBackgroundRemovalSelection =
+  | { state: "empty" }
+  | { state: "multi" }
+  | { state: "invalid"; clipId: string; label?: string }
+  | {
+      state: "ready";
+      clipId: string;
+      label?: string;
+      duration: number;
+      entry: TimelineLayoutEntry;
+    };
+
 type ProjectSizeOption = {
   id: string;
   label: string;
@@ -733,6 +757,16 @@ function AdvancedEditorContent() {
   const [aiVideoLastSplitAudio, setAiVideoLastSplitAudio] = useState<
     boolean | null
   >(null);
+  const [aiBackgroundRemovalStatus, setAiBackgroundRemovalStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [aiBackgroundRemovalError, setAiBackgroundRemovalError] = useState<
+    string | null
+  >(null);
+  const [aiBackgroundRemovalPreview, setAiBackgroundRemovalPreview] =
+    useState<AiBackgroundRemovalPreview | null>(null);
+  const [aiBackgroundRemovalSubjectIsPerson, setAiBackgroundRemovalSubjectIsPerson] =
+    useState(true);
   const [aiVoiceoverScript, setAiVoiceoverScript] = useState("");
   const [aiVoiceoverSelectedVoice, setAiVoiceoverSelectedVoice] = useState<
     string | null
@@ -901,6 +935,7 @@ function AdvancedEditorContent() {
   const aiImageRequestIdRef = useRef(0);
   const aiVideoRequestIdRef = useRef(0);
   const aiVoiceoverRequestIdRef = useRef(0);
+  const aiBackgroundRemovalRequestIdRef = useRef(0);
   const aiVoiceoverVoicesLoadIdRef = useRef(0);
   const aiVoiceoverVoicesLoadTimeoutRef = useRef<number | null>(null);
   const exportMediaCacheRef = useRef<Set<string>>(new Set());
@@ -5139,6 +5174,45 @@ function AdvancedEditorContent() {
     }
     return timelineLayout.find((entry) => entry.clip.id === id) ?? null;
   }, [activeCanvasClipId, selectedClipId, timelineLayout]);
+  const aiBackgroundRemovalSelection = useMemo<AiBackgroundRemovalSelection>(() => {
+    const candidateIds = new Set<string>();
+    if (selectedClipIds.length > 0) {
+      selectedClipIds.forEach((id) => candidateIds.add(id));
+    } else {
+      if (activeCanvasClipId) {
+        candidateIds.add(activeCanvasClipId);
+      }
+      if (selectedClipId) {
+        candidateIds.add(selectedClipId);
+      }
+    }
+    if (candidateIds.size === 0) {
+      return { state: "empty" };
+    }
+    if (candidateIds.size > 1) {
+      return { state: "multi" };
+    }
+    const [targetId] = Array.from(candidateIds);
+    const entry =
+      timelineLayout.find((item) => item.clip.id === targetId) ?? null;
+    if (!entry) {
+      return { state: "empty" };
+    }
+    if (entry.asset.kind !== "video") {
+      return {
+        state: "invalid",
+        clipId: targetId,
+        label: entry.asset.name ?? "Clip",
+      };
+    }
+    return {
+      state: "ready",
+      clipId: targetId,
+      label: entry.asset.name ?? "Clip",
+      duration: entry.clip.duration,
+      entry,
+    };
+  }, [activeCanvasClipId, selectedClipId, selectedClipIds, timelineLayout]);
   const floatingMenuEntry = useMemo(() => {
     if (!floatingMenu.clipId) {
       return null;
@@ -12204,6 +12278,199 @@ function AdvancedEditorContent() {
     pushHistory,
   ]);
 
+  const createBackgroundRemovedAsset = useCallback(
+    async (payload: {
+      url: string;
+      sourceName?: string;
+      durationHint?: number;
+      aspectRatioHint?: number;
+    }): Promise<MediaAsset> => {
+      const existing = assetsRef.current.find(
+        (asset) => asset.kind === "video" && asset.url === payload.url
+      );
+      if (existing) {
+        return existing;
+      }
+      const baseName = payload.sourceName?.trim() || "Clip";
+      const name = `Background Removed - ${baseName}`;
+      const meta = await getMediaMeta("video", payload.url);
+      const resolvedDuration =
+        Number.isFinite(meta.duration) && meta.duration
+          ? meta.duration
+          : payload.durationHint;
+      const resolvedAspectRatio = meta.aspectRatio ?? payload.aspectRatioHint;
+      const libraryAsset = await createExternalAssetSafe({
+        url: payload.url,
+        name,
+        kind: "video",
+        source: "generated",
+        duration: resolvedDuration,
+        width: meta.width,
+        height: meta.height,
+        aspectRatio: resolvedAspectRatio,
+      });
+      return {
+        id: libraryAsset?.id ?? crypto.randomUUID(),
+        name: libraryAsset?.name || name,
+        kind: "video",
+        url: libraryAsset?.url ?? payload.url,
+        size: libraryAsset?.size ?? 0,
+        duration: libraryAsset?.duration ?? resolvedDuration,
+        width: libraryAsset?.width ?? meta.width,
+        height: libraryAsset?.height ?? meta.height,
+        aspectRatio: libraryAsset?.aspectRatio ?? resolvedAspectRatio,
+        createdAt: libraryAsset?.createdAt ?? Date.now(),
+      };
+    },
+    []
+  );
+
+  const handleAiBackgroundRemoval = useCallback(async () => {
+    if (aiBackgroundRemovalSelection.state === "empty") {
+      setAiBackgroundRemovalError("Select a clip.");
+      return;
+    }
+    if (aiBackgroundRemovalSelection.state === "multi") {
+      setAiBackgroundRemovalError("Select one clip.");
+      return;
+    }
+    if (aiBackgroundRemovalSelection.state !== "ready") {
+      setAiBackgroundRemovalError("Select a video clip.");
+      return;
+    }
+
+    const entry = aiBackgroundRemovalSelection.entry;
+    const sourceUrl =
+      typeof entry.asset.url === "string" ? entry.asset.url.trim() : "";
+    if (!sourceUrl) {
+      setAiBackgroundRemovalError("Selected clip has no source URL.");
+      return;
+    }
+
+    const requestId = aiBackgroundRemovalRequestIdRef.current + 1;
+    aiBackgroundRemovalRequestIdRef.current = requestId;
+    setAiBackgroundRemovalError(null);
+    setAiBackgroundRemovalStatus("loading");
+    try {
+      const response = await fetch("/api/ai-background-removal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: sourceUrl,
+          subjectIsPerson: aiBackgroundRemovalSubjectIsPerson,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message =
+          typeof data?.error === "string" && data.error.length > 0
+            ? data.error
+            : "Background removal failed.";
+        setAiBackgroundRemovalStatus("error");
+        setAiBackgroundRemovalError(message);
+        return;
+      }
+      const videoEntry = data?.video ?? data?.output?.video ?? null;
+      const videoArray = Array.isArray(videoEntry) ? videoEntry : null;
+      const outputUrl =
+        typeof videoEntry?.url === "string"
+          ? videoEntry.url
+          : typeof videoArray?.[0]?.url === "string"
+            ? videoArray[0].url
+          : typeof data?.video_url === "string"
+            ? data.video_url
+            : typeof data?.videoUrl === "string"
+              ? data.videoUrl
+              : typeof data?.video === "string"
+                ? data.video
+                : null;
+      if (!outputUrl) {
+        setAiBackgroundRemovalStatus("error");
+        setAiBackgroundRemovalError("Background removal returned no video.");
+        return;
+      }
+      if (aiBackgroundRemovalRequestIdRef.current !== requestId) {
+        return;
+      }
+      const generatedAsset = await createBackgroundRemovedAsset({
+        url: outputUrl,
+        sourceName: entry.asset.name,
+        durationHint: entry.asset.duration ?? entry.clip.duration,
+        aspectRatioHint: entry.asset.aspectRatio,
+      });
+      if (aiBackgroundRemovalRequestIdRef.current !== requestId) {
+        return;
+      }
+      const nextLanes = [...lanesRef.current];
+      const laneId = createLaneId("video", nextLanes, { placement: "top" });
+      const newClip: TimelineClip = {
+        id: crypto.randomUUID(),
+        assetId: generatedAsset.id,
+        duration: entry.clip.duration,
+        startOffset: entry.clip.startOffset,
+        startTime: entry.clip.startTime,
+        laneId,
+      };
+      const sourceSettings = clipSettingsRef.current[entry.clip.id];
+      const sourceTransform = clipTransforms[entry.clip.id];
+      setAiBackgroundRemovalPreview({
+        url: generatedAsset.url,
+        assetId: generatedAsset.id,
+        clipId: newClip.id,
+        sourceClipId: entry.clip.id,
+        name: generatedAsset.name,
+        duration: generatedAsset.duration,
+        width: generatedAsset.width,
+        height: generatedAsset.height,
+        aspectRatio: generatedAsset.aspectRatio,
+      });
+      setAiBackgroundRemovalStatus("ready");
+      setIsBackgroundSelected(false);
+      pushHistory();
+      setLanes(nextLanes);
+      setTimeline((prev) => [...prev, newClip]);
+      if (sourceSettings) {
+        setClipSettings((prev) => ({
+          ...prev,
+          [newClip.id]: cloneVideoSettings(sourceSettings),
+        }));
+      }
+      if (sourceTransform) {
+        setClipTransforms((prev) => ({
+          ...prev,
+          [newClip.id]: { ...sourceTransform },
+        }));
+      }
+      setAssets((prev) => {
+        if (prev.some((asset) => asset.id === generatedAsset.id)) {
+          return prev;
+        }
+        return [generatedAsset, ...prev];
+      });
+      setSelectedClipIds([newClip.id]);
+      setSelectedClipId(newClip.id);
+      setActiveCanvasClipId(newClip.id);
+      setActiveAssetId(generatedAsset.id);
+    } catch (error) {
+      if (aiBackgroundRemovalRequestIdRef.current !== requestId) {
+        return;
+      }
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Background removal failed.";
+      setAiBackgroundRemovalStatus("error");
+      setAiBackgroundRemovalError(message);
+    }
+  }, [
+    aiBackgroundRemovalSelection,
+    aiBackgroundRemovalSubjectIsPerson,
+    clipTransforms,
+    createBackgroundRemovedAsset,
+    createLaneId,
+    pushHistory,
+  ]);
+
   const createGeneratedVoiceoverAsset = useCallback(
     async (payload: {
       url: string;
@@ -15746,6 +16013,13 @@ function AdvancedEditorContent() {
     handleAiVideoGenerate,
     handleAiVideoImprovePrompt,
     handleAiVideoClear,
+    aiBackgroundRemovalStatus,
+    aiBackgroundRemovalError,
+    aiBackgroundRemovalPreview,
+    aiBackgroundRemovalSubjectIsPerson,
+    setAiBackgroundRemovalSubjectIsPerson,
+    aiBackgroundRemovalSelection,
+    handleAiBackgroundRemoval,
     aiVoiceoverScript,
     setAiVoiceoverScript,
     aiVoiceoverSelectedVoice,

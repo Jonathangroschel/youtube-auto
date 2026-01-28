@@ -19,7 +19,6 @@ import {
   ImageIcon,
   Lightbulb,
   Mic,
-  Music,
   Sparkles,
   Upload,
   Video as VideoIcon,
@@ -84,8 +83,16 @@ type EditorSidebarProps = {
     updater: (current: TextClipSettings) => TextClipSettings
   ) => void;
   selectedClipId: string | null;
+  selectedClipIds?: string[];
   handleSubtitlePreview: (segment: SubtitleSegmentEntry) => void;
   setActiveTool: (tool: string) => void;
+  aiBackgroundRemovalStatus?: "idle" | "loading" | "ready" | "error";
+  aiBackgroundRemovalError?: string | null;
+  aiBackgroundRemovalPreview?: AiBackgroundRemovalPreview | null;
+  aiBackgroundRemovalSubjectIsPerson?: boolean;
+  setAiBackgroundRemovalSubjectIsPerson?: (value: boolean) => void;
+  aiBackgroundRemovalSelection?: AiBackgroundRemovalSelection | null;
+  handleAiBackgroundRemoval?: () => void;
 } & Record<string, any>;
 
 type SubtitleSegmentEntry = {
@@ -116,6 +123,22 @@ type AiToolConfig = {
   outputKind: AiToolOutputKind;
   chipLabel?: string;
   chips?: string[];
+};
+
+type AiBackgroundRemovalSelection = {
+  state: "empty" | "multi" | "invalid" | "ready";
+  clipId?: string | null;
+  label?: string | null;
+  duration?: number | null;
+};
+
+type AiBackgroundRemovalPreview = {
+  url?: string | null;
+  assetId?: string | null;
+  clipId?: string | null;
+  sourceClipId?: string | null;
+  name?: string | null;
+  duration?: number | null;
 };
 
 const aiToolConfigs: AiToolConfig[] = [
@@ -176,20 +199,18 @@ const aiToolConfigs: AiToolConfig[] = [
     outputKind: "preview",
   },
   {
-    id: "ai-vocal-remover",
-    title: "Stem Splitter",
-    description: "Separate vocals and instrumental stems.",
-    icon: Music,
+    id: "ai-background-removal",
+    title: "Background Removal",
+    description: "Remove the background from a selected clip.",
+    icon: Sparkles,
     gradient: "from-indigo-50 to-blue-100",
-    inputLabel: "Upload audio",
-    inputPlaceholder: "Drop a song to isolate stems",
+    inputLabel: "Clip",
+    inputPlaceholder: "Select a clip on the timeline",
     inputKind: "dropzone",
-    actionLabel: "Separate Stems",
-    outputLabel: "Stems",
-    outputHint: "Vocals and instrumental files appear here.",
-    outputKind: "list",
-    chipLabel: "Output",
-    chips: ["Vocals", "Instrumental", "Both"],
+    actionLabel: "Remove Background",
+    outputLabel: "Result",
+    outputHint: "The new clip is added to your timeline.",
+    outputKind: "preview",
   },
   {
     id: "ai-brainstormer",
@@ -516,6 +537,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     handleAiVideoGenerate,
     handleAiVideoImprovePrompt,
     handleAiVideoClear,
+    aiBackgroundRemovalStatus,
+    aiBackgroundRemovalError,
+    aiBackgroundRemovalPreview,
+    aiBackgroundRemovalSubjectIsPerson,
+    setAiBackgroundRemovalSubjectIsPerson,
+    aiBackgroundRemovalSelection,
+    handleAiBackgroundRemoval,
     aiVoiceoverScript,
     setAiVoiceoverScript,
     aiVoiceoverSelectedVoice,
@@ -1147,6 +1175,43 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const canGenerateAiVideo =
     resolvedAiVideoPrompt.trim().length > 0 &&
     resolvedAiVideoStatus !== "loading";
+  const resolvedAiBackgroundRemovalStatus =
+    typeof aiBackgroundRemovalStatus === "string" ? aiBackgroundRemovalStatus : "idle";
+  const resolvedAiBackgroundRemovalError =
+    typeof aiBackgroundRemovalError === "string" ? aiBackgroundRemovalError : null;
+  const resolvedAiBackgroundRemovalSelection =
+    aiBackgroundRemovalSelection && typeof aiBackgroundRemovalSelection === "object"
+      ? (aiBackgroundRemovalSelection as AiBackgroundRemovalSelection)
+      : { state: "empty" };
+  const resolvedAiBackgroundRemovalPreview =
+    aiBackgroundRemovalPreview && typeof aiBackgroundRemovalPreview === "object"
+      ? (aiBackgroundRemovalPreview as AiBackgroundRemovalPreview)
+      : null;
+  const resolvedAiBackgroundRemovalSubjectIsPerson =
+    typeof aiBackgroundRemovalSubjectIsPerson === "boolean"
+      ? aiBackgroundRemovalSubjectIsPerson
+      : true;
+  const backgroundRemovalDuration =
+    typeof resolvedAiBackgroundRemovalSelection.duration === "number" &&
+    Number.isFinite(resolvedAiBackgroundRemovalSelection.duration)
+      ? resolvedAiBackgroundRemovalSelection.duration
+      : null;
+  const backgroundRemovalSelectionMessage =
+    resolvedAiBackgroundRemovalSelection.state === "multi"
+      ? "Select one clip."
+      : resolvedAiBackgroundRemovalSelection.state === "invalid"
+        ? "Select a video clip."
+        : "Select a clip.";
+  const canRemoveBackground =
+    resolvedAiBackgroundRemovalSelection.state === "ready" &&
+    resolvedAiBackgroundRemovalStatus !== "loading";
+  const showBackgroundRemovalAdded =
+    resolvedAiBackgroundRemovalStatus === "ready" &&
+    typeof resolvedAiBackgroundRemovalSelection.clipId === "string" &&
+    (resolvedAiBackgroundRemovalPreview?.clipId ===
+      resolvedAiBackgroundRemovalSelection.clipId ||
+      resolvedAiBackgroundRemovalPreview?.sourceClipId ===
+        resolvedAiBackgroundRemovalSelection.clipId);
   const resolvedAiVoiceoverScript =
     typeof aiVoiceoverScript === "string" ? aiVoiceoverScript : "";
   const resolvedAiVoiceoverStatus =
@@ -7703,6 +7768,85 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </button>
                               </div>
                             )}
+                          </div>
+                        </div>
+                      ) : activeAiTool.id === "ai-background-removal" ? (
+                        <div className="space-y-3">
+                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                Clip
+                              </p>
+                              {resolvedAiBackgroundRemovalStatus === "loading" ? (
+                                <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-600">
+                                  Working
+                                </span>
+                              ) : showBackgroundRemovalAdded ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-600">
+                                  Added
+                                </span>
+                              ) : null}
+                            </div>
+                            {resolvedAiBackgroundRemovalSelection.state === "ready" ? (
+                              <div className="mt-3 rounded-xl border border-gray-100 bg-white px-3 py-2">
+                                <p className="truncate text-xs font-semibold text-gray-900">
+                                  {resolvedAiBackgroundRemovalSelection.label ?? "Selected clip"}
+                                </p>
+                                {backgroundRemovalDuration !== null && (
+                                  <p className="text-[10px] text-gray-400">
+                                    {formatDuration(backgroundRemovalDuration)}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs font-semibold text-gray-400">
+                                {backgroundRemovalSelectionMessage}
+                              </div>
+                            )}
+                            <div className="mt-4 flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                              <p className="text-sm font-semibold text-gray-900">
+                                Subject is person
+                              </p>
+                              <ToggleSwitch
+                                checked={resolvedAiBackgroundRemovalSubjectIsPerson}
+                                onChange={(next) => {
+                                  if (
+                                    typeof setAiBackgroundRemovalSubjectIsPerson ===
+                                    "function"
+                                  ) {
+                                    setAiBackgroundRemovalSubjectIsPerson(next);
+                                  }
+                                }}
+                                ariaLabel="Subject is person"
+                              />
+                            </div>
+                            {resolvedAiBackgroundRemovalError && (
+                              <p className="mt-2 text-[11px] font-semibold text-rose-500">
+                                {resolvedAiBackgroundRemovalError}
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
+                                resolvedAiBackgroundRemovalStatus === "loading" ||
+                                !canRemoveBackground
+                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
+                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                              }`}
+                              onClick={() => {
+                                if (typeof handleAiBackgroundRemoval === "function") {
+                                  handleAiBackgroundRemoval();
+                                }
+                              }}
+                              disabled={
+                                resolvedAiBackgroundRemovalStatus === "loading" ||
+                                !canRemoveBackground
+                              }
+                            >
+                              {resolvedAiBackgroundRemovalStatus === "loading"
+                                ? "Removing Background..."
+                                : activeAiTool.actionLabel}
+                            </button>
                           </div>
                         </div>
                       ) : activeAiTool.id === "ai-voiceover" ? (
