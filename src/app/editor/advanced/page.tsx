@@ -1110,6 +1110,8 @@ function AdvancedEditorContent() {
   const [mainHeight, setMainHeight] = useState(0);
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const playheadLineRef = useRef<HTMLSpanElement | null>(null);
+  const playheadHandleRef = useRef<HTMLButtonElement | null>(null);
   const timelineThumbnailsRef = useRef<
     Record<string, { key: string; frames: string[] }>
   >({});
@@ -1123,6 +1125,7 @@ function AdvancedEditorContent() {
   const visualRefs = useRef(new Map<string, HTMLVideoElement | null>());
   const audioRefs = useRef(new Map<string, HTMLAudioElement | null>());
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const playheadVisualTimeRef = useRef(currentTime);
   const stockDurationCacheRef = useRef<Map<string, number | null>>(new Map());
   const stockAudioMetaLoadingRef = useRef<Set<string>>(new Set());
   const stockMusicLoadTimeoutRef = useRef<number | null>(null);
@@ -6487,6 +6490,8 @@ function AdvancedEditorContent() {
   const playheadLeftAbsolutePx =
     clampedCurrentTime * timelineScale + timelinePadding;
   const playheadLeftContentPx = playheadLeftAbsolutePx - timelinePadding;
+  const playheadContentTransform = `translate3d(${playheadLeftContentPx}px, 0, 0) translateX(-50%)`;
+  const playheadAbsoluteTransform = `translate3d(${playheadLeftAbsolutePx}px, 0, 0) translateX(-50%)`;
   const playheadOverlayZIndex = 2147483647;
 
   const tickStep = useMemo(() => {
@@ -8397,6 +8402,24 @@ function AdvancedEditorContent() {
     handleScrubTo(event.clientX);
   };
 
+  // Direct DOM updates keep the playhead smooth without forcing React re-renders.
+  const updatePlayheadDom = useCallback(
+    (time: number) => {
+      const clamped = clamp(time, 0, timelineDuration);
+      const absoluteLeft = clamped * timelineScale + timelinePadding;
+      const contentLeft = absoluteLeft - timelinePadding;
+      const contentTransform = `translate3d(${contentLeft}px, 0, 0) translateX(-50%)`;
+      const absoluteTransform = `translate3d(${absoluteLeft}px, 0, 0) translateX(-50%)`;
+      if (playheadLineRef.current) {
+        playheadLineRef.current.style.transform = contentTransform;
+      }
+      if (playheadHandleRef.current) {
+        playheadHandleRef.current.style.transform = absoluteTransform;
+      }
+    },
+    [timelineDuration, timelineScale, timelinePadding]
+  );
+
   const getSubtitlePlaybackTime = useCallback(
     (time: number) => {
       const audioEntry = getClipAtTime(time, "audio");
@@ -8421,7 +8444,7 @@ function AdvancedEditorContent() {
   // The loop uses playbackTimeRef internally and including currentTime would cause
   // the effect to restart every UI update, breaking smooth playback
   const playbackStartTimeRef = useRef(currentTime);
-  
+
   useEffect(() => {
     if (!isPlaying) {
       return;
@@ -8433,7 +8456,9 @@ function AdvancedEditorContent() {
     const startTime = playbackTimeRef.current;
     playbackStartTimeRef.current = startTime;
     playbackUiTickRef.current = last;
-    
+    playheadVisualTimeRef.current = startTime;
+    updatePlayheadDom(startTime);
+
     const tick = (timestamp: number) => {
       const deltaSeconds = (timestamp - last) / 1000;
       last = timestamp;
@@ -8446,6 +8471,8 @@ function AdvancedEditorContent() {
           : rawNext + drift * 0.2;
       if (next >= projectDuration) {
         playbackTimeRef.current = projectDuration;
+        playheadVisualTimeRef.current = projectDuration;
+        updatePlayheadDom(projectDuration);
         startTransition(() => {
           setCurrentTime(projectDuration);
         });
@@ -8455,7 +8482,16 @@ function AdvancedEditorContent() {
         return;
       }
       playbackTimeRef.current = next;
-      
+      const smoothing = 1 - Math.exp(-deltaSeconds * 18);
+      const visualPrev = playheadVisualTimeRef.current;
+      const jumpThreshold = frameStepSeconds * 6;
+      const visualNext =
+        Math.abs(next - visualPrev) > jumpThreshold
+          ? next
+          : visualPrev + (next - visualPrev) * smoothing;
+      playheadVisualTimeRef.current = visualNext;
+      updatePlayheadDom(visualNext);
+
       // Update subtitles every frame for perfect sync
       updateSubtitleForTimeRef.current(next);
       
@@ -8474,13 +8510,26 @@ function AdvancedEditorContent() {
     updateSubtitleForTimeRef.current(getSubtitlePlaybackTime(startTime));
     frameId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frameId);
-  }, [getSubtitlePlaybackTime, isPlaying, projectDuration, startTransition]);
+  }, [
+    getSubtitlePlaybackTime,
+    isPlaying,
+    projectDuration,
+    startTransition,
+    updatePlayheadDom,
+  ]);
 
   useEffect(() => {
     if (!isPlaying) {
       playbackTimeRef.current = currentTime;
     }
   }, [currentTime, isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      updatePlayheadDom(currentTime);
+      playheadVisualTimeRef.current = currentTime;
+    }
+  }, [currentTime, isPlaying, updatePlayheadDom]);
 
   // Initial sync when playback starts - seeks all visible clips to correct position
   // Uses playbackTimeRef which is kept in sync with currentTime when not playing
@@ -16364,9 +16413,11 @@ function AdvancedEditorContent() {
                 >
                   {timelineLaneRows}
                   <span
-                    className="pointer-events-none absolute top-0 bottom-0 w-[2px] -translate-x-1/2 bg-[#335CFF]"
+                    ref={playheadLineRef}
+                    className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] bg-[#335CFF]"
                     style={{
-                      left: `${playheadLeftContentPx}px`,
+                      transform: playheadContentTransform,
+                      willChange: isPlaying ? "transform" : "auto",
                       zIndex: 50,
                     }}
                     aria-hidden="true"
@@ -16395,9 +16446,11 @@ function AdvancedEditorContent() {
                   <button
                     type="button"
                     aria-label="Drag playhead"
-                    className="pointer-events-auto absolute top-4 bottom-4 w-6 -translate-x-1/2 cursor-ew-resize border-0 bg-transparent p-0 focus:outline-none"
+                    ref={playheadHandleRef}
+                    className="pointer-events-auto absolute left-0 top-4 bottom-4 w-6 cursor-ew-resize border-0 bg-transparent p-0 focus:outline-none"
                     style={{
-                      left: `${playheadLeftAbsolutePx}px`,
+                      transform: playheadAbsoluteTransform,
+                      willChange: isPlaying ? "transform" : "auto",
                     }}
                     onPointerDown={handlePlayheadPointerDown}
                   >
