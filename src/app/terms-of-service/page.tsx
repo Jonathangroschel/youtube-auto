@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Terms of Service - Satura",
+  title: "Terms of Service",
   description: "Terms of Service for Satura - Read our terms and conditions for using our video editing and content creation platform.",
 };
 
@@ -26,7 +26,7 @@ export default function TermsOfServicePage() {
           <section className="mb-8">
             <h2 className="mb-4 text-2xl font-semibold text-gray-900">1. Agreement to Terms</h2>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              These Terms of Service (&quot;Terms&quot;) constitute a legally binding agreement between you (&quot;you&quot; or &quot;User&quot;) and Satura (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) governing your access to and use of the saturaai.com website and our video editing, content creation, and automation services (collectively, the &quot;Service&quot;).
+              These Terms of Service (&quot;Terms&quot;) constitute a legally binding agreement between you (&quot;you&quot; or &quot;User&quot;) and Satura Inc. (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) governing your access to and use of the saturaai.com website and our video editing, content creation, and automation services (collectively, the &quot;Service&quot;).
             </p>
             <p className="mb-4 text-gray-600 leading-relaxed">
               By accessing or using the Service, you agree to be bound by these Terms. If you do not agree to these Terms, you may not access or use the Service. We reserve the right to modify these Terms at any time, and such modifications will be effective immediately upon posting. Your continued use of the Service following any modifications indicates your acceptance of the modified Terms.
@@ -156,7 +156,7 @@ export default function TermsOfServicePage() {
             
             <h3 className="mb-3 text-xl font-medium text-gray-800">7.1 Our Intellectual Property</h3>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              The Service and its original content (excluding User Content), features, and functionality are and will remain the exclusive property of Satura and its licensors. The Service is protected by copyright, trademark, and other intellectual property laws. Our trademarks and trade dress may not be used in connection with any product or service without our prior written consent.
+              The Service and its original content (excluding User Content), features, and functionality are and will remain the exclusive property of Satura Inc. and its licensors. The Service is protected by copyright, trademark, and other intellectual property laws. Our trademarks and trade dress may not be used in connection with any product or service without our prior written consent.
             </p>
 
             <h3 className="mb-3 text-xl font-medium text-gray-800">7.2 License to Use the Service</h3>
@@ -185,7 +185,7 @@ export default function TermsOfServicePage() {
           <section className="mb-8">
             <h2 className="mb-4 text-2xl font-semibold text-gray-900">10. Limitation of Liability</h2>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL SATURA, ITS AFFILIATES, OFFICERS, DIRECTORS, EMPLOYEES, AGENTS, OR LICENSORS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM:
+              TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL SATURA INC., ITS AFFILIATES, OFFICERS, DIRECTORS, EMPLOYEES, AGENTS, OR LICENSORS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM:
             </p>
             <ul className="mb-4 list-disc pl-6 text-gray-600 space-y-2">
               <li>Your access to or use of or inability to access or use the Service</li>
@@ -201,7 +201,7 @@ export default function TermsOfServicePage() {
           <section className="mb-8">
             <h2 className="mb-4 text-2xl font-semibold text-gray-900">11. Indemnification</h2>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              You agree to defend, indemnify, and hold harmless Satura and its affiliates, officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses, including reasonable attorneys&apos; fees, arising out of or in any way connected with:
+              You agree to defend, indemnify, and hold harmless Satura Inc. and its affiliates, officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses, including reasonable attorneys&apos; fees, arising out of or in any way connected with:
             </p>
             <ul className="mb-4 list-disc pl-6 text-gray-600 space-y-2">
               <li>Your access to or use of the Service</li>
@@ -236,7 +236,7 @@ export default function TermsOfServicePage() {
             
             <h3 className="mb-3 text-xl font-medium text-gray-800">14.1 Entire Agreement</h3>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              These Terms, together with our Privacy Policy, constitute the entire agreement between you and Satura regarding the Service and supersede any prior agreements.
+              These Terms, together with our Privacy Policy, constitute the entire agreement between you and Satura Inc. regarding the Service and supersede any prior agreements.
             </p>
 
             <h3 className="mb-3 text-xl font-medium text-gray-800">14.2 Severability</h3>
@@ -261,7 +261,7 @@ export default function TermsOfServicePage() {
               If you have any questions about these Terms of Service, please contact us at:
             </p>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-              <p className="mb-2 text-gray-700"><strong>Satura</strong></p>
+              <p className="mb-2 text-gray-700"><strong>Satura Inc.</strong></p>
               <p className="mb-2 text-gray-600">Email: ytautomations@proton.me</p>
               <p className="text-gray-600">Website: saturaai.com</p>
             </div>
@@ -273,7 +273,7 @@ export default function TermsOfServicePage() {
       <footer className="border-t border-gray-200 bg-gray-50">
         <div className="mx-auto max-w-4xl px-6 py-8">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <p className="text-sm text-gray-500">© 2026 Satura. All rights reserved.</p>
+            <p className="text-sm text-gray-500">© 2026 Satura Inc. All rights reserved.</p>
             <div className="flex gap-6">
               <a href="/privacy-policy" className="text-sm text-gray-600 hover:text-gray-900">Privacy Policy</a>
               <a href="/terms-of-service" className="text-sm text-gray-600 hover:text-gray-900">Terms of Service</a>

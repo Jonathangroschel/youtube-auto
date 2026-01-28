@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy - Satura",
+  title: "Privacy Policy",
   description: "Privacy Policy for Satura - Learn how we collect, use, and protect your personal information.",
 };
 
@@ -26,7 +26,7 @@ export default function PrivacyPolicyPage() {
           <section className="mb-8">
             <h2 className="mb-4 text-2xl font-semibold text-gray-900">1. Introduction</h2>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              Welcome to Satura (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). We are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our website located at saturaai.com and our video editing and content creation services (collectively, the &quot;Service&quot;).
+              Welcome to Satura Inc. (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). We are committed to protecting your privacy and ensuring the security of your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our website located at saturaai.com and our video editing and content creation services (collectively, the &quot;Service&quot;).
             </p>
             <p className="mb-4 text-gray-600 leading-relaxed">
               Please read this Privacy Policy carefully. By accessing or using our Service, you acknowledge that you have read, understood, and agree to be bound by this Privacy Policy. If you do not agree with the terms of this Privacy Policy, please do not access or use the Service.
@@ -184,7 +184,7 @@ export default function PrivacyPolicyPage() {
               If you have any questions about this Privacy Policy or our privacy practices, please contact us at:
             </p>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-              <p className="mb-2 text-gray-700"><strong>Satura</strong></p>
+              <p className="mb-2 text-gray-700"><strong>Satura Inc.</strong></p>
               <p className="mb-2 text-gray-600">Email: ytautomations@proton.me</p>
               <p className="text-gray-600">Website: saturaai.com</p>
             </div>
@@ -196,7 +196,7 @@ export default function PrivacyPolicyPage() {
       <footer className="border-t border-gray-200 bg-gray-50">
         <div className="mx-auto max-w-4xl px-6 py-8">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <p className="text-sm text-gray-500">© 2026 Satura. All rights reserved.</p>
+            <p className="text-sm text-gray-500">© 2026 Satura Inc. All rights reserved.</p>
             <div className="flex gap-6">
               <a href="/privacy-policy" className="text-sm text-gray-600 hover:text-gray-900">Privacy Policy</a>
               <a href="/terms-of-service" className="text-sm text-gray-600 hover:text-gray-900">Terms of Service</a>
