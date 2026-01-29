@@ -108,15 +108,6 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden bg-white border-t border-gray-100">
           <div className="px-4 py-4 space-y-3">
-            <Link href="#" className="block text-gray-600 hover:text-gray-900 text-sm font-medium py-2">
-              Features
-            </Link>
-            <Link href="#" className="block text-gray-600 hover:text-gray-900 text-sm font-medium py-2">
-              Resources
-            </Link>
-            <Link href="#" className="block text-gray-600 hover:text-gray-900 text-sm font-medium py-2">
-              Blog
-            </Link>
             <Button 
               onClick={() => {
                 setMobileMenuOpen(false);
