@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server-client";
 import Navbar from "@/components/landing/Navbar";
 import Hero from "@/components/landing/Hero";
 import VideoSection from "@/components/landing/VideoSection";
@@ -12,16 +10,9 @@ import CoFounder from "@/components/landing/CoFounder";
 import FAQs from "@/components/landing/FAQs";
 import Footer from "@/components/landing/Footer";
 
-export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export const dynamic = "force-static";
 
-  if (user) {
-    redirect("/dashboard");
-  }
-
+export default function Home() {
   return (
     <main className="min-h-screen bg-white">
       <Navbar />
