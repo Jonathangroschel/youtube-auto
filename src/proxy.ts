@@ -7,14 +7,12 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     * - api routes (for now, can add auth later if needed)
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp4)$|api).*)",
+    // Only run auth/session middleware on app/auth routes (keeps marketing pages cacheable and public).
+    "/dashboard/:path*",
+    "/editor/:path*",
+    "/projects/:path*",
+    "/assets/:path*",
+    "/tools/:path*",
+    "/login",
   ],
 };
