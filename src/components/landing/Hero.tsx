@@ -107,6 +107,24 @@ export default function Hero() {
           </div>
         </form>
 
+        <p className="text-gray-500 text-xs max-w-md mx-auto mb-6">
+          By joining, you agree to our{" "}
+          <a
+            href="/terms-of-service"
+            className="underline underline-offset-2 hover:text-gray-700"
+          >
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a
+            href="/privacy-policy"
+            className="underline underline-offset-2 hover:text-gray-700"
+          >
+            Privacy Policy
+          </a>
+          .
+        </p>
+
         {/* Status Message */}
         {message && (
           <p className={`text-sm mb-4 ${status === "success" ? "text-green-600" : "text-red-500"}`}>

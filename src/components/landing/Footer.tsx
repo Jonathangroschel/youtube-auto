@@ -20,9 +20,9 @@ const footerLinks = {
     { label: "Video & Image Background Remover", href: "#" },
   ],
   legal: [
-    { label: "Refund policy", href: "/refund-policy" },
-    { label: "Terms of service", href: "/terms-of-service" },
-    { label: "Privacy policy", href: "/privacy-policy" },
+    { label: "Refund Policy", href: "/refund-policy" },
+    { label: "Terms of Service", href: "/terms-of-service" },
+    { label: "Privacy Policy", href: "/privacy-policy" },
   ],
 };
 
