@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -7,6 +8,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+
+const SUPPORT_EMAIL = "support@saturaai.com";
 
 const faqItems = [
   {
@@ -52,8 +55,16 @@ const faqItems = [
 ];
 
 export default function FAQs() {
+  const [showToast, setShowToast] = useState(false);
+
+  const copyEmail = () => {
+    navigator.clipboard.writeText(SUPPORT_EMAIL);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
+
   return (
-    <section className="py-16 px-4 bg-white">
+    <section className="py-16 px-4 bg-white relative">
       <div className="max-w-4xl mx-auto">
         {/* Section Header */}
         <div className="text-center mb-10">
@@ -102,11 +113,25 @@ export default function FAQs() {
             <p className="text-gray-500 text-sm">Contact our 24/7 support team for any concerns or inquiries.</p>
           </div>
           <Button 
-            onClick={() => document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={copyEmail}
             className="bg-[#9aed00] hover:bg-[#8ad600] text-[#1a1240] rounded-full px-6 py-3 text-sm font-bold whitespace-nowrap"
           >
             Get in touch
           </Button>
+        </div>
+
+        {/* Toast notification */}
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+            showToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+          }`}
+        >
+          <div className="bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2">
+            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Email copied
+          </div>
         </div>
       </div>
     </section>

@@ -217,7 +217,7 @@ export default function TermsOfServicePage() {
               We may terminate or suspend your account and access to the Service immediately, without prior notice or liability, for any reason, including if you breach these Terms. Upon termination, your right to use the Service will immediately cease.
             </p>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              You may terminate your account at any time by contacting us at ytautomations@proton.me or through your account settings. Upon termination, we will delete your account and User Content within 30 days, except where we are required to retain certain information for legal purposes.
+              You may terminate your account at any time by contacting us at support@saturaai.com or through your account settings. Upon termination, we will delete your account and User Content within 30 days, except where we are required to retain certain information for legal purposes.
             </p>
           </section>
 
@@ -262,7 +262,7 @@ export default function TermsOfServicePage() {
             </p>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
               <p className="mb-2 text-gray-700"><strong>Satura Inc.</strong></p>
-              <p className="mb-2 text-gray-600">Email: ytautomations@proton.me</p>
+              <p className="mb-2 text-gray-600">Email: support@saturaai.com</p>
               <p className="text-gray-600">Website: saturaai.com</p>
             </div>
           </section>

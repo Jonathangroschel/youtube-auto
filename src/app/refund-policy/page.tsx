@@ -110,7 +110,7 @@ export default function RefundPolicyPage() {
               <li>Take legal action if necessary</li>
             </ul>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              We encourage you to contact us directly at ytautomations@proton.me before initiating any payment disputes.
+              We encourage you to contact us directly at support@saturaai.com before initiating any payment disputes.
             </p>
           </section>
 
@@ -128,7 +128,7 @@ export default function RefundPolicyPage() {
             </p>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
               <p className="mb-2 text-gray-700"><strong>Satura Inc.</strong></p>
-              <p className="mb-2 text-gray-600">Email: ytautomations@proton.me</p>
+              <p className="mb-2 text-gray-600">Email: support@saturaai.com</p>
               <p className="text-gray-600">Website: saturaai.com</p>
             </div>
           </section>

@@ -3,6 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Twitter, Instagram, MessageCircle } from "lucide-react";
+import { useState } from "react";
+
+const SUPPORT_EMAIL = "support@saturaai.com";
 
 const footerLinks = {
   workflows: [
@@ -27,8 +30,16 @@ const footerLinks = {
 };
 
 export default function Footer() {
+  const [showToast, setShowToast] = useState(false);
+
+  const copyEmail = () => {
+    navigator.clipboard.writeText(SUPPORT_EMAIL);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
+
   return (
-    <footer className="bg-[#1a1240] text-white">
+    <footer className="bg-[#1a1240] text-white relative">
       <div className="max-w-6xl mx-auto px-4 py-12">
         {/* Footer Links Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mb-12">
@@ -102,13 +113,27 @@ export default function Footer() {
             >
               <Instagram className="h-5 w-5 text-[#1a1240]" />
             </a>
-            <a
-              href="#"
+            <button
+              onClick={copyEmail}
               className="w-10 h-10 bg-[#9aed00] rounded-full flex items-center justify-center hover:bg-[#8ad600] transition-colors"
             >
               <MessageCircle className="h-5 w-5 text-[#1a1240]" />
-            </a>
+            </button>
           </div>
+        </div>
+      </div>
+
+      {/* Toast notification */}
+      <div
+        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+          showToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+        }`}
+      >
+        <div className="bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2">
+          <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Email copied
         </div>
       </div>
     </footer>

@@ -138,7 +138,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Withdraw Consent:</strong> Where we rely on consent, you can withdraw it at any time</li>
             </ul>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              To exercise any of these rights, please contact us at ytautomations@proton.me. We will respond to your request within 30 days.
+              To exercise any of these rights, please contact us at support@saturaai.com. We will respond to your request within 30 days.
             </p>
           </section>
 
@@ -167,7 +167,7 @@ export default function PrivacyPolicyPage() {
           <section className="mb-8">
             <h2 className="mb-4 text-2xl font-semibold text-gray-900">10. Children&apos;s Privacy</h2>
             <p className="mb-4 text-gray-600 leading-relaxed">
-              Our Service is not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected personal information from a child under 13, we will take steps to delete that information as soon as possible. If you believe we have collected information from a child under 13, please contact us at ytautomations@proton.me.
+              Our Service is not directed to children under the age of 13, and we do not knowingly collect personal information from children under 13. If we learn that we have collected personal information from a child under 13, we will take steps to delete that information as soon as possible. If you believe we have collected information from a child under 13, please contact us at support@saturaai.com.
             </p>
           </section>
 
@@ -185,7 +185,7 @@ export default function PrivacyPolicyPage() {
             </p>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
               <p className="mb-2 text-gray-700"><strong>Satura Inc.</strong></p>
-              <p className="mb-2 text-gray-600">Email: ytautomations@proton.me</p>
+              <p className="mb-2 text-gray-600">Email: support@saturaai.com</p>
               <p className="text-gray-600">Website: saturaai.com</p>
             </div>
           </section>
