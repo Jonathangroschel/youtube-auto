@@ -943,12 +943,23 @@ export default function TrustScorePage() {
 
 
   const topLifts = useMemo(() => {
-    // Sort by severity (high -> medium -> low -> positive/wins)
-    // Show up to 5 items, prioritizing issues over wins
-    const sorted = [...actionItems].sort(
+    // Separate issues and wins
+    const issues = actionItems.filter(i => i.severity !== "positive");
+    const wins = actionItems.filter(i => i.severity === "positive");
+    
+    // Sort issues by severity (high -> medium -> low)
+    const sortedIssues = [...issues].sort(
       (a, b) => getSeverityRank(b.severity) - getSeverityRank(a.severity)
     );
-    return sorted.slice(0, 5);
+    
+    // Take up to 4 issues, leaving room for at least 1 win if available
+    const maxIssues = wins.length > 0 ? 4 : 5;
+    const topIssues = sortedIssues.slice(0, maxIssues);
+    
+    // Add 1 win if available
+    const topWins = wins.slice(0, 1);
+    
+    return [...topIssues, ...topWins];
   }, [actionItems]);
 
   const componentBreakdown = useMemo<ComponentBreakdownItem[]>(() => {
