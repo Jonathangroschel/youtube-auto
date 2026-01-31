@@ -5,53 +5,43 @@ import { useSearchParams } from "next/navigation";
 import { login, signup } from "./actions";
 import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
+import { ShaderRipple } from "@/components/shader-ripple";
+import { ShaderVoid } from "@/components/shader-void";
+import { GradientWave } from "@/components/gradient-wave";
+import { ShaderRGB } from "@/components/shader-rgb";
+import { RenderCanvas } from "@/components/render-canvas";
 
 // Slideshow data for the right panel
 const slides = [
   {
     id: 1,
-    title: "AUTO CLIP",
-    subtitle: "Transform long videos into viral clips automatically",
-    badges: [
-      { label: "AI POWERED", icon: "sparkle", variant: "accent" },
-      { label: "Viral Ready", icon: "check", variant: "default" },
-    ],
+    title: "QUICK SUBTITLES",
+    subtitle: "Add eye-catching captions to your videos in seconds",
+    shader: "void",
   },
   {
     id: 2,
-    title: "QUICK SUBTITLES",
-    subtitle: "Add eye-catching captions to your videos in seconds",
-    badges: [
-      { label: "UNLIMITED", icon: "infinity", variant: "accent" },
-      { label: "Multi-Language", icon: "check", variant: "default" },
-    ],
+    title: "AUTO CLIP",
+    subtitle: "Transform long videos into viral clips automatically",
+    shader: "ripple",
   },
   {
     id: 3,
     title: "SPLIT SCREEN",
     subtitle: "Create engaging split-screen content effortlessly",
-    badges: [
-      { label: "TRENDING", icon: "sparkle", variant: "accent" },
-      { label: "HD Export", icon: "check", variant: "default" },
-    ],
+    shader: "wave",
   },
   {
     id: 4,
     title: "REDDIT VIDEOS",
     subtitle: "Generate viral Reddit story videos with AI narration",
-    badges: [
-      { label: "AI VOICE", icon: "sparkle", variant: "accent" },
-      { label: "Auto-Script", icon: "check", variant: "default" },
-    ],
+    shader: "rgb",
   },
   {
     id: 5,
     title: "STREAMER BLUR",
     subtitle: "Professional streamer-style video formatting instantly",
-    badges: [
-      { label: "PRO LOOK", icon: "infinity", variant: "accent" },
-      { label: "One Click", icon: "check", variant: "default" },
-    ],
+    shader: "canvas",
   },
 ];
 
@@ -72,60 +62,104 @@ const EmailIcon = () => (
   </svg>
 );
 
-const InfinityIcon = () => (
-  <svg className="w-4 h-4" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 12L15.295 15.3588C17.1149 17.2137 20.0653 17.2137 21.8851 15.3588C23.7049 13.5038 23.7049 10.4962 21.8851 8.64124C20.0653 6.78625 17.1149 6.78625 15.295 8.64124L12 12ZM12 12L8.70495 8.64124C6.88515 6.78625 3.93466 6.78625 2.11485 8.64124C0.295049 10.4962 0.295049 13.5038 2.11485 15.3588C3.93466 17.2137 6.88515 17.2137 8.70495 15.3588L12 12Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
-  </svg>
-);
-
-const SparkleIcon = () => (
-  <svg className="w-4 h-4" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path fillRule="evenodd" clipRule="evenodd" d="M17.5124 2.92678C18.1958 2.24336 19.3039 2.24336 19.9873 2.92678L21.0731 4.01256C21.7565 4.69598 21.7565 5.80402 21.0731 6.48744L6.48729 21.0732C5.80387 21.7566 4.69583 21.7566 4.01241 21.0732L2.92663 19.9874C2.24321 19.304 2.24321 18.196 2.92663 17.5126L17.5124 2.92678ZM18.9266 3.98744C18.829 3.88981 18.6707 3.88981 18.5731 3.98744L15.3105 7.25L16.7498 8.68934L20.0124 5.42678C20.11 5.32915 20.11 5.17085 20.0124 5.07322L18.9266 3.98744ZM15.6892 9.75L14.2498 8.31066L3.98729 18.5732C3.88965 18.6709 3.88966 18.8291 3.98729 18.9268L5.07307 20.0126C5.1707 20.1102 5.32899 20.1102 5.42663 20.0126L15.6892 9.75Z" fill="currentColor" />
-    <path d="M9.84993 2.07467C9.9467 2.02628 10.0252 1.94782 10.0735 1.85106L10.5518 0.894557C10.7361 0.526033 11.262 0.526033 11.4462 0.894557L11.9245 1.85106C11.9728 1.94782 12.0513 2.02628 12.1481 2.07467L13.1046 2.55292C13.4731 2.73718 13.4731 3.26308 13.1046 3.44734L12.1481 3.92559C12.0513 3.97398 11.9728 4.05244 11.9245 4.1492L11.4462 5.1057C11.262 5.47423 10.7361 5.47423 10.5518 5.1057L10.0735 4.1492C10.0252 4.05244 9.9467 3.97398 9.84993 3.92559L8.89343 3.44734C8.52491 3.26308 8.52491 2.73718 8.89343 2.55292L9.84993 2.07467Z" fill="currentColor" />
-    <path d="M18.8499 13.0747C18.9467 13.0263 19.0252 12.9478 19.0735 12.8511L19.5518 11.8946C19.736 11.526 20.262 11.526 20.4462 11.8946L20.9245 12.8511C20.9728 12.9478 21.0513 13.0263 21.1481 13.0747L22.1046 13.5529C22.4731 13.7372 22.4731 14.2631 22.1046 14.4473L21.1481 14.9256C21.0513 14.974 20.9728 15.0524 20.9245 15.1492L20.4462 16.1057C20.262 16.4742 19.736 16.4742 19.5518 16.1057L19.0735 15.1492C19.0252 15.0524 18.9467 14.974 18.8499 14.9256L17.8934 14.4473C17.5249 14.2631 17.5249 13.7372 17.8934 13.5529L18.8499 13.0747Z" fill="currentColor" />
-    <path d="M4.84993 7.07467C4.9467 7.02628 5.02516 6.94782 5.07354 6.85106L5.55179 5.89456C5.73605 5.52603 6.26195 5.52603 6.44622 5.89456L6.92447 6.85106C6.97285 6.94782 7.05131 7.02628 7.14807 7.07467L8.10458 7.55292C8.4731 7.73718 8.4731 8.26308 8.10458 8.44734L7.14807 8.92559C7.05131 8.97398 6.97285 9.05244 6.92447 9.1492L6.44622 10.1057C6.26195 10.4742 5.73605 10.4742 5.55179 10.1057L5.07354 9.1492C5.02516 9.05244 4.9467 8.97398 4.84993 8.92559L3.89343 8.44734C3.52491 8.26308 3.52491 7.73718 3.89343 7.55292L4.84993 7.07467Z" fill="currentColor" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg className="w-4 h-4" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M6.75 13.0625L9.9 16.25L17.25 7.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
 const SLIDE_DURATION = 6000; // 6 seconds per slide
+
+// Shader background component for each slide
+const SlideShaderBackground = ({ shader }: { shader: string }) => {
+  switch (shader) {
+    case "ripple":
+      return (
+        <ShaderRipple
+          color1="#FF00FF"
+          color2="#8B5CF6"
+          color3="#EC4899"
+          lineWidth={0.003}
+          className="absolute inset-0"
+        />
+      );
+    case "void":
+      return (
+        <div className="absolute inset-0 bg-black">
+          <ShaderVoid
+            voidBallsAmount={0}
+            voidBallsColor="#a855f7"
+            plasmaBallsColor="#FF00FF"
+            plasmaBallsStroke="#8B5CF6"
+            gooeyCircleSize={50}
+            blendMode="screen"
+          />
+        </div>
+      );
+    case "wave":
+      return (
+        <div className="absolute inset-0">
+          <GradientWave 
+            colors={["#a855f7", "#6366f1", "#ec4899", "#8b5cf6"]}
+          />
+        </div>
+      );
+    case "rgb":
+      return (
+        <div className="absolute inset-0">
+          <ShaderRGB />
+        </div>
+      );
+    case "canvas":
+      return (
+        <div className="absolute inset-0">
+          <RenderCanvas
+            colorHue={280}
+            colorSaturation={100}
+            colorLightness={60}
+            trails={60}
+            lineWidth={8}
+            className="w-full h-full"
+          />
+        </div>
+      );
+    default:
+      return null;
+  }
+};
 
 function LoginContent() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [currentSlide, setCurrentSlide] = useState(0); // Start with QUICK SUBTITLES (now first)
   const [slideProgress, setSlideProgress] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(searchParams.get("mode") === "signup");
+  
+  // Key to reset CSS animation on slide change
+  const [progressKey, setProgressKey] = useState(0);
 
   // Auto-advance slideshow
   useEffect(() => {
-    const progressInterval = setInterval(() => {
-      setSlideProgress((prev) => {
-        if (prev >= 100) {
-          setCurrentSlide((current) => (current + 1) % slides.length);
-          return 0;
-        }
-        return prev + (100 / (SLIDE_DURATION / 50));
-      });
-    }, 50);
+    // Start progress animation via CSS
+    setSlideProgress(100);
+    
+    const timer = setTimeout(() => {
+      setCurrentSlide((current) => (current + 1) % slides.length);
+      setSlideProgress(0);
+      setProgressKey((k) => k + 1); // Reset animation
+      // Small delay before starting next progress
+      setTimeout(() => setSlideProgress(100), 50);
+    }, SLIDE_DURATION);
 
-    return () => clearInterval(progressInterval);
-  }, []);
+    return () => clearTimeout(timer);
+  }, [currentSlide]);
 
   // Handle slide click
   const handleSlideClick = useCallback((index: number) => {
     setCurrentSlide(index);
     setSlideProgress(0);
+    setProgressKey((k) => k + 1);
+    // Start progress after brief delay
+    setTimeout(() => setSlideProgress(100), 50);
   }, []);
 
   const handleSubmit = async (formData: FormData) => {
@@ -315,35 +349,17 @@ function LoginContent() {
       {/* Right side - Slideshow (hidden on mobile) */}
       <div className="login-slideshow">
         <div className="login-slideshow-inner">
-          {/* Slides */}
+          {/* Single active slide - only render one shader at a time to prevent WebGL context exhaustion */}
           <div className="login-slides">
-            {slides.map((slide, index) => (
-              <div
-                key={slide.id}
-                className={`login-slide ${index === currentSlide ? "active" : ""}`}
-              >
-                {/* Placeholder gradient background */}
-                <div className="login-slide-placeholder" />
-                <div className="login-slide-gradient" />
-              </div>
-            ))}
+            <div className="login-slide active" key={currentSlide}>
+              {/* Only render the current shader to conserve WebGL contexts */}
+              <SlideShaderBackground shader={currentSlideData.shader} />
+              <div className="login-slide-gradient" />
+            </div>
           </div>
 
           {/* Slide content overlay */}
           <div className="login-slide-content">
-            <div className="login-slide-badges">
-              {currentSlideData.badges.map((badge, i) => (
-                <span
-                  key={i}
-                  className={`login-badge ${badge.variant === "accent" ? "login-badge--accent" : ""}`}
-                >
-                  {badge.icon === "infinity" && <InfinityIcon />}
-                  {badge.icon === "sparkle" && <SparkleIcon />}
-                  {badge.icon === "check" && <CheckIcon />}
-                  {badge.label}
-                </span>
-              ))}
-            </div>
             <h2 className="login-slide-title">{currentSlideData.title}</h2>
             <p className="login-slide-subtitle">{currentSlideData.subtitle}</p>
           </div>
@@ -359,9 +375,13 @@ function LoginContent() {
               >
                 <div className="login-nav-progress">
                   <div
-                    className="login-nav-progress-fill"
+                    key={index === currentSlide ? progressKey : `static-${index}`}
+                    className={`login-nav-progress-fill ${index === currentSlide ? "animating" : ""}`}
                     style={{
                       width: index === currentSlide ? `${slideProgress}%` : index < currentSlide ? "100%" : "0%",
+                      transition: index === currentSlide && slideProgress === 100 
+                        ? `width ${SLIDE_DURATION}ms linear` 
+                        : "none",
                     }}
                   />
                 </div>

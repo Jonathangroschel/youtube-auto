@@ -126,10 +126,8 @@ export function ShaderRipple({
         // Normalize time to loop duration
         float t = mod(time * timeScale * 0.05, loopDuration);
         
-        // Calculate smooth fade factor (0 to 1 to 0)
-        float fadeProgress = t / loopDuration;
-        float smoothFade = sin(fadeProgress * PI);
-        smoothFade = easeInOutCubic(smoothFade);
+        // Keep effect always visible - no fade
+        float smoothFade = 1.0;
 
         vec3 finalColor = vec3(0.0);
         float totalIntensity = 0.0;
@@ -209,16 +207,24 @@ export function ShaderRipple({
 
     container.appendChild(renderer.domElement);
 
-    const onWindowResize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      renderer.setSize(width, height);
-      uniforms.resolution.value.x = renderer.domElement.width;
-      uniforms.resolution.value.y = renderer.domElement.height;
+    const onResize = () => {
+      const width = container.clientWidth || 1;
+      const height = container.clientHeight || 1;
+      if (width > 1 && height > 1) {
+        renderer.setSize(width, height);
+        uniforms.resolution.value.x = renderer.domElement.width;
+        uniforms.resolution.value.y = renderer.domElement.height;
+      }
     };
 
-    onWindowResize();
-    window.addEventListener("resize", onWindowResize, false);
+    // Use ResizeObserver for better container dimension tracking
+    const resizeObserver = new ResizeObserver(() => {
+      onResize();
+    });
+    resizeObserver.observe(container);
+    
+    // Initial size with slight delay to ensure layout
+    requestAnimationFrame(onResize);
 
     const animate = () => {
       const animationId = requestAnimationFrame(animate);
@@ -241,7 +247,7 @@ export function ShaderRipple({
     animate();
 
     return () => {
-      window.removeEventListener("resize", onWindowResize);
+      resizeObserver.disconnect();
 
       if (sceneRef.current) {
         cancelAnimationFrame(sceneRef.current.animationId);
@@ -250,9 +256,12 @@ export function ShaderRipple({
           container.removeChild(sceneRef.current.renderer.domElement);
         }
 
+        // Properly dispose WebGL context
+        sceneRef.current.renderer.forceContextLoss();
         sceneRef.current.renderer.dispose();
         geometry.dispose();
         material.dispose();
+        sceneRef.current = null;
       }
     };
   }, [

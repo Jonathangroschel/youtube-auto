@@ -509,8 +509,18 @@ input[type="number"]::-webkit-inner-spin-button {
 .login-slide {
   position: absolute;
   inset: 0;
-  opacity: 0;
-  transition: opacity 0.5s ease;
+  overflow: hidden;
+  background: #0a0a0f;
+  animation: slideIn 0.5s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .login-slide.active {
@@ -523,34 +533,12 @@ input[type="number"]::-webkit-inner-spin-button {
   object-fit: cover;
 }
 
-.login-slide-placeholder {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    #1a1a2e 0%,
-    #16213e 25%,
-    #0f3460 50%,
-    #533483 75%,
-    #7c3aed 100%
-  );
-  background-size: 400% 400%;
-  animation: gradientShift 8s ease infinite;
-}
-
-@keyframes gradientShift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
+/* Gradient overlay for text readability */
 .login-slide-gradient {
   position: absolute;
   inset: 0;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.3) 40%, transparent 70%);
+  z-index: 1;
 }
 
 /* Slide content overlay */
@@ -562,38 +550,6 @@ input[type="number"]::-webkit-inner-spin-button {
   padding: 32px;
   padding-bottom: 120px;
   z-index: 2;
-}
-
-.login-slide-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.login-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  backdrop-filter: blur(40px);
-}
-
-.login-badge--accent {
-  background: #a855f7;
-  color: #fff;
-}
-
-.login-badge svg {
-  width: 14px;
-  height: 14px;
 }
 
 .login-slide-title {
