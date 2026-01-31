@@ -261,7 +261,7 @@ type ChannelSummary = {
   lastAnalyzedAt?: string | null;
   lastScore?: number | null;
   lastScoreAt?: string | null;
-  components?: Record<string, number> | null;
+  components?: Record<string, number | undefined> | null;
   publishedAt?: string | null;
 };
 
@@ -275,7 +275,7 @@ type Snapshot = {
   niche_score: number;
   swipe_avg: number | null;
   retention_avg: number | null;
-  components?: Record<string, number> | null;
+  components?: Record<string, number | undefined> | null;
   action_items?: { title: string; detail: string; severity: string }[] | null;
   data_confidence?: "high" | "medium" | "low" | "insufficient" | null;
   created_at: string;
@@ -294,7 +294,7 @@ type TrustScoreResult = {
   windowEnd: string;
   videoCount: number;
   actionItems: { title: string; detail: string; severity: string; category?: string }[];
-  components: Record<string, number>;
+  components: Record<string, number | undefined>;
   dataConfidence?: "high" | "medium" | "low" | "insufficient";
 };
 
@@ -322,7 +322,7 @@ const componentLabels: Record<string, string> = {
   channelDescription: "Description",
   entertainmentCategory: "Category focus",
   enhancements: "Enhancements",
-  engagedViewScore: "Engaged view rate",
+  engagedViewScore: "Swipe rate",
   retentionScore: "Retention",
   rewatchScore: "Rewatch",
   engagementScore: "Engagement",
@@ -363,8 +363,8 @@ const componentTooltips: Record<
     zero: "Most recent uploads are not vertical or high-res.",
   },
   engagedViewScore: {
-    summary: "Based on YouTube's engagedViews API metric — not the same as 'stayed to watch' in YouTube Studio. This is a stricter measure of who watched past the hook.",
-    zero: "Engaged view data is missing or fewer than 55% of viewers watch past the hook.",
+    summary: "Primary hook signal for Shorts. Uses Swipe rate (YouTube Studio → Viewed vs swiped away) if you add it — otherwise we estimate using YouTube's engagedViews API metric.",
+    zero: "Hook performance is low or missing — too many viewers swipe away in the first second.",
   },
   retentionScore: {
     summary: "Compares average view duration to target. Shorter Shorts have higher targets that expect looping — longer Shorts (45-60s) have more forgiving thresholds.",
@@ -387,8 +387,8 @@ const componentTooltips: Record<
     zero: "Share data is missing or share rate is below 0.01%.",
   },
   consistencyScore: {
-    summary: "Rewards frequent uploads over the last 12 days. Score is weighted down if retention or engaged view rate are below threshold — posting often only counts when the content performs.",
-    zero: "Uploads are too sparse, or other metrics (retention, engaged views) are dragging down the score.",
+    summary: "Rewards frequent uploads over the last 12 days. Score is weighted down if retention or hook strength (Swipe rate / engaged views) are below threshold — posting often only counts when the content performs.",
+    zero: "Uploads are too sparse, or other metrics (retention, hook strength) are dragging down the score.",
   },
 };
 
@@ -493,6 +493,15 @@ const formatHandle = (handle?: string | null) => {
   return trimmed ? `@${trimmed}` : "No handle";
 };
 
+const parseStudioRateInput = (value: string): number | null => {
+  const trimmed = value.trim().replace(/%$/, "").trim();
+  if (!trimmed) return null;
+  const numeric = Number.parseFloat(trimmed);
+  if (!Number.isFinite(numeric)) return null;
+  const normalized = numeric > 1.5 ? numeric / 100 : numeric;
+  return Math.min(1, Math.max(0, normalized));
+};
+
 
 
 export default function TrustScorePage() {
@@ -539,6 +548,18 @@ export default function TrustScorePage() {
   const [analysisStepIndex, setAnalysisStepIndex] = useState(0);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [studioSwipeRateInput, setStudioSwipeRateInput] = useState<string>("");
+  const [studioCommunityStrikesInput, setStudioCommunityStrikesInput] = useState<
+    "" | "0" | "1" | "2+"
+  >("");
+  const [studioCopyrightStrikeInput, setStudioCopyrightStrikeInput] = useState<
+    "" | "yes" | "no"
+  >("");
+  const [studioOriginalityInput, setStudioOriginalityInput] = useState<
+    "" | "mostly_original" | "mix" | "mostly_reused"
+  >("");
+  const [studioApplyActive, setStudioApplyActive] = useState(false);
+  const [studioApplyError, setStudioApplyError] = useState<string | null>(null);
   const [disconnectingChannelId, setDisconnectingChannelId] = useState<string | null>(null);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const autoAnalyzeTriggeredRef = useRef(false);
@@ -667,8 +688,43 @@ export default function TrustScorePage() {
     }
     setAnalysisResult(null);
     setAnalysisError(null);
+    setStudioApplyError(null);
+    setStudioApplyActive(false);
+    setStudioSwipeRateInput("");
+    setStudioCommunityStrikesInput("");
+    setStudioCopyrightStrikeInput("");
+    setStudioOriginalityInput("");
     loadHistory(selectedChannelId);
   }, [selectedChannelId, loadHistory]);
+
+  useEffect(() => {
+    const components = analysisResult?.components ?? history[0]?.components ?? null;
+    if (!components) {
+      return;
+    }
+
+    const storedSwipe = components.studioSwipeRate;
+    if (typeof storedSwipe === "number" && Number.isFinite(storedSwipe)) {
+      setStudioSwipeRateInput((storedSwipe * 100).toFixed(1).replace(/\.0$/, ""));
+    }
+
+    const storedCommunity = components.studioCommunityGuidelineStrikes;
+    if (typeof storedCommunity === "number" && Number.isFinite(storedCommunity)) {
+      setStudioCommunityStrikesInput(storedCommunity >= 2 ? "2+" : String(Math.max(0, storedCommunity)) as "0" | "1");
+    }
+
+    const storedCopyright = components.studioCopyrightStrike;
+    if (typeof storedCopyright === "number" && Number.isFinite(storedCopyright)) {
+      setStudioCopyrightStrikeInput(storedCopyright >= 1 ? "yes" : "no");
+    }
+
+    const storedOriginality = components.studioContentOriginality;
+    if (typeof storedOriginality === "number" && Number.isFinite(storedOriginality)) {
+      setStudioOriginalityInput(
+        storedOriginality >= 2 ? "mostly_original" : storedOriginality >= 1 ? "mix" : "mostly_reused"
+      );
+    }
+  }, [analysisResult, history]);
 
   useEffect(() => {
     if (!analysisActive) {
@@ -716,6 +772,36 @@ export default function TrustScorePage() {
     }
   }, [selectedChannelId, analysisActive]);
 
+  const buildOverridesPayload = useCallback(() => {
+    const swipeRate = parseStudioRateInput(studioSwipeRateInput);
+    const communityGuidelineStrikes =
+      studioCommunityStrikesInput === ""
+        ? null
+        : studioCommunityStrikesInput === "2+"
+          ? 2
+          : Number.parseInt(studioCommunityStrikesInput, 10);
+
+    const copyrightStrike =
+      studioCopyrightStrikeInput === ""
+        ? null
+        : studioCopyrightStrikeInput === "yes";
+
+    const contentOriginality =
+      studioOriginalityInput === "" ? null : studioOriginalityInput;
+
+    return {
+      swipeRate,
+      communityGuidelineStrikes,
+      copyrightStrike,
+      contentOriginality,
+    };
+  }, [
+    studioSwipeRateInput,
+    studioCommunityStrikesInput,
+    studioCopyrightStrikeInput,
+    studioOriginalityInput,
+  ]);
+
   const handleAnalyze = async (channelId: string) => {
     setAnalysisError(null);
     setAnalysisActive(true);
@@ -725,10 +811,11 @@ export default function TrustScorePage() {
 
     const start = Date.now();
     try {
+      const overrides = buildOverridesPayload();
       const response = await fetch("/api/trust-score/compute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelId }),
+        body: JSON.stringify({ channelId, ...overrides }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -750,6 +837,37 @@ export default function TrustScorePage() {
       setAnalysisError(message);
     } finally {
       setAnalysisActive(false);
+    }
+  };
+
+  const handleApplyStudioData = async () => {
+    if (!selectedChannelId || studioApplyActive) {
+      return;
+    }
+
+    setStudioApplyError(null);
+    setStudioApplyActive(true);
+    try {
+      const overrides = buildOverridesPayload();
+      const response = await fetch("/api/trust-score/compute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId: selectedChannelId, ...overrides }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to update trust score");
+      }
+
+      setAnalysisResult(data as TrustScoreResult);
+      await loadChannels();
+      await loadHistory(selectedChannelId);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update trust score";
+      setStudioApplyError(message);
+    } finally {
+      setStudioApplyActive(false);
     }
   };
 
@@ -804,6 +922,10 @@ export default function TrustScorePage() {
     null;
   const currentComponents =
     analysisResult?.components ?? latestSnapshot?.components ?? null;
+  const studioSwipeRateParsed = useMemo(
+    () => parseStudioRateInput(studioSwipeRateInput),
+    [studioSwipeRateInput]
+  );
   const actionItems =
     analysisResult?.actionItems ?? latestSnapshot?.action_items ?? [];
   const dataConfidence =
@@ -1360,13 +1482,29 @@ export default function TrustScorePage() {
                     <p className="mt-1 text-xs text-gray-400">{history.length} runs</p>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                    <p className="text-xs font-medium text-gray-400">Engaged view rate</p>
+                    <p className="text-xs font-medium text-gray-400">Swipe rate</p>
                     <p className="mt-2 text-2xl font-semibold text-gray-900">
-                      {analysisResult?.engagedViewAvg ?? latestSnapshot?.swipe_avg
-                        ? `${Math.min(100, Math.round((analysisResult?.engagedViewAvg ?? latestSnapshot?.swipe_avg ?? 0) * 100))}%`
-                        : "—"}
+                      {(() => {
+                        const manualSwipe = currentComponents?.studioSwipeRate;
+                        const hookRate =
+                          (typeof manualSwipe === "number" ? manualSwipe : null) ??
+                          analysisResult?.engagedViewAvg ??
+                          latestSnapshot?.swipe_avg ??
+                          null;
+
+                        if (hookRate === null || hookRate === undefined) {
+                          return "—";
+                        }
+
+                        const percent = Math.min(100, Math.round(hookRate * 1000) / 10);
+                        return `${String(percent).replace(/\\.0$/, "")}%`;
+                      })()}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">watched past hook</p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      {typeof currentComponents?.studioSwipeRate === "number"
+                        ? "from YouTube Studio"
+                        : "est. from engaged views"}
+                    </p>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5">
                     <p className="text-xs font-medium text-gray-400">Retention</p>
@@ -1502,6 +1640,96 @@ export default function TrustScorePage() {
                     </summary>
                     <div className="overflow-hidden">
                       <div key={detailsAnimKey} className="animate-details-content border-t border-gray-100 p-6 pt-4 overflow-visible">
+                        <div className="mb-6 rounded-2xl border border-gray-100 bg-gray-50/50 p-5">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">YouTube Studio data</p>
+                              <p className="mt-0.5 text-xs text-gray-400">For the most accurate score, add data YouTube doesn&apos;t share via API.</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleApplyStudioData}
+                              disabled={!selectedChannelId || analysisActive || studioApplyActive}
+                              className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {studioApplyActive ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+
+                          {studioApplyError ? (
+                            <p className="mt-2 text-xs text-rose-600">{studioApplyError}</p>
+                          ) : null}
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="text-xs text-gray-500">Swipe rate</label>
+                              <div className="mt-1.5 flex items-center gap-2">
+                                <input
+                                  inputMode="decimal"
+                                  placeholder="—"
+                                  value={studioSwipeRateInput}
+                                  onChange={(event) => setStudioSwipeRateInput(event.target.value)}
+                                  className={`w-full rounded-lg border px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200 ${
+                                    studioSwipeRateInput.trim().length > 0 && studioSwipeRateParsed === null
+                                      ? "border-rose-200 bg-rose-50/50"
+                                      : "border-gray-200 bg-white"
+                                  }`}
+                                />
+                                <span className="text-sm text-gray-400">%</span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-xs text-gray-500">Community strikes</label>
+                              <select
+                                value={studioCommunityStrikesInput}
+                                onChange={(event) =>
+                                  setStudioCommunityStrikesInput(event.target.value as "" | "0" | "1" | "2+")
+                                }
+                                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200"
+                              >
+                                <option value="">—</option>
+                                <option value="0">None</option>
+                                <option value="1">1</option>
+                                <option value="2+">2+</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-xs text-gray-500">Copyright strikes</label>
+                              <select
+                                value={studioCopyrightStrikeInput}
+                                onChange={(event) =>
+                                  setStudioCopyrightStrikeInput(event.target.value as "" | "yes" | "no")
+                                }
+                                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200"
+                              >
+                                <option value="">—</option>
+                                <option value="no">None</option>
+                                <option value="yes">Yes</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-xs text-gray-500">Content type</label>
+                              <select
+                                value={studioOriginalityInput}
+                                onChange={(event) =>
+                                  setStudioOriginalityInput(
+                                    event.target.value as "" | "mostly_original" | "mix" | "mostly_reused"
+                                  )
+                                }
+                                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200"
+                              >
+                                <option value="">—</option>
+                                <option value="mostly_original">Original</option>
+                                <option value="mix">Mixed</option>
+                                <option value="mostly_reused">Reused</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="grid gap-3 sm:grid-cols-2">
                         {breakdownItems.map((item, idx) => {
                           const tooltip = getComponentTooltip(item.key, item.score);

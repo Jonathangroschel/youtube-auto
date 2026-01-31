@@ -82,11 +82,70 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json()) as { channelId?: string };
+  const body = (await request.json()) as {
+    channelId?: string;
+    swipeRate?: number | string | null;
+    communityGuidelineStrikes?: 0 | 1 | 2 | "0" | "1" | "2" | "2+" | null;
+    copyrightStrike?: boolean | "yes" | "no" | "true" | "false" | "1" | "0" | null;
+    contentOriginality?: "mostly_original" | "mix" | "mostly_reused" | null;
+  };
   const channelId = body.channelId?.trim();
   if (!channelId) {
     return NextResponse.json({ error: "Missing channelId" }, { status: 400 });
   }
+
+  const parseRate = (value?: number | string | null): number | null => {
+    if (value === undefined || value === null) return null;
+    const numeric =
+      typeof value === "number" ? value : Number.parseFloat(String(value).trim());
+    if (!Number.isFinite(numeric)) return null;
+    const normalized = numeric > 1.5 ? numeric / 100 : numeric;
+    return Math.min(1, Math.max(0, normalized));
+  };
+
+  const parseStrikes = (value?: typeof body.communityGuidelineStrikes): 0 | 1 | 2 | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "number") {
+      if (value <= 0) return 0;
+      if (value === 1) return 1;
+      return 2;
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    if (raw.includes("+")) return 2;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return null;
+    if (parsed <= 0) return 0;
+    if (parsed === 1) return 1;
+    return 2;
+  };
+
+  const parseYesNo = (value?: typeof body.copyrightStrike): boolean | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "boolean") return value;
+    const raw = String(value).trim().toLowerCase();
+    if (!raw) return null;
+    if (["yes", "y", "true", "1"].includes(raw)) return true;
+    if (["no", "n", "false", "0"].includes(raw)) return false;
+    return null;
+  };
+
+  const parseOriginality = (
+    value?: typeof body.contentOriginality
+  ): "mostly_original" | "mix" | "mostly_reused" | null => {
+    if (value === undefined || value === null) return null;
+    if (value === "mostly_original" || value === "mix" || value === "mostly_reused") {
+      return value;
+    }
+    return null;
+  };
+
+  const overrides = {
+    swipeRate: parseRate(body.swipeRate),
+    communityGuidelineStrikes: parseStrikes(body.communityGuidelineStrikes),
+    copyrightStrike: parseYesNo(body.copyrightStrike),
+    contentOriginality: parseOriginality(body.contentOriginality),
+  };
 
   const { data: channel } = await supabaseServer
     .from("youtube_channels")
@@ -226,6 +285,7 @@ export async function POST(request: Request) {
       windowEnd,
       now: new Date(),
       channelMetrics,
+      overrides,
     });
 
     await supabaseServer.from("youtube_trust_score_snapshots").insert({
@@ -237,7 +297,7 @@ export async function POST(request: Request) {
       performance_score: result.performanceScore,
       consistency_score: result.consistencyScore,
       niche_score: 0, // Deprecated - niche scoring removed
-      swipe_avg: result.engagedViewAvg, // Now stores engaged view avg
+      swipe_avg: result.engagedViewAvg, // Hook metric avg (manual swipe or engaged view avg)
       retention_avg: result.retentionAvg,
       window_start: result.windowStart,
       window_end: result.windowEnd,

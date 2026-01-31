@@ -15,6 +15,25 @@ type VideoMetrics = YoutubeVideo & {
   shortsFeedEngagedViews?: number;
 };
 
+export type TrustScoreStudioOverrides = {
+  /**
+   * YouTube Studio "Viewed vs swiped away" viewed percentage (0-1).
+   * If provided, this becomes the primary hook metric for Shorts.
+   */
+  swipeRate?: number | null;
+  /** Active Community Guideline strikes: 0 / 1 / 2 (2 = 2+). */
+  communityGuidelineStrikes?: 0 | 1 | 2 | null;
+  /** Any active copyright strikes. */
+  copyrightStrike?: boolean | null;
+  /**
+   * Self-reported originality signal.
+   * - mostly_original: mostly original footage/voice
+   * - mix: mix of original + clips
+   * - mostly_reused: mostly reused clips/compilations
+   */
+  contentOriginality?: "mostly_original" | "mix" | "mostly_reused" | null;
+};
+
 type ActionItem = {
   title: string;
   detail: string;
@@ -305,6 +324,29 @@ const computeShareRateScore = (
   return { score: 0, rate };    // <0.01% Needs work
 };
 
+type HookMetric = "swipe_rate" | "engaged_views";
+
+const computeSwipeRateScore = (rate: number): number => {
+  const clamped = clamp(rate, 0, 1);
+
+  // Thresholds based on YouTube Studio Swipe (Viewed vs swiped away)
+  // - Ideal: 81.1%+
+  // - ~80% acceptable
+  // - 73–80% yellow
+  // - <72% red
+  if (clamped >= 0.811) return 21;
+  if (clamped >= 0.8) return 17;
+  if (clamped >= 0.73) return 13;
+  if (clamped >= 0.72) return 4;
+  return 0;
+};
+
+const isHookFailing = (rate: number, metric: HookMetric): boolean => {
+  if (metric === "swipe_rate") {
+    return rate < 0.72;
+  }
+  return rate < 0.55;
+};
 
 /**
  * Engaged View Rate scoring for Shorts
@@ -318,12 +360,17 @@ const computeEngagedViewScore = (
   shortsEngagedViews?: number,
   ctr?: number,
   analyticsViews?: number,
-  analyticsEngagedViews?: number
+  analyticsEngagedViews?: number,
+  manualSwipeRate?: number | null
 ): { score: number; rate: number | null; source: string } => {
   let rate: number | null = null;
   let source = "none";
 
   if (isShort) {
+    if (manualSwipeRate !== null && manualSwipeRate !== undefined) {
+      rate = clamp(manualSwipeRate, 0, 1);
+      source = "manual_swipe";
+    } else {
     // For Shorts: use engaged views / views from the Shorts feed
     // This represents viewers who watched past the initial seconds
     if (shortsViews && shortsViews > 0 && shortsEngagedViews !== undefined) {
@@ -333,6 +380,7 @@ const computeEngagedViewScore = (
       // Fallback to overall Shorts engaged views when feed-only data is missing.
       rate = clamp(analyticsEngagedViews / analyticsViews, 0, 1);
       source = "shorts_overall";
+    }
     }
   } else {
     // For long-form: use click-through rate
@@ -364,6 +412,11 @@ const computeEngagedViewScore = (
       return { score: 4, rate, source }; // 3%+ is below average
     }
     return { score: 0, rate, source }; // Below 3% is poor
+  }
+
+  // Swipe rate thresholds for Shorts (manual YouTube Studio input)
+  if (source === "manual_swipe") {
+    return { score: computeSwipeRateScore(rate), rate, source };
   }
 
   // Engaged View Rate thresholds for Shorts
@@ -483,7 +536,8 @@ const computeWeight = (views: number, publishedAt: string, now: Date): number =>
  */
 const computeConsistencyScore = (
   uploads: YoutubePlaylistItem[],
-  engagedViewAvg: number | null,
+  hookRateAvg: number | null,
+  hookMetric: HookMetric,
   retentionAvg: number | null,
   hasEnoughAnalyticsData: boolean
 ): number => {
@@ -544,8 +598,8 @@ const computeConsistencyScore = (
     score = score * 0.5;
   }
 
-  // If engaged view rate is failing (<55%), reduce by 50% (not zero)
-  if (engagedViewAvg !== null && engagedViewAvg < 0.55) {
+  // If hook metric is failing, reduce by 50% (not zero)
+  if (hookRateAvg !== null && isHookFailing(hookRateAvg, hookMetric)) {
     score = score * 0.5;
   }
 
@@ -563,7 +617,14 @@ const computeConsistencyScore = (
  */
 const buildActionItems = (
   scores: Record<string, number>,
-  dataConfidence: string
+  dataConfidence: string,
+  context?: {
+    hasShortsInWindow?: boolean;
+    manualSwipeRate?: number | null;
+    communityGuidelineStrikes?: 0 | 1 | 2 | null;
+    copyrightStrike?: boolean | null;
+    contentOriginality?: "mostly_original" | "mix" | "mostly_reused" | null;
+  }
 ): ActionItem[] => {
   const items: ActionItem[] = [];
   const issues: ActionItem[] = [];
@@ -593,6 +654,56 @@ const buildActionItems = (
       title: "More data coming soon",
       detail: "Your scores are based on limited data. Keep posting and check back in a few days for more accurate insights.",
       severity: "medium",
+      category: "data",
+    });
+  }
+
+  // ===================
+  // POLICY / STRIKES (Manual inputs)
+  // ===================
+  const communityGuidelineStrikes = context?.communityGuidelineStrikes ?? null;
+  const copyrightStrike = context?.copyrightStrike ?? null;
+  const contentOriginality = context?.contentOriginality ?? null;
+
+  if (communityGuidelineStrikes !== null && communityGuidelineStrikes > 0) {
+    issues.push({
+      title: "Resolve Community Guideline strikes",
+      detail: "Active strikes reduce channel trust and can suppress distribution. In YouTube Studio, review the strike details, remove/appeal violating videos, and complete any required training.",
+      severity: "high",
+      category: "policy",
+    });
+  }
+
+  if (copyrightStrike === true) {
+    issues.push({
+      title: "Clear copyright strikes ASAP",
+      detail: "Copyright strikes are a major trust signal. Even with strong metrics, growth and monetization can get throttled. Address the flagged videos and avoid reused audio/footage without rights.",
+      severity: "high",
+      category: "policy",
+    });
+  }
+
+  if (contentOriginality === "mostly_reused") {
+    issues.push({
+      title: "Shift toward original content",
+      detail: "Reused/compilation content is harder to monetize and more likely to get suppressed long-term. Add original footage, voiceover, or a unique angle so YouTube can trust your channel identity.",
+      severity: "medium",
+      category: "originality",
+    });
+  } else if (contentOriginality === "mix") {
+    issues.push({
+      title: "Increase your original-to-clips ratio",
+      detail: "A mix of original + clips can work, but long-term trust is stronger when most uploads are clearly original. Make your edits transformative and add your own voice/face whenever possible.",
+      severity: "low",
+      category: "originality",
+    });
+  }
+
+  if ((context?.hasShortsInWindow ?? false) && (context?.manualSwipeRate ?? null) === null) {
+    issues.push({
+      title: "Add your Swipe rate from YouTube Studio",
+      detail: "Swipe rate (Viewed vs swiped away) is a top hook signal for Shorts, but YouTube doesn't expose it via API. Add it in the breakdown section to make your Trust Score more accurate.",
+      severity: "low",
       category: "data",
     });
   }
@@ -915,6 +1026,7 @@ export const calculateTrustScore = ({
   windowEnd,
   now,
   channelMetrics,
+  overrides,
 }: {
   channel: YoutubeChannel;
   videos: VideoMetrics[];
@@ -923,6 +1035,7 @@ export const calculateTrustScore = ({
   windowEnd: string;
   now: Date;
   channelMetrics?: ChannelMetrics;
+  overrides?: TrustScoreStudioOverrides;
 }): TrustScoreResult => {
   const videoScores: VideoScoreBreakdown[] = [];
   const weights: number[] = [];
@@ -937,6 +1050,18 @@ export const calculateTrustScore = ({
   const formattingScoreValues: number[] = [];
   const enhancements: number[] = [];
   const categories = videos.map((video) => video.categoryId).filter(Boolean);
+  const manualSwipeRateRaw = overrides?.swipeRate ?? null;
+  const manualSwipeRate =
+    manualSwipeRateRaw !== null && manualSwipeRateRaw !== undefined
+      ? clamp(manualSwipeRateRaw, 0, 1)
+      : null;
+  const hookMetric: HookMetric = manualSwipeRate !== null ? "swipe_rate" : "engaged_views";
+  const communityGuidelineStrikes = overrides?.communityGuidelineStrikes ?? null;
+  const copyrightStrike = overrides?.copyrightStrike ?? null;
+  const contentOriginality = overrides?.contentOriginality ?? null;
+  const hasShortsInWindow = videos.some(
+    (video) => video.durationSeconds > 0 && video.durationSeconds <= 60
+  );
 
   // Track data availability
   let videosWithAnalytics = 0;
@@ -950,9 +1075,11 @@ export const calculateTrustScore = ({
     const isShort = video.durationSeconds > 0 && video.durationSeconds <= 60;
     const hasAnalytics = video.averageViewDuration > 0;
     const hasEngagedViewData = isShort
-      ? (((video.shortsFeedViews ?? 0) > 0 &&
-        video.shortsFeedEngagedViews !== undefined) ||
-        ((video.analyticsViews ?? 0) > 0 && video.engagedViews !== undefined))
+      ? manualSwipeRate !== null
+        ? true
+        : (((video.shortsFeedViews ?? 0) > 0 &&
+          video.shortsFeedEngagedViews !== undefined) ||
+          ((video.analyticsViews ?? 0) > 0 && video.engagedViews !== undefined))
       : normalizeRate(video.impressionsClickThroughRate) !== null;
 
     if (hasAnalytics) {
@@ -968,7 +1095,8 @@ export const calculateTrustScore = ({
       video.shortsFeedEngagedViews,
       video.impressionsClickThroughRate,
       video.analyticsViews,
-      video.engagedViews
+      video.engagedViews,
+      manualSwipeRate
     );
 
     if (engagedView.rate !== null && engagedView.source === "shorts_feed") {
@@ -1083,6 +1211,7 @@ export const calculateTrustScore = ({
     shortsEngagedFeedWeights
   );
   const engagedViewAvg =
+    manualSwipeRate ??
     shortsEngagedFeedAvg ??
     computeWeightedEngagedAvg(shortsEngagedFallbackRates, shortsEngagedFallbackWeights);
 
@@ -1141,11 +1270,12 @@ export const calculateTrustScore = ({
   );
 
   // Consistency score with soft gates
-  // Use engagedViewAvg (combined feed + fallback) so consistency is gated by ANY available engaged view data
+  // Use engagedViewAvg (manual swipe or engaged view avg) so consistency is gated by hook strength
   const hasEnoughAnalyticsData = videosWithAnalytics >= MIN_VIDEOS_WITH_ANALYTICS;
   const consistencyScore = computeConsistencyScore(
     uploads,
     engagedViewAvg,
+    hookMetric,
     retentionAvg,
     hasEnoughAnalyticsData
   );
@@ -1156,7 +1286,7 @@ export const calculateTrustScore = ({
   // Apply soft cap if engaged view rate is failing (use combined engaged avg)
   // Changed from hard cap to soft 50% penalty to allow new creators to see progress
   let finalScore = rawScore;
-  if (engagedViewAvg !== null && engagedViewAvg < 0.55) {
+  if (engagedViewAvg !== null && isHookFailing(engagedViewAvg, hookMetric)) {
     finalScore = Math.min(rawScore, 50);
   }
 
@@ -1164,6 +1294,27 @@ export const calculateTrustScore = ({
   if (dataConfidence === "insufficient") {
     finalScore = Math.min(finalScore, 40);
   }
+
+  // Policy and originality modifiers (manual inputs)
+  // These should meaningfully impact trust even when metrics look strong.
+  let policyMultiplier = 1;
+  if (communityGuidelineStrikes === 1) {
+    policyMultiplier *= 0.75;
+  } else if (communityGuidelineStrikes !== null && communityGuidelineStrikes >= 2) {
+    policyMultiplier *= 0.55;
+  }
+
+  if (copyrightStrike === true) {
+    policyMultiplier *= 0.7;
+  }
+
+  if (contentOriginality === "mix") {
+    policyMultiplier *= 0.92;
+  } else if (contentOriginality === "mostly_reused") {
+    policyMultiplier *= 0.8;
+  }
+
+  finalScore = clamp(finalScore * policyMultiplier, 0, 100);
 
   const components = {
     channelAge: channelAgeScore,
@@ -1179,9 +1330,28 @@ export const calculateTrustScore = ({
     formattingScore: weightedAverage(formattingScoreValues),
     shareRateScore: shareRateResult.score,
     consistencyScore,
+    ...(manualSwipeRate !== null ? { studioSwipeRate: manualSwipeRate } : {}),
+    ...(communityGuidelineStrikes !== null
+      ? { studioCommunityGuidelineStrikes: communityGuidelineStrikes }
+      : {}),
+    ...(copyrightStrike !== null
+      ? { studioCopyrightStrike: copyrightStrike ? 1 : 0 }
+      : {}),
+    ...(contentOriginality
+      ? {
+          studioContentOriginality:
+            contentOriginality === "mostly_original" ? 2 : contentOriginality === "mix" ? 1 : 0,
+        }
+      : {}),
   };
 
-  const actionItems = buildActionItems(components, dataConfidence);
+  const actionItems = buildActionItems(components, dataConfidence, {
+    hasShortsInWindow,
+    manualSwipeRate,
+    communityGuidelineStrikes,
+    copyrightStrike,
+    contentOriginality,
+  });
 
   return {
     score: Math.round(finalScore),
