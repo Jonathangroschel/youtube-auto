@@ -1524,7 +1524,7 @@ export default function TrustScorePage() {
                         ? `${Math.min(100, Math.round(((analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg ?? 0) / 40) * 100))}%`
                         : "—"}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">avg watch time</p>
+                    <p className="mt-1 text-xs text-gray-400">of target</p>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5">
                     <p className="text-xs font-medium text-gray-400">Last run</p>
