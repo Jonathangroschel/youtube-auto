@@ -1521,10 +1521,10 @@ export default function TrustScorePage() {
                     <p className="text-xs font-medium text-gray-400">Retention</p>
                     <p className="mt-2 text-2xl font-semibold text-gray-900">
                       {analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg
-                        ? `${Math.min(100, Math.round(((analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg ?? 0) / 40) * 100))}%`
+                        ? Math.min(100, Math.round(((analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg ?? 0) / 40) * 100))
                         : "—"}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">of target</p>
+                    <p className="mt-1 text-xs text-gray-400">score</p>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5">
                     <p className="text-xs font-medium text-gray-400">Last run</p>
