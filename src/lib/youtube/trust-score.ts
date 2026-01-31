@@ -699,50 +699,89 @@ const buildActionItems = (
     });
   }
 
-  if ((context?.hasShortsInWindow ?? false) && (context?.manualSwipeRate ?? null) === null) {
-    issues.push({
-      title: "Add your Swipe rate from YouTube Studio",
-      detail: "Swipe rate (Viewed vs swiped away) is a top hook signal for Shorts, but YouTube doesn't expose it via API. Add it in the breakdown section to make your Trust Score more accurate.",
-      severity: "low",
-      category: "data",
-    });
-  }
+  // ===================
+  // HOOK / SWIPE RATE (Most important for Shorts)
+  // ===================
+  const manualSwipeRate = context?.manualSwipeRate ?? null;
+  const hasManualSwipeRate = manualSwipeRate !== null;
+  const swipeRatePct = hasManualSwipeRate ? Math.round(manualSwipeRate * 1000) / 10 : null;
 
-  // ===================
-  // HOOK / ENGAGED VIEW RATE (Most important for Shorts)
-  // ===================
-  if (engagedPct < 30) {
-    // Critical - most viewers leaving immediately
-    issues.push({
-      title: "Your hook is losing viewers",
-      detail: "Most viewers swipe away before your video even starts. Your first frame needs to stop the scroll instantly. Try: start mid-action, use bold text on screen, or open with something unexpected. No logos, no slow intros.",
-      severity: "high",
-      category: "hook",
-    });
-  } else if (engagedPct < 55) {
-    // Needs significant work
-    issues.push({
-      title: "Stronger hooks needed",
-      detail: "Too many viewers are swiping away in the first second. Lead with your most interesting moment, not a buildup to it. Ask yourself: 'Would I stop scrolling for this first frame?'",
-      severity: "high",
-      category: "hook",
-    });
-  } else if (engagedPct < 75) {
-    // Room for improvement
-    issues.push({
-      title: "Test different opening frames",
-      detail: "Your hooks are okay but could be better. Try filming 3 different openings for your next video and see which one feels most scroll-stopping. Movement, faces, and text overlays usually win.",
-      severity: "medium",
-      category: "hook",
-    });
-  } else if (engagedPct >= 85) {
-    // Winning
-    wins.push({
-      title: "Your hooks are working",
-      detail: "Viewers are staying past the first second. That's the hardest part. Keep doing what you're doing and don't overthink it.",
-      severity: "positive",
-      category: "hook",
-    });
+  if (hasManualSwipeRate && swipeRatePct !== null) {
+    // We have real swipe rate data - give specific, confident recommendations
+    if (swipeRatePct < 72) {
+      // Critical - red zone
+      issues.push({
+        title: `Your swipe rate is ${swipeRatePct}% — needs urgent work`,
+        detail: "Below 72% means most viewers swipe away before your video starts. Your first frame needs to stop the scroll instantly. Try: start mid-action, use bold text on screen, or open with something unexpected. No logos, no slow intros.",
+        severity: "high",
+        category: "hook",
+      });
+    } else if (swipeRatePct < 80) {
+      // Yellow zone
+      issues.push({
+        title: `Your swipe rate is ${swipeRatePct}% — aim for 80%+`,
+        detail: "You're in the yellow zone. Viewers are swiping away more than ideal. Lead with your most interesting moment, not a buildup to it. Test 3 different opening frames on your next video.",
+        severity: "high",
+        category: "hook",
+      });
+    } else if (swipeRatePct < 81.1) {
+      // Close to ideal
+      issues.push({
+        title: `Your swipe rate is ${swipeRatePct}% — almost there`,
+        detail: "You're close to the ideal 81%+ threshold. Small tweaks to your opening frames could push you over. Try adding movement, faces, or text overlays in the first frame.",
+        severity: "medium",
+        category: "hook",
+      });
+    } else {
+      // 81.1%+ is ideal - this is a win
+      wins.push({
+        title: `Strong swipe rate: ${swipeRatePct}%`,
+        detail: "You're above the 81% ideal threshold. Viewers are staying past the first second — that's the hardest part. Keep doing what you're doing with your hooks.",
+        severity: "positive",
+        category: "hook",
+      });
+    }
+  } else {
+    // No manual swipe rate - use estimated engaged view data with less confident messaging
+    if ((context?.hasShortsInWindow ?? false)) {
+      issues.push({
+        title: "Add your Swipe rate from YouTube Studio",
+        detail: "Swipe rate (Viewed vs swiped away) is the top hook signal for Shorts, but YouTube doesn't expose it via API. Add it in the breakdown section for personalized recommendations.",
+        severity: "low",
+        category: "data",
+      });
+    }
+
+    // Still provide hook feedback based on estimated data
+    if (engagedPct < 30) {
+      issues.push({
+        title: "Your hook may be losing viewers",
+        detail: "Based on estimated data, most viewers may be leaving before your video starts. Your first frame needs to stop the scroll. Add your Swipe rate from YouTube Studio for a precise diagnosis.",
+        severity: "high",
+        category: "hook",
+      });
+    } else if (engagedPct < 55) {
+      issues.push({
+        title: "Hooks likely need work",
+        detail: "Estimated data suggests viewers may be swiping away early. Lead with your most interesting moment. Add your Swipe rate from YouTube Studio for accurate recommendations.",
+        severity: "high",
+        category: "hook",
+      });
+    } else if (engagedPct < 75) {
+      issues.push({
+        title: "Test different opening frames",
+        detail: "Your hooks seem okay but could be better. Try filming 3 different openings for your next video. Add your Swipe rate for more specific feedback.",
+        severity: "medium",
+        category: "hook",
+      });
+    } else if (engagedPct >= 85) {
+      wins.push({
+        title: "Hooks appear strong",
+        detail: "Based on estimated data, viewers are staying past the first second. Add your Swipe rate from YouTube Studio to confirm this.",
+        severity: "positive",
+        category: "hook",
+      });
+    }
   }
 
   // ===================
