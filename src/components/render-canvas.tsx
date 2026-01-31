@@ -72,93 +72,107 @@ export function RenderCanvas({
     ctx.frame = 1
     animationRef.current.ctx = ctx
 
-    // Wave function for color cycling
-    function WaveFunction(config: any) {
-      this.phase = config.phase || 0
-      this.offset = config.offset || 0
-      this.frequency = config.frequency || 0.001
-      this.amplitude = config.amplitude || 1
-    }
-
-    WaveFunction.prototype.update = function () {
-      this.phase += this.frequency
-      return this.offset + Math.sin(this.phase) * this.amplitude
+    // Initialize variables
+    const pos = { x: canvas.width / 2, y: canvas.height / 2 }
+    
+    // Wave class for color cycling
+    class WaveFunction {
+      phase: number
+      offset: number
+      frequency: number
+      amplitude: number
+      
+      constructor(config: { phase?: number; offset?: number; frequency?: number; amplitude?: number }) {
+        this.phase = config.phase || 0
+        this.offset = config.offset || 0
+        this.frequency = config.frequency || 0.001
+        this.amplitude = config.amplitude || 1
+      }
+      
+      update() {
+        this.phase += this.frequency
+        return this.offset + Math.sin(this.phase) * this.amplitude
+      }
     }
 
     // Node class for trail points
-    function Node() {
-      this.x = 0
-      this.y = 0
-      this.vy = 0
-      this.vx = 0
+    class Node {
+      x = 0
+      y = 0
+      vx = 0
+      vy = 0
     }
 
     // Line class for trail effects
-    function Line(config: any) {
-      this.spring = config.spring + 0.1 * Math.random() - 0.05
-      this.friction = friction + 0.01 * Math.random() - 0.005
-      this.nodes = []
-      for (let i = 0; i < size; i++) {
-        const node = new Node()
-        node.x = pos.x
-        node.y = pos.y
-        this.nodes.push(node)
-      }
-    }
-
-    Line.prototype.update = function () {
-      let spring = this.spring
-      let node = this.nodes[0]
-      node.vx += (pos.x - node.x) * spring
-      node.vy += (pos.y - node.y) * spring
-
-      for (let i = 0; i < this.nodes.length; i++) {
-        node = this.nodes[i]
-        if (i > 0) {
-          const prevNode = this.nodes[i - 1]
-          node.vx += (prevNode.x - node.x) * spring
-          node.vy += (prevNode.y - node.y) * spring
-          node.vx += prevNode.vx * dampening
-          node.vy += prevNode.vy * dampening
+    class Line {
+      spring: number
+      friction: number
+      nodes: Node[]
+      
+      constructor(config: { spring: number }) {
+        this.spring = config.spring + 0.1 * Math.random() - 0.05
+        this.friction = friction + 0.01 * Math.random() - 0.005
+        this.nodes = []
+        for (let i = 0; i < size; i++) {
+          const node = new Node()
+          node.x = pos.x
+          node.y = pos.y
+          this.nodes.push(node)
         }
-        node.vx *= this.friction
-        node.vy *= this.friction
-        node.x += node.vx
-        node.y += node.vy
-        spring *= tension
+      }
+      
+      update() {
+        let spring = this.spring
+        let node = this.nodes[0]
+        node.vx += (pos.x - node.x) * spring
+        node.vy += (pos.y - node.y) * spring
+
+        for (let i = 0; i < this.nodes.length; i++) {
+          node = this.nodes[i]
+          if (i > 0) {
+            const prevNode = this.nodes[i - 1]
+            node.vx += (prevNode.x - node.x) * spring
+            node.vy += (prevNode.y - node.y) * spring
+            node.vx += prevNode.vx * dampening
+            node.vy += prevNode.vy * dampening
+          }
+          node.vx *= this.friction
+          node.vy *= this.friction
+          node.x += node.vx
+          node.y += node.vy
+          spring *= tension
+        }
+      }
+      
+      draw() {
+        if (this.nodes.length < 2) return
+
+        let x = this.nodes[0].x
+        let y = this.nodes[0].y
+        ctx.beginPath()
+        ctx.moveTo(x, y)
+
+        for (let i = 1; i < this.nodes.length - 2; i++) {
+          const node = this.nodes[i]
+          const nextNode = this.nodes[i + 1]
+          x = 0.5 * (node.x + nextNode.x)
+          y = 0.5 * (node.y + nextNode.y)
+          ctx.quadraticCurveTo(node.x, node.y, x, y)
+        }
+
+        if (this.nodes.length >= 2) {
+          const secondLast = this.nodes[this.nodes.length - 2]
+          const last = this.nodes[this.nodes.length - 1]
+          ctx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y)
+        }
+
+        ctx.stroke()
+        ctx.closePath()
       }
     }
 
-    Line.prototype.draw = function () {
-      if (this.nodes.length < 2) return
-
-      let x = this.nodes[0].x
-      let y = this.nodes[0].y
-      ctx.beginPath()
-      ctx.moveTo(x, y)
-
-      for (let i = 1; i < this.nodes.length - 2; i++) {
-        const node = this.nodes[i]
-        const nextNode = this.nodes[i + 1]
-        x = 0.5 * (node.x + nextNode.x)
-        y = 0.5 * (node.y + nextNode.y)
-        ctx.quadraticCurveTo(node.x, node.y, x, y)
-      }
-
-      if (this.nodes.length >= 2) {
-        const secondLast = this.nodes[this.nodes.length - 2]
-        const last = this.nodes[this.nodes.length - 1]
-        ctx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y)
-      }
-
-      ctx.stroke()
-      ctx.closePath()
-    }
-
-    // Initialize variables
-    let colorWave: any = null
-    const pos = { x: canvas.width / 2, y: canvas.height / 2 } // ✅ start centered
-    let lines: any[] = []
+    let colorWave: WaveFunction | null = null
+    let lines: Line[] = []
 
     if (enableColorCycle) {
       colorWave = new WaveFunction({
@@ -178,6 +192,7 @@ export function RenderCanvas({
 
     // ✅ Fix cursor offset using bounding rect with proper scaling
     function handleMouseMove(e: MouseEvent | TouchEvent) {
+      if (!canvas) return
       const rect = canvas.getBoundingClientRect()
       // Scale mouse position to canvas internal dimensions
       const scaleX = canvas.width / rect.width
@@ -195,6 +210,7 @@ export function RenderCanvas({
     }
 
     function handleTouchStart(e: TouchEvent) {
+      if (!canvas) return
       if (e.touches.length === 1) {
         const rect = canvas.getBoundingClientRect()
         const scaleX = canvas.width / rect.width
@@ -225,11 +241,12 @@ export function RenderCanvas({
         line.draw()
       }
 
-      ctx.frame++
+      if (ctx.frame !== undefined) ctx.frame++
       requestAnimationFrame(render)
     }
 
     function resizeCanvas() {
+      if (!canvas) return
       const rect = canvas.getBoundingClientRect()
       // Use displayed size for proper mouse tracking
       canvas.width = rect.width || width
