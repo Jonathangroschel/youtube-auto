@@ -1541,20 +1541,7 @@ export default function TrustScorePage() {
                 <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-gray-900">How to improve</p>
-                    {topLifts.length > 0 ? (
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        topLifts.some(i => i.severity === "positive")
-                          ? "bg-emerald-50 text-emerald-600"
-                          : "bg-gray-100 text-gray-600"
-                      }`}>
-                        {topLifts.filter(i => i.severity !== "positive").length > 0 
-                          ? `${topLifts.filter(i => i.severity !== "positive").length} to fix`
-                          : "Looking good"}
-                        {topLifts.some(i => i.severity === "positive") && topLifts.filter(i => i.severity !== "positive").length > 0
-                          ? ` · ${topLifts.filter(i => i.severity === "positive").length} win${topLifts.filter(i => i.severity === "positive").length > 1 ? "s" : ""}`
-                          : ""}
-                      </span>
-                    ) : null}
+                    <span className="text-xs text-gray-400">{topLifts.length}</span>
                   </div>
                   <div className="mt-5 space-y-3">
                     {analysisActive ? (
