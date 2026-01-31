@@ -1,4 +1,5 @@
 import Navbar from "@/components/landing/Navbar";
+import RedirectAuthedToDashboard from "@/components/landing/RedirectAuthedToDashboard";
 import Hero from "@/components/landing/Hero";
 import VideoSection from "@/components/landing/VideoSection";
 import Workflows from "@/components/landing/Workflows";
@@ -15,6 +16,7 @@ export const dynamic = "force-static";
 export default function Home() {
   return (
     <main className="min-h-screen bg-white">
+      <RedirectAuthedToDashboard />
       <Navbar />
       <Hero />
       <VideoSection />
