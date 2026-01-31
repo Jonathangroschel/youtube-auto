@@ -27,6 +27,15 @@ import {
   type AssetLibraryItem,
 } from "@/lib/assets/library";
 import { createClient } from "@/lib/supabase/client";
+import {
+  parseRedditVideoImportPayload,
+  parseSplitScreenImportPayload,
+  REDDIT_VIDEO_IMPORT_STORAGE_KEY,
+  SPLIT_SCREEN_IMPORT_STORAGE_KEY,
+  type RedditVideoImportPayloadV1,
+  type StreamerVideoImportPayloadV1,
+  type SplitScreenImportPayloadV1,
+} from "@/lib/editor/imports";
 
 import type {
   AssetFilter,
@@ -1104,6 +1113,12 @@ function AdvancedEditorContent() {
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [subtitleError, setSubtitleError] = useState<string | null>(null);
+  const subtitleStatusRef = useRef(subtitleStatus);
+  const subtitleErrorRef = useRef(subtitleError);
+  useEffect(() => {
+    subtitleStatusRef.current = subtitleStatus;
+    subtitleErrorRef.current = subtitleError;
+  }, [subtitleError, subtitleStatus]);
   const [subtitleSegments, setSubtitleSegments] = useState<SubtitleSegment[]>(
     []
   );
@@ -1141,6 +1156,44 @@ function AdvancedEditorContent() {
     () => new Set()
   );
   const [subtitleMoveTogether, setSubtitleMoveTogether] = useState(true);
+  const pendingSplitScreenSubtitleRef = useRef<{
+    mainClipId: string;
+    styleId: string;
+  } | null>(null);
+  const splitScreenImportTokenRef = useRef<string | null>(null);
+  const [splitScreenImportOverlayOpen, setSplitScreenImportOverlayOpen] =
+    useState(false);
+  const [splitScreenImportOverlayStage, setSplitScreenImportOverlayStage] =
+    useState<"preparing" | "uploading" | "subtitles" | "finalizing">(
+      "preparing"
+    );
+  const pendingStreamerVideoSubtitleRef = useRef<{
+    sourceClipId: string;
+    styleId: string;
+  } | null>(null);
+  const streamerVideoImportTokenRef = useRef<string | null>(null);
+  const [streamerVideoImportOverlayOpen, setStreamerVideoImportOverlayOpen] =
+    useState(false);
+  const [
+    streamerVideoImportOverlayStage,
+    setStreamerVideoImportOverlayStage,
+  ] = useState<"preparing" | "uploading" | "subtitles" | "finalizing">(
+    "preparing"
+  );
+  const pendingRedditVideoSubtitleRef = useRef<{
+    sourceClipId: string;
+    styleId: string;
+  } | null>(null);
+  const redditVideoImportTokenRef = useRef<string | null>(null);
+  const [redditVideoImportOverlayOpen, setRedditVideoImportOverlayOpen] =
+    useState(false);
+  const [redditVideoImportOverlayStage, setRedditVideoImportOverlayStage] =
+    useState<"preparing" | "voiceover" | "subtitles" | "finalizing">(
+      "preparing"
+    );
+  const [redditVideoImportError, setRedditVideoImportError] = useState<string | null>(
+    null
+  );
   const [, startTransition] = useTransition();
   const textPanelTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const stageTextEditorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -3637,49 +3690,124 @@ function AdvancedEditorContent() {
           bucket: stockVideoBucketName,
           root: stockVideoRootPrefix || "(root)",
         });
-        const listWithTimeout = async (path: string) => {
-          let timeoutId: number | null = null;
-          const timeoutPromise = new Promise<{
-            data: null;
-            error: Error;
-          }>((_, reject) => {
-            timeoutId = window.setTimeout(() => {
-              reject(new Error("Stock video request timed out."));
-            }, 20000);
-          });
-          const result = (await Promise.race([
-            bucket.list(path, {
-              limit: 1000,
-              sortBy: { column: "name", order: "asc" },
-            }),
-            timeoutPromise,
-          ])) as {
-            data: Array<{
-              id?: string | null;
-              name: string;
-              metadata?: { size?: number; mimetype?: string | null } | null;
-            }> | null;
-            error: Error | null;
-          };
-          if (timeoutId !== null) {
-            window.clearTimeout(timeoutId);
+        type StockVideoListEntry = {
+          id?: string | null;
+          name: string;
+          metadata?: { size?: number; mimetype?: string | null } | null;
+        };
+
+        const shouldStop = () =>
+          cancelled || loadId !== stockVideoLoadIdRef.current;
+
+        const isAbortLikeError = (error: unknown) => {
+          if (!error) {
+            return false;
           }
-          if (result.error) {
-            console.error("[stock-video] list error", path, result.error);
-          } else {
-            console.log("[stock-video] list ok", path, {
-              count: result.data?.length ?? 0,
+          const anyError = error as { name?: unknown; message?: unknown };
+          const name =
+            typeof anyError?.name === "string" ? anyError.name.toLowerCase() : "";
+          if (name.includes("abort")) {
+            return true;
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : typeof anyError?.message === "string"
+                ? anyError.message
+                : String(error);
+          const normalized = message.toLowerCase();
+          return normalized.includes("signal is aborted") || normalized.includes("abort");
+        };
+
+        const listWithTimeout = async (
+          path: string,
+          options?: { limit?: number; offset?: number }
+        ) => {
+          if (shouldStop()) {
+            return { data: null as StockVideoListEntry[] | null, error: null as Error | null };
+          }
+          const limit = Math.max(1, Math.min(500, options?.limit ?? 200));
+          const offset = Math.max(0, options?.offset ?? 0);
+
+          const attempt = async (attemptNumber: number) => {
+            let timeoutId: number | null = null;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timeoutId = window.setTimeout(() => {
+                reject(new Error("Stock video request timed out."));
+              }, 25000);
             });
+            try {
+              const result = (await Promise.race([
+                bucket.list(path, {
+                  limit,
+                  offset,
+                  sortBy: { column: "name", order: "asc" },
+                }),
+                timeoutPromise,
+              ])) as {
+                data: StockVideoListEntry[] | null;
+                error: Error | null;
+              };
+              return result;
+            } catch (error) {
+              return {
+                data: null,
+                error: error instanceof Error ? error : new Error("Stock video list failed."),
+              };
+            } finally {
+              if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+              }
+            }
+          };
+
+          let result = await attempt(1);
+          if (
+            result.error &&
+            !shouldStop() &&
+            isAbortLikeError(result.error) &&
+            // Retry once for transient aborts.
+            true
+          ) {
+            await new Promise<void>((resolve) => window.setTimeout(resolve, 400));
+            result = await attempt(2);
           }
+
+          if (result.error && !shouldStop() && !isAbortLikeError(result.error)) {
+            console.error("[stock-video] list error", path, result.error);
+          }
+
           return result;
+        };
+
+        const listAllWithTimeout = async (path: string) => {
+          const entries: StockVideoListEntry[] = [];
+          const pageLimit = 200;
+          let offset = 0;
+          while (!shouldStop()) {
+            const { data, error } = await listWithTimeout(path, {
+              limit: pageLimit,
+              offset,
+            });
+            if (error) {
+              return { data: null as StockVideoListEntry[] | null, error };
+            }
+            const page = data ?? [];
+            entries.push(...page);
+            if (page.length < pageLimit) {
+              break;
+            }
+            offset += pageLimit;
+            // Safety: avoid infinite loops if pagination behaves unexpectedly.
+            if (offset > 20000) {
+              break;
+            }
+          }
+          return { data: entries, error: null as Error | null };
         };
         const videos: StockVideoItem[] = [];
         const pushFiles = (
-          items: Array<{
-            id?: string | null;
-            name: string;
-            metadata?: { size?: number; mimetype?: string | null } | null;
-          }>,
+          items: StockVideoListEntry[],
           prefix: string
         ) => {
           const prefixOrientation = resolveStockVideoOrientationFromPath(prefix);
@@ -3721,9 +3849,19 @@ function AdvancedEditorContent() {
           Boolean(item.metadata) ||
           isVideoFile(item.name, item.metadata?.mimetype ?? null);
         const collectVideos = async (path: string) => {
+          if (shouldStop()) {
+            return;
+          }
           console.log("[stock-video] collect", path || "(root)");
-          const { data, error } = await listWithTimeout(path);
+          const { data, error } = await listAllWithTimeout(path);
+          if (shouldStop()) {
+            return;
+          }
           if (error) {
+            if (isAbortLikeError(error)) {
+              // Avoid noisy console errors for aborted requests (often caused by navigation / retries).
+              throw new Error("Stock video request was cancelled. Please retry.");
+            }
             throw error;
           }
           const entries = data ?? [];
@@ -3743,12 +3881,16 @@ function AdvancedEditorContent() {
               folders.map((folder) => folder.name)
             );
           }
-          await Promise.all(
-            folders.map((folder) => {
-              const nextPath = path ? `${path}/${folder.name}` : folder.name;
-              return collectVideos(nextPath);
-            })
-          );
+          for (const folder of folders) {
+            if (shouldStop()) {
+              return;
+            }
+            const nextPath = path ? `${path}/${folder.name}` : folder.name;
+            // Sequential recursion prevents request floods that can trigger aborted fetches.
+            // If you need more speed later, add a small concurrency pool.
+            // eslint-disable-next-line no-await-in-loop
+            await collectVideos(nextPath);
+          }
         };
         await collectVideos(stockVideoRootPrefix);
         if (cancelled || loadId !== stockVideoLoadIdRef.current) {
@@ -3762,11 +3904,19 @@ function AdvancedEditorContent() {
         if (cancelled || loadId !== stockVideoLoadIdRef.current) {
           return;
         }
-        const message =
-          error instanceof Error
+        const isAbort =
+          error instanceof Error &&
+          (error.name.toLowerCase().includes("abort") ||
+            error.message.toLowerCase().includes("signal is aborted") ||
+            error.message.toLowerCase().includes("cancelled"));
+        const message = isAbort
+          ? "Stock video request was cancelled. Please retry."
+          : error instanceof Error
             ? error.message
             : "Unable to load stock videos from Supabase.";
-        console.error("[stock-video] load failed", error);
+        if (!isAbort) {
+          console.error("[stock-video] load failed", error);
+        }
         setStockVideoError(message);
         setStockVideoStatus("error");
       } finally {
@@ -7959,8 +8109,9 @@ function AdvancedEditorContent() {
       const sortedSources = [...sourceEntries].sort(
         (a, b) => a.clip.startTime - b.clip.startTime
       );
+      type TranscriptionSource = { file: File } | { url: string };
       const requestTranscription = async (
-        file: File,
+        source: TranscriptionSource,
         options: {
           model: string;
           responseFormat: string;
@@ -7969,7 +8120,11 @@ function AdvancedEditorContent() {
         }
       ) => {
         const formData = new FormData();
-        formData.append("file", file);
+        if ("file" in source) {
+          formData.append("file", source.file);
+        } else {
+          formData.append("url", source.url);
+        }
         formData.append("model", options.model);
         formData.append("response_format", options.responseFormat);
         if (options.chunkingStrategy) {
@@ -7987,9 +8142,9 @@ function AdvancedEditorContent() {
           body: formData,
         });
         if (!response.ok) {
-          const message = await response.text();
+          const message = await response.text().catch(() => "");
           throw new Error(
-            message || "Unable to generate subtitles for this clip."
+            message || `Unable to generate subtitles for this clip (${response.status}).`
           );
         }
         return response.json();
@@ -8006,37 +8161,49 @@ function AdvancedEditorContent() {
         includeTimestampGranularities: true,
       };
       const requestTranscriptionWithRetry = async (
-        file: File,
+        source: TranscriptionSource,
         options: {
           model: string;
           responseFormat: string;
           includeTimestampGranularities: boolean;
           chunkingStrategy?: string;
-        }
+        },
+        allowFallback = true
       ) => {
         try {
-          return await requestTranscription(file, options);
+          return await requestTranscription(source, options);
         } catch (error) {
           const message = error instanceof Error ? error.message : "";
           if (
             options.includeTimestampGranularities &&
             /timestamp|granularit/i.test(message)
           ) {
-            return requestTranscription(file, {
-              ...options,
-              includeTimestampGranularities: false,
-            });
+            return requestTranscriptionWithRetry(
+              source,
+              {
+                ...options,
+                includeTimestampGranularities: false,
+              },
+              allowFallback
+            );
           }
           if (/internal_error|internal server error/i.test(message)) {
             try {
               await new Promise((resolve) => window.setTimeout(resolve, 800));
-              return await requestTranscription(file, options);
+              return await requestTranscription(source, options);
             } catch (retryError) {
-              if (options.model !== fallbackTranscription.model) {
-                return requestTranscription(file, fallbackTranscription);
+              if (allowFallback && options.model !== fallbackTranscription.model) {
+                return requestTranscriptionWithRetry(
+                  source,
+                  fallbackTranscription,
+                  false
+                );
               }
               throw retryError;
             }
+          }
+          if (allowFallback && options.model !== fallbackTranscription.model) {
+            return requestTranscriptionWithRetry(source, fallbackTranscription, false);
           }
           throw error;
         }
@@ -8101,11 +8268,17 @@ function AdvancedEditorContent() {
       };
       // Keep chunks under Vercel's function payload limit (~4.5 MB).
       const MAX_TRANSCRIPTION_BYTES = 4_000_000;
-      type TranscriptionChunk = {
-        file: File;
-        chunkStartOffset: number;
-        chunkEndOffset: number;
-      };
+      type TranscriptionChunk =
+        | {
+            file: File;
+            chunkStartOffset: number;
+            chunkEndOffset: number;
+          }
+        | {
+            remoteUrl: string;
+            chunkStartOffset: number;
+            chunkEndOffset: number;
+          };
       const encodeWavChunk = (
         buffer: AudioBuffer,
         startSample: number,
@@ -8295,8 +8468,10 @@ function AdvancedEditorContent() {
         );
         const clipSegments: TimedSegment[] = [];
         for (const chunk of chunks) {
+          const source: TranscriptionSource =
+            "file" in chunk ? { file: chunk.file } : { url: chunk.remoteUrl };
           let data = await requestTranscriptionWithRetry(
-            chunk.file,
+            source,
             primaryTranscription
           );
           let segments: TimedEntry[] = Array.isArray(data?.segments)
@@ -8331,7 +8506,7 @@ function AdvancedEditorContent() {
           }
           if (normalizedSegments.length === 0 && normalizedWords.length === 0) {
             data = await requestTranscriptionWithRetry(
-              chunk.file,
+              source,
               fallbackTranscription
             );
             segments = Array.isArray(data?.segments)
@@ -8576,6 +8751,127 @@ function AdvancedEditorContent() {
     subtitleSourceClips,
     subtitleStatus,
     transcribeSourceEntries,
+  ]);
+
+  useEffect(() => {
+    const pending = pendingSplitScreenSubtitleRef.current;
+    if (!pending) {
+      return;
+    }
+    if (subtitleStatus === "loading") {
+      return;
+    }
+    if (subtitleStyleId !== pending.styleId) {
+      return;
+    }
+    if (subtitleSource !== pending.mainClipId) {
+      return;
+    }
+    if (!subtitleSourceClips.some((entry) => entry.clip.id === pending.mainClipId)) {
+      return;
+    }
+    pendingSplitScreenSubtitleRef.current = null;
+    setSplitScreenImportOverlayStage("subtitles");
+    setSplitScreenImportOverlayOpen(true);
+    handleGenerateSubtitles()
+      .catch(() => {})
+      .finally(() => {
+        setSplitScreenImportOverlayStage("finalizing");
+        requestAnimationFrame(() => {
+          if (subtitleStatusRef.current === "error") {
+            return;
+          }
+          setSplitScreenImportOverlayOpen(false);
+        });
+      });
+  }, [
+    handleGenerateSubtitles,
+    subtitleSource,
+    subtitleSourceClips,
+    subtitleStatus,
+    subtitleStyleId,
+  ]);
+
+  useEffect(() => {
+    const pending = pendingStreamerVideoSubtitleRef.current;
+    if (!pending) {
+      return;
+    }
+    if (subtitleStatus === "loading") {
+      return;
+    }
+    if (subtitleStyleId !== pending.styleId) {
+      return;
+    }
+    if (subtitleSource !== pending.sourceClipId) {
+      return;
+    }
+    if (
+      !subtitleSourceClips.some(
+        (entry) => entry.clip.id === pending.sourceClipId
+      )
+    ) {
+      return;
+    }
+    pendingStreamerVideoSubtitleRef.current = null;
+    setStreamerVideoImportOverlayStage("subtitles");
+    setStreamerVideoImportOverlayOpen(true);
+    handleGenerateSubtitles()
+      .catch(() => {})
+      .finally(() => {
+        setStreamerVideoImportOverlayStage("finalizing");
+        requestAnimationFrame(() => {
+          if (subtitleStatusRef.current === "error") {
+            return;
+          }
+          setStreamerVideoImportOverlayOpen(false);
+        });
+      });
+  }, [
+    handleGenerateSubtitles,
+    subtitleSource,
+    subtitleSourceClips,
+    subtitleStatus,
+    subtitleStyleId,
+  ]);
+
+  useEffect(() => {
+    const pending = pendingRedditVideoSubtitleRef.current;
+    if (!pending) {
+      return;
+    }
+    if (subtitleStatus === "loading") {
+      return;
+    }
+    if (subtitleStyleId !== pending.styleId) {
+      return;
+    }
+    if (subtitleSource !== pending.sourceClipId) {
+      return;
+    }
+    if (!subtitleSourceClips.some((entry) => entry.clip.id === pending.sourceClipId)) {
+      return;
+    }
+    pendingRedditVideoSubtitleRef.current = null;
+    setRedditVideoImportOverlayStage("subtitles");
+    setRedditVideoImportOverlayOpen(true);
+    handleGenerateSubtitles()
+      .catch(() => {})
+      .finally(() => {
+        setRedditVideoImportOverlayStage("finalizing");
+        requestAnimationFrame(() => {
+          if (subtitleStatusRef.current === "error") {
+            return;
+          }
+          setRedditVideoImportOverlayOpen(false);
+        });
+      });
+  }, [
+    handleGenerateSubtitles,
+    subtitleSource,
+    subtitleSourceClips,
+    subtitleStatus,
+    subtitleStyleId,
   ]);
 
   const handleGenerateTranscript = useCallback(async () => {
@@ -10522,6 +10818,2225 @@ function AdvancedEditorContent() {
     },
     [addToTimeline, createClip, pushHistory]
   );
+
+	  const applySplitScreenImport = useCallback(
+	    async (payload: SplitScreenImportPayloadV1) => {
+	      if (!payload?.mainVideo?.url || !payload?.backgroundVideo?.url) {
+	        return;
+	      }
+
+	      setSplitScreenImportOverlayStage("preparing");
+	      setSplitScreenImportOverlayOpen(true);
+	      setIsBackgroundSelected(false);
+	      pushHistory();
+
+	      let resolvedMainUrl = payload.mainVideo.url;
+	      let resolvedMainName =
+	        typeof payload.mainVideo.name === "string" &&
+	        payload.mainVideo.name.trim().length > 0
+	          ? payload.mainVideo.name.trim()
+	          : "Main video";
+	      let resolvedMainAssetId =
+	        typeof payload.mainVideo.assetId === "string" &&
+	        payload.mainVideo.assetId.trim().length > 0
+	          ? payload.mainVideo.assetId.trim()
+	          : null;
+
+	      const persistMainVideoIfNeeded = async (): Promise<
+	        | {
+	            url: string;
+	            name: string;
+	            assetId: string;
+	            meta: Awaited<ReturnType<typeof getMediaMeta>>;
+	          }
+	        | null
+	      > => {
+	        if (
+	          !resolvedMainUrl.startsWith("blob:") &&
+	          !resolvedMainUrl.startsWith("data:")
+	        ) {
+	          return null;
+	        }
+	        setSplitScreenImportOverlayStage("uploading");
+	        try {
+	          const meta = await getMediaMeta("video", resolvedMainUrl);
+	          const response = await fetch(resolvedMainUrl);
+	          const blob = await response.blob();
+	          const mimeType =
+	            typeof blob.type === "string" && blob.type.trim().length > 0
+	              ? blob.type
+	              : "video/mp4";
+	          const extension = mimeType.toLowerCase().includes("webm")
+	            ? "webm"
+	            : mimeType.toLowerCase().includes("quicktime")
+	              ? "mov"
+	              : "mp4";
+	          const safeBase =
+	            resolvedMainName
+	              .trim()
+	              .replace(/[^a-zA-Z0-9-_]+/g, "-")
+	              .replace(/-+/g, "-")
+	              .replace(/^-+|-+$/g, "") || "video";
+	          const file = new File([blob], `${safeBase}.${extension}`, {
+	            type: mimeType,
+	          });
+	          const resolvedAspectRatio =
+	            meta.aspectRatio ??
+	            (meta.width && meta.height ? meta.width / meta.height : undefined);
+	          const stored = await uploadAssetFileSafe(file, {
+	            name: resolvedMainName,
+	            kind: "video",
+	            source: "upload",
+	            duration: meta.duration,
+	            width: meta.width,
+	            height: meta.height,
+	            aspectRatio: resolvedAspectRatio,
+	          });
+	          if (!stored?.url || !stored.id) {
+	            return null;
+	          }
+	          return {
+	            url: stored.url,
+	            name: stored.name || resolvedMainName,
+	            assetId: stored.id,
+	            meta,
+	          };
+	        } catch (error) {
+	          console.error("[split-screen] failed to persist main video", error);
+	          return null;
+	        } finally {
+	          setSplitScreenImportOverlayStage("preparing");
+	        }
+	      };
+
+	      const persistedMain = await persistMainVideoIfNeeded();
+	      let mainMeta: Awaited<ReturnType<typeof getMediaMeta>>;
+	      if (persistedMain) {
+	        resolvedMainUrl = persistedMain.url;
+	        resolvedMainName = persistedMain.name;
+	        resolvedMainAssetId = persistedMain.assetId;
+	        mainMeta = persistedMain.meta;
+	      } else {
+	        mainMeta = await getMediaMeta("video", resolvedMainUrl);
+	      }
+
+	      // Split screen is primarily used for vertical short-form output.
+	      setProjectSizeId("9:16");
+	      const nextProjectName = `Split Screen - ${resolvedMainName || "Project"}`.trim();
+	      setProjectName(nextProjectName);
+
+      // Ensure this import starts a fresh editor project instead of overwriting an
+      // existing `projectId` (common when the editor route is cached).
+      projectIdRef.current = null;
+      setProjectId(null);
+      exportPersistedRef.current = null;
+      setExportUi({
+        open: false,
+        status: "idle",
+        stage: "",
+        progress: 0,
+        jobId: null,
+        downloadUrl: null,
+        error: null,
+      });
+
+	      const backgroundMeta = await getMediaMeta(
+	        "video",
+	        payload.backgroundVideo.url
+	      );
+
+      const mainWidth =
+        typeof mainMeta.width === "number" && Number.isFinite(mainMeta.width)
+          ? mainMeta.width
+          : undefined;
+      const mainHeight =
+        typeof mainMeta.height === "number" && Number.isFinite(mainMeta.height)
+          ? mainMeta.height
+          : undefined;
+      const mainDuration =
+        typeof mainMeta.duration === "number" && Number.isFinite(mainMeta.duration)
+          ? mainMeta.duration
+          : undefined;
+      const mainAspectRatio =
+        mainWidth && mainHeight ? mainWidth / mainHeight : undefined;
+
+	      const mainAssetId = resolvedMainAssetId ?? crypto.randomUUID();
+
+	      const mainAsset: MediaAsset = {
+	        id: mainAssetId,
+	        name: resolvedMainName,
+	        kind: "video",
+	        url: resolvedMainUrl,
+	        size: 0,
+	        duration: mainDuration,
+	        width: mainWidth,
+	        height: mainHeight,
+        aspectRatio: mainAspectRatio,
+        createdAt: Date.now(),
+      };
+
+      const bgWidth =
+        typeof backgroundMeta.width === "number" && Number.isFinite(backgroundMeta.width)
+          ? backgroundMeta.width
+          : undefined;
+      const bgHeight =
+        typeof backgroundMeta.height === "number" && Number.isFinite(backgroundMeta.height)
+          ? backgroundMeta.height
+          : undefined;
+      const bgDuration =
+        typeof backgroundMeta.duration === "number" && Number.isFinite(backgroundMeta.duration)
+          ? backgroundMeta.duration
+          : undefined;
+      const bgAspectRatio = bgWidth && bgHeight ? bgWidth / bgHeight : undefined;
+
+      const bgLibraryAsset = await createExternalAssetSafe({
+        url: payload.backgroundVideo.url,
+        name: payload.backgroundVideo.name?.trim() || "Gameplay footage",
+        kind: "video",
+        source: "stock",
+        duration: bgDuration,
+        width: bgWidth,
+        height: bgHeight,
+        aspectRatio: bgAspectRatio,
+      });
+
+      const backgroundAsset: MediaAsset = {
+        id: bgLibraryAsset?.id ?? crypto.randomUUID(),
+        name: payload.backgroundVideo.name?.trim() || "Gameplay footage",
+        kind: "video",
+        url: bgLibraryAsset?.url ?? payload.backgroundVideo.url,
+        size: 0,
+        duration: bgDuration,
+        width: bgWidth,
+        height: bgHeight,
+        aspectRatio: bgAspectRatio,
+        createdAt: Date.now(),
+      };
+
+      const existingMain = assetsRef.current.find((asset) => asset.id === mainAsset.id);
+      const existingBg = assetsRef.current.find((asset) => asset.id === backgroundAsset.id);
+      const resolvedMainAsset = existingMain ?? mainAsset;
+      const resolvedBgAsset = existingBg ?? backgroundAsset;
+
+      const nextLanes: TimelineLane[] = [];
+      const bgLaneId = createLaneId("video", nextLanes, { placement: "top" });
+      const mainLaneId = createLaneId("video", nextLanes);
+
+      const mainClip: TimelineClip = {
+        id: crypto.randomUUID(),
+        assetId: resolvedMainAsset.id,
+        duration: Math.max(0.01, getAssetDurationSeconds(resolvedMainAsset)),
+        startOffset: 0,
+        startTime: 0,
+        laneId: mainLaneId,
+      };
+
+      const targetDuration = mainClip.duration;
+      const bgBaseDuration = Math.max(
+        0.01,
+        bgDuration ?? getAssetDurationSeconds(resolvedBgAsset) ?? targetDuration
+      );
+      const bgClips: TimelineClip[] = [];
+      let cursor = 0;
+      while (cursor < targetDuration - timelineClipEpsilon) {
+        const remaining = targetDuration - cursor;
+        const duration = Math.max(0.01, Math.min(bgBaseDuration, remaining));
+        bgClips.push({
+          id: crypto.randomUUID(),
+          assetId: resolvedBgAsset.id,
+          duration,
+          startOffset: 0,
+          startTime: cursor,
+          laneId: bgLaneId,
+        });
+        cursor += duration;
+        if (bgClips.length > 200) {
+          break;
+        }
+      }
+
+      const mainTransform: ClipTransform =
+        payload.layout === "side-by-side"
+          ? { x: 0.5, y: 0, width: 0.5, height: 1 }
+          : { x: 0, y: 0.5, width: 1, height: 0.5 };
+      const bgTransform: ClipTransform =
+        payload.layout === "side-by-side"
+          ? { x: 0, y: 0, width: 0.5, height: 1 }
+          : { x: 0, y: 0, width: 1, height: 0.5 };
+
+      // Treat as a fresh editor composition (do not append to an existing timeline).
+      setLanes(nextLanes);
+      setAssets((prev) => {
+        const next = [...prev];
+        if (!next.some((asset) => asset.id === resolvedBgAsset.id)) {
+          next.unshift(resolvedBgAsset);
+        }
+        if (!next.some((asset) => asset.id === resolvedMainAsset.id)) {
+          next.unshift(resolvedMainAsset);
+        }
+        return next;
+      });
+      setTimeline([...bgClips, mainClip]);
+      setClipTransforms(() => {
+        const next: Record<string, ClipTransform> = {
+          [mainClip.id]: mainTransform,
+        };
+        bgClips.forEach((clip) => {
+          next[clip.id] = bgTransform;
+        });
+        return next;
+      });
+      // Prevent automatic "fit to stage" adjustments from overwriting our split layout
+      // when video metadata loads.
+      clipTransformTouchedRef.current = new Set([
+        mainClip.id,
+        ...bgClips.map((clip) => clip.id),
+      ]);
+      setBackgroundTransforms({});
+      setClipSettings(() => {
+        const next: Record<string, VideoClipSettings> = {};
+        bgClips.forEach((clip) => {
+          next[clip.id] = {
+            ...createDefaultVideoSettings(),
+            muted: true,
+            volume: 0,
+          };
+        });
+        return next;
+      });
+      setTextSettings({});
+      setSubtitleSegments([]);
+      setDetachedSubtitleIds(new Set());
+      setSubtitleStatus("idle");
+      setSubtitleError(null);
+      setTranscriptSegments([]);
+      setTranscriptStatus("idle");
+      setTranscriptError(null);
+      setTimelineThumbnails({});
+      setAudioWaveforms({});
+      setClipOrder({});
+      setCurrentTime(0);
+      setActiveAssetId(resolvedMainAsset.id);
+      setActiveCanvasClipId(mainClip.id);
+      setSelectedClipId(mainClip.id);
+      setSelectedClipIds([mainClip.id]);
+
+      const desiredStyleId = payload.subtitles?.styleId;
+      if (typeof desiredStyleId === "string" && desiredStyleId.trim().length > 0) {
+        setSubtitleStyleId(desiredStyleId.trim());
+      }
+      setSubtitleSource(mainClip.id);
+      setTranscriptSource(mainClip.id);
+
+      if (
+        payload.subtitles?.autoGenerate &&
+        typeof desiredStyleId === "string" &&
+        desiredStyleId.trim().length > 0
+      ) {
+        setSplitScreenImportOverlayStage("subtitles");
+        pendingSplitScreenSubtitleRef.current = {
+          mainClipId: mainClip.id,
+          styleId: desiredStyleId.trim(),
+        };
+      } else {
+        setSplitScreenImportOverlayStage("finalizing");
+        requestAnimationFrame(() => setSplitScreenImportOverlayOpen(false));
+      }
+    },
+    [createLaneId, pushHistory]
+	  );
+
+  const applyStreamerVideoImport = useCallback(
+    async (payload: StreamerVideoImportPayloadV1) => {
+      const hasMainUrl =
+        typeof payload?.mainVideo?.url === "string" &&
+        payload.mainVideo.url.trim().length > 0;
+      const hasMainAssetId =
+        typeof payload?.mainVideo?.assetId === "string" &&
+        payload.mainVideo.assetId.trim().length > 0;
+      const titleTextRaw =
+        typeof payload?.titleText === "string" ? payload.titleText.trim() : "";
+      if (!titleTextRaw || (!hasMainUrl && !hasMainAssetId)) {
+        return;
+      }
+
+      setStreamerVideoImportOverlayStage("preparing");
+      setStreamerVideoImportOverlayOpen(true);
+      setIsBackgroundSelected(false);
+      pushHistory();
+
+      let resolvedMainUrl =
+        typeof payload.mainVideo.url === "string" ? payload.mainVideo.url.trim() : "";
+      let resolvedMainName =
+        typeof payload.mainVideo.name === "string" &&
+        payload.mainVideo.name.trim().length > 0
+          ? payload.mainVideo.name.trim()
+          : "Main video";
+      let resolvedMainAssetId =
+        typeof payload.mainVideo.assetId === "string" &&
+        payload.mainVideo.assetId.trim().length > 0
+          ? payload.mainVideo.assetId.trim()
+          : null;
+
+      const resolveUserAssetUrl = async (assetId: string) => {
+        const supabase = createClient();
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData?.user;
+        if (!user) {
+          throw new Error("Please sign in to access your uploaded video.");
+        }
+        const { data, error } = await supabase
+          .from("assets")
+          .select(
+            "id,name,kind,storage_bucket,storage_path,external_url,mime_type,size_bytes,duration_seconds,width,height,aspect_ratio,created_at"
+          )
+          .eq("id", assetId)
+          .eq("user_id", user.id)
+          .limit(1);
+        if (error) {
+          throw new Error("Unable to load your uploaded video.");
+        }
+        const row = data?.[0] as
+          | {
+              id: string;
+              name: string | null;
+              kind: string | null;
+              storage_bucket: string | null;
+              storage_path: string | null;
+              external_url: string | null;
+            }
+          | undefined;
+        if (!row) {
+          throw new Error("Uploaded video not found. Please upload again.");
+        }
+        const name =
+          typeof row.name === "string" && row.name.trim().length > 0
+            ? row.name.trim()
+            : resolvedMainName;
+        const storageBucket =
+          typeof row.storage_bucket === "string" && row.storage_bucket.trim().length > 0
+            ? row.storage_bucket.trim()
+            : "";
+        const storagePath =
+          typeof row.storage_path === "string" && row.storage_path.trim().length > 0
+            ? row.storage_path.trim()
+            : "";
+        if (storageBucket && storagePath) {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from(storageBucket)
+            .createSignedUrl(storagePath, 60 * 60);
+          if (signedError || !signedData?.signedUrl) {
+            throw new Error("Unable to access your uploaded video.");
+          }
+          return { url: signedData.signedUrl, name };
+        }
+        const externalUrl =
+          typeof row.external_url === "string" ? row.external_url.trim() : "";
+        if (externalUrl) {
+          return { url: externalUrl, name };
+        }
+        throw new Error("Unable to access your uploaded video.");
+      };
+
+      if (!resolvedMainUrl && resolvedMainAssetId) {
+        const resolved = await resolveUserAssetUrl(resolvedMainAssetId);
+        resolvedMainUrl = resolved.url;
+        resolvedMainName = resolved.name || resolvedMainName;
+      }
+
+      const persistMainVideoIfNeeded = async (): Promise<
+        | {
+            url: string;
+            name: string;
+            assetId: string;
+            meta: Awaited<ReturnType<typeof getMediaMeta>>;
+          }
+        | null
+      > => {
+        if (
+          !resolvedMainUrl.startsWith("blob:") &&
+          !resolvedMainUrl.startsWith("data:")
+        ) {
+          return null;
+        }
+        setStreamerVideoImportOverlayStage("uploading");
+        try {
+          const meta = await getMediaMeta("video", resolvedMainUrl);
+          const response = await fetch(resolvedMainUrl);
+          const blob = await response.blob();
+          const mimeType =
+            typeof blob.type === "string" && blob.type.trim().length > 0
+              ? blob.type
+              : "video/mp4";
+          const extension = mimeType.toLowerCase().includes("webm")
+            ? "webm"
+            : mimeType.toLowerCase().includes("quicktime")
+              ? "mov"
+              : "mp4";
+          const safeBase =
+            resolvedMainName
+              .trim()
+              .replace(/[^a-zA-Z0-9-_]+/g, "-")
+              .replace(/-+/g, "-")
+              .replace(/^-+|-+$/g, "") || "video";
+          const file = new File([blob], `${safeBase}.${extension}`, {
+            type: mimeType,
+          });
+          const resolvedAspectRatio =
+            meta.aspectRatio ??
+            (meta.width && meta.height ? meta.width / meta.height : undefined);
+          const stored = await uploadAssetFileSafe(file, {
+            name: resolvedMainName,
+            kind: "video",
+            source: "upload",
+            duration: meta.duration,
+            width: meta.width,
+            height: meta.height,
+            aspectRatio: resolvedAspectRatio,
+          });
+          if (!stored?.url || !stored.id) {
+            return null;
+          }
+          return {
+            url: stored.url,
+            name: stored.name || resolvedMainName,
+            assetId: stored.id,
+            meta,
+          };
+        } catch (error) {
+          console.error("[streamer-video] failed to persist main video", error);
+          return null;
+        } finally {
+          setStreamerVideoImportOverlayStage("preparing");
+        }
+      };
+
+      const persistedMain = await persistMainVideoIfNeeded();
+      let mainMeta: Awaited<ReturnType<typeof getMediaMeta>>;
+      if (persistedMain) {
+        resolvedMainUrl = persistedMain.url;
+        resolvedMainName = persistedMain.name;
+        resolvedMainAssetId = persistedMain.assetId;
+        mainMeta = persistedMain.meta;
+      } else {
+        mainMeta = await getMediaMeta("video", resolvedMainUrl);
+      }
+
+      // Streamer videos are primarily used for vertical short-form output.
+      setProjectSizeId("9:16");
+      const nextProjectName = `Streamer Video - ${resolvedMainName || "Project"}`.trim();
+      setProjectName(nextProjectName);
+
+      // Ensure this import starts a fresh editor project instead of overwriting an
+      // existing `projectId` (common when the editor route is cached).
+      projectIdRef.current = null;
+      setProjectId(null);
+      exportPersistedRef.current = null;
+      setExportUi({
+        open: false,
+        status: "idle",
+        stage: "",
+        progress: 0,
+        jobId: null,
+        downloadUrl: null,
+        error: null,
+      });
+
+      const mainWidth =
+        typeof mainMeta.width === "number" && Number.isFinite(mainMeta.width)
+          ? mainMeta.width
+          : undefined;
+      const mainHeight =
+        typeof mainMeta.height === "number" && Number.isFinite(mainMeta.height)
+          ? mainMeta.height
+          : undefined;
+      const mainDuration =
+        typeof mainMeta.duration === "number" && Number.isFinite(mainMeta.duration)
+          ? mainMeta.duration
+          : undefined;
+      const mainAspectRatio =
+        mainWidth && mainHeight ? mainWidth / mainHeight : undefined;
+
+      const mainAssetId = resolvedMainAssetId ?? crypto.randomUUID();
+      const mainAsset: MediaAsset = {
+        id: mainAssetId,
+        name: resolvedMainName,
+        kind: "video",
+        url: resolvedMainUrl,
+        size: 0,
+        duration: mainDuration,
+        width: mainWidth,
+        height: mainHeight,
+        aspectRatio: mainAspectRatio,
+        createdAt: Date.now(),
+      };
+
+      const resolvedMainAsset =
+        assetsRef.current.find((asset) => asset.id === mainAsset.id) ?? mainAsset;
+
+      const nextLanes: TimelineLane[] = [];
+      const mainLaneId = createLaneId("video", nextLanes);
+      const bgLaneId = createLaneId("video", nextLanes);
+      const titleLaneId = createLaneId("text", nextLanes, { placement: "top" });
+
+      const mainClip: TimelineClip = {
+        id: crypto.randomUUID(),
+        assetId: resolvedMainAsset.id,
+        duration: Math.max(0.01, getAssetDurationSeconds(resolvedMainAsset)),
+        startOffset: 0,
+        startTime: 0,
+        laneId: mainLaneId,
+      };
+
+      const backgroundClip: TimelineClip = {
+        id: crypto.randomUUID(),
+        assetId: resolvedMainAsset.id,
+        duration: mainClip.duration,
+        startOffset: 0,
+        startTime: 0,
+        laneId: bgLaneId,
+      };
+
+      const stageRatio = 9 / 16;
+      const resolvedAssetRatio = mainAspectRatio ?? stageRatio;
+
+      const coverTransform: ClipTransform = (() => {
+        const safeStage = stageRatio > 0 ? stageRatio : 16 / 9;
+        const safeAsset = resolvedAssetRatio > 0 ? resolvedAssetRatio : safeStage;
+        if (safeAsset > safeStage) {
+          const width = safeAsset / safeStage;
+          return {
+            x: (1 - width) / 2,
+            y: 0,
+            width,
+            height: 1,
+          };
+        }
+        const height = safeStage / safeAsset;
+        return {
+          x: 0,
+          y: (1 - height) / 2,
+          width: 1,
+          height,
+        };
+      })();
+
+      const containTransform: ClipTransform = createDefaultTransform(
+        resolvedAssetRatio,
+        stageRatio
+      );
+
+      const titleText = titleTextRaw;
+      const titleAsset: MediaAsset = {
+        ...createTextAsset("Title"),
+        duration: mainClip.duration,
+      };
+      const titleClip: TimelineClip = {
+        id: crypto.randomUUID(),
+        assetId: titleAsset.id,
+        duration: mainClip.duration,
+        startOffset: 0,
+        startTime: 0,
+        laneId: titleLaneId,
+      };
+      const titleTransform: ClipTransform = {
+        x: 0.05,
+        y: 0.04,
+        width: 0.9,
+        height: 0.22,
+      };
+      const titleSettings: TextClipSettings = {
+        ...createDefaultTextSettings(),
+        text: titleText,
+        fontFamily: "Poppins",
+        fontSize: 16,
+        align: "center",
+        outlineEnabled: false,
+        shadowEnabled: false,
+      };
+
+      // Treat as a fresh editor composition (do not append to an existing timeline).
+      setLanes(nextLanes);
+      setAssets((prev) => {
+        const next = [...prev];
+        if (!next.some((asset) => asset.id === titleAsset.id)) {
+          next.unshift(titleAsset);
+        }
+        if (!next.some((asset) => asset.id === resolvedMainAsset.id)) {
+          next.unshift(resolvedMainAsset);
+        }
+        return next;
+      });
+      setTimeline([backgroundClip, mainClip, titleClip]);
+      setClipTransforms(() => ({
+        [backgroundClip.id]: coverTransform,
+        [mainClip.id]: containTransform,
+        [titleClip.id]: titleTransform,
+      }));
+      clipTransformTouchedRef.current = new Set([
+        backgroundClip.id,
+        mainClip.id,
+        titleClip.id,
+      ]);
+      setBackgroundTransforms({});
+      setClipSettings(() => ({
+        [backgroundClip.id]: {
+          ...createDefaultVideoSettings(),
+          muted: true,
+          volume: 0,
+          blur: 80,
+          brightness: -20,
+          exposure: -10,
+          saturation: -10,
+          vignette: 20,
+        },
+        [mainClip.id]: createDefaultVideoSettings(),
+      }));
+      setTextSettings(() => ({
+        [titleClip.id]: titleSettings,
+      }));
+      setSubtitleSegments([]);
+      setDetachedSubtitleIds(new Set());
+      setSubtitleStatus("idle");
+      setSubtitleError(null);
+      setTranscriptSegments([]);
+      setTranscriptStatus("idle");
+      setTranscriptError(null);
+      setTimelineThumbnails({});
+      setAudioWaveforms({});
+      setClipOrder({});
+      setCurrentTime(0);
+      setActiveAssetId(resolvedMainAsset.id);
+      setActiveCanvasClipId(mainClip.id);
+      setSelectedClipId(mainClip.id);
+      setSelectedClipIds([mainClip.id]);
+
+      const desiredStyleId = payload.subtitles?.styleId;
+      if (typeof desiredStyleId === "string" && desiredStyleId.trim().length > 0) {
+        setSubtitleStyleId(desiredStyleId.trim());
+      }
+      setSubtitleSource(mainClip.id);
+      setTranscriptSource(mainClip.id);
+
+      if (
+        payload.subtitles?.autoGenerate &&
+        typeof desiredStyleId === "string" &&
+        desiredStyleId.trim().length > 0
+      ) {
+        setStreamerVideoImportOverlayStage("subtitles");
+        pendingStreamerVideoSubtitleRef.current = {
+          sourceClipId: mainClip.id,
+          styleId: desiredStyleId.trim(),
+        };
+      } else {
+        setStreamerVideoImportOverlayStage("finalizing");
+        requestAnimationFrame(() => setStreamerVideoImportOverlayOpen(false));
+      }
+    },
+    [createLaneId, pushHistory]
+  );
+
+  const applyRedditVideoImport = useCallback(
+    async (payload: RedditVideoImportPayloadV1) => {
+      if (!payload?.gameplay?.url || !payload?.script) {
+        return;
+      }
+
+      setRedditVideoImportOverlayStage("preparing");
+      setRedditVideoImportOverlayOpen(true);
+      setIsBackgroundSelected(false);
+      pushHistory();
+
+      const safeTitle =
+        typeof payload.post?.title === "string" && payload.post.title.trim().length > 0
+          ? payload.post.title.trim()
+          : "Reddit video";
+
+      // Reddit videos are primarily vertical short-form output.
+      setProjectSizeId("9:16");
+      setProjectName(`Reddit Video - ${safeTitle}`);
+
+      // Ensure this import starts a fresh editor project instead of overwriting an
+      // existing `projectId` (common when the editor route is cached).
+      projectIdRef.current = null;
+      setProjectId(null);
+      exportPersistedRef.current = null;
+      setExportUi({
+        open: false,
+        status: "idle",
+        stage: "",
+        progress: 0,
+        jobId: null,
+        downloadUrl: null,
+        error: null,
+      });
+
+      const generateVoiceoverUrl = async (text: string, voice: string) => {
+        const response = await fetch("/api/ai-voiceover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message =
+            typeof data?.error === "string" && data.error.length > 0
+              ? data.error
+              : "Voiceover generation failed.";
+          throw new Error(message);
+        }
+        const audioEntry = data?.audio ?? null;
+        const audioUrl =
+          typeof audioEntry?.url === "string"
+            ? audioEntry.url
+            : typeof data?.audio_url === "string"
+              ? data.audio_url
+              : typeof data?.audioUrl === "string"
+                ? data.audioUrl
+                : typeof data?.audio === "string"
+                  ? data.audio
+                  : null;
+        if (!audioUrl) {
+          throw new Error("Voiceover generation returned no audio.");
+        }
+        return audioUrl;
+      };
+
+      const createGeneratedVoiceAsset = async (options: {
+        url: string;
+        script: string;
+        voice: string;
+      }): Promise<MediaAsset> => {
+        const existing = assetsRef.current.find(
+          (asset) => asset.kind === "audio" && asset.url === options.url
+        );
+        if (existing) {
+          return existing;
+        }
+        const trimmedScript = options.script.trim() || "Voiceover";
+        const shortScript =
+          trimmedScript.length > 60
+            ? `${trimmedScript.slice(0, 57)}...`
+            : trimmedScript;
+        const voiceLabel = options.voice.trim() || "AI";
+        const name = `Voiceover - ${voiceLabel} - ${shortScript}`;
+        const meta = await getMediaMeta("audio", options.url);
+        const libraryAsset = await createExternalAssetSafe({
+          url: options.url,
+          name,
+          kind: "audio",
+          source: "generated",
+          duration: meta.duration,
+        });
+        return {
+          id: libraryAsset?.id ?? crypto.randomUUID(),
+          name,
+          kind: "audio",
+          url: libraryAsset?.url ?? options.url,
+          size: libraryAsset?.size ?? 0,
+          duration: meta.duration,
+          createdAt: Date.now(),
+        };
+      };
+
+      const renderElementToPngFile = async (
+        node: HTMLElement,
+        options?: { scale?: number; fileName?: string }
+      ) => {
+        const scale = Math.max(1, Math.min(4, options?.scale ?? 2));
+        const rect = node.getBoundingClientRect();
+        const width = Math.max(1, Math.ceil(rect.width));
+        const height = Math.max(1, Math.ceil(rect.height));
+
+        const clone = node.cloneNode(true) as HTMLElement;
+        const srcElements = Array.from(node.querySelectorAll("*"));
+        const cloneElements = Array.from(clone.querySelectorAll("*"));
+
+        const applyInlineStyles = (source: Element, target: Element) => {
+          if (!(source instanceof Element) || !(target instanceof Element)) {
+            return;
+          }
+          const computed = window.getComputedStyle(source);
+          const style: string[] = [];
+          for (let i = 0; i < computed.length; i += 1) {
+            const prop = computed[i];
+            const value = computed.getPropertyValue(prop);
+            if (!value) {
+              continue;
+            }
+            style.push(`${prop}:${value};`);
+          }
+          (target as HTMLElement).setAttribute(
+            "style",
+            `${(target as HTMLElement).getAttribute("style") ?? ""};${style.join("")}`
+          );
+        };
+
+        applyInlineStyles(node, clone);
+        srcElements.forEach((element, index) => {
+          const target = cloneElements[index];
+          if (target) {
+            applyInlineStyles(element, target);
+          }
+        });
+
+        const wrapper = document.createElement("div");
+        wrapper.appendChild(clone);
+
+        const makeXhtmlSafe = (markup: string) => {
+          // `foreignObject` content is parsed as XML/XHTML. Browsers serialize void
+          // elements like `<img>` without a closing slash in HTML mode, which
+          // breaks SVG XML parsing and causes image rendering to fail.
+          return markup.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+            if (match.trimEnd().endsWith("/>")) {
+              return match;
+            }
+            return `<img${attrs} />`;
+          });
+        };
+
+        const serializedMarkup = makeXhtmlSafe(wrapper.innerHTML);
+        const svg = [
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
+          `<foreignObject width="100%" height="100%">`,
+          `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;">`,
+          serializedMarkup,
+          `</div>`,
+          `</foreignObject>`,
+          `</svg>`,
+        ].join("");
+
+        const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+        const svgUrl = URL.createObjectURL(svgBlob);
+        try {
+          const img = new Image();
+          img.decoding = "async";
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error("Failed to render intro card."));
+            img.src = svgUrl;
+          });
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width * scale;
+          canvas.height = height * scale;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            throw new Error("Canvas unavailable.");
+          }
+          ctx.scale(scale, scale);
+          ctx.drawImage(img, 0, 0);
+
+          const blob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (result) => {
+                if (result) {
+                  resolve(result);
+                } else {
+                  reject(new Error("Failed to export intro card image."));
+                }
+              },
+              "image/png",
+              0.92
+            );
+          });
+
+          return new File([blob], options?.fileName ?? "reddit-intro-card.png", {
+            type: "image/png",
+          });
+        } finally {
+          URL.revokeObjectURL(svgUrl);
+        }
+      };
+
+      const createIntroCardAsset = async () => {
+        const avatarUrl = payload.post.avatarUrl;
+        const username = payload.post.username;
+        const likes = payload.post.likes;
+        const comments = payload.post.comments;
+        const title = payload.post.title;
+        const darkMode = payload.post.darkMode;
+
+        const escapeHtml = (value: string) =>
+          value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
+        const normalizeUrl = (value: string) => {
+          const trimmed = value.trim();
+          if (!trimmed) {
+            return "";
+          }
+          if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) {
+            return trimmed;
+          }
+          try {
+            return new URL(trimmed, window.location.href).toString();
+          } catch {
+            return trimmed;
+          }
+        };
+
+        const resolveImageDataUrl = async (url: string) => {
+          const normalized = normalizeUrl(url);
+          if (!normalized) {
+            return "";
+          }
+          if (normalized.startsWith("data:") || normalized.startsWith("blob:")) {
+            return normalized;
+          }
+          try {
+            const response = await fetch(normalized);
+            if (!response.ok) {
+              return normalized;
+            }
+            const blob = await response.blob();
+            return await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () =>
+                resolve(
+                  typeof reader.result === "string" ? reader.result : normalized
+                );
+              reader.onerror = () => reject(new Error("Failed to read image data."));
+              reader.readAsDataURL(blob);
+            });
+          } catch {
+            return normalized;
+          }
+        };
+
+        const fallbackAvatarUrl = await resolveImageDataUrl(
+          new URL(
+            "/reddit-default-pfp/0qoqln2f5bu71.webp",
+            window.location.href
+          ).toString()
+        );
+
+        const avatarCandidateUrl = await resolveImageDataUrl(avatarUrl);
+        const resolvedAvatarUrl = (() => {
+          if (!avatarCandidateUrl) {
+            return fallbackAvatarUrl;
+          }
+          if (
+            avatarCandidateUrl.startsWith("data:") ||
+            avatarCandidateUrl.startsWith("blob:")
+          ) {
+            return avatarCandidateUrl;
+          }
+          try {
+            const origin = new URL(avatarCandidateUrl).origin;
+            if (origin !== window.location.origin) {
+              return fallbackAvatarUrl || avatarCandidateUrl;
+            }
+          } catch {
+            // Ignore URL parsing failures; keep candidate.
+          }
+          return avatarCandidateUrl;
+        })();
+
+        const resolvedAwardsUrl = await resolveImageDataUrl(
+          new URL("/awards.png", window.location.href).toString()
+        );
+
+        const safeUsername = escapeHtml(username);
+        const safeLikes = escapeHtml(likes);
+        const safeComments = escapeHtml(comments);
+        const safeTitle = escapeHtml(title);
+
+        const renderIntroCardFallbackToPngFile = async (options: {
+          width: number;
+          height: number;
+          fileName: string;
+          avatarUrl: string;
+          awardsUrl?: string;
+          username: string;
+          title: string;
+          likes: string;
+          comments: string;
+          darkMode: boolean;
+        }) => {
+          const scale = 2;
+          const width = Math.max(1, Math.round(options.width));
+          let height = Math.max(1, Math.round(options.height));
+
+          const padding = 16;
+          const avatarSize = 40;
+          const avatarX = padding;
+          const avatarY = padding;
+          const iconSize = 16;
+          const awardsHeight = 16;
+          const awardsX = avatarX + avatarSize + 8;
+          const awardsY = avatarY + 24;
+          const titleFont =
+            "500 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
+          const titleLineHeight = 20;
+          const titleMaxWidth = Math.max(1, width - padding * 2);
+
+          const wrapText = (
+            context: CanvasRenderingContext2D,
+            value: string,
+            maxWidth: number
+          ) => {
+            const normalized = value.replace(/\s+/g, " ").trim();
+            if (!normalized) {
+              return [];
+            }
+            const words = normalized.split(" ").filter(Boolean);
+            const lines: string[] = [];
+            let current = "";
+            words.forEach((word) => {
+              const candidate = current ? `${current} ${word}` : word;
+              if (context.measureText(candidate).width <= maxWidth || !current) {
+                current = candidate;
+                return;
+              }
+              lines.push(current);
+              current = word;
+            });
+            if (current) {
+              lines.push(current);
+            }
+            return lines;
+          };
+
+          const measureCanvas = document.createElement("canvas");
+          const measureCtx = measureCanvas.getContext("2d");
+          if (!measureCtx) {
+            throw new Error("Canvas unavailable.");
+          }
+          measureCtx.font = titleFont;
+          const headerBottom = options.awardsUrl
+            ? Math.max(avatarY + avatarSize, awardsY + awardsHeight)
+            : avatarY + avatarSize;
+          const titleY = headerBottom + 16;
+          const titleLines = wrapText(measureCtx, options.title, titleMaxWidth);
+          const requiredHeight = Math.ceil(
+            titleY + titleLines.length * titleLineHeight + 18 + iconSize + padding
+          );
+          height = Math.max(height, requiredHeight);
+
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(width * scale));
+          canvas.height = Math.max(1, Math.round(height * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            throw new Error("Canvas unavailable.");
+          }
+          ctx.scale(scale, scale);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+
+          const borderColor = options.darkMode ? null : "#e5e7eb"; // gray-200
+          const cardBg = options.darkMode ? "#000000" : "#ffffff";
+          const primaryText = options.darkMode ? "#ffffff" : "#000000";
+          const secondaryText = options.darkMode ? "#ADADAD" : "#adadad";
+          const iconStroke = options.darkMode ? "#575757" : "#adadad";
+
+          const drawRoundedRectPath = (
+            x: number,
+            y: number,
+            w: number,
+            h: number,
+            r: number
+          ) => {
+            const radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + w - radius, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+            ctx.lineTo(x + w, y + h - radius);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+            ctx.lineTo(x + radius, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+          };
+
+          const loadImage = async (src: string) => {
+            const img = new Image();
+            img.decoding = "async";
+            img.crossOrigin = "anonymous";
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = () => reject(new Error("Failed to load image."));
+              img.src = src;
+            });
+            try {
+              await img.decode();
+            } catch {
+              // Ignore decode errors; image may still be drawable.
+            }
+            return img;
+          };
+
+          drawRoundedRectPath(0, 0, width, height, 12);
+          ctx.fillStyle = cardBg;
+          ctx.fill();
+          if (borderColor) {
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+
+          let avatarImage: HTMLImageElement | null = null;
+          try {
+            avatarImage = options.avatarUrl ? await loadImage(options.avatarUrl) : null;
+          } catch {
+            avatarImage = null;
+          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(
+            avatarX + avatarSize / 2,
+            avatarY + avatarSize / 2,
+            avatarSize / 2,
+            0,
+            Math.PI * 2
+          );
+          ctx.closePath();
+          ctx.clip();
+          if (avatarImage) {
+            ctx.drawImage(avatarImage, avatarX, avatarY, avatarSize, avatarSize);
+          } else {
+            ctx.fillStyle = "#d1d5db";
+            ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+          }
+          ctx.restore();
+
+          const usernameX = avatarX + avatarSize + 8;
+          const usernameY = avatarY + 6;
+          ctx.fillStyle = primaryText;
+          ctx.textBaseline = "top";
+          ctx.font =
+            "600 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
+          const usernameText = options.username || "reddit-user";
+          ctx.fillText(usernameText, usernameX, usernameY);
+
+          const usernameWidth = ctx.measureText(usernameText).width;
+          const badgeSize = 14;
+          const badgeX = usernameX + usernameWidth + 8;
+          const badgeY = usernameY + 6;
+          ctx.fillStyle = "rgb(25, 165, 252)";
+          ctx.beginPath();
+          ctx.arc(badgeX + badgeSize / 2, badgeY + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.beginPath();
+          ctx.moveTo(badgeX + badgeSize * 0.28, badgeY + badgeSize * 0.55);
+          ctx.lineTo(badgeX + badgeSize * 0.45, badgeY + badgeSize * 0.7);
+          ctx.lineTo(badgeX + badgeSize * 0.75, badgeY + badgeSize * 0.35);
+          ctx.stroke();
+
+          let awardsImage: HTMLImageElement | null = null;
+          if (options.awardsUrl) {
+            try {
+              awardsImage = await loadImage(options.awardsUrl);
+            } catch {
+              awardsImage = null;
+            }
+          }
+          if (awardsImage) {
+            const aspect =
+              awardsImage.naturalHeight > 0
+                ? awardsImage.naturalWidth / awardsImage.naturalHeight
+                : 1;
+            const awardsWidth = Math.max(1, Math.round(awardsHeight * aspect));
+            ctx.drawImage(awardsImage, awardsX, awardsY, awardsWidth, awardsHeight);
+          }
+
+          const titleX = padding;
+          ctx.fillStyle = primaryText;
+          ctx.font = titleFont;
+          titleLines.forEach((line, i) => {
+            ctx.fillText(line, titleX, titleY + i * titleLineHeight);
+          });
+
+          const bottomY = height - padding - iconSize / 2;
+          ctx.strokeStyle = iconStroke;
+          ctx.lineWidth = 1.6;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.fillStyle = secondaryText;
+          ctx.textBaseline = "middle";
+          ctx.font =
+            "400 14px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
+
+          let cursorX = padding;
+
+          const drawHeart = (x: number, y: number, size: number) => {
+            const topCurveHeight = size * 0.32;
+            ctx.beginPath();
+            ctx.moveTo(x + size / 2, y + size);
+            ctx.bezierCurveTo(
+              x + size / 2,
+              y + size - topCurveHeight,
+              x,
+              y + size - topCurveHeight,
+              x,
+              y + size / 2
+            );
+            ctx.bezierCurveTo(x, y + topCurveHeight, x + size / 4, y, x + size / 2, y + topCurveHeight);
+            ctx.bezierCurveTo(
+              x + (size * 3) / 4,
+              y,
+              x + size,
+              y + topCurveHeight,
+              x + size,
+              y + size / 2
+            );
+            ctx.bezierCurveTo(
+              x + size,
+              y + size - topCurveHeight,
+              x + size / 2,
+              y + size - topCurveHeight,
+              x + size / 2,
+              y + size
+            );
+            ctx.closePath();
+            ctx.stroke();
+          };
+
+          const drawComment = (x: number, y: number, size: number) => {
+            const r = Math.max(2, size * 0.18);
+            const w = size;
+            const h = Math.max(10, size * 0.78);
+            const tailW = Math.max(4, size * 0.22);
+            const tailH = Math.max(3, size * 0.18);
+            const bodyY = y + (size - h) / 2;
+            drawRoundedRectPath(x, bodyY, w, h, r);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + w * 0.28, bodyY + h);
+            ctx.lineTo(x + w * 0.28 + tailW, bodyY + h);
+            ctx.lineTo(x + w * 0.28 + tailW * 0.4, bodyY + h + tailH);
+            ctx.closePath();
+            ctx.stroke();
+          };
+
+          const drawShare = (x: number, y: number, size: number) => {
+            const centerY = y + size / 2;
+            ctx.beginPath();
+            ctx.moveTo(x + size * 0.5, y + size * 0.05);
+            ctx.lineTo(x + size * 0.5, y + size * 0.78);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + size * 0.3, y + size * 0.25);
+            ctx.lineTo(x + size * 0.5, y + size * 0.05);
+            ctx.lineTo(x + size * 0.7, y + size * 0.25);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + size * 0.2, centerY + size * 0.2);
+            ctx.lineTo(x + size * 0.2, y + size * 0.95);
+            ctx.lineTo(x + size * 0.8, y + size * 0.95);
+            ctx.lineTo(x + size * 0.8, centerY + size * 0.2);
+            ctx.stroke();
+          };
+
+          drawHeart(cursorX, bottomY - iconSize / 2, iconSize);
+          cursorX += iconSize + 6;
+          const likesText = options.likes || "0";
+          ctx.fillText(likesText, cursorX, bottomY);
+          cursorX += ctx.measureText(likesText).width + 12;
+
+          drawComment(cursorX, bottomY - iconSize / 2, iconSize);
+          cursorX += iconSize + 6;
+          const commentsText = options.comments || "0";
+          ctx.fillText(commentsText, cursorX, bottomY);
+
+          const shareText = "share";
+          const shareTextWidth = ctx.measureText(shareText).width;
+          const shareTotalWidth = iconSize + 6 + shareTextWidth;
+          const shareX = Math.max(padding, width - padding - shareTotalWidth);
+          drawShare(shareX, bottomY - iconSize / 2, iconSize);
+          ctx.fillText(shareText, shareX + iconSize + 6, bottomY);
+
+          const blob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (result) => {
+                if (result) {
+                  resolve(result);
+                } else {
+                  reject(new Error("Failed to export intro card image."));
+                }
+              },
+              "image/png",
+              0.92
+            );
+          });
+
+          return new File([blob], options.fileName, {
+            type: "image/png",
+          });
+        };
+
+        const container = document.createElement("div");
+        container.style.position = "fixed";
+        container.style.left = "-10000px";
+        container.style.top = "-10000px";
+        container.style.zIndex = "0";
+        container.style.pointerEvents = "none";
+        container.style.opacity = "0";
+
+        const cardBg = darkMode ? "bg-black" : "bg-white";
+        const borderColor = darkMode ? "border-transparent" : "border-gray-200";
+        const textPrimary = darkMode ? "text-white" : "text-black";
+        const iconText = darkMode ? "text-[#ADADAD]" : "text-[#adadad]";
+        const stroke = darkMode ? "#575757" : "#adadad";
+
+        container.innerHTML = `
+	          <div
+	            id="reddit-card"
+	            class="${cardBg} ${borderColor} max-w-xs select-none overflow-hidden border p-4"
+	            style="border-radius:12px;transform:scale(1);transform-origin:left top;"
+		          >
+	            <div class="flex flex-col">
+	              <div class="flex items-center">
+	                <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full">
+	                  <img alt="Profile Picture" class="w-full rounded-full" draggable="false" crossorigin="anonymous" src="${resolvedAvatarUrl}" />
+	                </div>
+	                <div class="ml-2 flex items-center">
+	                  <span class="${textPrimary} font-semibold">${safeUsername}</span>
+	                  <svg aria-hidden="true" viewBox="0 0 24 24" class="ml-1 h-5 w-5" fill="currentColor" style="color: rgb(25, 165, 252);">
+	                    <path d="M10.007 2.10377C8.60544 1.65006 7.08181 2.28116 6.41156 3.59306L5.60578 5.17023C5.51004 5.35763 5.35763 5.51004 5.17023 5.60578L3.59306 6.41156C2.28116 7.08181 1.65006 8.60544 2.10377 10.007L2.64923 11.692C2.71404 11.8922 2.71404 12.1078 2.64923 12.308L2.10377 13.993C1.65006 15.3946 2.28116 16.9182 3.59306 17.5885L5.17023 18.3942C5.35763 18.49 5.51004 18.6424 5.60578 18.8298L6.41156 20.407C7.08181 21.7189 8.60544 22.35 10.007 21.8963L11.692 21.3508C11.8922 21.286 12.1078 21.286 12.308 21.3508L13.993 21.8963C15.3946 22.35 16.9182 21.7189 17.5885 20.407L18.3942 18.8298C18.49 18.6424 18.6424 18.49 18.8298 18.3942L20.407 17.5885C21.7189 16.9182 22.35 15.3946 21.8963 13.993L21.3508 12.308C21.286 12.1078 21.286 11.8922 21.3508 11.692L21.8963 10.007C22.35 8.60544 21.7189 7.08181 20.407 6.41156L18.8298 5.60578C18.6424 5.51004 18.49 5.35763 18.3942 5.17023L17.5885 3.59306C16.9182 2.28116 15.3946 1.65006 13.993 2.10377L12.308 2.64923C12.1078 2.71403 11.8922 2.71404 11.692 2.64923L10.007 2.10377ZM6.75977 11.7573L8.17399 10.343L11.0024 13.1715L16.6593 7.51465L18.0735 8.92886L11.0024 15.9999L6.75977 11.7573Z"></path>
+	                  </svg>
+	                </div>
+	              </div>
+              <div class="ml-[48px] -mt-4">
+                <img alt="Achievements" class="block h-4 w-auto" draggable="false" crossorigin="anonymous" src="${resolvedAwardsUrl}" />
+              </div>
+	            </div>
+	            <div class="mb-2 mt-3 text-left font-medium">
+	              <p class="${textPrimary}" style="white-space:pre-wrap;word-break:break-word;line-height:1.25;">${safeTitle}</p>
+	            </div>
+	            <div class="mt-3 flex items-center justify-between">
+	              <div class="flex items-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart scale-x-[-1] transform" aria-hidden="true">
+                  <path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"></path>
+                </svg>
+	                <span class="ml-1 text-sm font-normal ${iconText}">${safeLikes}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle scale-x-[-1] transform" aria-hidden="true">
+                  <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path>
+                </svg>
+	                <span class="ml-1 mt-[0.2px] text-sm font-normal ${iconText}">${safeComments}</span>
+	              </div>
+	              <div class="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-share" aria-hidden="true">
+                  <path d="M12 2v13"></path>
+                  <path d="m16 6-4-4-4 4"></path>
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                </svg>
+                <span class="ml-1 text-sm font-normal ${iconText}">share</span>
+	              </div>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(container);
+        try {
+          if (document.fonts?.ready) {
+            await document.fonts.ready;
+          }
+          const images = Array.from(container.querySelectorAll("img"));
+          await Promise.all(
+            images.map(async (img) => {
+              try {
+                await (img as HTMLImageElement).decode();
+              } catch {
+                // Ignore decode errors (e.g., CORS). Rendering may still succeed.
+              }
+            })
+          );
+          const card = container.querySelector<HTMLElement>("#reddit-card");
+          if (!card) {
+            throw new Error("Intro card element missing.");
+          }
+          const file = await (async () => {
+            try {
+              return await renderElementToPngFile(card, {
+                scale: 2,
+                fileName: "reddit-intro-card.png",
+              });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "";
+              const isTaintedCanvasError =
+                (error instanceof DOMException && error.name === "SecurityError") ||
+                /tainted canvases|tainted canvas/i.test(message);
+              if (!isTaintedCanvasError) {
+                console.warn(
+                  "[reddit-video] intro card DOM render failed, using fallback",
+                  error
+                );
+              }
+              const rect = card.getBoundingClientRect();
+              const fallbackWidth = Math.max(
+                1,
+                Math.ceil(card.offsetWidth || rect.width || 0)
+              );
+              const fallbackHeight = Math.max(
+                1,
+                Math.ceil(card.offsetHeight || rect.height || 0)
+              );
+              return await renderIntroCardFallbackToPngFile({
+                width: fallbackWidth,
+                height: fallbackHeight,
+                fileName: "reddit-intro-card.png",
+                avatarUrl: resolvedAvatarUrl,
+                awardsUrl: resolvedAwardsUrl,
+                username,
+                title: introText || title,
+                likes,
+                comments,
+                darkMode,
+              });
+            }
+          })();
+          const meta = await (async () => {
+            const objectUrl = URL.createObjectURL(file);
+            try {
+              return await getMediaMeta("image", objectUrl);
+            } finally {
+              URL.revokeObjectURL(objectUrl);
+            }
+          })();
+          const libraryAsset = await uploadAssetFileSafe(file, {
+            name: "Reddit intro card",
+            kind: "image",
+            source: "generated",
+            width: meta.width,
+            height: meta.height,
+            aspectRatio: meta.aspectRatio,
+          });
+          if (!libraryAsset) {
+            console.warn(
+              "[reddit-video] intro card upload failed, using local blob URL"
+            );
+            const fallbackUrl = URL.createObjectURL(file);
+            return {
+              id: crypto.randomUUID(),
+              name: "Reddit intro card",
+              kind: "image" as const,
+              url: fallbackUrl,
+              size: file.size,
+              width: meta.width,
+              height: meta.height,
+              aspectRatio: meta.aspectRatio,
+              createdAt: Date.now(),
+            } satisfies MediaAsset;
+          }
+          return {
+            id: libraryAsset.id,
+            name: libraryAsset.name,
+            kind: "image" as const,
+            url: libraryAsset.url,
+            size: libraryAsset.size,
+            width: libraryAsset.width,
+            height: libraryAsset.height,
+            aspectRatio: libraryAsset.aspectRatio,
+            createdAt: libraryAsset.createdAt,
+          } satisfies MediaAsset;
+        } finally {
+          container.remove();
+        }
+      };
+
+      setRedditVideoImportOverlayStage("voiceover");
+
+      const introVoice = payload.audio?.introVoice?.trim() || null;
+      const scriptVoice = payload.audio?.scriptVoice?.trim() || "";
+      if (!scriptVoice) {
+        throw new Error("Script voice is required.");
+      }
+
+      const introText =
+        typeof payload.post?.title === "string" ? payload.post.title.trim() : "";
+      const rawScriptText = payload.script.trim();
+	      const stripIntroFromScript = (scriptValue: string, introValue: string) => {
+	        const scriptTrimmed = scriptValue.trimStart();
+	        const introTrimmed = introValue.trim();
+	        if (!scriptTrimmed || !introTrimmed) {
+	          return scriptValue.trim();
+	        }
+
+	        const introCandidates = Array.from(
+	          new Set(
+	            [
+	              introTrimmed,
+	              introTrimmed.replace(/^[\"'“”‘’]+|[\"'“”‘’]+$/g, "").trim(),
+	              introTrimmed.replace(/[.?!]+$/g, "").trim(),
+	              introTrimmed
+	                .replace(/[.?!]+$/g, "")
+	                .replace(/^[\"'“”‘’]+|[\"'“”‘’]+$/g, "")
+	                .trim(),
+	            ].filter((value) => value.length > 0)
+	          )
+	        );
+
+	        const stripPrefixes = (value: string) => {
+	          let next = value.trimStart();
+	          next = next.replace(
+	            /^(?:title|reddit title|post title|intro|hook)\s*[:\\-–—]+\\s*/i,
+	            ""
+	          );
+	          next = next.replace(/^[\"'“”‘’]+/, "");
+	          return next;
+	        };
+
+	        const candidate = stripPrefixes(scriptTrimmed);
+	        const lowerCandidate = candidate.toLowerCase();
+
+	        for (const introCandidate of introCandidates) {
+	          const lowerIntro = introCandidate.toLowerCase();
+	          if (!lowerCandidate.startsWith(lowerIntro)) {
+	            continue;
+	          }
+	          const remainder = candidate
+	            .slice(introCandidate.length)
+	            .replace(/^[\"'“”‘’\\s:—–-]+/, "")
+	            .trimStart();
+	          return remainder.length > 0 ? remainder : scriptTrimmed;
+	        }
+
+	        return scriptTrimmed;
+	      };
+      const scriptText =
+        introVoice && introText
+          ? stripIntroFromScript(rawScriptText, introText)
+          : rawScriptText;
+
+      const [introAudioUrl, scriptAudioUrl] = await Promise.all([
+        introVoice && introText ? generateVoiceoverUrl(introText, introVoice) : Promise.resolve(null),
+        generateVoiceoverUrl(scriptText, scriptVoice),
+      ]);
+
+      const [introVoiceAsset, scriptVoiceAsset] = await Promise.all([
+        introAudioUrl && introVoice
+          ? createGeneratedVoiceAsset({
+              url: introAudioUrl,
+              script: introText,
+              voice: introVoice,
+            })
+          : Promise.resolve(null),
+        createGeneratedVoiceAsset({
+          url: scriptAudioUrl,
+          script: scriptText,
+          voice: scriptVoice,
+        }),
+      ]);
+
+      const introAudioDuration = introVoiceAsset?.duration ?? 0;
+      const scriptAudioDuration = scriptVoiceAsset.duration ?? 0;
+      const minIntroSeconds =
+        typeof payload.timing?.introSeconds === "number" && Number.isFinite(payload.timing.introSeconds)
+          ? Math.max(0, payload.timing.introSeconds)
+          : 3;
+      const showIntroCardRequested = Boolean(payload.post?.showIntroCard);
+      let introCardAsset: MediaAsset | null = null;
+      if (showIntroCardRequested) {
+        try {
+          introCardAsset = await createIntroCardAsset();
+        } catch (error) {
+          console.warn(
+            "[reddit-video] intro card render failed, continuing without it",
+            error
+          );
+          introCardAsset = null;
+        }
+      }
+      const showIntroCard = Boolean(introCardAsset);
+      const introOffsetSeconds = Math.max(
+        showIntroCard ? minIntroSeconds : 0,
+        introAudioDuration
+      );
+      const totalDurationSeconds = Math.max(
+        0.5,
+        introOffsetSeconds + Math.max(0.1, scriptAudioDuration || 0.1)
+      );
+      const introCardDurationSeconds = showIntroCard ? Math.max(0.01, minIntroSeconds) : 0;
+
+      const resolveGameplayUrl = async (url: string) => {
+        if (!url) {
+          return url;
+        }
+        try {
+          const parsed = new URL(url);
+          const match = parsed.pathname.match(
+            /\/storage\/v1\/object\/sign\/([^/]+)\/(.+)/
+          );
+          if (!match) {
+            return url;
+          }
+          const bucket = decodeURIComponent(match[1] ?? "");
+          const storagePath = decodeURIComponent(match[2] ?? "");
+          if (!bucket || !storagePath) {
+            return url;
+          }
+          if (bucket !== "gameplay-footage") {
+            return url;
+          }
+          const response = await fetch(
+            `/api/gameplay-footage/sign?path=${encodeURIComponent(storagePath)}`
+          );
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            return url;
+          }
+          const resolvedUrl =
+            typeof data?.url === "string"
+              ? data.url
+              : typeof data?.signedUrl === "string"
+                ? data.signedUrl
+                : "";
+          return resolvedUrl || url;
+        } catch {
+          return url;
+        }
+      };
+
+      const gameplayUrl = await resolveGameplayUrl(payload.gameplay.url);
+      const gameplayMeta = await getMediaMeta("video", gameplayUrl);
+      const gameplayWidth =
+        typeof gameplayMeta.width === "number" && Number.isFinite(gameplayMeta.width)
+          ? gameplayMeta.width
+          : undefined;
+      const gameplayHeight =
+        typeof gameplayMeta.height === "number" && Number.isFinite(gameplayMeta.height)
+          ? gameplayMeta.height
+          : undefined;
+      const gameplayDuration =
+        typeof gameplayMeta.duration === "number" && Number.isFinite(gameplayMeta.duration)
+          ? gameplayMeta.duration
+          : undefined;
+      const gameplayAspectRatio =
+        gameplayWidth && gameplayHeight ? gameplayWidth / gameplayHeight : undefined;
+
+      const gameplayLibraryAsset = await createExternalAssetSafe({
+        url: gameplayUrl,
+        name: payload.gameplay.name?.trim() || "Gameplay footage",
+        kind: "video",
+        source: "stock",
+        duration: gameplayDuration,
+        width: gameplayWidth,
+        height: gameplayHeight,
+        aspectRatio: gameplayAspectRatio,
+      });
+
+      const gameplayAsset: MediaAsset = {
+        id: gameplayLibraryAsset?.id ?? crypto.randomUUID(),
+        name: payload.gameplay.name?.trim() || "Gameplay footage",
+        kind: "video",
+        url: gameplayLibraryAsset?.url ?? gameplayUrl,
+        size: 0,
+        duration: gameplayDuration,
+        width: gameplayWidth,
+        height: gameplayHeight,
+        aspectRatio: gameplayAspectRatio,
+        createdAt: Date.now(),
+      };
+
+      const music = payload.audio?.backgroundMusic ?? null;
+      const musicUrl = typeof music?.url === "string" ? music.url.trim() : "";
+      const musicName = typeof music?.name === "string" ? music.name.trim() : "";
+      const musicVolume =
+        typeof music?.volume === "number" && Number.isFinite(music.volume)
+          ? Math.min(100, Math.max(0, music.volume))
+          : 25;
+
+      const musicAsset = musicUrl
+        ? await (async (): Promise<MediaAsset> => {
+            const meta = await getMediaMeta("audio", musicUrl);
+            const libraryAsset = await createExternalAssetSafe({
+              url: musicUrl,
+              name: musicName || "Background music",
+              kind: "audio",
+              source: "stock",
+              duration: meta.duration,
+            });
+            return {
+              id: libraryAsset?.id ?? crypto.randomUUID(),
+              name: musicName || "Background music",
+              kind: "audio",
+              url: libraryAsset?.url ?? musicUrl,
+              size: libraryAsset?.size ?? 0,
+              duration: meta.duration,
+              createdAt: Date.now(),
+            };
+          })()
+        : null;
+
+      // `introCardAsset`, `showIntroCard`, and `introCardDurationSeconds` already resolved above.
+
+      const nextLanes: TimelineLane[] = [];
+      const gameplayLaneId = createLaneId("video", nextLanes);
+      const introCardLaneId = showIntroCard
+        ? createLaneId("video", nextLanes, { placement: "top" })
+        : null;
+
+      const introVoiceLaneId = introVoiceAsset ? createLaneId("audio", nextLanes) : null;
+      const scriptVoiceLaneId = createLaneId("audio", nextLanes);
+      const musicLaneId = musicAsset ? createLaneId("audio", nextLanes) : null;
+
+      const gameplayBaseDuration = Math.max(
+        0.01,
+        gameplayDuration ?? getAssetDurationSeconds(gameplayAsset) ?? totalDurationSeconds
+      );
+      const gameplayClips: TimelineClip[] = [];
+      let cursor = 0;
+      while (cursor < totalDurationSeconds - timelineClipEpsilon) {
+        const remaining = totalDurationSeconds - cursor;
+        const duration = Math.max(0.01, Math.min(gameplayBaseDuration, remaining));
+        gameplayClips.push({
+          id: crypto.randomUUID(),
+          assetId: gameplayAsset.id,
+          duration,
+          startOffset: 0,
+          startTime: cursor,
+          laneId: gameplayLaneId,
+        });
+        cursor += duration;
+        if (gameplayClips.length > 400) {
+          break;
+        }
+      }
+
+      const introCardClip: TimelineClip | null =
+        introCardAsset && introCardLaneId
+          ? {
+              id: crypto.randomUUID(),
+              assetId: introCardAsset.id,
+              duration: Math.max(0.01, introCardDurationSeconds),
+              startOffset: 0,
+              startTime: 0,
+              laneId: introCardLaneId,
+            }
+          : null;
+
+      const introVoiceClip: TimelineClip | null =
+        introVoiceAsset && introVoiceLaneId
+          ? {
+              id: crypto.randomUUID(),
+              assetId: introVoiceAsset.id,
+              duration: Math.max(0.01, getAssetDurationSeconds(introVoiceAsset)),
+              startOffset: 0,
+              startTime: 0,
+              laneId: introVoiceLaneId,
+            }
+          : null;
+
+      const scriptVoiceClip: TimelineClip = {
+        id: crypto.randomUUID(),
+        assetId: scriptVoiceAsset.id,
+        duration: Math.max(0.01, getAssetDurationSeconds(scriptVoiceAsset)),
+        startOffset: 0,
+        startTime: introOffsetSeconds,
+        laneId: scriptVoiceLaneId,
+      };
+
+      const musicClips: TimelineClip[] = [];
+      if (musicAsset && musicLaneId) {
+        const base = Math.max(
+          0.01,
+          musicAsset.duration ?? getAssetDurationSeconds(musicAsset) ?? totalDurationSeconds
+        );
+        let musicCursor = 0;
+        while (musicCursor < totalDurationSeconds - timelineClipEpsilon) {
+          const remaining = totalDurationSeconds - musicCursor;
+          const duration = Math.max(0.01, Math.min(base, remaining));
+          musicClips.push({
+            id: crypto.randomUUID(),
+            assetId: musicAsset.id,
+            duration,
+            startOffset: 0,
+            startTime: musicCursor,
+            laneId: musicLaneId,
+          });
+          musicCursor += duration;
+          if (musicClips.length > 500) {
+            break;
+          }
+        }
+      }
+
+      const stageAspectRatio = 9 / 16;
+      const gameplayTransform: ClipTransform = { x: 0, y: 0, width: 1, height: 1 };
+      const introTransform: ClipTransform | null =
+        introCardClip
+          ? (() => {
+              const base = createDefaultTransform(introCardAsset?.aspectRatio, stageAspectRatio);
+              // Smaller + higher placement by default (match the intended "overlay card" look).
+              const scale = 0.76;
+              const width = base.width * scale;
+              const height = base.height * scale;
+              const x = 0.5 - width / 2;
+              const desiredCenterY = 0.33;
+              const y = clamp(desiredCenterY - height / 2, 0, Math.max(0, 1 - height));
+              return { x, y, width, height };
+            })()
+          : null;
+
+      setLanes(nextLanes);
+      setAssets((prev) => {
+        const next = [...prev];
+        const addIfMissing = (asset: MediaAsset | null) => {
+          if (!asset) {
+            return;
+          }
+          if (next.some((existing) => existing.id === asset.id)) {
+            return;
+          }
+          next.unshift(asset);
+        };
+        addIfMissing(musicAsset);
+        addIfMissing(scriptVoiceAsset);
+        addIfMissing(introVoiceAsset);
+        addIfMissing(introCardAsset);
+        addIfMissing(gameplayAsset);
+        return next;
+      });
+      setTimeline([
+        ...gameplayClips,
+        ...(introCardClip ? [introCardClip] : []),
+        ...(introVoiceClip ? [introVoiceClip] : []),
+        scriptVoiceClip,
+        ...musicClips,
+      ]);
+      setClipTransforms(() => {
+        const next: Record<string, ClipTransform> = {};
+        gameplayClips.forEach((clip) => {
+          next[clip.id] = gameplayTransform;
+        });
+        if (introCardClip && introTransform) {
+          next[introCardClip.id] = introTransform;
+        }
+        return next;
+      });
+      clipTransformTouchedRef.current = new Set([
+        ...gameplayClips.map((clip) => clip.id),
+        ...(introCardClip ? [introCardClip.id] : []),
+      ]);
+      setBackgroundTransforms({});
+      setClipSettings(() => {
+        const next: Record<string, VideoClipSettings> = {};
+        gameplayClips.forEach((clip) => {
+          next[clip.id] = {
+            ...createDefaultVideoSettings(),
+            muted: true,
+            volume: 0,
+          };
+        });
+        if (introCardClip) {
+          next[introCardClip.id] = createDefaultVideoSettings();
+        }
+        if (introVoiceClip) {
+          next[introVoiceClip.id] = createDefaultVideoSettings();
+        }
+        next[scriptVoiceClip.id] = createDefaultVideoSettings();
+        musicClips.forEach((clip) => {
+          next[clip.id] = {
+            ...createDefaultVideoSettings(),
+            volume: musicVolume,
+          };
+        });
+        return next;
+      });
+
+      setTextSettings({});
+      setSubtitleSegments([]);
+      setDetachedSubtitleIds(new Set());
+      setSubtitleStatus("idle");
+      setSubtitleError(null);
+      setTranscriptSegments([]);
+      setTranscriptStatus("idle");
+      setTranscriptError(null);
+      setTimelineThumbnails({});
+      setAudioWaveforms({});
+      setClipOrder({});
+      setCurrentTime(0);
+
+      setActiveAssetId(gameplayAsset.id);
+      setActiveCanvasClipId(gameplayClips[0]?.id ?? null);
+      setSelectedClipId(gameplayClips[0]?.id ?? null);
+      setSelectedClipIds(gameplayClips[0]?.id ? [gameplayClips[0].id] : []);
+
+      const desiredStyleId = payload.subtitles?.styleId;
+      if (typeof desiredStyleId === "string" && desiredStyleId.trim().length > 0) {
+        setSubtitleStyleId(desiredStyleId.trim());
+      }
+      setSubtitleSource(scriptVoiceClip.id);
+      setTranscriptSource(scriptVoiceClip.id);
+
+      if (typeof desiredStyleId === "string" && desiredStyleId.trim().length > 0) {
+        pendingRedditVideoSubtitleRef.current = {
+          sourceClipId: scriptVoiceClip.id,
+          styleId: desiredStyleId.trim(),
+        };
+        setRedditVideoImportOverlayStage("subtitles");
+      } else {
+        setRedditVideoImportOverlayStage("finalizing");
+        requestAnimationFrame(() => setRedditVideoImportOverlayOpen(false));
+      }
+    },
+    [createLaneId, pushHistory]
+  );
+
+  const importQuery = searchParams.get("import");
+  const importTs = searchParams.get("ts") ?? "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const shouldAttemptImport =
+      importQuery === "splitscreen" ||
+      Boolean(window.localStorage.getItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY));
+
+    if (!shouldAttemptImport) {
+      return;
+    }
+
+    setSplitScreenImportOverlayStage("preparing");
+    setSplitScreenImportOverlayOpen(true);
+
+    const clearImportQuery = () => {
+      if (importQuery !== "splitscreen") {
+        return;
+      }
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("import");
+        url.searchParams.delete("ts");
+        const query = url.searchParams.toString();
+        const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+        window.history.replaceState({}, "", nextUrl);
+      } catch {
+        // Ignore URL failures.
+      }
+    };
+
+    if (importQuery === "splitscreen") {
+      const token = importTs || "no-ts";
+      if (splitScreenImportTokenRef.current === token) {
+        return;
+      }
+      splitScreenImportTokenRef.current = token;
+    }
+
+    const raw = window.localStorage.getItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY);
+    if (!raw) {
+      console.warn("[split-screen] import requested but payload missing");
+      setSplitScreenImportOverlayOpen(false);
+      clearImportQuery();
+      return;
+    }
+    const payload = parseSplitScreenImportPayload(raw);
+    if (!payload) {
+      console.warn("[split-screen] invalid import payload");
+      window.localStorage.removeItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY);
+      setSplitScreenImportOverlayOpen(false);
+      clearImportQuery();
+      return;
+    }
+    window.localStorage.removeItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY);
+    console.info("[split-screen] applying import", payload);
+    applySplitScreenImport(payload)
+      .catch((error) => {
+        console.error("[split-screen] import failed", error);
+        setSplitScreenImportOverlayOpen(false);
+      })
+      .finally(() => {
+        clearImportQuery();
+      });
+  }, [
+    applySplitScreenImport,
+    importQuery,
+    importTs,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const shouldAttemptImport = importQuery === "streamer-video";
+
+    if (!shouldAttemptImport) {
+      return;
+    }
+
+    setStreamerVideoImportOverlayStage("preparing");
+    setStreamerVideoImportOverlayOpen(true);
+
+    const clearImportQuery = () => {
+      if (importQuery !== "streamer-video") {
+        return;
+      }
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("import");
+        url.searchParams.delete("ts");
+        url.searchParams.delete("assetId");
+        url.searchParams.delete("assetName");
+        url.searchParams.delete("titleText");
+        url.searchParams.delete("subtitleStyleId");
+        url.searchParams.delete("autoSubtitles");
+        const query = url.searchParams.toString();
+        const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+        window.history.replaceState({}, "", nextUrl);
+      } catch {
+        // Ignore URL failures.
+      }
+    };
+
+    if (importQuery === "streamer-video") {
+      const token = importTs || "no-ts";
+      if (streamerVideoImportTokenRef.current === token) {
+        return;
+      }
+      streamerVideoImportTokenRef.current = token;
+    }
+
+    const assetId =
+      typeof searchParams.get("assetId") === "string"
+        ? searchParams.get("assetId")?.trim() ?? ""
+        : "";
+    const assetName =
+      typeof searchParams.get("assetName") === "string"
+        ? searchParams.get("assetName")?.trim() ?? ""
+        : "";
+    const titleText =
+      typeof searchParams.get("titleText") === "string"
+        ? searchParams.get("titleText")?.trim() ?? ""
+        : "";
+    const subtitleStyleIdRaw =
+      typeof searchParams.get("subtitleStyleId") === "string"
+        ? searchParams.get("subtitleStyleId")?.trim() ?? ""
+        : "";
+    const autoSubtitlesRaw =
+      typeof searchParams.get("autoSubtitles") === "string"
+        ? searchParams.get("autoSubtitles")?.trim().toLowerCase() ?? ""
+        : "";
+    const autoSubtitles = (() => {
+      if (["0", "false", "no", "off"].includes(autoSubtitlesRaw)) {
+        return false;
+      }
+      if (["1", "true", "yes", "on"].includes(autoSubtitlesRaw)) {
+        return true;
+      }
+      return true;
+    })();
+
+    if (!assetId || !titleText) {
+      console.warn("[streamer-video] import requested but params missing", {
+        assetId: Boolean(assetId),
+        titleText: Boolean(titleText),
+      });
+      setStreamerVideoImportOverlayOpen(false);
+      clearImportQuery();
+      return;
+    }
+
+    const payload: StreamerVideoImportPayloadV1 = {
+      version: 1,
+      mainVideo: {
+        url: undefined,
+        name: assetName || "Main video",
+        assetId,
+      },
+      titleText,
+      subtitles: {
+        autoGenerate: autoSubtitles,
+        styleId: subtitleStyleIdRaw ? subtitleStyleIdRaw : null,
+      },
+    };
+
+    console.info("[streamer-video] applying import", payload);
+    applyStreamerVideoImport(payload)
+      .catch((error) => {
+        console.error("[streamer-video] import failed", error);
+        setStreamerVideoImportOverlayOpen(false);
+      })
+      .finally(() => {
+        clearImportQuery();
+      });
+  }, [applyStreamerVideoImport, importQuery, importTs, searchParams]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const shouldAttemptImport =
+      importQuery === "reddit-video" ||
+      Boolean(window.localStorage.getItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY));
+
+    if (!shouldAttemptImport) {
+      return;
+    }
+
+    setRedditVideoImportOverlayStage("preparing");
+    setRedditVideoImportOverlayOpen(true);
+    setRedditVideoImportError(null);
+
+    const clearImportQuery = () => {
+      if (importQuery !== "reddit-video") {
+        return;
+      }
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("import");
+        url.searchParams.delete("ts");
+        const query = url.searchParams.toString();
+        const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+        window.history.replaceState({}, "", nextUrl);
+      } catch {
+        // Ignore URL failures.
+      }
+    };
+
+    if (importQuery === "reddit-video") {
+      const token = importTs || "no-ts";
+      if (redditVideoImportTokenRef.current === token) {
+        return;
+      }
+      redditVideoImportTokenRef.current = token;
+    }
+
+    const raw = window.localStorage.getItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY);
+    if (!raw) {
+      console.warn("[reddit-video] import requested but payload missing");
+      setRedditVideoImportOverlayOpen(false);
+      clearImportQuery();
+      return;
+    }
+    const payload = parseRedditVideoImportPayload(raw);
+    if (!payload) {
+      console.warn("[reddit-video] invalid import payload");
+      window.localStorage.removeItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY);
+      setRedditVideoImportOverlayOpen(false);
+      clearImportQuery();
+      return;
+    }
+    window.localStorage.removeItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY);
+    console.info("[reddit-video] applying import", payload);
+    applyRedditVideoImport(payload)
+      .catch((error) => {
+        console.error("[reddit-video] import failed", error);
+        setRedditVideoImportOverlayStage("finalizing");
+        setRedditVideoImportError(
+          error instanceof Error ? error.message : "Reddit video import failed."
+        );
+      })
+      .finally(() => {
+        clearImportQuery();
+      });
+  }, [applyRedditVideoImport, importQuery, importTs]);
 
   useEffect(() => {
     if (!assetLibraryReady) {
@@ -16171,6 +18686,9 @@ function AdvancedEditorContent() {
                       entry.asset
                     );
                     const isActive = activeCanvasClipId === entry.clip.id;
+                    const isRedditIntroCard =
+                      entry.asset.kind === "image" &&
+                      /reddit intro card/i.test(entry.asset.name);
                     const videoSettings =
                       entry.asset.kind === "video"
                         ? clipSettings[entry.clip.id] ?? fallbackVideoSettings
@@ -16305,8 +18823,17 @@ function AdvancedEditorContent() {
                               className="absolute inset-0 overflow-hidden"
                               style={{
                                 ...videoStyles?.frameStyle,
+                                ...(isRedditIntroCard
+                                  ? {
+                                      borderRadius: "14px",
+                                      boxShadow:
+                                        "0 18px 40px rgba(0,0,0,0.35)",
+                                    }
+                                  : null),
                                 // GPU acceleration hints for smooth playback
-                                contain: 'strict',
+                                contain: isRedditIntroCard
+                                  ? 'layout style'
+                                  : 'strict',
                                 willChange: isPlaying ? 'contents' : 'auto',
                               }}
                             >
@@ -16322,7 +18849,11 @@ function AdvancedEditorContent() {
                                   <img
                                     src={entry.asset.url}
                                     alt={entry.asset.name}
-                                    className="h-full w-full object-cover"
+                                    className={`h-full w-full ${
+                                      isRedditIntroCard
+                                        ? "object-contain"
+                                        : "object-cover"
+                                    }`}
                                     draggable={false}
                                     loading="eager"
                                   />
@@ -18670,26 +21201,382 @@ function AdvancedEditorContent() {
         onChange={handleReplaceMedia}
       />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {renderToolRail()}
-        <EditorSidebar {...sidebarProps} />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-            <main
-              ref={mainRef}
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-            >
-              {renderStage()}
-              {renderTimeline()}
-            </main>
-          </div>
-        </div>
-      </div>
-      {exportUi.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
+	      <div className="flex min-h-0 flex-1 overflow-hidden">
+	        {renderToolRail()}
+	        <EditorSidebar {...sidebarProps} />
+	        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+	          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+	            <main
+	              ref={mainRef}
+	              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+	            >
+	              {renderStage()}
+	              {renderTimeline()}
+	            </main>
+	          </div>
+	        </div>
+	      </div>
+	      {splitScreenImportOverlayOpen && (
+	        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 px-4 backdrop-blur-sm">
+	          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+	            <div className="flex items-start gap-4">
+	              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
+	                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	              </div>
+	              <div className="min-w-0 flex-1">
+	                <h3 className="text-lg font-semibold text-gray-900">
+	                  Preparing your split-screen project
+	                </h3>
+		                <p className="mt-1 text-sm text-gray-500">
+		                  {subtitleStatus === "error"
+		                    ? "Subtitle generation failed."
+		                    : splitScreenImportOverlayStage === "uploading"
+		                      ? "Uploading your video to the cloud..."
+		                      : splitScreenImportOverlayStage === "preparing"
+		                        ? "Building the split layout..."
+		                        : splitScreenImportOverlayStage === "subtitles"
+		                          ? "Generating subtitles..."
+		                          : "Finalizing editor timeline..."}
+		                </p>
+	              </div>
+	            </div>
+	            <div className="mt-6 space-y-3 text-sm">
+	              <div className="flex items-center gap-3">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+		                  {splitScreenImportOverlayStage === "preparing" ||
+		                  splitScreenImportOverlayStage === "uploading" ? (
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                  ) : (
+	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+	                      <path
+	                        d="M20 6 9 17l-5-5"
+	                        stroke="currentColor"
+	                        strokeWidth="2"
+	                        strokeLinecap="round"
+	                        strokeLinejoin="round"
+	                      />
+	                    </svg>
+	                  )}
+	                </div>
+	                <span className="text-gray-700">Create split-screen layout</span>
+	              </div>
+		              <div className="flex items-center gap-3">
+		                <div
+		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+		                    subtitleStatus === "error"
+		                      ? "bg-rose-50 text-rose-600"
+		                      : "bg-[#E7EDFF] text-[#335CFF]"
+		                  }`}
+		                >
+		                  {subtitleStatus === "error" ? (
+		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+		                      <path
+		                        d="M18 6 6 18M6 6l12 12"
+		                        stroke="currentColor"
+		                        strokeWidth="2"
+		                        strokeLinecap="round"
+		                        strokeLinejoin="round"
+		                      />
+		                    </svg>
+		                  ) : splitScreenImportOverlayStage === "subtitles" ? (
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                  ) : splitScreenImportOverlayStage === "finalizing" ? (
+		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+		                      <path
+	                        d="M20 6 9 17l-5-5"
+	                        stroke="currentColor"
+	                        strokeWidth="2"
+	                        strokeLinecap="round"
+	                        strokeLinejoin="round"
+	                      />
+	                    </svg>
+	                  ) : (
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                  )}
+	                </div>
+	                <span className="text-gray-700">Generate subtitles</span>
+	              </div>
+	              <div className="flex items-center gap-3">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+	                  {splitScreenImportOverlayStage === "finalizing" ? (
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                  ) : (
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                  )}
+	                </div>
+	                <span className="text-gray-700">Finalize timeline</span>
+	              </div>
+		              {subtitleStatus === "error" && subtitleError ? (
+		                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+		                  {subtitleError}
+		                </div>
+		              ) : null}
+		              {subtitleStatus === "error" ? (
+		                <div className="mt-4">
+		                  <button
+		                    type="button"
+		                    className="w-full rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+		                    onClick={() => setSplitScreenImportOverlayOpen(false)}
+		                  >
+		                    Continue to editor
+		                  </button>
+		                </div>
+		              ) : null}
+		            </div>
+			          </div>
+			        </div>
+			      )}
+	      {streamerVideoImportOverlayOpen && (
+	        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 px-4 backdrop-blur-sm">
+	          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+	            <div className="flex items-start gap-4">
+	              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
+	                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	              </div>
+	              <div className="min-w-0 flex-1">
+	                <h3 className="text-lg font-semibold text-gray-900">
+	                  Preparing your streamer video
+	                </h3>
+	                <p className="mt-1 text-sm text-gray-500">
+	                  {subtitleStatus === "error"
+	                    ? "Subtitle generation failed."
+	                    : streamerVideoImportOverlayStage === "uploading"
+	                      ? "Uploading your video to the cloud..."
+	                      : streamerVideoImportOverlayStage === "preparing"
+	                        ? "Building the blur layout..."
+	                        : streamerVideoImportOverlayStage === "subtitles"
+	                          ? "Generating subtitles..."
+	                          : "Finalizing editor timeline..."}
+	                </p>
+	              </div>
+	            </div>
+	            <div className="mt-6 space-y-3 text-sm">
+	              <div className="flex items-center gap-3">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+	                  {streamerVideoImportOverlayStage === "preparing" ||
+	                  streamerVideoImportOverlayStage === "uploading" ? (
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                  ) : (
+	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+	                      <path
+	                        d="M20 6 9 17l-5-5"
+	                        stroke="currentColor"
+	                        strokeWidth="2"
+	                        strokeLinecap="round"
+	                        strokeLinejoin="round"
+	                      />
+	                    </svg>
+	                  )}
+	                </div>
+	                <span className="text-gray-700">Create blur layout</span>
+	              </div>
+	              <div className="flex items-center gap-3">
+	                <div
+	                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+	                    subtitleStatus === "error"
+	                      ? "bg-rose-50 text-rose-600"
+	                      : "bg-[#E7EDFF] text-[#335CFF]"
+	                  }`}
+	                >
+	                  {subtitleStatus === "error" ? (
+	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+	                      <path
+	                        d="M18 6 6 18M6 6l12 12"
+	                        stroke="currentColor"
+	                        strokeWidth="2"
+	                        strokeLinecap="round"
+	                        strokeLinejoin="round"
+	                      />
+	                    </svg>
+	                  ) : streamerVideoImportOverlayStage === "subtitles" ? (
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                  ) : streamerVideoImportOverlayStage === "finalizing" ? (
+	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+	                      <path
+	                        d="M20 6 9 17l-5-5"
+	                        stroke="currentColor"
+	                        strokeWidth="2"
+	                        strokeLinecap="round"
+	                        strokeLinejoin="round"
+	                      />
+	                    </svg>
+	                  ) : (
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                  )}
+	                </div>
+	                <span className="text-gray-700">Generate subtitles</span>
+	              </div>
+	              <div className="flex items-center gap-3">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+	                  {streamerVideoImportOverlayStage === "finalizing" ? (
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                  ) : (
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                  )}
+	                </div>
+	                <span className="text-gray-700">Finalize timeline</span>
+	              </div>
+	              {subtitleStatus === "error" && subtitleError ? (
+	                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+	                  {subtitleError}
+	                </div>
+	              ) : null}
+	              {subtitleStatus === "error" ? (
+	                <div className="mt-4">
+	                  <button
+	                    type="button"
+	                    className="w-full rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+	                    onClick={() => setStreamerVideoImportOverlayOpen(false)}
+	                  >
+	                    Continue to editor
+	                  </button>
+	                </div>
+	              ) : null}
+	            </div>
+	          </div>
+	        </div>
+	      )}
+		      {redditVideoImportOverlayOpen && (
+		        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 px-4 backdrop-blur-sm">
+		          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+		            <div className="flex items-start gap-4">
+		              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
+		                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		              </div>
+		              <div className="min-w-0 flex-1">
+		                <h3 className="text-lg font-semibold text-gray-900">
+		                  Preparing your Reddit video
+		                </h3>
+		                <p className="mt-1 text-sm text-gray-500">
+		                  {redditVideoImportError
+		                    ? "Reddit video import failed."
+		                    : subtitleStatus === "error"
+		                      ? "Subtitle generation failed."
+		                      : redditVideoImportOverlayStage === "preparing"
+		                        ? "Setting up your project..."
+		                        : redditVideoImportOverlayStage === "voiceover"
+		                          ? "Generating voiceover and building your timeline..."
+		                          : redditVideoImportOverlayStage === "subtitles"
+		                            ? "Generating subtitles..."
+		                            : "Finalizing editor timeline..."}
+		                </p>
+		              </div>
+		            </div>
+		            <div className="mt-6 space-y-3 text-sm">
+		              <div className="flex items-center gap-3">
+		                <div
+		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+		                    redditVideoImportError
+		                      ? "bg-rose-50 text-rose-600"
+		                      : "bg-[#E7EDFF] text-[#335CFF]"
+		                  }`}
+		                >
+		                  {redditVideoImportError ? (
+		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+		                      <path
+		                        d="M18 6 6 18M6 6l12 12"
+		                        stroke="currentColor"
+		                        strokeWidth="2"
+		                        strokeLinecap="round"
+		                        strokeLinejoin="round"
+		                      />
+		                    </svg>
+		                  ) : redditVideoImportOverlayStage === "preparing" ||
+		                      redditVideoImportOverlayStage === "voiceover" ? (
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                  ) : (
+		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+		                      <path
+		                        d="M20 6 9 17l-5-5"
+		                        stroke="currentColor"
+		                        strokeWidth="2"
+		                        strokeLinecap="round"
+		                        strokeLinejoin="round"
+		                      />
+		                    </svg>
+		                  )}
+		                </div>
+		                <span className="text-gray-700">
+		                  Generate voiceover &amp; build timeline
+		                </span>
+		              </div>
+		              <div className="flex items-center gap-3">
+		                <div
+		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+		                    subtitleStatus === "error"
+		                      ? "bg-rose-50 text-rose-600"
+		                      : "bg-[#E7EDFF] text-[#335CFF]"
+		                  }`}
+		                >
+		                  {subtitleStatus === "error" ? (
+		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+		                      <path
+		                        d="M18 6 6 18M6 6l12 12"
+		                        stroke="currentColor"
+		                        strokeWidth="2"
+		                        strokeLinecap="round"
+		                        strokeLinejoin="round"
+		                      />
+		                    </svg>
+		                  ) : redditVideoImportOverlayStage === "subtitles" ? (
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                  ) : redditVideoImportOverlayStage === "finalizing" ? (
+		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+		                      <path
+		                        d="M20 6 9 17l-5-5"
+		                        stroke="currentColor"
+		                        strokeWidth="2"
+		                        strokeLinecap="round"
+		                        strokeLinejoin="round"
+		                      />
+		                    </svg>
+		                  ) : (
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+		                  )}
+		                </div>
+		                <span className="text-gray-700">Generate subtitles</span>
+		              </div>
+		              <div className="flex items-center gap-3">
+		                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+		                  {redditVideoImportOverlayStage === "finalizing" &&
+		                  !redditVideoImportError &&
+		                  subtitleStatus !== "error" ? (
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                  ) : (
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+		                  )}
+		                </div>
+		                <span className="text-gray-700">Finalize timeline</span>
+		              </div>
+		              {redditVideoImportError ? (
+		                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+		                  {redditVideoImportError}
+		                </div>
+		              ) : subtitleStatus === "error" && subtitleError ? (
+		                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+		                  {subtitleError}
+		                </div>
+		              ) : null}
+		              {redditVideoImportError || subtitleStatus === "error" ? (
+		                <div className="mt-4">
+		                  <button
+		                    type="button"
+		                    className="w-full rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+		                    onClick={() => setRedditVideoImportOverlayOpen(false)}
+		                  >
+		                    Continue to editor
+		                  </button>
+		                </div>
+		              ) : null}
+		            </div>
+		          </div>
+		        </div>
+		      )}
+		      {exportUi.open && (
+		        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+		          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
+		            <div className="flex items-start justify-between gap-4">
+		              <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
                   <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
                     <path

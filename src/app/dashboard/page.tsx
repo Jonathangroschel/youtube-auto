@@ -219,6 +219,12 @@ const secondaryFeatures: Feature[] = [
   },
 ];
 
+const secondaryFeatureHrefByTitle: Record<string, string> = {
+  "Split Screen": "/create/split-video",
+  "Reddit Videos": "/create/reddit-videos",
+  "Streamer Blur": "/create/streamer-video",
+};
+
 type ToolCard = {
   label: string;
   href: string;
@@ -1039,11 +1045,13 @@ export default function DashboardPage() {
             <div className="md:hidden">
               <div className="-mx-4 overflow-x-auto px-4 [-webkit-overflow-scrolling:touch]">
                 <div className="flex snap-x snap-mandatory gap-3 pb-1">
-                  {secondaryFeatures.map((feature) => (
-                    <div
-                      key={feature.title}
-                      className="flex w-[82%] flex-none snap-center items-center gap-3 rounded-xl border border-gray-200 bg-white p-3"
-                    >
+                  {secondaryFeatures.map((feature) => {
+                    const href = secondaryFeatureHrefByTitle[feature.title] ?? null;
+                    return (
+                      <div
+                        key={feature.title}
+                        className="flex w-[82%] flex-none snap-center items-center gap-3 rounded-xl border border-gray-200 bg-white p-3"
+                      >
                       <div className="h-24 w-20 flex-shrink-0 rounded-lg bg-gradient-to-br from-slate-200 via-slate-100 to-slate-300" />
                       <div className="flex h-full flex-1 flex-col justify-between">
                         <div>
@@ -1054,27 +1062,30 @@ export default function DashboardPage() {
                             {feature.description}
                           </p>
                         </div>
-                        <button
-                          className="flex w-fit items-center gap-1 rounded-lg bg-[#EBF1FF] px-3 py-1.5 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5]"
-                          type="button"
-                        >
-                          Try Now
-                          <svg
-                            aria-hidden="true"
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+                        {href ? (
+                          <a
+                            className="flex w-fit items-center gap-1 rounded-lg bg-[#EBF1FF] px-3 py-1.5 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5]"
+                            href={href}
                           >
-                            <path d="m9 18 6-6-6-6" />
-                          </svg>
-                        </button>
+                            Try Now
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="m9 18 6-6-6-6" />
+                            </svg>
+                          </a>
+                        ) : null}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-center gap-2">
@@ -1092,11 +1103,13 @@ export default function DashboardPage() {
             </div>
 
             <div className="hidden md:grid md:grid-cols-3 md:gap-4">
-              {secondaryFeatures.map((feature) => (
-                <div
-                  key={feature.title}
-                  className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4"
-                >
+              {secondaryFeatures.map((feature) => {
+                const href = secondaryFeatureHrefByTitle[feature.title] ?? null;
+                return (
+                  <div
+                    key={feature.title}
+                    className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4"
+                  >
                   <div className="h-24 w-24 rounded-xl bg-gradient-to-br from-slate-200 via-slate-100 to-slate-300" />
                   <div className="flex flex-1 flex-col gap-2">
                     <div>
@@ -1107,27 +1120,30 @@ export default function DashboardPage() {
                         {feature.description}
                       </p>
                     </div>
-                    <button
-                      className="flex w-fit items-center gap-1 rounded-lg bg-[#EBF1FF] px-3 py-1.5 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5]"
-                      type="button"
-                    >
-                      Try Now
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                    {href ? (
+                      <a
+                        className="flex w-fit items-center gap-1 rounded-lg bg-[#EBF1FF] px-3 py-1.5 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5]"
+                        href={href}
                       >
-                        <path d="m9 18 6-6-6-6" />
-                      </svg>
-                    </button>
+                        Try Now
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                      </a>
+                    ) : null}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="flex flex-col gap-4">

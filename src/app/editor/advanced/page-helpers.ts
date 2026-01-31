@@ -64,27 +64,49 @@ const timelineClipEpsilon = frameStepSeconds / 2;
 
 const loadVideoForThumbnails = (url: string) =>
   new Promise<HTMLVideoElement>((resolve, reject) => {
-    const video = document.createElement("video");
-    const handleLoaded = () => {
-      cleanup();
-      resolve(video);
+    let resolved = false;
+
+    const attemptLoad = (options: { crossOrigin?: string } = {}) => {
+      const video = document.createElement("video");
+      const handleLoaded = () => {
+        cleanup();
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+        resolve(video);
+      };
+      const handleError = () => {
+        cleanup();
+        video.remove();
+        if (resolved) {
+          return;
+        }
+        if (options.crossOrigin) {
+          attemptLoad({});
+          return;
+        }
+        resolved = true;
+        reject(new Error("Failed to load video thumbnails."));
+      };
+      const cleanup = () => {
+        video.removeEventListener("loadeddata", handleLoaded);
+        video.removeEventListener("error", handleError);
+      };
+
+      if (options.crossOrigin) {
+        video.crossOrigin = options.crossOrigin;
+      }
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.src = url;
+      video.addEventListener("loadeddata", handleLoaded, { once: true });
+      video.addEventListener("error", handleError, { once: true });
+      video.load();
     };
-    const handleError = () => {
-      cleanup();
-      reject(new Error("Failed to load video thumbnails."));
-    };
-    const cleanup = () => {
-      video.removeEventListener("loadeddata", handleLoaded);
-      video.removeEventListener("error", handleError);
-    };
-    video.crossOrigin = "anonymous";
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-    video.src = url;
-    video.addEventListener("loadeddata", handleLoaded, { once: true });
-    video.addEventListener("error", handleError, { once: true });
-    video.load();
+
+    attemptLoad({ crossOrigin: "anonymous" });
   });
 
 const seekVideoForThumbnail = (video: HTMLVideoElement, time: number) =>
