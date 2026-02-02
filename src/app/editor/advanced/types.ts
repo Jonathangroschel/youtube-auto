@@ -66,6 +66,7 @@ export type ClipDragState = {
     type: LaneType;
     index: number;
   };
+  pendingGroupClipIds?: string[];
   group?: ClipDragGroup;
 };
 

@@ -74,7 +74,7 @@ export const EditorHeader = ({
       <div className="flex w-full items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <a
-            className="flex h-10 w-10 items-center justify-center"
+            className="flex h-10 w-10 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
             href="/dashboard"
             aria-label="Home"
           >
@@ -89,7 +89,7 @@ export const EditorHeader = ({
             </label>
             <input
               id="project-name-input"
-              className="w-44 bg-transparent text-[15px] font-semibold text-gray-900 outline-none"
+              className="w-44 rounded-md bg-transparent px-1 text-[15px] font-semibold text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-1"
               value={draftProjectName}
               onChange={(event) => {
                 const nextValue = event.target.value;
@@ -122,7 +122,7 @@ export const EditorHeader = ({
             ) : null}
           </div>
           <button
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
             type="button"
             aria-label="Project options"
           >
@@ -139,7 +139,7 @@ export const EditorHeader = ({
               className={`flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition ${
                 undoDisabled
                   ? "cursor-not-allowed text-gray-300"
-                  : "text-gray-500 hover:bg-gray-200"
+                  : "text-gray-500 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
               }`}
               type="button"
               aria-label="Undo"
@@ -161,7 +161,7 @@ export const EditorHeader = ({
               className={`flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition ${
                 redoDisabled
                   ? "cursor-not-allowed text-gray-300"
-                  : "text-gray-500 hover:bg-gray-200"
+                  : "text-gray-500 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
               }`}
               type="button"
               aria-label="Redo"
@@ -186,7 +186,7 @@ export const EditorHeader = ({
             className={`flex h-10 items-center gap-2 rounded-full px-5 text-sm font-semibold text-white shadow-[0_8px_16px_rgba(51,92,255,0.22)] transition ${
               exportDisabled
                 ? "cursor-not-allowed bg-[#9DB5FF] shadow-none"
-                : "bg-[#335CFF] hover:brightness-105"
+                : "bg-[#335CFF] hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
             }`}
             type="button"
             disabled={exportDisabled}

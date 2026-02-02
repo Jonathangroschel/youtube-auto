@@ -8,6 +8,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import type {
@@ -258,6 +259,11 @@ const parsePageParam = (value: string | null) => {
   }
   const rounded = Math.floor(parsed);
   return rounded > 0 ? rounded : 1;
+};
+
+const normalizeProjectTitle = (value: string) => {
+  const trimmed = value.slice(0, 80).trim();
+  return trimmed.length > 0 ? trimmed : "Untitled Project";
 };
 
 const clampPage = (value: number, totalPages: number) =>
@@ -562,6 +568,10 @@ function ProjectsPageInner() {
   const [projects, setProjects] = useState<ProjectLibraryItem[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [projectTitleDrafts, setProjectTitleDrafts] = useState<
+    Record<string, string>
+  >({});
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
     null
   );
@@ -584,6 +594,11 @@ function ProjectsPageInner() {
   const sortMenuRef = useRef<HTMLDivElement | null>(null);
   const projectsRequestIdRef = useRef(0);
   const projectsRef = useRef<ProjectLibraryItem[]>([]);
+  const projectTitleDraftsRef = useRef<Record<string, string>>({});
+  const savedProjectTitlesRef = useRef<Record<string, string>>({});
+  const renameTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const renameRequestIdRef = useRef<Map<string, number>>(new Map());
+  const editingProjectIdRef = useRef<string | null>(null);
   const renderPollInFlightRef = useRef(false);
   const isUnmountedRef = useRef(false);
   const activeNavIndex = navItems.findIndex((item) => item.active);
@@ -626,6 +641,177 @@ function ProjectsPageInner() {
     }
     return `/projects?${params.toString()}`;
   }, []);
+
+  const clearRenameTimeout = useCallback((projectId: string) => {
+    const timeoutId = renameTimeoutsRef.current.get(projectId);
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId);
+      renameTimeoutsRef.current.delete(projectId);
+    }
+  }, []);
+
+  const bumpRenameRequestId = useCallback((projectId: string) => {
+    const next = (renameRequestIdRef.current.get(projectId) ?? 0) + 1;
+    renameRequestIdRef.current.set(projectId, next);
+    return next;
+  }, []);
+
+  const setProjectTitleLocally = useCallback((projectId: string, title: string) => {
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === projectId ? { ...project, title } : project
+      )
+    );
+    setPreviewProject((prev) =>
+      prev && prev.id === projectId ? { ...prev, title } : prev
+    );
+  }, []);
+
+  const saveProjectTitle = useCallback(
+    async (projectId: string, rawTitle: string) => {
+      const requestId = bumpRenameRequestId(projectId);
+      const normalizedTitle = normalizeProjectTitle(rawTitle);
+      try {
+        const response = await fetch("/api/projects", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: projectId,
+            title: normalizedTitle,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message =
+            typeof payload?.error === "string"
+              ? payload.error
+              : "Unable to rename project.";
+          throw new Error(message);
+        }
+        if (
+          isUnmountedRef.current ||
+          renameRequestIdRef.current.get(projectId) !== requestId
+        ) {
+          return;
+        }
+        const savedTitle =
+          typeof payload?.project?.title === "string"
+            ? normalizeProjectTitle(payload.project.title)
+            : normalizedTitle;
+        savedProjectTitlesRef.current[projectId] = savedTitle;
+        setProjectTitleLocally(projectId, savedTitle);
+        if (editingProjectIdRef.current !== projectId) {
+          setProjectTitleDrafts((prev) =>
+            prev[projectId] === savedTitle
+              ? prev
+              : { ...prev, [projectId]: savedTitle }
+          );
+        }
+      } catch (error) {
+        if (
+          isUnmountedRef.current ||
+          renameRequestIdRef.current.get(projectId) !== requestId
+        ) {
+          return;
+        }
+        setProjectsError(
+          error instanceof Error ? error.message : "Unable to rename project."
+        );
+      }
+    },
+    [bumpRenameRequestId, setProjectTitleLocally]
+  );
+
+  const scheduleProjectTitleSave = useCallback(
+    (projectId: string, rawTitle: string) => {
+      clearRenameTimeout(projectId);
+      const timeoutId = window.setTimeout(() => {
+        renameTimeoutsRef.current.delete(projectId);
+        void saveProjectTitle(projectId, rawTitle);
+      }, 500);
+      renameTimeoutsRef.current.set(projectId, timeoutId);
+    },
+    [clearRenameTimeout, saveProjectTitle]
+  );
+
+  const handleProjectTitleClick = useCallback((project: ProjectLibraryItem) => {
+    setEditingProjectId(project.id);
+    setProjectTitleDrafts((prev) =>
+      prev[project.id] === project.title
+        ? prev
+        : { ...prev, [project.id]: project.title }
+    );
+  }, []);
+
+  const handleProjectTitleChange = useCallback(
+    (projectId: string, title: string) => {
+      setProjectTitleDrafts((prev) =>
+        prev[projectId] === title ? prev : { ...prev, [projectId]: title }
+      );
+      setProjectTitleLocally(projectId, title);
+      scheduleProjectTitleSave(projectId, title);
+    },
+    [scheduleProjectTitleSave, setProjectTitleLocally]
+  );
+
+  const flushProjectTitleSave = useCallback(
+    (projectId: string) => {
+      clearRenameTimeout(projectId);
+      const draftTitle = projectTitleDraftsRef.current[projectId];
+      if (typeof draftTitle !== "string") {
+        return;
+      }
+      const nextNormalized = normalizeProjectTitle(draftTitle);
+      const savedNormalized = normalizeProjectTitle(
+        savedProjectTitlesRef.current[projectId] ?? ""
+      );
+      if (nextNormalized === savedNormalized) {
+        setProjectTitleLocally(projectId, savedNormalized);
+        return;
+      }
+      void saveProjectTitle(projectId, draftTitle);
+    },
+    [clearRenameTimeout, saveProjectTitle, setProjectTitleLocally]
+  );
+
+  const handleProjectTitleBlur = useCallback(
+    (projectId: string) => {
+      setEditingProjectId((prev) => (prev === projectId ? null : prev));
+      flushProjectTitleSave(projectId);
+    },
+    [flushProjectTitleSave]
+  );
+
+  const handleProjectTitleKeyDown = useCallback(
+    (
+      event: ReactKeyboardEvent<HTMLInputElement>,
+      project: ProjectLibraryItem
+    ) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.currentTarget.blur();
+        return;
+      }
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      clearRenameTimeout(project.id);
+      bumpRenameRequestId(project.id);
+      const persistedTitle =
+        savedProjectTitlesRef.current[project.id] ?? project.title;
+      setProjectTitleDrafts((prev) => ({
+        ...prev,
+        [project.id]: persistedTitle,
+      }));
+      setProjectTitleLocally(project.id, persistedTitle);
+      setEditingProjectId((prev) => (prev === project.id ? null : prev));
+      event.currentTarget.blur();
+    },
+    [bumpRenameRequestId, clearRenameTimeout, setProjectTitleLocally]
+  );
 
   const handleOpenProjectInEditor = useCallback(
     (project: ProjectLibraryItem) => {
@@ -785,8 +971,21 @@ function ProjectsPageInner() {
   }, [projects]);
 
   useEffect(() => {
+    projectTitleDraftsRef.current = projectTitleDrafts;
+  }, [projectTitleDrafts]);
+
+  useEffect(() => {
+    editingProjectIdRef.current = editingProjectId;
+  }, [editingProjectId]);
+
+  useEffect(() => {
+    const renameTimeouts = renameTimeoutsRef.current;
     return () => {
       isUnmountedRef.current = true;
+      renameTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      renameTimeouts.clear();
     };
   }, []);
 
@@ -833,7 +1032,26 @@ function ProjectsPageInner() {
           if (requestId !== projectsRequestIdRef.current) {
             return;
           }
-          setProjects(nextProjects);
+          const currentDrafts = projectTitleDraftsRef.current;
+          const mergedProjects = nextProjects.map((project) => {
+            const draftTitle = currentDrafts[project.id];
+            return typeof draftTitle === "string"
+              ? { ...project, title: draftTitle }
+              : project;
+          });
+          setProjects(mergedProjects);
+          savedProjectTitlesRef.current = Object.fromEntries(
+            nextProjects.map((project) => [project.id, project.title])
+          );
+          setProjectTitleDrafts((prev) => {
+            const activeProjectIds = new Set(nextProjects.map((project) => project.id));
+            const nextDrafts = Object.fromEntries(
+              Object.entries(prev).filter(([id]) => activeProjectIds.has(id))
+            );
+            return Object.keys(nextDrafts).length === Object.keys(prev).length
+              ? prev
+              : nextDrafts;
+          });
 
           const paginationPayload = payload?.pagination;
           if (paginationPayload && typeof paginationPayload === "object") {
@@ -905,6 +1123,17 @@ function ProjectsPageInner() {
       if (!confirmed) {
         return;
       }
+      clearRenameTimeout(project.id);
+      bumpRenameRequestId(project.id);
+      setProjectTitleDrafts((prev) => {
+        if (!(project.id in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[project.id];
+        return next;
+      });
+      delete savedProjectTitlesRef.current[project.id];
       setDeletingProjectId(project.id);
       setProjectsError(null);
       try {
@@ -939,7 +1168,7 @@ function ProjectsPageInner() {
         }
       }
     },
-    [deletingProjectId, loadProjects]
+    [bumpRenameRequestId, clearRenameTimeout, deletingProjectId, loadProjects]
   );
 
   const pollRenderingProjects = useCallback(async () => {
@@ -1592,6 +1821,9 @@ function ProjectsPageInner() {
                     project.updatedAt ?? project.createdAt,
                     "Updated"
                   );
+                  const isEditingTitle = editingProjectId === project.id;
+                  const titleDraft =
+                    projectTitleDrafts[project.id] ?? project.title;
                   return (
                     <div
                       key={project.id}
@@ -1614,7 +1846,43 @@ function ProjectsPageInner() {
                       <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
                         <div className="flex w-full items-center gap-2">
                           <div className="flex min-w-[100px] flex-1 items-center gap-2">
-                            <p className="truncate">{project.title}</p>
+                            {isEditingTitle ? (
+                              <input
+                                value={titleDraft}
+                                autoFocus
+                                maxLength={80}
+                                className="h-7 w-full min-w-0 rounded-md border border-[#335CFF]/30 bg-white px-2 text-sm text-gray-900 outline-none ring-0 transition focus:border-[#335CFF] focus:ring-2 focus:ring-[#335CFF]/20"
+                                onChange={(event) =>
+                                  handleProjectTitleChange(
+                                    project.id,
+                                    event.currentTarget.value
+                                  )
+                                }
+                                onBlur={() => handleProjectTitleBlur(project.id)}
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => {
+                                  event.stopPropagation();
+                                  handleProjectTitleKeyDown(event, project);
+                                }}
+                                aria-label="Project name"
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                className="min-w-0 flex-1 truncate rounded px-1 text-left text-sm text-gray-900 transition-colors hover:bg-gray-100"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleProjectTitleClick(project);
+                                }}
+                                onDoubleClick={(event) => {
+                                  event.stopPropagation();
+                                  handleProjectTitleClick(project);
+                                }}
+                                aria-label={`Rename ${project.title}`}
+                              >
+                                <span className="truncate">{project.title}</span>
+                              </button>
+                            )}
                             <div
                               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${renderUi.badgeClassName}`}
                             >

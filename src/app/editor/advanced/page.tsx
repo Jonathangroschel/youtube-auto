@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import {
+  useDeferredValue,
   useEffect,
   useCallback,
   Suspense,
@@ -414,6 +415,27 @@ type UploadAssetMeta = {
   height?: number;
   aspectRatio?: number;
 };
+
+type EditorExportPayload = {
+  state?: EditorProjectState | null;
+  output?: Partial<ExportOutput> | null;
+  preview?: Partial<ExportOutput> | null;
+  renderScaleMode?: "css" | "device" | null;
+  fonts?: string[] | null;
+};
+
+type EditorExportRuntimeApi = {
+  waitForReady: () => Promise<void>;
+  setTime: (time: number) => Promise<void>;
+  getStageSelector: () => string;
+};
+
+declare global {
+  interface Window {
+    __EDITOR_EXPORT__?: EditorExportPayload;
+    __EDITOR_EXPORT_API__?: EditorExportRuntimeApi;
+  }
+}
 
 const projectSizeOptions: ProjectSizeOption[] = [
   {
@@ -1019,6 +1041,39 @@ const uploadAssetFileSafe = async (
   return null;
 };
 
+const getEditorExportPayload = (): EditorExportPayload | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.__EDITOR_EXPORT__ ?? null;
+};
+
+const areSnapGuidesEqual = (
+  a: SnapGuides | null,
+  b: SnapGuides | null
+) => {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  if (a.x.length !== b.x.length || a.y.length !== b.y.length) {
+    return false;
+  }
+  for (let index = 0; index < a.x.length; index += 1) {
+    if (a.x[index] !== b.x[index]) {
+      return false;
+    }
+  }
+  for (let index = 0; index < a.y.length; index += 1) {
+    if (a.y[index] !== b.y[index]) {
+      return false;
+    }
+  }
+  return true;
+};
+
 function AdvancedEditorContent() {
   const textMinLayerSize = 24;
   const textPresetPreviewCount = 6;
@@ -1187,6 +1242,7 @@ function AdvancedEditorContent() {
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [stageSelection, setStageSelection] =
     useState<RangeSelectionState | null>(null);
+  const stageSelectionRef = useRef<RangeSelectionState | null>(null);
   const [uploading, setUploading] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectReady, setProjectReady] = useState(false);
@@ -1205,6 +1261,10 @@ function AdvancedEditorContent() {
   >("color");
   const [projectBackgroundImage, setProjectBackgroundImage] =
     useState<ProjectBackgroundImage | null>(null);
+  const deferredAssetSearch = useDeferredValue(assetSearch);
+  const deferredStockSearch = useDeferredValue(stockSearch);
+  const deferredSoundFxSearch = useDeferredValue(soundFxSearch);
+  const deferredStockVideoSearch = useDeferredValue(stockVideoSearch);
   const [exportUi, setExportUi] = useState<ExportUiState>({
     open: false,
     status: "idle",
@@ -1218,7 +1278,7 @@ function AdvancedEditorContent() {
     if (!isExportMode || typeof window === "undefined") {
       return null;
     }
-    const payload = (window as any).__EDITOR_EXPORT__;
+    const payload = getEditorExportPayload();
     const output = payload?.output;
     const nextWidth = Number(output?.width);
     const nextHeight = Number(output?.height);
@@ -1234,7 +1294,7 @@ function AdvancedEditorContent() {
     if (!isExportMode || typeof window === "undefined") {
       return null;
     }
-    const payload = (window as any).__EDITOR_EXPORT__;
+    const payload = getEditorExportPayload();
     const preview = payload?.preview;
     const previewWidth = Number(preview?.width);
     const previewHeight = Number(preview?.height);
@@ -1250,7 +1310,7 @@ function AdvancedEditorContent() {
     if (!isExportMode || typeof window === "undefined") {
       return "css";
     }
-    const mode = (window as any).__EDITOR_EXPORT__?.renderScaleMode;
+    const mode = getEditorExportPayload()?.renderScaleMode;
     return mode === "device" ? "device" : "css";
   });
   const exportSubtitleScaleRef = useRef(1);
@@ -1324,7 +1384,11 @@ function AdvancedEditorContent() {
   const [clipTransforms, setClipTransforms] = useState<
     Record<string, ClipTransform>
   >({});
+  const clipTransformsRef = useRef<Record<string, ClipTransform>>(
+    clipTransforms
+  );
   const [snapGuides, setSnapGuides] = useState<SnapGuides | null>(null);
+  const snapGuidesRef = useRef<SnapGuides | null>(snapGuides);
   const [historyState, setHistoryState] = useState({
     canUndo: false,
     canRedo: false,
@@ -1526,6 +1590,7 @@ function AdvancedEditorContent() {
   } | null>(null);
   const [rangeSelection, setRangeSelection] =
     useState<RangeSelectionState | null>(null);
+  const rangeSelectionRef = useRef<RangeSelectionState | null>(null);
   const [dragTransformState, setDragTransformState] =
     useState<TransformDragState | null>(null);
   const [resizeTransformState, setResizeTransformState] =
@@ -1538,13 +1603,19 @@ function AdvancedEditorContent() {
   const [topCreateZoneActive, setTopCreateZoneActive] = useState(false);
   const [dragOverCanvas, setDragOverCanvas] = useState(false);
   const [dragOverTimeline, setDragOverTimeline] = useState(false);
+  const canvasDragDepthRef = useRef(0);
+  const timelineDragDepthRef = useRef(0);
   const [trimState, setTrimState] = useState<TrimState | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
   const replaceMediaInputRef = useRef<HTMLInputElement | null>(null);
   const assetsRef = useRef<MediaAsset[]>([]);
   const assetLibraryBootstrappedRef = useRef(false);
+  const timelineRef = useRef<TimelineClip[]>([]);
   const lanesRef = useRef<TimelineLane[]>([]);
+  const laneRowsRef = useRef<
+    Array<{ id: string; type: LaneType; label: string; height: number }>
+  >([]);
   const subtitleLaneIdRef = useRef<string | null>(null);
   const subtitleGroupTransformsRef = useRef<Map<string, ClipTransform> | null>(
     null
@@ -1645,8 +1716,10 @@ function AdvancedEditorContent() {
   const stockAudioMetaLoadingRef = useRef<Set<string>>(new Set());
   const stockMusicLoadTimeoutRef = useRef<number | null>(null);
   const stockMusicLoadIdRef = useRef(0);
+  const stockMusicSettledReloadKeyRef = useRef<number | null>(null);
   const soundFxLoadTimeoutRef = useRef<number | null>(null);
   const soundFxLoadIdRef = useRef(0);
+  const soundFxSettledReloadKeyRef = useRef<number | null>(null);
   const stockVideoMetaCacheRef = useRef<
     Map<
       string,
@@ -1661,6 +1734,7 @@ function AdvancedEditorContent() {
   const stockVideoMetaLoadingRef = useRef<Set<string>>(new Set());
   const stockVideoLoadTimeoutRef = useRef<number | null>(null);
   const stockVideoLoadIdRef = useRef(0);
+  const stockVideoSettledReloadKeyRef = useRef<number | null>(null);
   const stockVideoPreviewRefs = useRef<Map<string, HTMLVideoElement | null>>(
     new Map()
   );
@@ -1677,6 +1751,14 @@ function AdvancedEditorContent() {
   const dragTransformHistoryRef = useRef(false);
   const resizeTransformHistoryRef = useRef(false);
   const rotateTransformHistoryRef = useRef(false);
+  const dragTransformStateRef = useRef<TransformDragState | null>(null);
+  const resizeTransformStateRef = useRef<TransformResizeState | null>(null);
+  const rotateTransformStateRef = useRef<TransformRotateState | null>(null);
+  const clipAssetKindMapRef = useRef<Map<string, MediaKind>>(new Map());
+  const visualStackRef = useRef<TimelineLayoutEntry[]>([]);
+  const baseBackgroundTransformRef = useRef<ClipTransform | null>(null);
+  const selectedTextEntryRef = useRef<TimelineLayoutEntry | null>(null);
+  const subtitleClipIdSetRef = useRef<Set<string>>(new Set());
   const resizeTextRectRef = useRef<ClipTransform | null>(null);
   const resizeTextFontRef = useRef<{ clipId: string; fontSize: number } | null>(
     null
@@ -1684,7 +1766,16 @@ function AdvancedEditorContent() {
   const clipTransformTouchedRef = useRef<Set<string>>(new Set());
   const dragClipHistoryRef = useRef(false);
   const dragClipStateRef = useRef<ClipDragState | null>(null);
+  const trimStateRef = useRef<TrimState | null>(null);
   const trimHistoryRef = useRef(false);
+  const timelineScaleRef = useRef(timelineScale);
+  const timelineDurationRef = useRef(0);
+  const topCreateZonePxRef = useRef(0);
+  const isTimelineSnappingEnabledRef = useRef(isTimelineSnappingEnabled);
+  const subtitleSourceClipMapRef = useRef<Map<string, string[]>>(new Map());
+  const timelineSnapGuideRef = useRef<number | null>(null);
+  const timelineCollisionGuideRef = useRef<number | null>(null);
+  const timelineCollisionActiveRef = useRef(false);
   const timelinePanRef = useRef<{
     startX: number;
     scrollLeft: number;
@@ -1693,9 +1784,6 @@ function AdvancedEditorContent() {
   const playbackTimeRef = useRef(currentTime);
   const playbackUiTickRef = useRef(0);
   const isPlayingRef = useRef(isPlaying);
-  const keyboardEffectDeps = useRef<number[]>(
-    Array.from({ length: 12 }, () => 0)
-  );
   const keyboardStateRef = useRef<KeyboardShortcutState>({
     currentTime: 0,
     timelineDuration: 0,
@@ -1710,6 +1798,13 @@ function AdvancedEditorContent() {
     handleUndo: () => {},
     isEditableTarget: () => false,
   });
+  const setSnapGuidesIfChanged = useCallback((nextGuides: SnapGuides | null) => {
+    if (areSnapGuidesEqual(snapGuidesRef.current, nextGuides)) {
+      return;
+    }
+    snapGuidesRef.current = nextGuides;
+    setSnapGuides(nextGuides);
+  }, []);
   const fallbackVideoSettings = useMemo(createDefaultVideoSettings, []);
   const fallbackTextSettings = useMemo(createDefaultTextSettings, []);
   const getClipPlaybackRate = useCallback(
@@ -1823,33 +1918,50 @@ function AdvancedEditorContent() {
         return;
       }
       const aspectRatio = width / height;
-      setAssets((prev) => {
-        const index = prev.findIndex((asset) => asset.id === assetId);
-        if (index < 0) {
-          return prev;
-        }
-        const current = prev[index];
-        // Check if we need to update duration (only if current duration is missing or fallback)
-        const shouldUpdateDuration = videoDuration != null && 
-          (current.duration == null || current.duration === 8);
-        if (
-          current.width === width &&
-          current.height === height &&
-          current.aspectRatio === aspectRatio &&
-          !shouldUpdateDuration
-        ) {
-          return prev;
-        }
-        const next = [...prev];
-        next[index] = {
-          ...current,
-          width,
-          height,
-          aspectRatio,
-          ...(shouldUpdateDuration ? { duration: videoDuration } : {}),
-        };
-        return next;
-      });
+      const durationUpdateThreshold = 0.05;
+      const currentAsset = assetsRef.current.find((asset) => asset.id === assetId);
+      if (!currentAsset) {
+        return;
+      }
+      const hasWidthChange = currentAsset.width !== width;
+      const hasHeightChange = currentAsset.height !== height;
+      const hasAspectRatioChange =
+        typeof currentAsset.aspectRatio !== "number" ||
+        Math.abs(currentAsset.aspectRatio - aspectRatio) > 0.001;
+      const hasDurationChange =
+        videoDuration != null &&
+        (currentAsset.duration == null ||
+          Math.abs(currentAsset.duration - videoDuration) > durationUpdateThreshold);
+      if (hasWidthChange || hasHeightChange || hasAspectRatioChange || hasDurationChange) {
+        setAssets((prev) => {
+          const index = prev.findIndex((asset) => asset.id === assetId);
+          if (index < 0) {
+            return prev;
+          }
+          const current = prev[index];
+          const widthChanged = current.width !== width;
+          const heightChanged = current.height !== height;
+          const aspectChanged =
+            typeof current.aspectRatio !== "number" ||
+            Math.abs(current.aspectRatio - aspectRatio) > 0.001;
+          const durationChanged =
+            videoDuration != null &&
+            (current.duration == null ||
+              Math.abs(current.duration - videoDuration) > durationUpdateThreshold);
+          if (!widthChanged && !heightChanged && !aspectChanged && !durationChanged) {
+            return prev;
+          }
+          const next = [...prev];
+          next[index] = {
+            ...current,
+            width,
+            height,
+            aspectRatio,
+            ...(durationChanged ? { duration: videoDuration } : {}),
+          };
+          return next;
+        });
+      }
       // Avoid mutating timeline/transforms during export renders.
       if (isExportMode) {
         return;
@@ -1867,7 +1979,7 @@ function AdvancedEditorContent() {
           // and the video is actually longer
           if (asset?.duration == null || asset.duration <= 8) {
             const newDuration = Math.max(0, videoDuration - clip.startOffset);
-            if (Math.abs(clip.duration - newDuration) > 0.1) {
+            if (Math.abs(clip.duration - newDuration) > 0.05) {
               const next = [...prev];
               next[clipIndex] = {
                 ...clip,
@@ -2053,10 +2165,22 @@ function AdvancedEditorContent() {
     return (
       element.tagName === "INPUT" ||
       element.tagName === "TEXTAREA" ||
+      element.tagName === "SELECT" ||
+      element.tagName === "OPTION" ||
+      element.tagName === "BUTTON" ||
+      element.tagName === "A" ||
       element.isContentEditable ||
       element.getAttribute("role") === "textbox" ||
       element.getAttribute("role") === "searchbox" ||
+      element.getAttribute("role") === "button" ||
+      element.getAttribute("role") === "link" ||
+      element.getAttribute("role") === "menuitem" ||
       Boolean(element.closest("[contenteditable=\"true\"]")) ||
+      Boolean(
+        element.closest(
+          "button, a[href], [role=\"button\"], [role=\"link\"], [role=\"menuitem\"], [data-ignore-editor-shortcuts=\"true\"]"
+        )
+      ) ||
       Boolean(element.closest("lemon-slice-widget")) ||
       (widgetHost instanceof HTMLElement &&
         widgetHost.tagName === "LEMON-SLICE-WIDGET")
@@ -2435,7 +2559,7 @@ function AdvancedEditorContent() {
       }
       exportHydratedRef.current = true;
     };
-    const payload = (window as any).__EDITOR_EXPORT__;
+    const payload = getEditorExportPayload();
     setExportScaleMode(payload?.renderScaleMode === "device" ? "device" : "css");
     if (payload?.output && typeof payload.output === "object") {
       const nextWidth = Number(payload.output.width);
@@ -2651,6 +2775,18 @@ function AdvancedEditorContent() {
   useEffect(() => {
     assetsRef.current = assets;
   }, [assets]);
+
+  useEffect(() => {
+    clipTransformsRef.current = clipTransforms;
+  }, [clipTransforms]);
+
+  useEffect(() => {
+    snapGuidesRef.current = snapGuides;
+  }, [snapGuides]);
+
+  useEffect(() => {
+    timelineRef.current = timeline;
+  }, [timeline]);
 
   useEffect(() => {
     if (isExportMode || typeof window === "undefined") {
@@ -3341,16 +3477,25 @@ function AdvancedEditorContent() {
     if (isExportMode || typeof window === "undefined") {
       return;
     }
-    const handleBeforeUnload = () => {
+    const persistReloadState = () => {
       if (!projectReady) {
         return;
       }
       const state = buildProjectState();
       persistEditorReloadSessionState(state, projectIdRef.current);
     };
-    window.addEventListener("beforeunload", handleBeforeUnload);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        persistReloadState();
+      }
+    };
+    window.addEventListener("beforeunload", persistReloadState);
+    window.addEventListener("pagehide", persistReloadState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("beforeunload", persistReloadState);
+      window.removeEventListener("pagehide", persistReloadState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [buildProjectState, isExportMode, projectReady]);
 
@@ -3418,6 +3563,50 @@ function AdvancedEditorContent() {
   useEffect(() => {
     dragClipStateRef.current = dragClipState;
   }, [dragClipState]);
+
+  useEffect(() => {
+    rangeSelectionRef.current = rangeSelection;
+  }, [rangeSelection]);
+
+  useEffect(() => {
+    stageSelectionRef.current = stageSelection;
+  }, [stageSelection]);
+
+  useEffect(() => {
+    dragTransformStateRef.current = dragTransformState;
+  }, [dragTransformState]);
+
+  useEffect(() => {
+    resizeTransformStateRef.current = resizeTransformState;
+  }, [resizeTransformState]);
+
+  useEffect(() => {
+    rotateTransformStateRef.current = rotateTransformState;
+  }, [rotateTransformState]);
+
+  useEffect(() => {
+    trimStateRef.current = trimState;
+  }, [trimState]);
+
+  useEffect(() => {
+    timelineScaleRef.current = timelineScale;
+  }, [timelineScale]);
+
+  useEffect(() => {
+    isTimelineSnappingEnabledRef.current = isTimelineSnappingEnabled;
+  }, [isTimelineSnappingEnabled]);
+
+  useEffect(() => {
+    timelineSnapGuideRef.current = timelineSnapGuide;
+  }, [timelineSnapGuide]);
+
+  useEffect(() => {
+    timelineCollisionGuideRef.current = timelineCollisionGuide;
+  }, [timelineCollisionGuide]);
+
+  useEffect(() => {
+    timelineCollisionActiveRef.current = timelineCollisionActive;
+  }, [timelineCollisionActive]);
 
   useEffect(() => {
     if (textPanelFontFamily) {
@@ -3692,6 +3881,9 @@ function AdvancedEditorContent() {
     if (activeTool !== "audio" || !hasSupabase) {
       return;
     }
+    if (stockMusicSettledReloadKeyRef.current === stockMusicReloadKey) {
+      return;
+    }
     let cancelled = false;
     const loadId = stockMusicLoadIdRef.current + 1;
     stockMusicLoadIdRef.current = loadId;
@@ -3712,10 +3904,6 @@ function AdvancedEditorContent() {
       try {
         const { supabaseBrowser } = await import("@/lib/supabase/browser");
         const bucket = supabaseBrowser.storage.from(stockMusicBucketName);
-        console.log("[stock-music] bucket", {
-          bucket: stockMusicBucketName,
-          root: stockMusicRootPrefix || "(root)",
-        });
         const listWithTimeout = async (path: string) => {
           let timeoutId: number | null = null;
           const timeoutPromise = new Promise<{
@@ -3745,10 +3933,6 @@ function AdvancedEditorContent() {
           }
           if (result.error) {
             console.error("[stock-music] list error", path, result.error);
-          } else {
-            console.log("[stock-music] list ok", path, {
-              count: result.data?.length ?? 0,
-            });
           }
           return result;
         };
@@ -3791,17 +3975,12 @@ function AdvancedEditorContent() {
           Boolean(item.metadata) ||
           isAudioFile(item.name, item.metadata?.mimetype ?? null);
         const collectTracks = async (path: string) => {
-          console.log("[stock-music] collect", path || "(root)");
           const { data, error } = await listWithTimeout(path);
           if (error) {
             throw error;
           }
           const entries = data ?? [];
           const files = entries.filter(isFileEntry);
-          console.log("[stock-music] entries", path || "(root)", {
-            entries: entries.length,
-            files: files.length,
-          });
           if (files.length > 0) {
             const label = path
               ? formatStockLabel(path.split("/").pop() ?? "General")
@@ -3809,13 +3988,6 @@ function AdvancedEditorContent() {
             pushFiles(files, label, path);
           }
           const folders = entries.filter((item) => !isFileEntry(item));
-          if (folders.length > 0) {
-            console.log(
-              "[stock-music] folders",
-              path || "(root)",
-              folders.map((folder) => folder.name)
-            );
-          }
           await Promise.all(
             folders.map((folder) => {
               const nextPath = path ? `${path}/${folder.name}` : folder.name;
@@ -3828,7 +4000,7 @@ function AdvancedEditorContent() {
           return;
         }
         tracks.sort((a, b) => a.name.localeCompare(b.name));
-        console.log("[stock-music] tracks", tracks.length);
+        stockMusicSettledReloadKeyRef.current = stockMusicReloadKey;
         setStockMusic(tracks);
         setStockMusicStatus("ready");
       } catch (error) {
@@ -3839,6 +4011,7 @@ function AdvancedEditorContent() {
           error instanceof Error
             ? error.message
             : "Unable to load stock music from Supabase.";
+        stockMusicSettledReloadKeyRef.current = stockMusicReloadKey;
         console.error("[stock-music] load failed", error);
         setStockMusicError(message);
         setStockMusicStatus("error");
@@ -3866,6 +4039,9 @@ function AdvancedEditorContent() {
     if (activeTool !== "audio" || !hasSupabase) {
       return;
     }
+    if (soundFxSettledReloadKeyRef.current === soundFxReloadKey) {
+      return;
+    }
     let cancelled = false;
     const loadId = soundFxLoadIdRef.current + 1;
     soundFxLoadIdRef.current = loadId;
@@ -3886,10 +4062,6 @@ function AdvancedEditorContent() {
       try {
         const { supabaseBrowser } = await import("@/lib/supabase/browser");
         const bucket = supabaseBrowser.storage.from(soundFxBucketName);
-        console.log("[sound-fx] bucket", {
-          bucket: soundFxBucketName,
-          root: soundFxRootPrefix || "(root)",
-        });
         const listWithTimeout = async (path: string) => {
           let timeoutId: number | null = null;
           const timeoutPromise = new Promise<{
@@ -3919,10 +4091,6 @@ function AdvancedEditorContent() {
           }
           if (result.error) {
             console.error("[sound-fx] list error", path, result.error);
-          } else {
-            console.log("[sound-fx] list ok", path, {
-              count: result.data?.length ?? 0,
-            });
           }
           return result;
         };
@@ -3965,17 +4133,12 @@ function AdvancedEditorContent() {
           Boolean(item.metadata) ||
           isAudioFile(item.name, item.metadata?.mimetype ?? null);
         const collectTracks = async (path: string) => {
-          console.log("[sound-fx] collect", path || "(root)");
           const { data, error } = await listWithTimeout(path);
           if (error) {
             throw error;
           }
           const entries = data ?? [];
           const files = entries.filter(isFileEntry);
-          console.log("[sound-fx] entries", path || "(root)", {
-            entries: entries.length,
-            files: files.length,
-          });
           if (files.length > 0) {
             const label = path
               ? formatStockLabel(path.split("/").pop() ?? "General")
@@ -3983,13 +4146,6 @@ function AdvancedEditorContent() {
             pushFiles(files, label, path);
           }
           const folders = entries.filter((item) => !isFileEntry(item));
-          if (folders.length > 0) {
-            console.log(
-              "[sound-fx] folders",
-              path || "(root)",
-              folders.map((folder) => folder.name)
-            );
-          }
           await Promise.all(
             folders.map((folder) => {
               const nextPath = path ? `${path}/${folder.name}` : folder.name;
@@ -4002,7 +4158,7 @@ function AdvancedEditorContent() {
           return;
         }
         tracks.sort((a, b) => a.name.localeCompare(b.name));
-        console.log("[sound-fx] tracks", tracks.length);
+        soundFxSettledReloadKeyRef.current = soundFxReloadKey;
         setSoundFx(tracks);
         setSoundFxStatus("ready");
       } catch (error) {
@@ -4013,6 +4169,7 @@ function AdvancedEditorContent() {
           error instanceof Error
             ? error.message
             : "Unable to load sound effects from Supabase.";
+        soundFxSettledReloadKeyRef.current = soundFxReloadKey;
         console.error("[sound-fx] load failed", error);
         setSoundFxError(message);
         setSoundFxStatus("error");
@@ -4040,6 +4197,9 @@ function AdvancedEditorContent() {
     if (activeTool !== "video" || !hasSupabase) {
       return;
     }
+    if (stockVideoSettledReloadKeyRef.current === stockVideoReloadKey) {
+      return;
+    }
     let cancelled = false;
     const loadId = stockVideoLoadIdRef.current + 1;
     stockVideoLoadIdRef.current = loadId;
@@ -4060,10 +4220,6 @@ function AdvancedEditorContent() {
       try {
         const { supabaseBrowser } = await import("@/lib/supabase/browser");
         const bucket = supabaseBrowser.storage.from(stockVideoBucketName);
-        console.log("[stock-video] bucket", {
-          bucket: stockVideoBucketName,
-          root: stockVideoRootPrefix || "(root)",
-        });
         type StockVideoListEntry = {
           id?: string | null;
           name: string;
@@ -4103,7 +4259,7 @@ function AdvancedEditorContent() {
           const limit = Math.max(1, Math.min(500, options?.limit ?? 200));
           const offset = Math.max(0, options?.offset ?? 0);
 
-          const attempt = async (attemptNumber: number) => {
+          const attempt = async () => {
             let timeoutId: number | null = null;
             const timeoutPromise = new Promise<never>((_, reject) => {
               timeoutId = window.setTimeout(() => {
@@ -4135,7 +4291,7 @@ function AdvancedEditorContent() {
             }
           };
 
-          let result = await attempt(1);
+          let result = await attempt();
           if (
             result.error &&
             !shouldStop() &&
@@ -4144,7 +4300,7 @@ function AdvancedEditorContent() {
             true
           ) {
             await new Promise<void>((resolve) => window.setTimeout(resolve, 400));
-            result = await attempt(2);
+            result = await attempt();
           }
 
           if (result.error && !shouldStop() && !isAbortLikeError(result.error)) {
@@ -4226,7 +4382,6 @@ function AdvancedEditorContent() {
           if (shouldStop()) {
             return;
           }
-          console.log("[stock-video] collect", path || "(root)");
           const { data, error } = await listAllWithTimeout(path);
           if (shouldStop()) {
             return;
@@ -4240,21 +4395,10 @@ function AdvancedEditorContent() {
           }
           const entries = data ?? [];
           const files = entries.filter(isFileEntry);
-          console.log("[stock-video] entries", path || "(root)", {
-            entries: entries.length,
-            files: files.length,
-          });
           if (files.length > 0) {
             pushFiles(files, path);
           }
           const folders = entries.filter((item) => !isFileEntry(item));
-          if (folders.length > 0) {
-            console.log(
-              "[stock-video] folders",
-              path || "(root)",
-              folders.map((folder) => folder.name)
-            );
-          }
           for (const folder of folders) {
             if (shouldStop()) {
               return;
@@ -4262,7 +4406,6 @@ function AdvancedEditorContent() {
             const nextPath = path ? `${path}/${folder.name}` : folder.name;
             // Sequential recursion prevents request floods that can trigger aborted fetches.
             // If you need more speed later, add a small concurrency pool.
-            // eslint-disable-next-line no-await-in-loop
             await collectVideos(nextPath);
           }
         };
@@ -4271,7 +4414,7 @@ function AdvancedEditorContent() {
           return;
         }
         videos.sort((a, b) => a.name.localeCompare(b.name));
-        console.log("[stock-video] videos", videos.length);
+        stockVideoSettledReloadKeyRef.current = stockVideoReloadKey;
         setStockVideoItems(videos);
         setStockVideoStatus("ready");
       } catch (error) {
@@ -4288,6 +4431,7 @@ function AdvancedEditorContent() {
           : error instanceof Error
             ? error.message
             : "Unable to load stock videos from Supabase.";
+        stockVideoSettledReloadKeyRef.current = stockVideoReloadKey;
         if (!isAbort) {
           console.error("[stock-video] load failed", error);
         }
@@ -4551,11 +4695,19 @@ function AdvancedEditorContent() {
       const width = viewport.clientWidth;
       const height = viewport.clientHeight;
       if (width > 0 && height > 0) {
-        setStageViewport({ width, height });
+        setStageViewport((prev) =>
+          prev.width === width && prev.height === height
+            ? prev
+            : { width, height }
+        );
         return;
       }
       const rect = viewport.getBoundingClientRect();
-      setStageViewport({ width: rect.width, height: rect.height });
+      setStageViewport((prev) =>
+        prev.width === rect.width && prev.height === rect.height
+          ? prev
+          : { width: rect.width, height: rect.height }
+      );
     };
     updateSize();
     const observer = new ResizeObserver(updateSize);
@@ -4570,7 +4722,7 @@ function AdvancedEditorContent() {
     }
     const updateSize = () => {
       const rect = main.getBoundingClientRect();
-      setMainHeight(rect.height);
+      setMainHeight((prev) => (prev === rect.height ? prev : rect.height));
     };
     updateSize();
     const observer = new ResizeObserver(updateSize);
@@ -4783,104 +4935,108 @@ function AdvancedEditorContent() {
     [addTextClip]
   );
 
-  const createClip = (
-    assetId: string,
-    laneId: string,
-    startTime: number,
-    assetOverride?: MediaAsset
-  ): TimelineClip => {
-    const asset =
-      assetOverride ?? assetsRef.current.find((item) => item.id === assetId);
-    const duration = getAssetDurationSeconds(asset);
-    return {
-      id: crypto.randomUUID(),
-      assetId,
-      duration,
-      startOffset: 0,
-      startTime,
-      laneId,
-    };
-  };
+  const createClip = useCallback(
+    (
+      assetId: string,
+      laneId: string,
+      startTime: number,
+      assetOverride?: MediaAsset
+    ): TimelineClip => {
+      const asset =
+        assetOverride ?? assetsRef.current.find((item) => item.id === assetId);
+      const duration = getAssetDurationSeconds(asset);
+      return {
+        id: crypto.randomUUID(),
+        assetId,
+        duration,
+        startOffset: 0,
+        startTime,
+        laneId,
+      };
+    },
+    []
+  );
 
-  const createLaneId = (
-    type: LaneType,
-    draft: TimelineLane[],
-    options?: { placement?: "top" | "bottom" }
-  ) => {
-    const lane = { id: crypto.randomUUID(), type };
-    const placement = options?.placement ?? "bottom";
-    // Lane order: text on top, video in the middle, audio on bottom.
-    if (placement === "top") {
-      if (type === "text") {
-        const firstTextIndex = draft.findIndex((item) => item.type === "text");
-        if (firstTextIndex === -1) {
-          draft.unshift(lane);
+  const createLaneId = useCallback(
+    (
+      type: LaneType,
+      draft: TimelineLane[],
+      options?: { placement?: "top" | "bottom" }
+    ) => {
+      const lane = { id: crypto.randomUUID(), type };
+      const placement = options?.placement ?? "bottom";
+      // Lane order: text on top, video in the middle, audio on bottom.
+      if (placement === "top") {
+        if (type === "text") {
+          const firstTextIndex = draft.findIndex((item) => item.type === "text");
+          if (firstTextIndex === -1) {
+            draft.unshift(lane);
+          } else {
+            draft.splice(firstTextIndex, 0, lane);
+          }
+        } else if (type === "video") {
+          const firstNonTextIndex = draft.findIndex((item) => item.type !== "text");
+          if (firstNonTextIndex === -1) {
+            draft.push(lane);
+          } else {
+            draft.splice(firstNonTextIndex, 0, lane);
+          }
         } else {
-          draft.splice(firstTextIndex, 0, lane);
+          const firstAudioIndex = draft.findIndex((item) => item.type === "audio");
+          if (firstAudioIndex === -1) {
+            draft.push(lane);
+          } else {
+            draft.splice(firstAudioIndex, 0, lane);
+          }
         }
-      } else if (type === "video") {
+        return lane.id;
+      }
+      if (type === "text") {
         const firstNonTextIndex = draft.findIndex((item) => item.type !== "text");
         if (firstNonTextIndex === -1) {
           draft.push(lane);
         } else {
           draft.splice(firstNonTextIndex, 0, lane);
         }
-      } else {
+      } else if (type === "video") {
         const firstAudioIndex = draft.findIndex((item) => item.type === "audio");
         if (firstAudioIndex === -1) {
           draft.push(lane);
         } else {
           draft.splice(firstAudioIndex, 0, lane);
         }
+      } else {
+        draft.push(lane);
       }
       return lane.id;
-    }
-    if (type === "text") {
-      const firstNonTextIndex = draft.findIndex((item) => item.type !== "text");
-      if (firstNonTextIndex === -1) {
-        draft.push(lane);
-      } else {
-        draft.splice(firstNonTextIndex, 0, lane);
-      }
-    } else if (type === "video") {
-      const firstAudioIndex = draft.findIndex((item) => item.type === "audio");
-      if (firstAudioIndex === -1) {
-        draft.push(lane);
-      } else {
-        draft.splice(firstAudioIndex, 0, lane);
-      }
-    } else {
-      draft.push(lane);
-    }
-    return lane.id;
-  };
+    },
+    []
+  );
 
-  const insertLaneAtIndex = (
-    type: LaneType,
-    draft: TimelineLane[],
-    index: number
-  ) => {
-    const lane = { id: crypto.randomUUID(), type };
-    const safeIndex = Math.max(0, Math.min(index, draft.length));
-    draft.splice(safeIndex, 0, lane);
-    return lane.id;
-  };
+  const insertLaneAtIndex = useCallback(
+    (type: LaneType, draft: TimelineLane[], index: number) => {
+      const lane = { id: crypto.randomUUID(), type };
+      const safeIndex = Math.max(0, Math.min(index, draft.length));
+      draft.splice(safeIndex, 0, lane);
+      return lane.id;
+    },
+    []
+  );
 
-  const canInsertLaneBetween = (
-    laneType: LaneType,
-    beforeType: LaneType,
-    afterType: LaneType
-  ) => {
-    const order: Record<LaneType, number> = {
-      text: 0,
-      video: 1,
-      audio: 2,
-    };
-    return (
-      order[beforeType] <= order[laneType] &&
-      order[laneType] <= order[afterType]
-    );
-  };
+  const canInsertLaneBetween = useCallback(
+    (laneType: LaneType, beforeType: LaneType, afterType: LaneType) => {
+      const order: Record<LaneType, number> = {
+        text: 0,
+        video: 1,
+        audio: 2,
+      };
+      return (
+        order[beforeType] <= order[laneType] &&
+        order[laneType] <= order[afterType]
+      );
+    },
+    []
+  );
 
   const sortLanesByType = useCallback((items: TimelineLane[]) => {
     const priority: Record<LaneType, number> = {
@@ -4928,14 +5084,14 @@ function AdvancedEditorContent() {
   }, [assets, assetFilter]);
 
   const viewAllAssets = useMemo(() => {
-    const query = assetSearch.trim().toLowerCase();
+    const query = deferredAssetSearch.trim().toLowerCase();
     if (!query) {
       return filteredAssets;
     }
     return filteredAssets.filter((asset) =>
       asset.name.toLowerCase().includes(query)
     );
-  }, [assetSearch, filteredAssets]);
+  }, [deferredAssetSearch, filteredAssets]);
 
   const gifPreviewPool = useMemo(
     () => (gifMemeResults.length > 0 ? gifMemeResults : gifTrending),
@@ -5016,7 +5172,7 @@ function AdvancedEditorContent() {
   }, [stockMusic]);
 
   const filteredStockMusic = useMemo(() => {
-    const query = stockSearch.trim().toLowerCase();
+    const query = deferredStockSearch.trim().toLowerCase();
     return stockMusic.filter((track) => {
       const matchesCategory =
         stockCategory === "All" || track.category === stockCategory;
@@ -5031,7 +5187,7 @@ function AdvancedEditorContent() {
         track.category.toLowerCase().includes(query)
       );
     });
-  }, [stockCategory, stockMusic, stockSearch]);
+  }, [deferredStockSearch, stockCategory, stockMusic]);
 
   const groupedStockMusic = useMemo(() => {
     const groupMap = new Map<string, StockAudioTrack[]>();
@@ -5074,7 +5230,7 @@ function AdvancedEditorContent() {
   }, [soundFx]);
 
   const filteredSoundFx = useMemo(() => {
-    const query = soundFxSearch.trim().toLowerCase();
+    const query = deferredSoundFxSearch.trim().toLowerCase();
     return soundFx.filter((track) => {
       const matchesCategory =
         soundFxCategory === "All" || track.category === soundFxCategory;
@@ -5089,7 +5245,7 @@ function AdvancedEditorContent() {
         track.category.toLowerCase().includes(query)
       );
     });
-  }, [soundFxCategory, soundFx, soundFxSearch]);
+  }, [deferredSoundFxSearch, soundFxCategory, soundFx]);
 
   const groupedSoundFx = useMemo(() => {
     const groupMap = new Map<string, StockAudioTrack[]>();
@@ -5137,7 +5293,7 @@ function AdvancedEditorContent() {
   }, [stockVideoItems]);
 
   const filteredStockVideos = useMemo(() => {
-    const query = stockVideoSearch.trim().toLowerCase();
+    const query = deferredStockVideoSearch.trim().toLowerCase();
     return stockVideoItems.filter((item) => {
       const matchesCategory =
         stockVideoCategory === "All" || item.category === stockVideoCategory;
@@ -5161,10 +5317,10 @@ function AdvancedEditorContent() {
       );
     });
   }, [
+    deferredStockVideoSearch,
     stockVideoCategory,
     stockVideoItems,
     stockVideoOrientation,
-    stockVideoSearch,
   ]);
 
   const groupedStockVideos = useMemo(() => {
@@ -5240,15 +5396,31 @@ function AdvancedEditorContent() {
     }));
   }, [timelineClips]);
 
+  const timelineLayoutByClipId = useMemo(() => {
+    const byId = new Map<string, TimelineLayoutEntry>();
+    timelineLayout.forEach((entry) => {
+      byId.set(entry.clip.id, entry);
+    });
+    return byId;
+  }, [timelineLayout]);
+
   const clipAssetKindMap = useMemo(() => {
     return new Map(
       timelineLayout.map((entry) => [entry.clip.id, entry.asset.kind])
     );
-  }, [timelineLayout, isExportMode]);
+  }, [timelineLayout]);
+
+  useEffect(() => {
+    clipAssetKindMapRef.current = clipAssetKindMap;
+  }, [clipAssetKindMap]);
 
   const subtitleClipIdSet = useMemo(() => {
     return new Set(subtitleSegments.map((segment) => segment.clipId));
   }, [subtitleSegments]);
+
+  useEffect(() => {
+    subtitleClipIdSetRef.current = subtitleClipIdSet;
+  }, [subtitleClipIdSet]);
   const subtitleSourceClipMap = useMemo(() => {
     const map = new Map<string, string[]>();
     subtitleSegments.forEach((segment) => {
@@ -5265,9 +5437,93 @@ function AdvancedEditorContent() {
     return map;
   }, [subtitleSegments]);
 
+  const buildDragGroup = useCallback(
+    (dragGroupIds: string[]) => {
+      if (dragGroupIds.length <= 1) {
+        return undefined;
+      }
+      const dragGroupClips = dragGroupIds
+        .map((id) => {
+          const entry = timelineLayoutByClipId.get(id);
+          if (!entry) {
+            return null;
+          }
+          return {
+            id,
+            startTime: entry.clip.startTime,
+            duration: entry.clip.duration,
+            laneId: entry.clip.laneId,
+          };
+        })
+        .filter(
+          (
+            entry
+          ): entry is {
+            id: string;
+            startTime: number;
+            duration: number;
+            laneId: string;
+          } => Boolean(entry)
+        );
+      if (dragGroupClips.length <= 1) {
+        return undefined;
+      }
+      const dragGroupIdSet = new Set(dragGroupClips.map((entry) => entry.id));
+      const attachedSubtitleIds = new Set<string>();
+      const attachedSubtitles: Array<{
+        id: string;
+        startTime: number;
+        duration: number;
+      }> = [];
+      dragGroupClips.forEach((entry) => {
+        const attached = subtitleSourceClipMap.get(entry.id);
+        if (!attached || attached.length === 0) {
+          return;
+        }
+        attached.forEach((subtitleId) => {
+          if (
+            dragGroupIdSet.has(subtitleId) ||
+            attachedSubtitleIds.has(subtitleId)
+          ) {
+            return;
+          }
+          const subtitleEntry = timelineLayoutByClipId.get(subtitleId);
+          if (!subtitleEntry) {
+            return;
+          }
+          attachedSubtitleIds.add(subtitleId);
+          attachedSubtitles.push({
+            id: subtitleId,
+            startTime: subtitleEntry.clip.startTime,
+            duration: subtitleEntry.clip.duration,
+          });
+        });
+      });
+      const startTimes = [
+        ...dragGroupClips.map((entry) => entry.startTime),
+        ...attachedSubtitles.map((entry) => entry.startTime),
+      ];
+      const endTimes = [
+        ...dragGroupClips.map((entry) => entry.startTime + entry.duration),
+        ...attachedSubtitles.map((entry) => entry.startTime + entry.duration),
+      ];
+      return {
+        clips: dragGroupClips,
+        minStart: Math.min(...startTimes),
+        maxEnd: Math.max(...endTimes),
+        attachedSubtitles,
+      };
+    },
+    [subtitleSourceClipMap, timelineLayoutByClipId]
+  );
+
+  useEffect(() => {
+    subtitleSourceClipMapRef.current = subtitleSourceClipMap;
+  }, [subtitleSourceClipMap]);
+
   const visualTimelineEntries = useMemo(() => {
     return timelineLayout.filter((entry) => entry.asset.kind !== "audio");
-  }, [timelineLayout, isExportMode]);
+  }, [timelineLayout]);
 
   const visualEntries = useMemo(() => {
     if (subtitleClipIdSet.size === 0) {
@@ -5308,6 +5564,18 @@ function AdvancedEditorContent() {
     let cancelled = false;
     const jobId = (thumbnailJobRef.current += 1);
     const buildThumbnails = async () => {
+      const batchSize = 3;
+      let batchedUpdates: Record<string, { key: string; frames: string[] }> = {};
+      let batchCount = 0;
+      const flushBatch = () => {
+        if (batchCount === 0) {
+          return;
+        }
+        const nextBatch = batchedUpdates;
+        batchedUpdates = {};
+        batchCount = 0;
+        setTimelineThumbnails((prev) => ({ ...prev, ...nextBatch }));
+      };
       for (const entry of videoEntries) {
         if (cancelled || thumbnailJobRef.current !== jobId) {
           return;
@@ -5325,6 +5593,10 @@ function AdvancedEditorContent() {
           existing.frames.length === frameCount
         ) {
           continue;
+        }
+        await waitForIdle();
+        if (cancelled || thumbnailJobRef.current !== jobId) {
+          return;
         }
         let frames: string[] = [];
         try {
@@ -5346,14 +5618,17 @@ function AdvancedEditorContent() {
             : Array.from({ length: frameCount }, (_, index) =>
                 frames[index] ?? ""
               );
-        setTimelineThumbnails((prev) => ({
-          ...prev,
-          [entry.clip.id]: {
-            key,
-            frames: normalizedFrames,
-          },
-        }));
+        batchedUpdates[entry.clip.id] = {
+          key,
+          frames: normalizedFrames,
+        };
+        batchCount += 1;
+        if (batchCount >= batchSize) {
+          flushBatch();
+          await waitForIdle();
+        }
       }
+      flushBatch();
     };
     void buildThumbnails();
     return () => {
@@ -5385,6 +5660,7 @@ function AdvancedEditorContent() {
       return;
     }
     let cancelled = false;
+    const activeFetchControllers = new Set<AbortController>();
     const jobId = (audioWaveformJobRef.current += 1);
     const buildWaveforms = async () => {
       for (const entry of audioEntries) {
@@ -5401,9 +5677,12 @@ function AdvancedEditorContent() {
           continue;
         }
         audioWaveformLoadingRef.current.add(asset.id);
+        let controller: AbortController | null = null;
         try {
           await waitForIdle();
-          const response = await fetch(asset.url);
+          controller = new AbortController();
+          activeFetchControllers.add(controller);
+          const response = await fetch(asset.url, { signal: controller.signal });
           if (!response.ok) {
             throw new Error("Failed to load audio.");
           }
@@ -5447,6 +5726,9 @@ function AdvancedEditorContent() {
             },
           }));
         } finally {
+          if (controller) {
+            activeFetchControllers.delete(controller);
+          }
           audioWaveformLoadingRef.current.delete(asset.id);
         }
       }
@@ -5454,6 +5736,8 @@ function AdvancedEditorContent() {
     void buildWaveforms();
     return () => {
       cancelled = true;
+      activeFetchControllers.forEach((controller) => controller.abort());
+      activeFetchControllers.clear();
     };
   }, [getAudioContext, isExportMode, timelineLayout]);
 
@@ -5796,6 +6080,10 @@ function AdvancedEditorContent() {
     }
     return null;
   }, [selectedEntry]);
+
+  useEffect(() => {
+    selectedTextEntryRef.current = selectedTextEntry;
+  }, [selectedTextEntry]);
   const selectedSubtitleEntry = useMemo(() => {
     if (!selectedEntry || !subtitleClipIdSet.has(selectedEntry.clip.id)) {
       return null;
@@ -6114,6 +6402,12 @@ function AdvancedEditorContent() {
       };
     });
   }, [subtitleSegments, timeline]);
+  const deferredSubtitleSegmentsForSidebar = useDeferredValue(
+    subtitleSegmentsWithClipTimes
+  );
+  const deferredTranscriptSegmentsForSidebar = useDeferredValue(
+    transcriptSegments
+  );
 
 	  // Direct DOM manipulation for subtitle rendering - bypasses React entirely during playback
 	  // This is how professional video players render subtitles for smooth performance
@@ -6173,6 +6467,10 @@ function AdvancedEditorContent() {
     stableVisualStackIdsRef.current = newIds;
     return visible;
   }, [visualEntries, currentTime, computeVisibleClips, isPlaying]);
+
+  useEffect(() => {
+    visualStackRef.current = visualStack;
+  }, [visualStack]);
 
 
   // Same optimization for audio stack
@@ -6349,18 +6647,20 @@ function AdvancedEditorContent() {
       force: boolean
     ) => {
 	      const textEl = subtitleTextRef.current;
-	      if (!entry || !textEl) {
-	        activeSubtitleWordIndexRef.current = -1;
-	        activeSubtitleBeatIndexRef.current = -1;
-	        activeSubtitleBeatAnimationDoneRef.current = false;
-	        lastSubtitleBeatLocalTimeRef.current = -1;
-	        if (lastSubtitleEffectModeRef.current === "beat") {
-	          textEl?.style && (textEl.style.transform = "");
-	          textEl?.style && (textEl.style.opacity = "1");
-	          lastSubtitleEffectModeRef.current = "none";
-	        }
-        return;
-      }
+			      if (!entry || !textEl) {
+			        activeSubtitleWordIndexRef.current = -1;
+			        activeSubtitleBeatIndexRef.current = -1;
+			        activeSubtitleBeatAnimationDoneRef.current = false;
+			        lastSubtitleBeatLocalTimeRef.current = -1;
+			        if (lastSubtitleEffectModeRef.current === "beat") {
+			          if (textEl && textEl.style) {
+			            textEl.style.transform = "";
+			            textEl.style.opacity = "1";
+			          }
+			          lastSubtitleEffectModeRef.current = "none";
+			        }
+	        return;
+	      }
       const { segment } = entry;
 	      const cached = subtitleStyleCacheRef.current.get(segment.clipId);
 	      if (!cached) {
@@ -7005,6 +7305,10 @@ function AdvancedEditorContent() {
   }, [baseVisualEntry, resolveBackgroundTransform]);
 
   useEffect(() => {
+    baseBackgroundTransformRef.current = baseBackgroundTransform;
+  }, [baseBackgroundTransform]);
+
+  useEffect(() => {
     if (timelineClips.length === 0) {
       return;
     }
@@ -7029,7 +7333,13 @@ function AdvancedEditorContent() {
       });
       return changed ? next : prev;
     });
-  }, [timelineClips, stageAspectRatio, isExportMode]);
+  }, [
+    timelineClips,
+    stageAspectRatio,
+    stageSize.height,
+    stageSize.width,
+    isExportMode,
+  ]);
 
   useEffect(() => {
     if (timelineLayout.length === 0) {
@@ -7477,9 +7787,9 @@ function AdvancedEditorContent() {
     if (!isExportMode || typeof window === "undefined") {
       return;
     }
-    const payload = (window as any).__EDITOR_EXPORT__;
+    const payload = getEditorExportPayload();
     const fonts = Array.isArray(payload?.fonts) ? payload.fonts : [];
-    (window as any).__EDITOR_EXPORT_API__ = {
+    window.__EDITOR_EXPORT_API__ = {
       waitForReady: async () => {
         await waitForExportStage();
         await waitForExportState();
@@ -7500,7 +7810,7 @@ function AdvancedEditorContent() {
       getStageSelector: () => "[data-export-stage]",
     };
     return () => {
-      delete (window as any).__EDITOR_EXPORT_API__;
+      delete window.__EDITOR_EXPORT_API__;
     };
   }, [
     isExportMode,
@@ -7513,7 +7823,8 @@ function AdvancedEditorContent() {
 
   const buildExportState = useCallback(() => {
     const state = buildProjectState();
-    const { export: _exportState, ...stateWithoutExport } = state;
+    const stateWithoutExport = { ...state };
+    delete (stateWithoutExport as { export?: ProjectExportState | null }).export;
     const snapshot = state.snapshot
       ? {
           ...state.snapshot,
@@ -8053,6 +8364,10 @@ function AdvancedEditorContent() {
   const timelineDuration = useMemo(() => {
     return Math.max(10, Math.ceil(timelineSpan + 1));
   }, [timelineSpan]);
+
+  useEffect(() => {
+    timelineDurationRef.current = timelineDuration;
+  }, [timelineDuration]);
   const clampedCurrentTime = clamp(currentTime, 0, timelineDuration);
   const playheadLeftAbsolutePx =
     clampedCurrentTime * timelineScale + timelinePadding;
@@ -8137,21 +8452,19 @@ function AdvancedEditorContent() {
   }, [transcriptSourceOptions]);
 
   useEffect(() => {
-    setTranscriptSegments((prev) => {
-      const next = prev.filter(
-        (segment) =>
-          segment.sourceClipId == null ||
-          transcriptSourceClipIds.has(segment.sourceClipId)
-      );
-      if (next.length === prev.length) {
-        return prev;
-      }
-      if (next.length === 0) {
-        setTranscriptStatus("idle");
-      }
-      return next;
-    });
-  }, [transcriptSourceClipIds]);
+    const nextSegments = transcriptSegments.filter(
+      (segment) =>
+        segment.sourceClipId == null ||
+        transcriptSourceClipIds.has(segment.sourceClipId)
+    );
+    if (nextSegments.length === transcriptSegments.length) {
+      return;
+    }
+    setTranscriptSegments(nextSegments);
+    if (nextSegments.length === 0) {
+      setTranscriptStatus("idle");
+    }
+  }, [transcriptSegments, transcriptSourceClipIds]);
 
   const subtitleSourceClips = useMemo(() => {
     return timelineClips.filter(
@@ -8666,6 +8979,8 @@ function AdvancedEditorContent() {
     setActiveCanvasClipId(clip.id);
     setCurrentTime(baseStart);
   }, [
+    createClip,
+    createLaneId,
     resolveSubtitleSettings,
     subtitleSegments,
     pushHistory,
@@ -9448,6 +9763,8 @@ function AdvancedEditorContent() {
       );
     }
   }, [
+    createClip,
+    createLaneId,
     pushHistory,
     resolveSubtitleSettings,
     stageAspectRatio,
@@ -9617,17 +9934,15 @@ function AdvancedEditorContent() {
 
   const handleClearTranscript = useCallback(
     (sourceId: string) => {
-      setTranscriptSegments((prev) => {
-        const next =
-          sourceId === "project"
-            ? []
-            : prev.filter((segment) => segment.sourceClipId !== sourceId);
-        setTranscriptStatus(next.length === 0 ? "idle" : "ready");
-        return next;
-      });
+      const nextSegments =
+        sourceId === "project"
+          ? []
+          : transcriptSegments.filter((segment) => segment.sourceClipId !== sourceId);
+      setTranscriptSegments(nextSegments);
+      setTranscriptStatus(nextSegments.length === 0 ? "idle" : "ready");
       setTranscriptError(null);
     },
-    []
+    [transcriptSegments]
   );
 
   const tickLabelStride = useMemo(() => {
@@ -9732,6 +10047,14 @@ function AdvancedEditorContent() {
     () => resolveTopCreateZonePx(laneRows),
     [laneRows, resolveTopCreateZonePx]
   );
+
+  useEffect(() => {
+    laneRowsRef.current = laneRows;
+  }, [laneRows]);
+
+  useEffect(() => {
+    topCreateZonePxRef.current = topCreateZonePx;
+  }, [topCreateZonePx]);
 
   const lastAudioLaneId = useMemo(() => {
     for (let index = laneRows.length - 1; index >= 0; index -= 1) {
@@ -10065,18 +10388,6 @@ function AdvancedEditorContent() {
     });
   };
 
-  const handleDownloadSelection = () => {
-    if (!selectedRange) {
-      return;
-    }
-    const payload = {
-      start: selectedRange.start,
-      end: selectedRange.end,
-      clips: selectedClipIds,
-    };
-    console.log("Download selection", payload);
-  };
-
   const handleScrubToTime = useCallback(
     (nextTime: number) => {
       const clampedTime = clamp(nextTime, 0, timelineDuration);
@@ -10088,7 +10399,7 @@ function AdvancedEditorContent() {
           entry.asset.kind === "audio"
             ? audioRefs.current.get(entry.clip.id)
             : visualRefs.current.get(entry.clip.id);
-      const clipTime = resolveClipAssetTime(entry.clip, clampedTime);
+        const clipTime = resolveClipAssetTime(entry.clip, clampedTime);
         if (element) {
           element.currentTime = clipTime;
         }
@@ -10101,42 +10412,46 @@ function AdvancedEditorContent() {
     [getClipAtTime, resolveClipAssetTime, timelineDuration]
   );
 
-  const handleScrubTo = (clientX: number) => {
-    const track = timelineTrackRef.current;
-    if (!track) {
-      return;
-    }
-    const rect = track.getBoundingClientRect();
-    const rawX = clientX - rect.left - timelinePadding;
-    const maxX = timelineDuration * timelineScale;
-    const clampedX = clamp(rawX, 0, maxX);
-    const nextTime = clampedX / timelineScale;
-    handleScrubToTime(nextTime);
-  };
+  const handleScrubTo = useCallback(
+    (clientX: number) => {
+      const track = timelineTrackRef.current;
+      if (!track) {
+        return;
+      }
+      const rect = track.getBoundingClientRect();
+      const rawX = clientX - rect.left - timelinePadding;
+      const maxX = timelineDuration * timelineScale;
+      const clampedX = clamp(rawX, 0, maxX);
+      const nextTime = clampedX / timelineScale;
+      handleScrubToTime(nextTime);
+    },
+    [handleScrubToTime, timelineDuration, timelineScale]
+  );
 
-  const handlePlayheadPointerDown = (
-    event: PointerEvent<HTMLButtonElement>
-  ) => {
-    if (event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    scrubPointerIdRef.current = event.pointerId;
-    scrubPointerTargetRef.current = event.currentTarget;
-    if (event.currentTarget.setPointerCapture) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
-    setIsScrubbing(true);
-    if (isPlaying) {
-      handleTogglePlayback();
-    }
-    handleScrubTo(event.clientX);
-  };
+  const handlePlayheadPointerDown = useCallback(
+    (event: PointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      scrubPointerIdRef.current = event.pointerId;
+      scrubPointerTargetRef.current = event.currentTarget;
+      if (event.currentTarget.setPointerCapture) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      setIsScrubbing(true);
+      if (isPlaying) {
+        setIsPlaying(false);
+      }
+      handleScrubTo(event.clientX);
+    },
+    [handleScrubTo, isPlaying]
+  );
 
   // Direct DOM updates keep the playhead smooth without forcing React re-renders.
-	  const updatePlayheadDom = useCallback(
-	    (time: number) => {
+  const updatePlayheadDom = useCallback(
+    (time: number) => {
       const clamped = clamp(time, 0, timelineDuration);
       const absoluteLeft = clamped * timelineScale + timelinePadding;
       const contentLeft = absoluteLeft - timelinePadding;
@@ -10149,7 +10464,7 @@ function AdvancedEditorContent() {
         playheadHandleRef.current.style.transform = absoluteTransform;
       }
     },
-    [timelineDuration, timelineScale, timelinePadding]
+    [timelineDuration, timelineScale]
 	  );
 
 	  const subtitlePlaybackAudioEntryRef = useRef<TimelineLayoutEntry | null>(null);
@@ -10677,15 +10992,16 @@ function AdvancedEditorContent() {
       laneId = createLaneId(laneType, draftLanes);
     } else {
       // Find which lane we're hovering over
-      const gapCreatePadding = Math.min(12, Math.max(6, Math.round(laneGap * 0.8)));
+      const gapCreatePadding = Math.min(8, Math.max(4, Math.round(laneGap * 0.45)));
       for (let i = 0; i < rows.length; i++) {
         const lane = rows[i];
         const laneTop = cursor;
         const laneVisualBottom = cursor + lane.height;
         const laneBottom = cursor + lane.height + laneGap;
-        const gapStart = laneVisualBottom - gapCreatePadding;
-        const gapEnd = laneBottom + gapCreatePadding;
-        const inGapZone = offsetY >= gapStart && offsetY <= gapEnd && i < rows.length - 1;
+        const gapCenter = laneVisualBottom + laneGap / 2;
+        const inGapZone =
+          i < rows.length - 1 &&
+          Math.abs(offsetY - gapCenter) <= gapCreatePadding;
 
         if (inGapZone) {
           const nextLane = rows[i + 1];
@@ -10755,11 +11071,14 @@ function AdvancedEditorContent() {
       count: files.length,
       target: options.target,
     });
-    setIsBackgroundSelected(false);
-    pushHistory();
     setUploading(true);
     try {
       const newAssets = await buildAssetsFromFiles(files);
+      if (newAssets.length === 0) {
+        return;
+      }
+      setIsBackgroundSelected(false);
+      pushHistory();
       const nextLanes = [...lanesRef.current];
       const newClips: TimelineClip[] = [];
       let baseStartTime = currentTime;
@@ -10800,11 +11119,14 @@ function AdvancedEditorContent() {
       return;
     }
     logAssetDebug("[assets] handleFiles", { count: files.length });
-    setIsBackgroundSelected(false);
-    pushHistory();
     setUploading(true);
     try {
       const newAssets = await buildAssetsFromFiles(files);
+      if (newAssets.length === 0) {
+        return;
+      }
+      setIsBackgroundSelected(false);
+      pushHistory();
       const nextLanes = [...lanesRef.current];
       const newClips = newAssets.map((asset) => {
         const laneType = getLaneType(asset);
@@ -10821,7 +11143,7 @@ function AdvancedEditorContent() {
     }
   };
 
-  const handleTogglePlayback = () => {
+  const handleTogglePlayback = useCallback(() => {
     if (!activeClipEntry) {
       if (firstClipEntry) {
         const nextStartTime = firstClipEntry.clip.startTime;
@@ -10836,7 +11158,7 @@ function AdvancedEditorContent() {
       return;
     }
     setIsPlaying((prev) => !prev);
-  };
+  }, [activeClipEntry, firstClipEntry]);
 
   const addToTimeline = useCallback((assetId: string) => {
     const asset = assetsRef.current.find((item) => item.id === assetId);
@@ -10854,7 +11176,7 @@ function AdvancedEditorContent() {
       return [...prev, clip];
     });
     setActiveAssetId(assetId);
-  }, [pushHistory]);
+  }, [createClip, createLaneId, pushHistory]);
 
   const addClipAtPosition = (
     assetId: string,
@@ -11222,7 +11544,7 @@ function AdvancedEditorContent() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(videoAsset.id);
     },
-    [addToTimeline, createClip, pushHistory]
+    [addToTimeline, createClip, createLaneId, pushHistory]
   );
 
   const handleAddYoutubeVideo = useCallback(
@@ -11365,7 +11687,7 @@ function AdvancedEditorContent() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(videoAsset.id);
     },
-    [addToTimeline, pushHistory]
+    [addToTimeline, createLaneId, pushHistory]
   );
 
   const handleAddTiktokVideo = useCallback(
@@ -11502,7 +11824,7 @@ function AdvancedEditorContent() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(videoAsset.id);
     },
-    [addToTimeline, pushHistory]
+    [addToTimeline, createLaneId, pushHistory]
   );
 
   const handleAddExternalVideo = useCallback(
@@ -11572,7 +11894,7 @@ function AdvancedEditorContent() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(videoAsset.id);
     },
-    [addToTimeline, createClip, pushHistory]
+    [addToTimeline, createClip, createLaneId, pushHistory]
   );
 
 	  const applySplitScreenImport = useCallback(
@@ -13992,7 +14314,7 @@ function AdvancedEditorContent() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(audioAsset.id);
     },
-    [addToTimeline, createClip, ensureStockAudioAsset, pushHistory]
+    [addToTimeline, createClip, createLaneId, ensureStockAudioAsset, pushHistory]
   );
 
   const handleStockAudioDrop = async (
@@ -14082,7 +14404,7 @@ function AdvancedEditorContent() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(gifAsset.id);
     },
-    [addToTimeline, createClip, createGifMediaAsset, pushHistory]
+    [addToTimeline, createClip, createGifMediaAsset, createLaneId, pushHistory]
   );
 
   const handleAddSticker = useCallback(
@@ -14134,7 +14456,7 @@ function AdvancedEditorContent() {
       setTimeline((prev) => [...prev, clip]);
       setActiveAssetId(stickerAsset.id);
     },
-    [addToTimeline, createClip, pushHistory]
+    [addToTimeline, createClip, createLaneId, pushHistory]
   );
 
   const handleGifTrendingRetry = useCallback(() => {
@@ -14396,25 +14718,28 @@ function AdvancedEditorContent() {
   const updateTextSettings = useCallback(
     (clipId: string, updater: (current: TextClipSettings) => TextClipSettings) => {
       pushHistoryThrottled();
+      const currentTextSettings =
+        textSettingsRef.current[clipId] ?? createDefaultTextSettings();
+      const previewNextSettings = updater(currentTextSettings);
+      const isSubtitleClip = subtitleSegments.some(
+        (segment) => segment.clipId === clipId
+      );
+      if (
+        isSubtitleClip &&
+        typeof previewNextSettings.text === "string" &&
+        previewNextSettings.text !== currentTextSettings.text
+      ) {
+        setSubtitleSegments((segments) =>
+          segments.map((segment) =>
+            segment.clipId === clipId
+              ? { ...segment, text: previewNextSettings.text, words: undefined }
+              : segment
+          )
+        );
+      }
       setTextSettings((prev) => {
         const current = prev[clipId] ?? createDefaultTextSettings();
         const next = updater(current);
-        const isSubtitleClip = subtitleSegments.some(
-          (segment) => segment.clipId === clipId
-        );
-        if (
-          isSubtitleClip &&
-          typeof next.text === "string" &&
-          next.text !== current.text
-        ) {
-          setSubtitleSegments((segments) =>
-            segments.map((segment) =>
-              segment.clipId === clipId
-                ? { ...segment, text: next.text, words: undefined }
-                : segment
-            )
-          );
-        }
         if (!isSubtitleClip || !subtitleMoveTogether) {
           return { ...prev, [clipId]: next };
         }
@@ -14941,17 +15266,17 @@ function AdvancedEditorContent() {
     const idsToRemove = Array.from(
       new Set([...baseIds, ...subtitleClipIdsToRemove])
     );
-    setTimeline((prev) => {
-      const next = prev.filter((clip) => !idsToRemove.includes(clip.id));
-      if (next.length === prev.length) {
-        return prev;
-      }
-      const nextSelected = next[0] ?? null;
-      setSelectedClipId(nextSelected?.id ?? null);
-      setSelectedClipIds(nextSelected ? [nextSelected.id] : []);
-      setActiveAssetId(nextSelected?.assetId ?? null);
-      return next;
-    });
+    const nextTimeline = timeline.filter(
+      (clip) => !idsToRemove.includes(clip.id)
+    );
+    if (nextTimeline.length === timeline.length) {
+      return;
+    }
+    setTimeline(nextTimeline);
+    const nextSelected = nextTimeline[0] ?? null;
+    setSelectedClipId(nextSelected?.id ?? null);
+    setSelectedClipIds(nextSelected ? [nextSelected.id] : []);
+    setActiveAssetId(nextSelected?.assetId ?? null);
     setSubtitleSegments((prev) =>
       prev.filter((segment) => !subtitleClipIdsToRemove.has(segment.clipId))
     );
@@ -14977,7 +15302,7 @@ function AdvancedEditorContent() {
       idsToRemove.forEach((id) => next.delete(id));
       return next;
     });
-  }, [pushHistory, selectedClipId, selectedClipIds, subtitleSegments]);
+  }, [pushHistory, selectedClipId, selectedClipIds, subtitleSegments, timeline]);
 
   const handleDeleteAsset = useCallback(
     (assetId: string) => {
@@ -16021,7 +16346,13 @@ function AdvancedEditorContent() {
     setLanes(nextLanes);
     setAssets((prev) => [audioAsset, ...prev]);
     setTimeline((prev) => [...prev, audioClip]);
-  }, [pushHistory, selectedVideoEntry, timelineLayout, updateClipSettings]);
+  }, [
+    createLaneId,
+    pushHistory,
+    selectedVideoEntry,
+    timelineLayout,
+    updateClipSettings,
+  ]);
 
   const handleReplaceVideo = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -16685,24 +17016,41 @@ function AdvancedEditorContent() {
     if (!trimState) {
       return;
     }
+    const setSnapGuide = (nextGuide: number | null) => {
+      if (timelineSnapGuideRef.current === nextGuide) {
+        return;
+      }
+      timelineSnapGuideRef.current = nextGuide;
+      setTimelineSnapGuide(nextGuide);
+    };
     const handleMove = (event: MouseEvent) => {
+      const activeTrimState = trimStateRef.current;
+      if (!activeTrimState) {
+        return;
+      }
       if (!trimHistoryRef.current) {
         pushHistory();
         trimHistoryRef.current = true;
       }
-      const clip = timeline.find((item) => item.id === trimState.clipId);
+      const timelineItems = timelineRef.current;
+      const clip = timelineItems.find((item) => item.id === activeTrimState.clipId);
       if (!clip) {
         return;
       }
-      const deltaSeconds = (event.clientX - trimState.startX) / timelineScale;
-      const snapThresholdSeconds = snapThresholdPx / timelineScale;
+      const currentTimelineScale = Math.max(timelineScaleRef.current, 0.0001);
+      const deltaSeconds =
+        (event.clientX - activeTrimState.startX) / currentTimelineScale;
+      const snapThresholdSeconds = snapThresholdPx / currentTimelineScale;
       const frameThresholdSeconds = frameStepSeconds;
-      const candidateEdges: number[] = [0, timelineDuration];
-      timeline.forEach((clip) => {
-        if (clip.id === trimState.clipId) {
+      const candidateEdges: number[] = [0, timelineDurationRef.current];
+      timelineItems.forEach((timelineClip) => {
+        if (timelineClip.id === activeTrimState.clipId) {
           return;
         }
-        candidateEdges.push(clip.startTime, clip.startTime + clip.duration);
+        candidateEdges.push(
+          timelineClip.startTime,
+          timelineClip.startTime + timelineClip.duration
+        );
       });
       const asset = assetsRef.current.find(
         (item) => item.id === clip.assetId
@@ -16711,22 +17059,22 @@ function AdvancedEditorContent() {
       const playbackRate = getClipPlaybackRate(clip.id);
       let nextClip: Partial<TimelineClip> | null = null;
       let snapGuide: number | null = null;
-      if (trimState.edge === "end") {
+      if (activeTrimState.edge === "end") {
         const maxDuration =
-          (assetDuration - trimState.startOffset) / playbackRate;
+          (assetDuration - activeTrimState.startOffset) / playbackRate;
         const rawDuration = clamp(
-          trimState.startDuration + deltaSeconds,
+          activeTrimState.startDuration + deltaSeconds,
           minClipDuration,
           maxDuration
         );
-        let targetEdge = trimState.startTime + rawDuration;
-        if (!event.altKey && isTimelineSnappingEnabled) {
+        let targetEdge = activeTrimState.startTime + rawDuration;
+        if (!event.altKey && isTimelineSnappingEnabledRef.current) {
           targetEdge = Math.round(targetEdge / snapInterval) * snapInterval;
           let bestDistance = snapThresholdSeconds + 1;
           let bestEdge: number | null = null;
           candidateEdges.forEach((edge) => {
             const distance = Math.abs(
-              trimState.startTime + rawDuration - edge
+              activeTrimState.startTime + rawDuration - edge
             );
             if (distance < bestDistance) {
               bestDistance = distance;
@@ -16741,7 +17089,7 @@ function AdvancedEditorContent() {
             let frameEdge: number | null = null;
             candidateEdges.forEach((edge) => {
               const distance = Math.abs(
-                trimState.startTime + rawDuration - edge
+                activeTrimState.startTime + rawDuration - edge
               );
               if (distance < frameDistance) {
                 frameDistance = distance;
@@ -16756,23 +17104,25 @@ function AdvancedEditorContent() {
         }
         const clampedEdge = clamp(
           targetEdge,
-          trimState.startTime + minClipDuration,
-          trimState.startTime + maxDuration
+          activeTrimState.startTime + minClipDuration,
+          activeTrimState.startTime + maxDuration
         );
         const nextDuration = clamp(
-          clampedEdge - trimState.startTime,
+          clampedEdge - activeTrimState.startTime,
           minClipDuration,
           maxDuration
         );
         nextClip = { duration: nextDuration };
       } else {
         const nextStartTime = clamp(
-          trimState.startTime + deltaSeconds,
+          activeTrimState.startTime + deltaSeconds,
           0,
-          trimState.startTime + trimState.startDuration - minClipDuration
+          activeTrimState.startTime +
+            activeTrimState.startDuration -
+            minClipDuration
         );
         let snappedStartTime = nextStartTime;
-        if (!event.altKey && isTimelineSnappingEnabled) {
+        if (!event.altKey && isTimelineSnappingEnabledRef.current) {
           snappedStartTime =
             Math.round(nextStartTime / snapInterval) * snapInterval;
           let bestDistance = snapThresholdSeconds + 1;
@@ -16806,22 +17156,24 @@ function AdvancedEditorContent() {
         snappedStartTime = clamp(
           snappedStartTime,
           0,
-          trimState.startTime + trimState.startDuration - minClipDuration
+          activeTrimState.startTime +
+            activeTrimState.startDuration -
+            minClipDuration
         );
-        const appliedDelta = snappedStartTime - trimState.startTime;
+        const appliedDelta = snappedStartTime - activeTrimState.startTime;
         const maxStartOffset = Math.max(
           0,
           assetDuration - minClipDuration * playbackRate
         );
         const nextStartOffset = clamp(
-          trimState.startOffset + appliedDelta * playbackRate,
+          activeTrimState.startOffset + appliedDelta * playbackRate,
           0,
           maxStartOffset
         );
         const maxDuration =
           (assetDuration - nextStartOffset) / playbackRate;
         const nextDuration = clamp(
-          trimState.startDuration - appliedDelta,
+          activeTrimState.startDuration - appliedDelta,
           minClipDuration,
           maxDuration
         );
@@ -16831,11 +17183,11 @@ function AdvancedEditorContent() {
           duration: nextDuration,
         };
       }
-      setTimelineSnapGuide(snapGuide);
+      setSnapGuide(snapGuide);
       if (nextClip) {
         setTimeline((prev) =>
           prev.map((entry) =>
-            entry.id === trimState.clipId ? { ...entry, ...nextClip } : entry
+            entry.id === activeTrimState.clipId ? { ...entry, ...nextClip } : entry
           )
         );
       }
@@ -16843,7 +17195,7 @@ function AdvancedEditorContent() {
     const handleUp = () => {
       setTrimState(null);
       trimHistoryRef.current = false;
-      setTimelineSnapGuide(null);
+      setSnapGuide(null);
     };
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
@@ -16853,12 +17205,7 @@ function AdvancedEditorContent() {
     };
   }, [
     getClipPlaybackRate,
-    isTimelineSnappingEnabled,
-    minClipDuration,
     pushHistory,
-    timeline,
-    timelineDuration,
-    timelineScale,
     trimState,
   ]);
 
@@ -16916,8 +17263,10 @@ function AdvancedEditorContent() {
     };
   }, [audioLaneResizeState]);
 
+  const isRangeSelecting = rangeSelection !== null;
+
   useEffect(() => {
-    if (!rangeSelection) {
+    if (!isRangeSelecting) {
       return;
     }
     const handleMove = (event: globalThis.PointerEvent) => {
@@ -16932,28 +17281,29 @@ function AdvancedEditorContent() {
       );
     };
     const handleUp = () => {
-      setRangeSelection((prev) => {
-        if (!prev) {
-          return prev;
+      const currentSelection = rangeSelectionRef.current;
+      if (!currentSelection) {
+        setRangeSelection(null);
+        return;
+      }
+      const deltaX = Math.abs(currentSelection.currentX - currentSelection.startX);
+      const deltaY = Math.abs(currentSelection.currentY - currentSelection.startY);
+      if (deltaX < 4 && deltaY < 4) {
+        if (isPlaying) {
+          handleTogglePlayback();
         }
-        const deltaX = Math.abs(prev.currentX - prev.startX);
-        const deltaY = Math.abs(prev.currentY - prev.startY);
-        if (deltaX < 4 && deltaY < 4) {
-          if (isPlaying) {
-            handleTogglePlayback();
-          }
-          handleScrubTo(prev.currentX);
-          return null;
-        }
-        const nextIds = getSelectionIds(prev);
-        setSelectedClipIds(nextIds);
-        setSelectedClipId(nextIds[0] ?? null);
-        const nextEntry = timelineLayout.find(
-          (entry) => entry.clip.id === nextIds[0]
-        );
-        setActiveAssetId(nextEntry?.asset.id ?? null);
-        return null;
-      });
+        handleScrubTo(currentSelection.currentX);
+        setRangeSelection(null);
+        return;
+      }
+      const nextIds = getSelectionIds(currentSelection);
+      setSelectedClipIds(nextIds);
+      setSelectedClipId(nextIds[0] ?? null);
+      const nextEntry = timelineLayout.find(
+        (entry) => entry.clip.id === nextIds[0]
+      );
+      setActiveAssetId(nextEntry?.asset.id ?? null);
+      setRangeSelection(null);
     };
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
@@ -16964,7 +17314,7 @@ function AdvancedEditorContent() {
       window.removeEventListener("pointercancel", handleUp);
     };
   }, [
-    rangeSelection,
+    isRangeSelecting,
     getSelectionIds,
     timelineLayout,
     handleScrubTo,
@@ -16990,8 +17340,10 @@ function AdvancedEditorContent() {
     setActiveAssetId(nextEntry?.asset.id ?? null);
   }, [rangeSelection, getSelectionIds, timelineLayout]);
 
+  const isStageSelecting = stageSelection !== null;
+
   useEffect(() => {
-    if (!stageSelection) {
+    if (!isStageSelecting) {
       return;
     }
     const handleMove = (event: globalThis.PointerEvent) => {
@@ -17006,39 +17358,40 @@ function AdvancedEditorContent() {
       );
     };
     const handleUp = () => {
-      setStageSelection((prev) => {
-        if (!prev) {
-          return prev;
-        }
-        const deltaX = Math.abs(prev.currentX - prev.startX);
-        const deltaY = Math.abs(prev.currentY - prev.startY);
-        if (deltaX < 4 && deltaY < 4) {
-          if (!prev.additive) {
-            setSelectedClipIds([]);
-            setSelectedClipId(null);
-            setActiveCanvasClipId(null);
-            setActiveAssetId(null);
-            setIsBackgroundSelected(true);
-          }
-          return null;
-        }
-        const nextIds = getStageSelectionIds(prev);
-        setSelectedClipIds(nextIds);
-        if (nextIds.length === 1) {
-          setSelectedClipId(nextIds[0]);
-          setActiveCanvasClipId(nextIds[0]);
-          const entry = visualStack.find(
-            (item) => item.clip.id === nextIds[0]
-          );
-          setActiveAssetId(entry?.asset.id ?? null);
-        } else {
+      const currentSelection = stageSelectionRef.current;
+      if (!currentSelection) {
+        setStageSelection(null);
+        return;
+      }
+      const deltaX = Math.abs(currentSelection.currentX - currentSelection.startX);
+      const deltaY = Math.abs(currentSelection.currentY - currentSelection.startY);
+      if (deltaX < 4 && deltaY < 4) {
+        if (!currentSelection.additive) {
+          setSelectedClipIds([]);
           setSelectedClipId(null);
           setActiveCanvasClipId(null);
           setActiveAssetId(null);
+          setIsBackgroundSelected(true);
         }
-        setIsBackgroundSelected(false);
-        return null;
-      });
+        setStageSelection(null);
+        return;
+      }
+      const nextIds = getStageSelectionIds(currentSelection);
+      setSelectedClipIds(nextIds);
+      if (nextIds.length === 1) {
+        setSelectedClipId(nextIds[0]);
+        setActiveCanvasClipId(nextIds[0]);
+        const entry = visualStack.find(
+          (item) => item.clip.id === nextIds[0]
+        );
+        setActiveAssetId(entry?.asset.id ?? null);
+      } else {
+        setSelectedClipId(null);
+        setActiveCanvasClipId(null);
+        setActiveAssetId(null);
+      }
+      setIsBackgroundSelected(false);
+      setStageSelection(null);
     };
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
@@ -17048,7 +17401,7 @@ function AdvancedEditorContent() {
       window.removeEventListener("pointerup", handleUp);
       window.removeEventListener("pointercancel", handleUp);
     };
-  }, [stageSelection, getStageSelectionIds, visualStack]);
+  }, [isStageSelecting, getStageSelectionIds, visualStack]);
 
   useEffect(() => {
     if (!stageSelection) {
@@ -17076,12 +17429,83 @@ function AdvancedEditorContent() {
     if (!dragClipState) {
       return;
     }
-    const handleMove = (event: MouseEvent) => {
-      const dragged = timeline.find((clip) => clip.id === dragClipState.clipId);
+    let frameId: number | null = null;
+    let queuedEvent: MouseEvent | null = null;
+    const commitDragState = (nextState: ClipDragState) => {
+      dragClipStateRef.current = nextState;
+      setDragClipState((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const samePreviewTime =
+          prev.previewTime === nextState.previewTime ||
+          (prev.previewTime !== undefined &&
+            nextState.previewTime !== undefined &&
+            Math.abs(prev.previewTime - nextState.previewTime) <
+              timelineClipEpsilon);
+        const samePendingLaneInsert =
+          prev.pendingLaneInsert?.type === nextState.pendingLaneInsert?.type &&
+          prev.pendingLaneInsert?.index === nextState.pendingLaneInsert?.index;
+        if (
+          prev.clipId === nextState.clipId &&
+          prev.targetLaneId === nextState.targetLaneId &&
+          prev.previewLaneId === nextState.previewLaneId &&
+          samePreviewTime &&
+          samePendingLaneInsert
+        ) {
+          return prev;
+        }
+        return nextState;
+      });
+    };
+    const updateSnapGuide = (nextGuide: number | null) => {
+      if (timelineSnapGuideRef.current === nextGuide) {
+        return;
+      }
+      timelineSnapGuideRef.current = nextGuide;
+      setTimelineSnapGuide(nextGuide);
+    };
+    const updateCollisionGuide = (nextGuide: number | null) => {
+      if (timelineCollisionGuideRef.current === nextGuide) {
+        return;
+      }
+      timelineCollisionGuideRef.current = nextGuide;
+      setTimelineCollisionGuide(nextGuide);
+    };
+    const updateCollisionActive = (nextActive: boolean) => {
+      if (timelineCollisionActiveRef.current === nextActive) {
+        return;
+      }
+      timelineCollisionActiveRef.current = nextActive;
+      setTimelineCollisionActive(nextActive);
+    };
+    const processMove = (event: MouseEvent) => {
+      const activeDragState = dragClipStateRef.current;
+      if (!activeDragState) {
+        return;
+      }
+      let resolvedDragState = activeDragState;
+      if (
+        !resolvedDragState.group &&
+        resolvedDragState.pendingGroupClipIds &&
+        resolvedDragState.pendingGroupClipIds.length > 1
+      ) {
+        const computedGroup = buildDragGroup(resolvedDragState.pendingGroupClipIds);
+        resolvedDragState = {
+          ...resolvedDragState,
+          group: computedGroup,
+          pendingGroupClipIds: undefined,
+        };
+        commitDragState(resolvedDragState);
+      }
+      const timelineItems = timelineRef.current;
+      const dragged = timelineItems.find(
+        (clip) => clip.id === resolvedDragState.clipId
+      );
       if (!dragged) {
         return;
       }
-      const dragGroup = dragClipState.group;
+      const dragGroup = resolvedDragState.group;
       const dragGroupIds = dragGroup
         ? new Set(dragGroup.clips.map((entry) => entry.id))
         : null;
@@ -17093,16 +17517,17 @@ function AdvancedEditorContent() {
         (item) => item.id === dragged.assetId
       );
       const track = timelineTrackRef.current;
+      const currentTimelineScale = Math.max(timelineScaleRef.current, 0.0001);
       const deltaSeconds =
-        (event.clientX - dragClipState.startX) / timelineScale;
-      const rawTime = dragClipState.startLeft + deltaSeconds;
+        (event.clientX - resolvedDragState.startX) / currentTimelineScale;
+      const rawTime = resolvedDragState.startLeft + deltaSeconds;
       const dragDirection = Math.sign(deltaSeconds);
-      const snapThresholdSeconds = snapThresholdPx / timelineScale;
+      const snapThresholdSeconds = snapThresholdPx / currentTimelineScale;
       const frameThresholdSeconds = frameStepSeconds;
       let targetTime = rawTime;
       let snapGuide: number | null = null;
       const candidateEdges: number[] = [0];
-      timeline.forEach((clip) => {
+      timelineItems.forEach((clip) => {
         if (clip.id === dragged.id) {
           return;
         }
@@ -17111,7 +17536,7 @@ function AdvancedEditorContent() {
         }
         candidateEdges.push(clip.startTime, clip.startTime + clip.duration);
       });
-      if (!event.altKey && isTimelineSnappingEnabled) {
+      if (!event.altKey && isTimelineSnappingEnabledRef.current) {
         const gridTime = Math.round(rawTime / snapInterval) * snapInterval;
         targetTime = gridTime;
         let bestDistance = snapThresholdSeconds + 1;
@@ -17163,35 +17588,35 @@ function AdvancedEditorContent() {
           }
         }
       }
-      const maxStart = Math.max(0, timelineDuration + 10);
+      const maxStart = Math.max(0, timelineDurationRef.current + 10);
       let liveTime = clamp(normalizeTimelineTime(targetTime), 0, maxStart);
-      if (event.altKey || !isTimelineSnappingEnabled) {
+      if (event.altKey || !isTimelineSnappingEnabledRef.current) {
         liveTime = clamp(normalizeTimelineTime(rawTime), 0, maxStart);
         snapGuide = null;
       }
       if (dragGroup && dragGroup.clips.length > 1) {
-        const delta = liveTime - dragClipState.startLeft;
+        const delta = liveTime - resolvedDragState.startLeft;
         const minDelta = -dragGroup.minStart;
         const maxDelta = maxStart - dragGroup.maxEnd;
         const clampedDelta = clamp(delta, minDelta, maxDelta);
-        const previewTime = dragClipState.startLeft + clampedDelta;
+        const previewTime = resolvedDragState.startLeft + clampedDelta;
         const nextDragState = {
-          ...dragClipState,
+          ...resolvedDragState,
           previewTime,
-          previewLaneId: dragClipState.startLaneId,
-          targetLaneId: dragClipState.startLaneId,
+          previewLaneId: resolvedDragState.startLaneId,
+          targetLaneId: resolvedDragState.startLaneId,
         };
-        dragClipStateRef.current = nextDragState;
-        setDragClipState((prev) => (prev ? nextDragState : prev));
-        if (snapGuide !== null) {
-          setTimelineSnapGuide(snapGuide);
-        } else if (timelineSnapGuide !== null) {
-          setTimelineSnapGuide(null);
+        commitDragState(nextDragState);
+        updateSnapGuide(snapGuide);
+        updateCollisionGuide(null);
+        updateCollisionActive(false);
+        const previousPreviewTime =
+          resolvedDragState.previewTime ?? resolvedDragState.startLeft;
+        if (
+          Math.abs(previewTime - previousPreviewTime) < timelineClipEpsilon
+        ) {
+          return;
         }
-        if (timelineCollisionGuide !== null) {
-          setTimelineCollisionGuide(null);
-        }
-        setTimelineCollisionActive(false);
         const groupStartMap = new Map(
           dragGroup.clips.map((entry) => [entry.id, entry.startTime])
         );
@@ -17230,8 +17655,9 @@ function AdvancedEditorContent() {
         );
         return;
       }
-      let targetLaneId = dragClipState.targetLaneId ?? dragClipState.startLaneId;
-      let createdLaneId = dragClipState.createdLaneId;
+      let targetLaneId =
+        resolvedDragState.targetLaneId ?? resolvedDragState.startLaneId;
+      const createdLaneId = resolvedDragState.createdLaneId;
       const assetLaneType = asset ? getLaneType(asset) : null;
       let pendingLaneInsert: { type: LaneType; index: number } | null = null;
       if (track) {
@@ -17240,18 +17666,19 @@ function AdvancedEditorContent() {
         const wantsTopLane =
           offsetY < 0 ||
           (assetLaneType !== "audio" &&
-            topCreateZonePx > 0 &&
-            offsetY <= topCreateZonePx);
+            topCreateZonePxRef.current > 0 &&
+            offsetY <= topCreateZonePxRef.current);
         let cursor = 0;
         let foundLaneId: string | null = null;
         let foundLaneIndex = -1;
-        if (laneRows.length > 0) {
+        const rows = laneRowsRef.current;
+        if (rows.length > 0) {
           // Calculate section boundaries
           let videoSectionEnd = 0;
           let audioSectionStart = -1;
           let sectionCursor = 0;
-          for (let i = 0; i < laneRows.length; i++) {
-            const lane = laneRows[i];
+          for (let i = 0; i < rows.length; i++) {
+            const lane = rows[i];
             if (lane.type !== "audio") {
               videoSectionEnd = sectionCursor + lane.height + laneGap;
             } else if (audioSectionStart === -1) {
@@ -17262,11 +17689,11 @@ function AdvancedEditorContent() {
           const totalHeight = sectionCursor - laneGap;
 
           const topInsertIndex = assetLaneType
-            ? resolveTopInsertIndex(assetLaneType, laneRows)
+            ? resolveTopInsertIndex(assetLaneType, rows)
             : 0;
           const bottomInsertIndex = assetLaneType
-            ? resolveBottomInsertIndex(assetLaneType, laneRows)
-            : laneRows.length;
+            ? resolveBottomInsertIndex(assetLaneType, rows)
+            : rows.length;
 
           if (wantsTopLane && assetLaneType) {
             // Dragging above all lanes or into top create zone
@@ -17278,27 +17705,25 @@ function AdvancedEditorContent() {
             // Find which lane we're hovering over
             // Use an expanded gap zone so inserting between lanes feels effortless.
             const gapCreatePadding = Math.min(
-              12,
-              Math.max(6, Math.round(laneGap * 0.8))
+              8,
+              Math.max(4, Math.round(laneGap * 0.45))
             );
             let wantsNewLane = false;
             let insertLaneIndex: number | null = null;
             
-            for (let i = 0; i < laneRows.length; i++) {
-              const lane = laneRows[i];
+            for (let i = 0; i < rows.length; i++) {
+              const lane = rows[i];
               const laneTop = cursor;
               const laneVisualBottom = cursor + lane.height;
               const laneHitBottom = cursor + lane.height + laneGap;
-              const gapStart = laneVisualBottom - gapCreatePadding;
-              const gapEnd = laneHitBottom + gapCreatePadding;
+              const gapCenter = laneVisualBottom + laneGap / 2;
               
               // Check if we're in the expanded "create new lane" zone
               if (
-                offsetY >= gapStart &&
-                offsetY <= gapEnd &&
-                i < laneRows.length - 1
+                Math.abs(offsetY - gapCenter) <= gapCreatePadding &&
+                i < rows.length - 1
               ) {
-                const nextLane = laneRows[i + 1];
+                const nextLane = rows[i + 1];
                 if (
                   assetLaneType &&
                   canInsertLaneBetween(assetLaneType, lane.type, nextLane.type)
@@ -17351,34 +17776,35 @@ function AdvancedEditorContent() {
         // Check lane type compatibility - enforce lane ordering rules
         // Audio lanes stay at bottom, video/text lanes stay above audio
         if (!pendingLaneInsert && foundLaneId && foundLaneIndex >= 0 && assetLaneType) {
-          const foundLane = laneRows[foundLaneIndex];
+          const rows = laneRowsRef.current;
+          const foundLane = rows[foundLaneIndex];
           if (foundLane && foundLane.type !== assetLaneType) {
             // Lane type mismatch - find nearest compatible lane respecting ordering rules
             let compatibleLaneId: string | null = null;
             
             if (assetLaneType === "audio") {
               // Audio clips can only go to audio lanes (at bottom) - search below only
-              for (let i = foundLaneIndex + 1; i < laneRows.length; i++) {
-                if (laneRows[i].type === "audio") {
-                  compatibleLaneId = laneRows[i].id;
+              for (let i = foundLaneIndex + 1; i < rows.length; i++) {
+                if (rows[i].type === "audio") {
+                  compatibleLaneId = rows[i].id;
                   break;
                 }
               }
             } else {
               // Video/text clips stay above audio - search above only, never into audio section
               for (let i = foundLaneIndex - 1; i >= 0; i--) {
-                if (laneRows[i].type === assetLaneType) {
-                  compatibleLaneId = laneRows[i].id;
+                if (rows[i].type === assetLaneType) {
+                  compatibleLaneId = rows[i].id;
                   break;
                 }
               }
               // If no exact match found above, find any non-audio lane above
               if (!compatibleLaneId) {
                 for (let i = foundLaneIndex - 1; i >= 0; i--) {
-                  if (laneRows[i].type !== "audio") {
+                  if (rows[i].type !== "audio") {
                     // For video, accept video lanes; for text, accept text lanes
-                    if (laneRows[i].type === assetLaneType) {
-                      compatibleLaneId = laneRows[i].id;
+                    if (rows[i].type === assetLaneType) {
+                      compatibleLaneId = rows[i].id;
                       break;
                     }
                   }
@@ -17392,8 +17818,8 @@ function AdvancedEditorContent() {
                 type: assetLaneType,
                 index:
                   assetLaneType === "audio"
-                    ? resolveTopInsertIndex(assetLaneType, laneRows)
-                    : resolveBottomInsertIndex(assetLaneType, laneRows),
+                    ? resolveTopInsertIndex(assetLaneType, rows)
+                    : resolveBottomInsertIndex(assetLaneType, rows),
               };
             }
             
@@ -17410,7 +17836,7 @@ function AdvancedEditorContent() {
           targetLaneId = foundLaneId;
         }
         if (pendingLaneInsert) {
-          targetLaneId = dragClipState.startLaneId;
+          targetLaneId = resolvedDragState.startLaneId;
         }
       }
       const resolveNonOverlappingStart = (
@@ -17419,7 +17845,7 @@ function AdvancedEditorContent() {
         laneId: string,
         direction: number
       ) => {
-        const occupied = timeline
+        const occupied = timelineItems
           .filter(
             (clip) => clip.laneId === laneId && clip.id !== dragged.id
           )
@@ -17449,26 +17875,77 @@ function AdvancedEditorContent() {
         });
         insertionPoints.add(cursor);
         const points = Array.from(insertionPoints).sort((a, b) => a - b);
-        const forwardPoints = points.filter(
-          (point) => point >= startTime - timelineClipEpsilon
-        );
-        const backwardPoints = points.filter(
-          (point) => point <= startTime + timelineClipEpsilon
-        );
-        let candidate = startTime;
-        if (direction > 0 && forwardPoints.length > 0) {
-          candidate = forwardPoints[0];
-        } else if (direction < 0 && backwardPoints.length > 0) {
-          candidate = backwardPoints[backwardPoints.length - 1];
-        } else {
-          let bestDistance = Number.POSITIVE_INFINITY;
-          points.forEach((point) => {
-            const distance = Math.abs(point - startTime);
-            if (distance < bestDistance) {
-              bestDistance = distance;
-              candidate = point;
+        const previousPreviewTime =
+          typeof resolvedDragState.previewTime === "number"
+            ? resolvedDragState.previewTime
+            : null;
+        let previousPoint: number | null = null;
+        let nextPoint: number | null = null;
+        points.forEach((point) => {
+          if (point <= startTime + timelineClipEpsilon) {
+            previousPoint = point;
+          }
+          if (nextPoint === null && point >= startTime - timelineClipEpsilon) {
+            nextPoint = point;
+          }
+        });
+        if (previousPoint === null) {
+          previousPoint = points[0] ?? startTime;
+        }
+        if (nextPoint === null) {
+          nextPoint = points[points.length - 1] ?? startTime;
+        }
+        let candidate = previousPoint;
+        const previousDistance = Math.abs(startTime - previousPoint);
+        const nextDistance = Math.abs(nextPoint - startTime);
+        if (nextDistance < previousDistance - timelineClipEpsilon) {
+          candidate = nextPoint;
+        } else if (
+          Math.abs(nextDistance - previousDistance) <= timelineClipEpsilon
+        ) {
+          if (direction > 0) {
+            candidate = nextPoint;
+          } else if (direction < 0) {
+            candidate = previousPoint;
+          } else if (previousPreviewTime !== null) {
+            const previousCandidateDistance = Math.abs(
+              previousPreviewTime - previousPoint
+            );
+            const nextCandidateDistance = Math.abs(
+              previousPreviewTime - nextPoint
+            );
+            candidate =
+              nextCandidateDistance < previousCandidateDistance
+                ? nextPoint
+                : previousPoint;
+          } else {
+            candidate = nextPoint;
+          }
+        }
+        if (previousPreviewTime !== null) {
+          const hasPreviousInsertionPoint = points.some(
+            (point) =>
+              Math.abs(point - previousPreviewTime) < timelineClipEpsilon
+          );
+          if (
+            hasPreviousInsertionPoint &&
+            Math.abs(candidate - previousPreviewTime) >= timelineClipEpsilon
+          ) {
+            const switchThreshold = Math.max(
+              frameStepSeconds,
+              timelineClipEpsilon * 1.5
+            );
+            const candidateDistance = Math.abs(candidate - startTime);
+            const previousCandidateDistance = Math.abs(
+              previousPreviewTime - startTime
+            );
+            if (
+              candidateDistance + switchThreshold >=
+              previousCandidateDistance
+            ) {
+              candidate = previousPreviewTime;
             }
-          });
+          }
         }
         return {
           start: clamp(candidate, 0, maxStart),
@@ -17485,37 +17962,38 @@ function AdvancedEditorContent() {
             dragDirection
           );
       const nextDragState = {
-        ...dragClipState,
+        ...resolvedDragState,
         targetLaneId,
         createdLaneId,
         previewTime: resolved.start,
         previewLaneId: isPendingInsert ? undefined : targetLaneId,
         pendingLaneInsert: pendingLaneInsert ?? undefined,
       };
-      dragClipStateRef.current = nextDragState;
-      setDragClipState((prev) => (prev ? nextDragState : prev));
-      if (resolved.collision) {
-        setTimelineCollisionGuide(resolved.start);
-        setTimelineCollisionActive(true);
-      } else if (timelineCollisionGuide !== null) {
-        setTimelineCollisionGuide(null);
-        setTimelineCollisionActive(false);
+      commitDragState(nextDragState);
+      if (resolved.collision && !isPendingInsert) {
+        updateCollisionGuide(resolved.start);
+        updateCollisionActive(true);
+      } else {
+        updateCollisionGuide(null);
+        updateCollisionActive(false);
       }
-      if (isPendingInsert && timelineCollisionGuide !== null) {
-        setTimelineCollisionGuide(null);
-        setTimelineCollisionActive(false);
-      }
-      if (snapGuide !== null) {
-        setTimelineSnapGuide(snapGuide);
-      } else if (timelineSnapGuide !== null) {
-        setTimelineSnapGuide(null);
-      }
+      updateSnapGuide(snapGuide);
       if (!isPendingInsert) {
-        const attachedSubtitleIds = subtitleSourceClipMap.get(dragged.id);
+        const attachedSubtitleIds = subtitleSourceClipMapRef.current.get(
+          dragged.id
+        );
         setTimeline((prev) => {
           const current = prev.find((clip) => clip.id === dragged.id);
-          const currentStart = current?.startTime ?? dragged.startTime;
-          const delta = liveTime - currentStart;
+          if (!current) {
+            return prev;
+          }
+          const currentStart = current.startTime;
+          const previewStart = resolved.start;
+          const delta = previewStart - currentStart;
+          const hasLaneChange = current.laneId !== targetLaneId;
+          if (!hasLaneChange && Math.abs(delta) < timelineClipEpsilon) {
+            return prev;
+          }
           const shouldShiftSubtitles =
             attachedSubtitleIds && attachedSubtitleIds.length > 0;
           const attachedSet = shouldShiftSubtitles
@@ -17523,9 +18001,15 @@ function AdvancedEditorContent() {
             : null;
           return prev.map((clip) => {
             if (clip.id === dragged.id) {
+              if (
+                clip.laneId === targetLaneId &&
+                Math.abs(clip.startTime - previewStart) < timelineClipEpsilon
+              ) {
+                return clip;
+              }
               return {
                 ...clip,
-                startTime: liveTime,
+                startTime: previewStart,
                 laneId: targetLaneId,
               };
             }
@@ -17544,16 +18028,45 @@ function AdvancedEditorContent() {
         });
       }
     };
+    const flushQueuedMove = () => {
+      if (!queuedEvent) {
+        return;
+      }
+      const event = queuedEvent;
+      queuedEvent = null;
+      processMove(event);
+    };
+    const scheduleQueuedMove = () => {
+      if (frameId !== null) {
+        return;
+      }
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        flushQueuedMove();
+        if (queuedEvent) {
+          scheduleQueuedMove();
+        }
+      });
+    };
+    const handleMove = (event: MouseEvent) => {
+      queuedEvent = event;
+      scheduleQueuedMove();
+    };
     const handleUp = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+      flushQueuedMove();
       const dragState = dragClipStateRef.current;
       if (!dragState) {
         return;
       }
       if (dragState.group && dragState.group.clips.length > 1) {
         dragClipHistoryRef.current = false;
-        setTimelineSnapGuide(null);
-        setTimelineCollisionGuide(null);
-        setTimelineCollisionActive(false);
+        updateSnapGuide(null);
+        updateCollisionGuide(null);
+        updateCollisionActive(false);
         setTopCreateZoneActive(false);
         setDragClipState(null);
         dragClipStateRef.current = null;
@@ -17580,7 +18093,7 @@ function AdvancedEditorContent() {
         const resolvedStart = clamp(
           normalizeTimelineTime(dragState.previewTime ?? dragged.startTime),
           0,
-          Math.max(0, timelineDuration + 10)
+          Math.max(0, timelineDurationRef.current + 10)
         );
         const laneClips = prev
           .filter(
@@ -17621,7 +18134,7 @@ function AdvancedEditorContent() {
         });
         const sourceDeltas = new Map<string, number>();
         updatedStarts.forEach((nextStart, clipId) => {
-          if (!subtitleSourceClipMap.has(clipId)) {
+          if (!subtitleSourceClipMapRef.current.has(clipId)) {
             return;
           }
           const original = prev.find((clip) => clip.id === clipId);
@@ -17637,7 +18150,7 @@ function AdvancedEditorContent() {
         const subtitleDeltas = new Map<string, number>();
         if (sourceDeltas.size > 0) {
           sourceDeltas.forEach((delta, sourceId) => {
-            const attached = subtitleSourceClipMap.get(sourceId);
+            const attached = subtitleSourceClipMapRef.current.get(sourceId);
             if (!attached || attached.length === 0) {
               return;
             }
@@ -17675,9 +18188,9 @@ function AdvancedEditorContent() {
         });
       });
       dragClipHistoryRef.current = false;
-      setTimelineSnapGuide(null);
-      setTimelineCollisionGuide(null);
-      setTimelineCollisionActive(false);
+      updateSnapGuide(null);
+      updateCollisionGuide(null);
+      updateCollisionActive(false);
       setTopCreateZoneActive(false);
       setDragClipState(null);
       dragClipStateRef.current = null;
@@ -17685,23 +18198,22 @@ function AdvancedEditorContent() {
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
     return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+      queuedEvent = null;
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
   }, [
     dragClipState,
     pushHistory,
-    timeline,
-    timelineScale,
-    timelineDuration,
-    laneRows,
-    isTimelineSnappingEnabled,
-    topCreateZonePx,
+    buildDragGroup,
+    canInsertLaneBetween,
+    insertLaneAtIndex,
     resolveTopInsertIndex,
     resolveBottomInsertIndex,
-    timelineSnapGuide,
-    timelineCollisionGuide,
-    subtitleSourceClipMap,
   ]);
 
   useEffect(() => {
@@ -17725,6 +18237,10 @@ function AdvancedEditorContent() {
       return;
     }
     const handleMove = (event: globalThis.PointerEvent) => {
+      const activeDragState = dragTransformStateRef.current;
+      if (!activeDragState) {
+        return;
+      }
       const stage = stageRef.current;
       if (!stage) {
         return;
@@ -17734,12 +18250,12 @@ function AdvancedEditorContent() {
         dragTransformHistoryRef.current = true;
       }
       const rect = stage.getBoundingClientRect();
-      const deltaX = (event.clientX - dragTransformState.startX) / rect.width;
-      const deltaY = (event.clientY - dragTransformState.startY) / rect.height;
+      const deltaX = (event.clientX - activeDragState.startX) / rect.width;
+      const deltaY = (event.clientY - activeDragState.startY) / rect.height;
       const draftRect = {
-        ...dragTransformState.startRect,
-        x: dragTransformState.startRect.x + deltaX,
-        y: dragTransformState.startRect.y + deltaY,
+        ...activeDragState.startRect,
+        x: activeDragState.startRect.x + deltaX,
+        y: activeDragState.startRect.y + deltaY,
       };
       const clipWidthPx = draftRect.width * rect.width;
       const clipHeightPx = draftRect.height * rect.height;
@@ -17749,22 +18265,23 @@ function AdvancedEditorContent() {
       const stageLinesY = [0, rect.height / 2, rect.height];
       const backgroundLinesX: number[] = [];
       const backgroundLinesY: number[] = [];
-      if (baseBackgroundTransform) {
-        const bgLeft = baseBackgroundTransform.x * rect.width;
-        const bgTop = baseBackgroundTransform.y * rect.height;
-        const bgWidth = baseBackgroundTransform.width * rect.width;
-        const bgHeight = baseBackgroundTransform.height * rect.height;
+      const backgroundTransform = baseBackgroundTransformRef.current;
+      if (backgroundTransform) {
+        const bgLeft = backgroundTransform.x * rect.width;
+        const bgTop = backgroundTransform.y * rect.height;
+        const bgWidth = backgroundTransform.width * rect.width;
+        const bgHeight = backgroundTransform.height * rect.height;
         backgroundLinesX.push(bgLeft, bgLeft + bgWidth / 2, bgLeft + bgWidth);
         backgroundLinesY.push(bgTop, bgTop + bgHeight / 2, bgTop + bgHeight);
       }
       // Add snap lines from other visible clips
       const otherClipLinesX: number[] = [];
       const otherClipLinesY: number[] = [];
-      visualStack.forEach((entry) => {
-        if (entry.clip.id === dragTransformState.clipId) {
+      visualStackRef.current.forEach((entry) => {
+        if (entry.clip.id === activeDragState.clipId) {
           return; // Skip the clip being dragged
         }
-        const otherTransform = clipTransforms[entry.clip.id];
+        const otherTransform = clipTransformsRef.current[entry.clip.id];
         if (!otherTransform) {
           return;
         }
@@ -17806,16 +18323,16 @@ function AdvancedEditorContent() {
       const snappedX = snapAxis(proposedLeftPx, clipWidthPx, xLines);
       const snappedY = snapAxis(proposedTopPx, clipHeightPx, yLines);
       if (snappedX.guide || snappedY.guide) {
-        setSnapGuides({
+        setSnapGuidesIfChanged({
           x: snappedX.guide ? [snappedX.guide] : [],
           y: snappedY.guide ? [snappedY.guide] : [],
         });
-      } else if (snapGuides) {
-        setSnapGuides(null);
+      } else {
+        setSnapGuidesIfChanged(null);
       }
-      const minSize = getClipMinSize(dragTransformState.clipId);
+      const minSize = getClipMinSize(activeDragState.clipId);
       const allowOverflow =
-        clipAssetKindMap.get(dragTransformState.clipId) !== "text";
+        clipAssetKindMapRef.current.get(activeDragState.clipId) !== "text";
       const clampOptions = allowOverflow
         ? {
             allowOverflow: true,
@@ -17836,10 +18353,10 @@ function AdvancedEditorContent() {
       const groupTransforms = subtitleGroupTransformsRef.current;
       const isSubtitleGroupDrag =
         groupTransforms &&
-        groupTransforms.has(dragTransformState.clipId);
+        groupTransforms.has(activeDragState.clipId);
       if (isSubtitleGroupDrag && groupTransforms) {
-        const deltaX = next.x - dragTransformState.startRect.x;
-        const deltaY = next.y - dragTransformState.startRect.y;
+        const deltaX = next.x - activeDragState.startRect.x;
+        const deltaY = next.y - activeDragState.startRect.y;
         setClipTransforms((prev) => {
           const nextTransforms = { ...prev };
           groupTransforms.forEach((startTransform, clipId) => {
@@ -17850,7 +18367,7 @@ function AdvancedEditorContent() {
             };
             const groupMinSize = getClipMinSize(clipId);
             const groupAllowOverflow =
-              clipAssetKindMap.get(clipId) !== "text";
+              clipAssetKindMapRef.current.get(clipId) !== "text";
             const groupClampOptions = groupAllowOverflow
               ? {
                   allowOverflow: true,
@@ -17870,16 +18387,16 @@ function AdvancedEditorContent() {
           return nextTransforms;
         });
       } else {
-        clipTransformTouchedRef.current.add(dragTransformState.clipId);
+        clipTransformTouchedRef.current.add(activeDragState.clipId);
         setClipTransforms((prev) => ({
           ...prev,
-          [dragTransformState.clipId]: next,
+          [activeDragState.clipId]: next,
         }));
       }
     };
     const handleUp = () => {
       setDragTransformState(null);
-      setSnapGuides(null);
+      setSnapGuidesIfChanged(null);
       dragTransformHistoryRef.current = false;
       subtitleGroupTransformsRef.current = null;
     };
@@ -17891,13 +18408,9 @@ function AdvancedEditorContent() {
     };
   }, [
     dragTransformState,
-    baseBackgroundTransform,
-    snapGuides,
     pushHistory,
     getClipMinSize,
-    clipAssetKindMap,
-    visualStack,
-    clipTransforms,
+    setSnapGuidesIfChanged,
   ]);
 
   useEffect(() => {
@@ -17905,6 +18418,10 @@ function AdvancedEditorContent() {
       return;
     }
     const handleMove = (event: globalThis.PointerEvent) => {
+      const activeResizeState = resizeTransformStateRef.current;
+      if (!activeResizeState) {
+        return;
+      }
       const stage = stageRef.current;
       if (!stage) {
         return;
@@ -17914,12 +18431,12 @@ function AdvancedEditorContent() {
         resizeTransformHistoryRef.current = true;
       }
       const rect = stage.getBoundingClientRect();
-      const deltaX = (event.clientX - resizeTransformState.startX) / rect.width;
+      const deltaX = (event.clientX - activeResizeState.startX) / rect.width;
       const deltaY =
-        (event.clientY - resizeTransformState.startY) / rect.height;
-      const handle = resizeTransformState.handle;
+        (event.clientY - activeResizeState.startY) / rect.height;
+      const handle = activeResizeState.handle;
       const isTextClip =
-        clipAssetKindMap.get(resizeTransformState.clipId) === "text";
+        clipAssetKindMapRef.current.get(activeResizeState.clipId) === "text";
       const hasHorizontal = handle.includes("w") || handle.includes("e");
       const hasVertical = handle.includes("n") || handle.includes("s");
       const isCornerHandle = hasHorizontal && hasVertical;
@@ -17932,89 +18449,89 @@ function AdvancedEditorContent() {
           ? !event.shiftKey
           : event.shiftKey;
       const ratio =
-        resizeTransformState.aspectRatio ||
-        resizeTransformState.startRect.width /
-        resizeTransformState.startRect.height ||
+        activeResizeState.aspectRatio ||
+        activeResizeState.startRect.width /
+        activeResizeState.startRect.height ||
         1;
       let next: ClipTransform;
 
       if (keepAspect) {
         if (hasHorizontal && hasVertical) {
           const rawWidth =
-            resizeTransformState.startRect.width +
+            activeResizeState.startRect.width +
             (handle.includes("e") ? deltaX : -deltaX);
           const rawHeight =
-            resizeTransformState.startRect.height +
+            activeResizeState.startRect.height +
             (handle.includes("s") ? deltaY : -deltaY);
-          const scaleX = rawWidth / resizeTransformState.startRect.width;
-          const scaleY = rawHeight / resizeTransformState.startRect.height;
+          const scaleX = rawWidth / activeResizeState.startRect.width;
+          const scaleY = rawHeight / activeResizeState.startRect.height;
           const scale = Math.max(scaleX, scaleY);
-          const width = resizeTransformState.startRect.width * scale;
+          const width = activeResizeState.startRect.width * scale;
           const height = width / ratio;
           next = {
             x: handle.includes("w")
-              ? resizeTransformState.startRect.x +
-              (resizeTransformState.startRect.width - width)
-              : resizeTransformState.startRect.x,
+              ? activeResizeState.startRect.x +
+              (activeResizeState.startRect.width - width)
+              : activeResizeState.startRect.x,
             y: handle.includes("n")
-              ? resizeTransformState.startRect.y +
-              (resizeTransformState.startRect.height - height)
-              : resizeTransformState.startRect.y,
+              ? activeResizeState.startRect.y +
+              (activeResizeState.startRect.height - height)
+              : activeResizeState.startRect.y,
             width,
             height,
           };
         } else if (hasHorizontal) {
           const rawWidth =
-            resizeTransformState.startRect.width +
+            activeResizeState.startRect.width +
             (handle.includes("e") ? deltaX : -deltaX);
           const width = rawWidth;
           const height = width / ratio;
           const centerY =
-            resizeTransformState.startRect.y +
-            resizeTransformState.startRect.height / 2;
+            activeResizeState.startRect.y +
+            activeResizeState.startRect.height / 2;
           next = {
             x: handle.includes("w")
-              ? resizeTransformState.startRect.x +
-              (resizeTransformState.startRect.width - width)
-              : resizeTransformState.startRect.x,
+              ? activeResizeState.startRect.x +
+              (activeResizeState.startRect.width - width)
+              : activeResizeState.startRect.x,
             y: centerY - height / 2,
             width,
             height,
           };
         } else {
           const rawHeight =
-            resizeTransformState.startRect.height +
+            activeResizeState.startRect.height +
             (handle.includes("s") ? deltaY : -deltaY);
           const height = rawHeight;
           const width = height * ratio;
           const centerX =
-            resizeTransformState.startRect.x +
-            resizeTransformState.startRect.width / 2;
+            activeResizeState.startRect.x +
+            activeResizeState.startRect.width / 2;
           next = {
             x: centerX - width / 2,
             y: handle.includes("n")
-              ? resizeTransformState.startRect.y +
-              (resizeTransformState.startRect.height - height)
-              : resizeTransformState.startRect.y,
+              ? activeResizeState.startRect.y +
+              (activeResizeState.startRect.height - height)
+              : activeResizeState.startRect.y,
             width,
             height,
           };
         }
       } else {
-        let { x, y, width, height } = resizeTransformState.startRect;
+        let { x, y, width, height } = activeResizeState.startRect;
         if (handle.includes("e")) {
-          width = resizeTransformState.startRect.width + deltaX;
+          width = activeResizeState.startRect.width + deltaX;
         }
         if (handle.includes("w")) {
-          width = resizeTransformState.startRect.width - deltaX;
-          x = resizeTransformState.startRect.x + deltaX;
+          width = activeResizeState.startRect.width - deltaX;
+          x = activeResizeState.startRect.x + deltaX;
         }
         if (handle.includes("s")) {
-          height = resizeTransformState.startRect.height + deltaY;
+          height = activeResizeState.startRect.height + deltaY;
         }
         if (handle.includes("n")) {
-          height = resizeTransformState.startRect.height - deltaY;
-          y = resizeTransformState.startRect.y + deltaY;
+          height = activeResizeState.startRect.height - deltaY;
+          y = activeResizeState.startRect.y + deltaY;
         }
         next = { x, y, width, height };
       }
@@ -18024,11 +18541,11 @@ function AdvancedEditorContent() {
       const stageLinesY = [0, rect.height / 2, rect.height];
       const otherClipLinesX: number[] = [];
       const otherClipLinesY: number[] = [];
-      visualStack.forEach((entry) => {
-        if (entry.clip.id === resizeTransformState.clipId) {
+      visualStackRef.current.forEach((entry) => {
+        if (entry.clip.id === activeResizeState.clipId) {
           return;
         }
-        const otherTransform = clipTransforms[entry.clip.id];
+        const otherTransform = clipTransformsRef.current[entry.clip.id];
         if (!otherTransform) {
           return;
         }
@@ -18104,15 +18621,15 @@ function AdvancedEditorContent() {
       }
 
       if (snappedGuideX !== null || snappedGuideY !== null) {
-        setSnapGuides({
+        setSnapGuidesIfChanged({
           x: snappedGuideX !== null ? [snappedGuideX] : [],
           y: snappedGuideY !== null ? [snappedGuideY] : [],
         });
       } else {
-        setSnapGuides(null);
+        setSnapGuidesIfChanged(null);
       }
 
-      const minSize = getClipMinSize(resizeTransformState.clipId);
+      const minSize = getClipMinSize(activeResizeState.clipId);
       const clampOptions = !isTextClip
         ? {
             allowOverflow: true,
@@ -18129,12 +18646,12 @@ function AdvancedEditorContent() {
       const resizeGroupTransforms = subtitleResizeGroupTransformsRef.current;
       const isSubtitleGroupResize =
         resizeGroupTransforms &&
-        resizeGroupTransforms.has(resizeTransformState.clipId);
+        resizeGroupTransforms.has(activeResizeState.clipId);
       if (isTextClip && hasHorizontal && hasVertical) {
         const resizeFont = resizeTextFontRef.current;
-        if (resizeFont && resizeFont.clipId === resizeTransformState.clipId) {
-          const startWidth = resizeTransformState.startRect.width;
-          const startHeight = resizeTransformState.startRect.height;
+        if (resizeFont && resizeFont.clipId === activeResizeState.clipId) {
+          const startWidth = activeResizeState.startRect.width;
+          const startHeight = activeResizeState.startRect.height;
           const widthRatio = startWidth > 0 ? clamped.width / startWidth : 1;
           const heightRatio = startHeight > 0 ? clamped.height / startHeight : 1;
           const scale = Math.sqrt(widthRatio * heightRatio);
@@ -18166,14 +18683,14 @@ function AdvancedEditorContent() {
                 return changed ? nextState : prev;
               });
               const activeBase =
-                groupFonts.get(resizeTransformState.clipId) ??
+                groupFonts.get(activeResizeState.clipId) ??
                 resizeFont.fontSize;
               const activeFontSize = clamp(
                 activeBase * scale,
                 textResizeMinFontSize,
                 textResizeMaxFontSize
               );
-              if (selectedTextEntry?.clip.id === resizeTransformState.clipId) {
+              if (selectedTextEntryRef.current?.clip.id === activeResizeState.clipId) {
                 setTextPanelFontSizeDisplay((prev) =>
                   Math.abs(prev - activeFontSize) < 0.1 ? prev : activeFontSize
                 );
@@ -18185,7 +18702,7 @@ function AdvancedEditorContent() {
                 textResizeMaxFontSize
               );
               setTextSettings((prev) => {
-                const current = prev[resizeTransformState.clipId];
+                const current = prev[activeResizeState.clipId];
                 if (!current) {
                   return prev;
                 }
@@ -18194,13 +18711,13 @@ function AdvancedEditorContent() {
                 }
                 return {
                   ...prev,
-                  [resizeTransformState.clipId]: {
+                  [activeResizeState.clipId]: {
                     ...current,
                     fontSize: nextFontSize,
                   },
                 };
               });
-              if (selectedTextEntry?.clip.id === resizeTransformState.clipId) {
+              if (selectedTextEntryRef.current?.clip.id === activeResizeState.clipId) {
                 setTextPanelFontSizeDisplay((prev) =>
                   Math.abs(prev - nextFontSize) < 0.1 ? prev : nextFontSize
                 );
@@ -18213,10 +18730,10 @@ function AdvancedEditorContent() {
         resizeTextRectRef.current = clamped;
       }
       if (isSubtitleGroupResize && resizeGroupTransforms) {
-        const deltaX = clamped.x - resizeTransformState.startRect.x;
-        const deltaY = clamped.y - resizeTransformState.startRect.y;
-        const deltaWidth = clamped.width - resizeTransformState.startRect.width;
-        const deltaHeight = clamped.height - resizeTransformState.startRect.height;
+        const deltaX = clamped.x - activeResizeState.startRect.x;
+        const deltaY = clamped.y - activeResizeState.startRect.y;
+        const deltaWidth = clamped.width - activeResizeState.startRect.width;
+        const deltaHeight = clamped.height - activeResizeState.startRect.height;
         setClipTransforms((prev) => {
           const nextTransforms = { ...prev };
           resizeGroupTransforms.forEach((startTransform, clipId) => {
@@ -18229,7 +18746,7 @@ function AdvancedEditorContent() {
             };
             const groupMinSize = getClipMinSize(clipId);
             const groupAllowOverflow =
-              clipAssetKindMap.get(clipId) !== "text";
+              clipAssetKindMapRef.current.get(clipId) !== "text";
             const groupClampOptions = groupAllowOverflow
               ? {
                   allowOverflow: true,
@@ -18249,17 +18766,21 @@ function AdvancedEditorContent() {
           return nextTransforms;
         });
       } else {
-        clipTransformTouchedRef.current.add(resizeTransformState.clipId);
+        clipTransformTouchedRef.current.add(activeResizeState.clipId);
         setClipTransforms((prev) => ({
           ...prev,
-          [resizeTransformState.clipId]: clamped,
+          [activeResizeState.clipId]: clamped,
         }));
       }
     };
     const handleUp = () => {
-      const clipId = resizeTransformState.clipId;
-      const isTextClip = clipAssetKindMap.get(clipId) === "text";
-      const isSubtitleClip = subtitleClipIdSet.has(clipId);
+      const activeResizeState = resizeTransformStateRef.current;
+      if (!activeResizeState) {
+        return;
+      }
+      const clipId = activeResizeState.clipId;
+      const isTextClip = clipAssetKindMapRef.current.get(clipId) === "text";
+      const isSubtitleClip = subtitleClipIdSetRef.current.has(clipId);
       if (isTextClip && !isSubtitleClip) {
         const stage = stageRef.current;
         const settings =
@@ -18268,7 +18789,7 @@ function AdvancedEditorContent() {
           const rect = stage.getBoundingClientRect();
           const target =
             resizeTextRectRef.current ??
-            resizeTransformState.startRect;
+            activeResizeState.startRect;
           const bounds = measureTextBounds(settings);
           const widthPx = target.width * rect.width;
           const heightPx = target.height * rect.height;
@@ -18302,7 +18823,7 @@ function AdvancedEditorContent() {
         }
       }
       setResizeTransformState(null);
-      setSnapGuides(null);
+      setSnapGuidesIfChanged(null);
       resizeTextRectRef.current = null;
       resizeTextFontRef.current = null;
       subtitleResizeGroupTransformsRef.current = null;
@@ -18319,12 +18840,8 @@ function AdvancedEditorContent() {
     resizeTransformState,
     pushHistory,
     getClipMinSize,
-    clipAssetKindMap,
     fallbackTextSettings,
-    selectedTextEntry,
-    visualStack,
-    clipTransforms,
-    subtitleClipIdSet,
+    setSnapGuidesIfChanged,
   ]);
 
   // Rotation effect
@@ -18333,17 +18850,21 @@ function AdvancedEditorContent() {
       return;
     }
     const handleMove = (event: globalThis.PointerEvent) => {
+      const activeRotateState = rotateTransformStateRef.current;
+      if (!activeRotateState) {
+        return;
+      }
       if (!rotateTransformHistoryRef.current) {
         pushHistory();
         rotateTransformHistoryRef.current = true;
       }
       // Calculate angle from center to current mouse position
-      const dx = event.clientX - rotateTransformState.centerX;
-      const dy = event.clientY - rotateTransformState.centerY;
+      const dx = event.clientX - activeRotateState.centerX;
+      const dy = event.clientY - activeRotateState.centerY;
       const currentAngle = Math.atan2(dy, dx) * (180 / Math.PI);
       // Calculate angle from center to start position
-      const startDx = rotateTransformState.startX - rotateTransformState.centerX;
-      const startDy = rotateTransformState.startY - rotateTransformState.centerY;
+      const startDx = activeRotateState.startX - activeRotateState.centerX;
+      const startDy = activeRotateState.startY - activeRotateState.centerY;
       const startAngle = Math.atan2(startDy, startDx) * (180 / Math.PI);
       // Calculate rotation delta
       let deltaRotation = currentAngle - startAngle;
@@ -18351,7 +18872,7 @@ function AdvancedEditorContent() {
       while (deltaRotation > 180) deltaRotation -= 360;
       while (deltaRotation < -180) deltaRotation += 360;
       // Calculate new rotation
-      let newRotation = rotateTransformState.startRotation + deltaRotation;
+      let newRotation = activeRotateState.startRotation + deltaRotation;
       // Snap to 0, 90, 180, -90 degrees when within 5 degrees
       const snapAngles = [0, 90, 180, -180, -90, 270, -270];
       for (const snapAngle of snapAngles) {
@@ -18366,9 +18887,9 @@ function AdvancedEditorContent() {
       const rotateGroupTransforms = subtitleRotateGroupTransformsRef.current;
       const isSubtitleGroupRotate =
         rotateGroupTransforms &&
-        rotateGroupTransforms.has(rotateTransformState.clipId);
+        rotateGroupTransforms.has(activeRotateState.clipId);
       if (isSubtitleGroupRotate && rotateGroupTransforms) {
-        const delta = newRotation - rotateTransformState.startRotation;
+        const delta = newRotation - activeRotateState.startRotation;
         setClipTransforms((prev) => {
           const nextTransforms = { ...prev };
           rotateGroupTransforms.forEach((startTransform, clipId) => {
@@ -18382,15 +18903,15 @@ function AdvancedEditorContent() {
           return nextTransforms;
         });
       } else {
-        clipTransformTouchedRef.current.add(rotateTransformState.clipId);
+        clipTransformTouchedRef.current.add(activeRotateState.clipId);
         setClipTransforms((prev) => {
-          const current = prev[rotateTransformState.clipId];
+          const current = prev[activeRotateState.clipId];
           if (!current) {
             return prev;
           }
           return {
             ...prev,
-            [rotateTransformState.clipId]: {
+            [activeRotateState.clipId]: {
               ...current,
               rotation: newRotation,
             },
@@ -18527,6 +19048,74 @@ function AdvancedEditorContent() {
     [stockAudioDragType]
   );
 
+  const resetCanvasDragState = useCallback(() => {
+    canvasDragDepthRef.current = 0;
+    setDragOverCanvas(false);
+  }, []);
+
+  const resetTimelineDragState = useCallback(() => {
+    timelineDragDepthRef.current = 0;
+    setDragOverTimeline(false);
+  }, []);
+
+  const handleCanvasDragEnter = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      canvasDragDepthRef.current += 1;
+      setDragOverCanvas(true);
+    },
+    []
+  );
+
+  const handleCanvasDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setDragOverCanvas(true);
+    },
+    []
+  );
+
+  const handleCanvasDragLeave = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const nextDepth = Math.max(0, canvasDragDepthRef.current - 1);
+      canvasDragDepthRef.current = nextDepth;
+      if (nextDepth === 0) {
+        setDragOverCanvas(false);
+      }
+    },
+    []
+  );
+
+  const handleTimelineDragEnter = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      timelineDragDepthRef.current += 1;
+      setDragOverTimeline(true);
+    },
+    []
+  );
+
+  const handleTimelineDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setDragOverTimeline(true);
+    },
+    []
+  );
+
+  const handleTimelineDragLeave = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const nextDepth = Math.max(0, timelineDragDepthRef.current - 1);
+      timelineDragDepthRef.current = nextDepth;
+      if (nextDepth === 0) {
+        setDragOverTimeline(false);
+      }
+    },
+    []
+  );
+
   const addAssetToTimelineFromDrop = (
     asset: MediaAsset,
     event: DragEvent<HTMLDivElement>,
@@ -18541,105 +19130,7 @@ function AdvancedEditorContent() {
     const rect = track.getBoundingClientRect();
     const offsetX = event.clientX - rect.left - timelinePadding;
     const offsetY = event.clientY - rect.top - timelinePadding;
-    const topCreateZonePx = resolveTopCreateZonePx(laneRows);
-    const wantsTopLane =
-      offsetY < 0 ||
-      (laneType !== "audio" && topCreateZonePx > 0 && offsetY <= topCreateZonePx);
-    let laneId: string | null = null;
-    let foundLaneIndex = -1;
-    let cursor = 0;
-    if (laneRows.length > 0) {
-      // Calculate section boundaries for proper lane ordering
-      let videoSectionEnd = 0;
-      let audioSectionStart = -1;
-      let sectionCursor = 0;
-      for (let i = 0; i < laneRows.length; i++) {
-        const lane = laneRows[i];
-        if (lane.type !== "audio") {
-          videoSectionEnd = sectionCursor + lane.height + laneGap;
-        } else if (audioSectionStart === -1) {
-          audioSectionStart = sectionCursor;
-        }
-        sectionCursor += lane.height + laneGap;
-      }
-      const totalHeight = sectionCursor - laneGap;
-
-      if (wantsTopLane) {
-        // Dragging above all lanes or into top create zone - create new lane at top of section
-        laneId = createLaneId(laneType, nextLanes, { placement: "top" });
-      } else if (offsetY > totalHeight + laneGap) {
-        // Dragging below all lanes - create new lane (will be positioned correctly)
-        laneId = createLaneId(laneType, nextLanes);
-      } else {
-        // Find which lane we're hovering over
-        const gapCreatePadding = Math.min(12, Math.max(6, Math.round(laneGap * 0.8)));
-        for (let i = 0; i < laneRows.length; i++) {
-          const lane = laneRows[i];
-          const laneTop = cursor;
-          const laneVisualBottom = cursor + lane.height;
-          const laneBottom = cursor + lane.height + laneGap;
-          const gapStart = laneVisualBottom - gapCreatePadding;
-          const gapEnd = laneBottom + gapCreatePadding;
-          const inGapZone =
-            offsetY >= gapStart && offsetY <= gapEnd && i < laneRows.length - 1;
-
-          if (inGapZone) {
-            const nextLane = laneRows[i + 1];
-            if (canInsertLaneBetween(laneType, lane.type, nextLane.type)) {
-              laneId = insertLaneAtIndex(laneType, nextLanes, i + 1);
-              foundLaneIndex = -1;
-              break;
-            }
-          }
-
-          if (offsetY >= laneTop && offsetY <= laneBottom) {
-            laneId = lane.id;
-            foundLaneIndex = i;
-            break;
-          }
-          cursor += lane.height + laneGap;
-        }
-
-        // Check if in gap between video and audio section
-        if (!laneId && laneType !== "audio" && audioSectionStart > 0) {
-          if (offsetY >= videoSectionEnd && offsetY < audioSectionStart) {
-            laneId = createLaneId(laneType, nextLanes);
-          }
-        }
-      }
-    }
-    // Check lane type compatibility - enforce lane ordering rules
-    // Audio lanes stay at bottom, video/text lanes stay above audio
-    if (laneId && foundLaneIndex >= 0) {
-      const foundLane = laneRows[foundLaneIndex];
-      if (foundLane && foundLane.type !== laneType) {
-        // Lane type mismatch - find compatible lane or create new one
-        let compatibleLaneId: string | null = null;
-
-        if (laneType === "audio") {
-          // Audio clips can only go to audio lanes (at bottom) - search below only
-          for (let i = foundLaneIndex + 1; i < laneRows.length; i++) {
-            if (laneRows[i].type === "audio") {
-              compatibleLaneId = laneRows[i].id;
-              break;
-            }
-          }
-        } else {
-          // Video/text dragged onto audio - create new lane above audio
-          // Don't search for existing, just create new (user wants new track)
-        }
-
-        // If no compatible lane found, create a new one (will be inserted at correct position)
-        if (!compatibleLaneId) {
-          compatibleLaneId = createLaneId(laneType, nextLanes);
-        }
-
-        laneId = compatibleLaneId;
-      }
-    }
-    if (!laneId) {
-      laneId = createLaneId(laneType, nextLanes);
-    }
+    const laneId = resolveDropLaneId(laneType, offsetY, nextLanes);
     setLanes(nextLanes);
     const startTime = offsetX / timelineScale;
     addClipAtPosition(asset.id, laneId, startTime, asset, options);
@@ -18647,145 +19138,158 @@ function AdvancedEditorContent() {
 
   const handleCanvasDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const droppedFiles = Array.from(event.dataTransfer.files ?? []);
-    if (droppedFiles.length > 0) {
-      setDragOverCanvas(false);
-      await handleDroppedFiles(droppedFiles, { target: "canvas" });
-      return;
-    }
-    const stockAudioPayload =
-      parseStockAudioDragPayload(event.dataTransfer.getData(stockAudioDragType)) ??
-      parseStockAudioDragPayload(event.dataTransfer.getData("text/plain"));
-    if (stockAudioPayload) {
-      await handleStockAudioDrop(stockAudioPayload, "canvas");
-      setDragOverCanvas(false);
-      return;
-    }
-    const gifPayload =
-      parseGifDragPayload(event.dataTransfer.getData(gifDragType)) ??
-      parseGifDragPayload(event.dataTransfer.getData("text/plain"));
-    if (gifPayload) {
-      const existing = assetsRef.current.find(
-        (asset) => asset.kind === "image" && asset.url === gifPayload.url
-      );
-      if (existing) {
-        addToTimeline(existing.id);
-        setDragOverCanvas(false);
+    try {
+      const droppedFiles = Array.from(event.dataTransfer.files ?? []);
+      if (droppedFiles.length > 0) {
+        await handleDroppedFiles(droppedFiles, { target: "canvas" });
         return;
       }
-      setIsBackgroundSelected(false);
-      pushHistory();
-      const gifAsset = await createGifMediaAsset(gifPayload);
-      const nextLanes = [...lanesRef.current];
-      const laneId = createLaneId("video", nextLanes);
-      const clip = createClip(gifAsset.id, laneId, 0, gifAsset);
-      setLanes(nextLanes);
-      setAssets((prev) => [gifAsset, ...prev]);
-      setTimeline((prev) => [...prev, clip]);
-      setActiveAssetId(gifAsset.id);
-      setDragOverCanvas(false);
-      return;
-    }
-    const assetId = event.dataTransfer.getData("text/plain");
-    if (assetId) {
-      const assetExists = assetsRef.current.some(
-        (asset) => asset.id === assetId
-      );
-      if (assetExists) {
-        addToTimeline(assetId);
+      const stockAudioPayload =
+        parseStockAudioDragPayload(event.dataTransfer.getData(stockAudioDragType)) ??
+        parseStockAudioDragPayload(event.dataTransfer.getData("text/plain"));
+      if (stockAudioPayload) {
+        await handleStockAudioDrop(stockAudioPayload, "canvas");
+        return;
       }
+      const gifPayload =
+        parseGifDragPayload(event.dataTransfer.getData(gifDragType)) ??
+        parseGifDragPayload(event.dataTransfer.getData("text/plain"));
+      if (gifPayload) {
+        const existing = assetsRef.current.find(
+          (asset) => asset.kind === "image" && asset.url === gifPayload.url
+        );
+        if (existing) {
+          addToTimeline(existing.id);
+          return;
+        }
+        setIsBackgroundSelected(false);
+        pushHistory();
+        const gifAsset = await createGifMediaAsset(gifPayload);
+        const nextLanes = [...lanesRef.current];
+        const laneId = createLaneId("video", nextLanes);
+        const clip = createClip(gifAsset.id, laneId, 0, gifAsset);
+        setLanes(nextLanes);
+        setAssets((prev) => [gifAsset, ...prev]);
+        setTimeline((prev) => [...prev, clip]);
+        setActiveAssetId(gifAsset.id);
+        return;
+      }
+      const assetId = event.dataTransfer.getData("text/plain");
+      if (assetId) {
+        const assetExists = assetsRef.current.some(
+          (asset) => asset.id === assetId
+        );
+        if (assetExists) {
+          addToTimeline(assetId);
+        }
+      }
+    } finally {
+      resetCanvasDragState();
     }
-    setDragOverCanvas(false);
   };
 
   const handleTimelineDrop = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const droppedFiles = Array.from(event.dataTransfer.files ?? []);
-    if (droppedFiles.length > 0) {
-      setDragOverTimeline(false);
-      await handleDroppedFiles(droppedFiles, { target: "timeline", event });
-      return;
-    }
-    const stockAudioPayload =
-      parseStockAudioDragPayload(event.dataTransfer.getData(stockAudioDragType)) ??
-      parseStockAudioDragPayload(event.dataTransfer.getData("text/plain"));
-    if (stockAudioPayload) {
-      await handleStockAudioDrop(stockAudioPayload, "timeline", event);
-      setDragOverTimeline(false);
-      return;
-    }
-    const gifPayload =
-      parseGifDragPayload(event.dataTransfer.getData(gifDragType)) ??
-      parseGifDragPayload(event.dataTransfer.getData("text/plain"));
-    if (gifPayload) {
-      const existing = assetsRef.current.find(
-        (asset) => asset.kind === "image" && asset.url === gifPayload.url
-      );
-      const gifAsset = existing ?? (await createGifMediaAsset(gifPayload));
-      if (!existing) {
-        setAssets((prev) => [gifAsset, ...prev]);
+    try {
+      const droppedFiles = Array.from(event.dataTransfer.files ?? []);
+      if (droppedFiles.length > 0) {
+        await handleDroppedFiles(droppedFiles, { target: "timeline", event });
+        return;
       }
-      addAssetToTimelineFromDrop(gifAsset, event);
-      setDragOverTimeline(false);
-      return;
-    }
-    const assetId = event.dataTransfer.getData("text/plain");
-    if (assetId) {
-      const assetExists = assetsRef.current.some(
-        (asset) => asset.id === assetId
-      );
-      if (assetExists) {
-        const asset = assetsRef.current.find((item) => item.id === assetId);
-        if (!asset) {
-          return;
+      const stockAudioPayload =
+        parseStockAudioDragPayload(event.dataTransfer.getData(stockAudioDragType)) ??
+        parseStockAudioDragPayload(event.dataTransfer.getData("text/plain"));
+      if (stockAudioPayload) {
+        await handleStockAudioDrop(stockAudioPayload, "timeline", event);
+        return;
+      }
+      const gifPayload =
+        parseGifDragPayload(event.dataTransfer.getData(gifDragType)) ??
+        parseGifDragPayload(event.dataTransfer.getData("text/plain"));
+      if (gifPayload) {
+        const existing = assetsRef.current.find(
+          (asset) => asset.kind === "image" && asset.url === gifPayload.url
+        );
+        const gifAsset = existing ?? (await createGifMediaAsset(gifPayload));
+        if (!existing) {
+          setAssets((prev) => [gifAsset, ...prev]);
         }
-        addAssetToTimelineFromDrop(asset, event);
+        addAssetToTimelineFromDrop(gifAsset, event);
+        return;
       }
+      const assetId = event.dataTransfer.getData("text/plain");
+      if (assetId) {
+        const assetExists = assetsRef.current.some(
+          (asset) => asset.id === assetId
+        );
+        if (assetExists) {
+          const asset = assetsRef.current.find((item) => item.id === assetId);
+          if (!asset) {
+            return;
+          }
+          addAssetToTimelineFromDrop(asset, event);
+        }
+      }
+    } finally {
+      resetTimelineDragState();
     }
-    setDragOverTimeline(false);
   };
 
-  const handleTimelineWheel = (
-    event: ReactWheelEvent<HTMLDivElement> | globalThis.WheelEvent
-  ) => {
-    const scrollEl = timelineScrollRef.current;
-    if (!scrollEl) {
-      return;
-    }
-    if (event.ctrlKey || event.metaKey) {
-      event.preventDefault();
-      const rect = scrollEl.getBoundingClientRect();
-      const offsetX = event.clientX - rect.left;
-      const contentX = scrollEl.scrollLeft + offsetX - timelinePadding;
-      const timeAtCursor = clamp(contentX / timelineScale, 0, timelineDuration);
-      const zoomIntensity = 0.0025;
-      const zoomFactor = Math.exp(-event.deltaY * zoomIntensity);
-      const nextScale = clamp(
-        timelineScale * zoomFactor,
-        timelineScaleMin,
-        timelineScaleMax
-      );
-      if (nextScale !== timelineScale) {
-        setTimelineScale(nextScale);
-        const nextScrollLeft =
-          timeAtCursor * nextScale - offsetX + timelinePadding;
-        scrollEl.scrollLeft = Math.max(0, nextScrollLeft);
+  useEffect(() => {
+    const clearDragOverlays = () => {
+      resetCanvasDragState();
+      resetTimelineDragState();
+    };
+    window.addEventListener("dragend", clearDragOverlays);
+    window.addEventListener("drop", clearDragOverlays);
+    return () => {
+      window.removeEventListener("dragend", clearDragOverlays);
+      window.removeEventListener("drop", clearDragOverlays);
+    };
+  }, [resetCanvasDragState, resetTimelineDragState]);
+
+  const handleTimelineWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement> | globalThis.WheelEvent) => {
+      const scrollEl = timelineScrollRef.current;
+      if (!scrollEl) {
+        return;
       }
-      return;
-    }
-    const { deltaX, deltaY } = event;
-    if (
-      scrollEl.scrollHeight > scrollEl.clientHeight &&
-      Math.abs(deltaY) >= Math.abs(deltaX)
-    ) {
-      return;
-    }
-    if (Math.abs(deltaX) > Math.abs(deltaY)) {
-      return;
-    }
-    scrollEl.scrollLeft += deltaY;
-    event.preventDefault();
-  };
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const rect = scrollEl.getBoundingClientRect();
+        const offsetX = event.clientX - rect.left;
+        const contentX = scrollEl.scrollLeft + offsetX - timelinePadding;
+        const timeAtCursor = clamp(contentX / timelineScale, 0, timelineDuration);
+        const zoomIntensity = 0.0025;
+        const zoomFactor = Math.exp(-event.deltaY * zoomIntensity);
+        const nextScale = clamp(
+          timelineScale * zoomFactor,
+          timelineScaleMin,
+          timelineScaleMax
+        );
+        if (nextScale !== timelineScale) {
+          setTimelineScale(nextScale);
+          const nextScrollLeft =
+            timeAtCursor * nextScale - offsetX + timelinePadding;
+          scrollEl.scrollLeft = Math.max(0, nextScrollLeft);
+        }
+        return;
+      }
+      const { deltaX, deltaY } = event;
+      if (
+        scrollEl.scrollHeight > scrollEl.clientHeight &&
+        Math.abs(deltaY) >= Math.abs(deltaX)
+      ) {
+        return;
+      }
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        return;
+      }
+      scrollEl.scrollLeft += deltaY;
+      event.preventDefault();
+    },
+    [timelineDuration, timelineScale]
+  );
 
   useEffect(() => {
     const scrollEl = timelineScrollRef.current;
@@ -18897,10 +19401,13 @@ function AdvancedEditorContent() {
       window.removeEventListener("pointerup", handleUp);
       window.removeEventListener("pointercancel", handleUp);
     };
-  }, [isScrubbing, timelineDuration, timelineScale, getClipAtTime]);
+  }, [handleScrubTo, isScrubbing]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
       const {
         currentTime: currentTimeRef,
         timelineDuration: timelineDurationRef,
@@ -19009,7 +19516,7 @@ function AdvancedEditorContent() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, keyboardEffectDeps.current);
+  }, []);
 
   const renderToolRail = () => (
     <aside className="hidden w-20 flex-col items-center border-r border-gray-200 bg-white lg:flex">
@@ -19028,8 +19535,8 @@ function AdvancedEditorContent() {
         {toolbarItems.map((item) => {
           const isActive = item.id === activeTool;
           const itemClassName = isActive
-            ? "group w-[60px] h-[60px] relative cursor-pointer flex flex-col justify-center items-center select-none font-medium text-blue-600 active"
-            : "group w-[60px] h-[60px] relative cursor-pointer flex flex-col justify-center items-center select-none font-normal text-gray-600 hover:text-gray-600 hover:no-underline";
+            ? "group relative flex h-[60px] w-[60px] cursor-pointer select-none flex-col items-center justify-center font-medium text-blue-600 active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            : "group relative flex h-[60px] w-[60px] cursor-pointer select-none flex-col items-center justify-center font-normal text-gray-600 hover:text-gray-600 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white";
           const iconWrapperClassName = isActive
             ? "relative w-9 h-9 rounded-xl flex justify-center items-center bg-light-blue"
             : "relative w-9 h-9 rounded-xl flex justify-center items-center bg-transparent group-hover:bg-gray-500/10";
@@ -19232,7 +19739,7 @@ function AdvancedEditorContent() {
     subtitleError,
     subtitleLanguage,
     subtitleLanguageOptions: subtitleLanguages,
-    subtitleSegments: subtitleSegmentsWithClipTimes,
+    subtitleSegments: deferredSubtitleSegmentsForSidebar,
     subtitleSource,
     subtitleSourceOptions,
     subtitleStatus,
@@ -19241,7 +19748,7 @@ function AdvancedEditorContent() {
     subtitleStylePresets: resolvedSubtitleStylePresets,
     detachedSubtitleIds,
     subtitleMoveTogether,
-    transcriptSegments,
+    transcriptSegments: deferredTranscriptSegmentsForSidebar,
     transcriptSource,
     transcriptSourceOptions,
     transcriptStatus,
@@ -19402,11 +19909,9 @@ function AdvancedEditorContent() {
             event.preventDefault();
             closeFloatingMenu();
           }}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setDragOverCanvas(true);
-          }}
-          onDragLeave={() => setDragOverCanvas(false)}
+          onDragEnter={handleCanvasDragEnter}
+          onDragOver={handleCanvasDragOver}
+          onDragLeave={handleCanvasDragLeave}
           onDrop={handleCanvasDrop}
         >
           <div className="relative flex h-full w-full items-center justify-center">
@@ -19672,7 +20177,7 @@ function AdvancedEditorContent() {
                                     src={entry.asset.url}
                                     className="h-full w-full object-cover"
                                     playsInline
-                                    preload="auto"
+                                    preload="metadata"
                                     // Disable browser features that add overhead for blob URLs
                                     disablePictureInPicture
                                     onLoadedMetadata={(event) =>
@@ -21123,11 +21628,9 @@ function AdvancedEditorContent() {
               minHeight: `${trackMinHeight}px`,
             }}
             onPointerDown={handleTimelineSelectStart}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragOverTimeline(true);
-            }}
-            onDragLeave={() => setDragOverTimeline(false)}
+            onDragEnter={handleTimelineDragEnter}
+            onDragOver={handleTimelineDragOver}
+            onDragLeave={handleTimelineDragLeave}
             onDrop={handleTimelineDrop}
           >
             {dragOverTimeline && (
@@ -21585,6 +22088,10 @@ function AdvancedEditorContent() {
               asset.kind === "video" &&
               thumbnailFrames.length === thumbnailCount &&
               thumbnailFrames.some((frame) => Boolean(frame));
+            const fallbackPreviewCount =
+              lane.type === "video" && asset.kind === "video" && !hasThumbnailFrames
+                ? Math.min(thumbnailCount, 8)
+                : thumbnailCount;
             const clipBorderClass = isSelected
               ? "border-[#335CFF]"
               : "border-transparent";
@@ -21596,6 +22103,7 @@ function AdvancedEditorContent() {
             const dragLiftShadow = isDragging
               ? "shadow-[0_18px_30px_rgba(15,23,42,0.25)] cursor-grabbing"
               : "";
+            const clipTransitionClass = isDragging ? "transition-none" : "transition";
             const clipBackgroundClass =
               lane.type === "text"
                 ? isSubtitleClip
@@ -21616,7 +22124,7 @@ function AdvancedEditorContent() {
               >
                 <button
                   type="button"
-                  className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 ${clipBackgroundClass} p-0 text-left text-[10px] font-semibold shadow-sm transition ${isDragging ? "opacity-70" : ""} ${collisionHighlight} ${dragLiftShadow}`}
+                  className={`group relative flex h-full w-full overflow-hidden rounded-sm border-0 ${clipBackgroundClass} p-0 text-left text-[10px] font-semibold shadow-sm ${clipTransitionClass} ${isDragging ? "opacity-70" : ""} ${collisionHighlight} ${dragLiftShadow}`}
                   data-timeline-clip="true"
                   onContextMenu={(event) =>
                     handleTimelineClipContextMenu(event, clip, asset)
@@ -21624,119 +22132,42 @@ function AdvancedEditorContent() {
                   onMouseDown={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    setActiveAssetId(asset.id);
+                    setActiveAssetId((prev) => (prev === asset.id ? prev : asset.id));
                     if (asset.kind === "text") {
-                      setActiveTool("text");
+                      setActiveTool((prev) => (prev === "text" ? prev : "text"));
                     }
                     if (event.shiftKey) {
-                      setSelectedClipIds((prev) => {
-                        if (prev.includes(clip.id)) {
-                          const next = prev.filter((id) => id !== clip.id);
-                          setSelectedClipId(next[0] ?? null);
-                          return next;
-                        }
-                        const next = [...prev, clip.id];
+                      if (selectedClipIdsSet.has(clip.id)) {
+                        const next = selectedClipIds.filter(
+                          (id) => id !== clip.id
+                        );
+                        setSelectedClipIds(next);
+                        setSelectedClipId(next[0] ?? null);
+                      } else {
+                        const next = [...selectedClipIds, clip.id];
+                        setSelectedClipIds(next);
                         setSelectedClipId(clip.id);
-                        return next;
-                      });
+                      }
                       return;
                     }
                     const preserveGroupSelection =
                       selectedClipIdsSet.has(clip.id) &&
                       selectedClipIds.length > 1;
                     if (!preserveGroupSelection) {
-                      setSelectedClipIds([clip.id]);
-                      setSelectedClipId(clip.id);
+                      const alreadySingleSelection =
+                        selectedClipIds.length === 1 &&
+                        selectedClipIds[0] === clip.id;
+                      if (!alreadySingleSelection) {
+                        setSelectedClipIds([clip.id]);
+                      }
+                      setSelectedClipId((prev) => (prev === clip.id ? prev : clip.id));
                     } else {
-                      setSelectedClipId(clip.id);
+                      setSelectedClipId((prev) => (prev === clip.id ? prev : clip.id));
                     }
                     dragClipHistoryRef.current = false;
                     const dragGroupIds = preserveGroupSelection
-                      ? selectedClipIds
+                      ? [...selectedClipIds]
                       : [clip.id];
-                    const dragGroupIdSet = new Set(dragGroupIds);
-                    const dragGroupClips = dragGroupIds
-                      .map((id) => {
-                        const entry = timelineLayout.find(
-                          (item) => item.clip.id === id
-                        );
-                        if (!entry) {
-                          return null;
-                        }
-                        return {
-                          id,
-                          startTime: entry.clip.startTime,
-                          duration: entry.clip.duration,
-                          laneId: entry.clip.laneId,
-                        };
-                      })
-                      .filter(
-                        (
-                          entry
-                        ): entry is {
-                          id: string;
-                          startTime: number;
-                          duration: number;
-                          laneId: string;
-                        } => Boolean(entry)
-                      );
-                    const dragGroup =
-                      dragGroupClips.length > 1
-                        ? (() => {
-                            const attachedSubtitleIds = new Set<string>();
-                            const attachedSubtitles: Array<{
-                              id: string;
-                              startTime: number;
-                              duration: number;
-                            }> = [];
-                            dragGroupClips.forEach((entry) => {
-                              const attached = subtitleSourceClipMap.get(
-                                entry.id
-                              );
-                              if (!attached || attached.length === 0) {
-                                return;
-                              }
-                              attached.forEach((subtitleId) => {
-                                if (
-                                  dragGroupIdSet.has(subtitleId) ||
-                                  attachedSubtitleIds.has(subtitleId)
-                                ) {
-                                  return;
-                                }
-                                const subtitleEntry = timelineLayout.find(
-                                  (item) => item.clip.id === subtitleId
-                                );
-                                if (!subtitleEntry) {
-                                  return;
-                                }
-                                attachedSubtitleIds.add(subtitleId);
-                                attachedSubtitles.push({
-                                  id: subtitleId,
-                                  startTime: subtitleEntry.clip.startTime,
-                                  duration: subtitleEntry.clip.duration,
-                                });
-                              });
-                            });
-                            const minStart = Math.min(
-                              ...dragGroupClips.map((entry) => entry.startTime),
-                              ...attachedSubtitles.map((entry) => entry.startTime)
-                            );
-                            const maxEnd = Math.max(
-                              ...dragGroupClips.map(
-                                (entry) => entry.startTime + entry.duration
-                              ),
-                              ...attachedSubtitles.map(
-                                (entry) => entry.startTime + entry.duration
-                              )
-                            );
-                            return {
-                              clips: dragGroupClips,
-                              minStart,
-                              maxEnd,
-                              attachedSubtitles,
-                            };
-                          })()
-                        : undefined;
                     const nextDragState = {
                       clipId: clip.id,
                       startX: event.clientX,
@@ -21744,7 +22175,8 @@ function AdvancedEditorContent() {
                       startLaneId: clip.laneId,
                       previewTime: left,
                       previewLaneId: clip.laneId,
-                      group: dragGroup,
+                      pendingGroupClipIds:
+                        dragGroupIds.length > 1 ? dragGroupIds : undefined,
                       pendingLaneInsert: undefined,
                     };
                     dragClipStateRef.current = nextDragState;
@@ -21756,14 +22188,14 @@ function AdvancedEditorContent() {
                     <div
                       className="absolute inset-0 grid h-full w-full"
                       style={{
-                        gridTemplateColumns: `repeat(${thumbnailCount}, minmax(0, 1fr))`,
+                        gridTemplateColumns: `repeat(${fallbackPreviewCount}, minmax(0, 1fr))`,
                       }}
                     >
-                      {Array.from({ length: thumbnailCount }, (_, index) => {
+                      {Array.from({ length: fallbackPreviewCount }, (_, index) => {
                         const frameTime = clamp(
                           clip.startOffset +
                             (clip.duration * (index + 0.5)) /
-                              Math.max(1, thumbnailCount),
+                              Math.max(1, fallbackPreviewCount),
                           clip.startOffset,
                           clip.startOffset + clip.duration - 0.05
                         );
@@ -21786,33 +22218,40 @@ function AdvancedEditorContent() {
                                 className="h-full w-full object-cover"
                                 draggable={false}
                               />
-                            ) : (
+                            ) : asset.kind === "video" ? (
                               <video
                                 src={asset.url}
                                 className="h-full w-full object-cover"
                                 muted
                                 playsInline
-                                preload="auto"
+                                preload="metadata"
+                                disablePictureInPicture
                                 tabIndex={-1}
-                                onLoadedData={(event) => {
+                                onLoadedMetadata={(event) => {
                                   const target = event.currentTarget;
-                                  if (
-                                    Math.abs(
-                                      target.currentTime - frameTime
-                                    ) < 0.02
-                                  ) {
+                                  const safeEnd = Math.max(
+                                    clip.startOffset,
+                                    (Number.isFinite(target.duration)
+                                      ? target.duration
+                                      : clip.startOffset + clip.duration) - 0.05
+                                  );
+                                  const seekTime = clamp(
+                                    frameTime,
+                                    clip.startOffset,
+                                    safeEnd
+                                  );
+                                  if (Math.abs(target.currentTime - seekTime) < 0.02) {
                                     return;
                                   }
                                   try {
-                                    target.currentTime = frameTime;
-                                  } catch (error) {
-                                    console.warn(
-                                      "Failed to load thumbnail frame.",
-                                      error
-                                    );
+                                    target.currentTime = seekTime;
+                                  } catch {
+                                    // Keep default frame when seek isn't available yet.
                                   }
                                 }}
                               />
+                            ) : (
+                              <div className="h-full w-full bg-[linear-gradient(120deg,#e2e8f0_0%,#f8fafc_50%,#e2e8f0_100%)]" />
                             )}
                           </div>
                         );
@@ -21923,7 +22362,6 @@ function AdvancedEditorContent() {
     lastAudioLaneId,
     selectedClipIds,
     selectedClipIdsSet,
-    subtitleSourceClipMap,
     timelineCollisionActive,
     timelineLayout,
     timelineScale,

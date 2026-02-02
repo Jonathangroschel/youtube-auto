@@ -35,8 +35,8 @@ const toRgba = (value: string, alpha: number) => {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamped})`;
 };
 
-const timelineThumbnailTargetWidth = 28;
-const timelineThumbnailMaxCount = 60;
+const timelineThumbnailTargetWidth = 32;
+const timelineThumbnailMaxCount = 32;
 const audioLaneMinHeight = 32;
 const audioLaneMaxHeight = 200;
 const audioWaveformMinBars = 24;
@@ -276,8 +276,8 @@ const generateVideoThumbnails = async (
     await seekVideoForThumbnail(video, time);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     try {
-      frames.push(canvas.toDataURL("image/jpeg", 0.72));
-    } catch (error) {
+      frames.push(canvas.toDataURL("image/jpeg", 0.65));
+    } catch {
       frames.push("");
     }
   }

@@ -1241,6 +1241,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const isAudioTool = activeTool === "audio";
   const isAiTool = activeTool === "ai";
   const isSettingsTool = activeTool === "settings";
+  const hidePrimaryUploadHeader =
+    isAssetLibraryExpanded && (activeTool === "video" || activeTool === "image");
   const useAudioLibraryLayout = isAudioTool && !isAssetLibraryExpanded;
   const assetGridRowLimit = 3;
   const assetGridColumnCount = isAssetGridSmUp ? 3 : 2;
@@ -2372,6 +2374,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     ) : (
       <>
         {!isAudioTool &&
+          !hidePrimaryUploadHeader &&
           !(isStockVideoExpanded && activeTool === "video") &&
           !(isGifLibraryExpanded &&
             (activeTool === "image" || activeTool === "elements")) &&
@@ -2647,43 +2650,47 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <h2 className="text-lg font-semibold tracking-[-0.01em] text-[#111827]">
-                      {activeToolLabel}
-                    </h2>
-                    {!hasSupabase && (
-                      <p className="text-xs font-medium text-gray-500">
-                        Uploads stay in this browser session
-                      </p>
+                {!hidePrimaryUploadHeader && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <h2 className="text-lg font-semibold tracking-[-0.01em] text-[#111827]">
+                          {activeToolLabel}
+                        </h2>
+                        {!hasSupabase && (
+                          <p className="text-xs font-medium text-gray-500">
+                            Uploads stay in this browser session
+                          </p>
+                        )}
+                      </div>
+                      {uploading && (
+                        <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#335CFF]">
+                          Uploading
+                        </span>
+                      )}
+                    </div>
+                    {!isAiTool && (
+                      <div className="mt-5">
+                        <button
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-transparent bg-[#F3F4F8] px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#ECEFF6]"
+                          type="button"
+                          onClick={handleUploadClick}
+                        >
+                          <svg viewBox="0 0 16 16" className="h-4 w-4">
+                            <path
+                              d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          Upload
+                        </button>
+                      </div>
                     )}
-                  </div>
-                  {uploading && (
-                    <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#335CFF]">
-                      Uploading
-                    </span>
-                  )}
-                </div>
-                {!isAiTool && (
-                  <div className="mt-5">
-                    <button
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-transparent bg-[#F3F4F8] px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#ECEFF6]"
-                      type="button"
-                      onClick={handleUploadClick}
-                    >
-                      <svg viewBox="0 0 16 16" className="h-4 w-4">
-                        <path
-                          d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      Upload
-                    </button>
-                  </div>
+                  </>
                 )}
                 {isBackgroundSelected && (
                   <div className="mt-5 rounded-2xl border border-gray-100 bg-[#F8FAFF] px-4 py-3">

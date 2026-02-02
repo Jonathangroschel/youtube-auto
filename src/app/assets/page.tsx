@@ -4,6 +4,7 @@ import SearchOverlay from "@/components/search-overlay";
 import {
   deleteAssetById,
   loadAssetLibrary,
+  renameAssetById,
   uploadAssetFile,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
@@ -14,6 +15,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 
@@ -235,11 +237,33 @@ const mobileFooterActions: MobileFooterAction[] = [
 
 const assetTabs = ["All", "Video", "Images", "Audio"];
 
+const assetSortOptions = [
+  { key: "updated-desc", label: "Last Updated" },
+  { key: "updated-asc", label: "Oldest Updated" },
+] as const;
+
+type AssetSortKey = (typeof assetSortOptions)[number]["key"];
+
+const sortLabelByKey = new Map<AssetSortKey, string>(
+  assetSortOptions.map((option) => [option.key, option.label])
+);
+
+const normalizeAssetName = (value: string) => {
+  const trimmed = value.slice(0, 120).trim();
+  return trimmed.length > 0 ? trimmed : "Untitled asset";
+};
+
 export default function AssetsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [assets, setAssets] = useState<AssetLibraryItem[]>([]);
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [assetNameDrafts, setAssetNameDrafts] = useState<
+    Record<string, string>
+  >({});
   const [activeTab, setActiveTab] = useState("All");
+  const [assetSortKey, setAssetSortKey] = useState<AssetSortKey>("updated-desc");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
     () =>
@@ -265,6 +289,12 @@ export default function AssetsPage() {
   const navContainerRef = useRef<HTMLDivElement | null>(null);
   const navItemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
+  const assetNameDraftsRef = useRef<Record<string, string>>({});
+  const savedAssetNamesRef = useRef<Record<string, string>>({});
+  const renameTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const renameRequestIdRef = useRef<Map<string, number>>(new Map());
+  const editingAssetIdRef = useRef<string | null>(null);
   const activeNavIndex = navItems.findIndex((item) => item.active);
   const resolvedNavIndex =
     hoveredNavIndex ?? (activeNavIndex >= 0 ? activeNavIndex : 0);
@@ -285,10 +315,169 @@ export default function AssetsPage() {
     });
   }, []);
 
-  const refreshAssets = useCallback(() => {
-    loadAssetLibrary()
-      .then((items) => setAssets(items))
-      .catch(() => setAssets([]));
+  const clearRenameTimeout = useCallback((assetId: string) => {
+    const timeoutId = renameTimeoutsRef.current.get(assetId);
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId);
+      renameTimeoutsRef.current.delete(assetId);
+    }
+  }, []);
+
+  const bumpRenameRequestId = useCallback((assetId: string) => {
+    const next = (renameRequestIdRef.current.get(assetId) ?? 0) + 1;
+    renameRequestIdRef.current.set(assetId, next);
+    return next;
+  }, []);
+
+  const setAssetNameLocally = useCallback((assetId: string, name: string) => {
+    setAssets((prev) =>
+      prev.map((asset) => (asset.id === assetId ? { ...asset, name } : asset))
+    );
+  }, []);
+
+  const saveAssetName = useCallback(
+    async (assetId: string, rawName: string) => {
+      const requestId = bumpRenameRequestId(assetId);
+      const normalizedName = normalizeAssetName(rawName);
+      try {
+        const saved = await renameAssetById(assetId, normalizedName);
+        if (
+          !saved ||
+          renameRequestIdRef.current.get(assetId) !== requestId
+        ) {
+          return;
+        }
+        const savedName = normalizeAssetName(saved.name);
+        savedAssetNamesRef.current[assetId] = savedName;
+        setAssetNameLocally(assetId, savedName);
+        if (editingAssetIdRef.current !== assetId) {
+          setAssetNameDrafts((prev) =>
+            prev[assetId] === savedName ? prev : { ...prev, [assetId]: savedName }
+          );
+        }
+      } catch (error) {
+        if (renameRequestIdRef.current.get(assetId) !== requestId) {
+          return;
+        }
+        console.error("[assets] rename failed", error);
+      }
+    },
+    [bumpRenameRequestId, setAssetNameLocally]
+  );
+
+  const scheduleAssetNameSave = useCallback(
+    (assetId: string, rawName: string) => {
+      clearRenameTimeout(assetId);
+      const timeoutId = window.setTimeout(() => {
+        renameTimeoutsRef.current.delete(assetId);
+        void saveAssetName(assetId, rawName);
+      }, 500);
+      renameTimeoutsRef.current.set(assetId, timeoutId);
+    },
+    [clearRenameTimeout, saveAssetName]
+  );
+
+  const handleAssetNameClick = useCallback((asset: AssetLibraryItem) => {
+    setEditingAssetId(asset.id);
+    setAssetNameDrafts((prev) =>
+      prev[asset.id] === asset.name ? prev : { ...prev, [asset.id]: asset.name }
+    );
+  }, []);
+
+  const handleAssetNameChange = useCallback(
+    (assetId: string, name: string) => {
+      setAssetNameDrafts((prev) =>
+        prev[assetId] === name ? prev : { ...prev, [assetId]: name }
+      );
+      setAssetNameLocally(assetId, name);
+      scheduleAssetNameSave(assetId, name);
+    },
+    [scheduleAssetNameSave, setAssetNameLocally]
+  );
+
+  const flushAssetNameSave = useCallback(
+    (assetId: string) => {
+      clearRenameTimeout(assetId);
+      const draftName = assetNameDraftsRef.current[assetId];
+      if (typeof draftName !== "string") {
+        return;
+      }
+      const nextNormalized = normalizeAssetName(draftName);
+      const savedNormalized = normalizeAssetName(
+        savedAssetNamesRef.current[assetId] ?? ""
+      );
+      if (nextNormalized === savedNormalized) {
+        setAssetNameLocally(assetId, savedNormalized);
+        return;
+      }
+      void saveAssetName(assetId, draftName);
+    },
+    [clearRenameTimeout, saveAssetName, setAssetNameLocally]
+  );
+
+  const handleAssetNameBlur = useCallback(
+    (assetId: string) => {
+      setEditingAssetId((prev) => (prev === assetId ? null : prev));
+      flushAssetNameSave(assetId);
+    },
+    [flushAssetNameSave]
+  );
+
+  const handleAssetNameKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>, asset: AssetLibraryItem) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.currentTarget.blur();
+        return;
+      }
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      clearRenameTimeout(asset.id);
+      bumpRenameRequestId(asset.id);
+      const persistedName = savedAssetNamesRef.current[asset.id] ?? asset.name;
+      setAssetNameDrafts((prev) => ({
+        ...prev,
+        [asset.id]: persistedName,
+      }));
+      setAssetNameLocally(asset.id, persistedName);
+      setEditingAssetId((prev) => (prev === asset.id ? null : prev));
+      event.currentTarget.blur();
+    },
+    [bumpRenameRequestId, clearRenameTimeout, setAssetNameLocally]
+  );
+
+  const refreshAssets = useCallback(async () => {
+    try {
+      const items = await loadAssetLibrary();
+      const currentDrafts = assetNameDraftsRef.current;
+      const mergedItems = items.map((asset) => {
+        const draftName = currentDrafts[asset.id];
+        return typeof draftName === "string"
+          ? { ...asset, name: draftName }
+          : asset;
+      });
+      setAssets(mergedItems);
+      savedAssetNamesRef.current = Object.fromEntries(
+        items.map((asset) => [asset.id, asset.name])
+      );
+      setAssetNameDrafts((prev) => {
+        const activeAssetIds = new Set(items.map((asset) => asset.id));
+        let changed = false;
+        const next: Record<string, string> = {};
+        Object.entries(prev).forEach(([assetId, draftName]) => {
+          if (activeAssetIds.has(assetId)) {
+            next[assetId] = draftName;
+          } else {
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    } catch {
+      setAssets([]);
+    }
   }, []);
 
   const handleUploadAssets = useCallback(
@@ -313,10 +502,22 @@ export default function AssetsPage() {
 
   const handleDeleteAsset = useCallback(
     async (assetId: string) => {
+      clearRenameTimeout(assetId);
+      bumpRenameRequestId(assetId);
+      setAssetNameDrafts((prev) => {
+        if (!(assetId in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[assetId];
+        return next;
+      });
+      delete savedAssetNamesRef.current[assetId];
+      setEditingAssetId((prev) => (prev === assetId ? null : prev));
       setAssets((prev) => prev.filter((asset) => asset.id !== assetId));
       await deleteAssetById(assetId);
     },
-    [deleteAssetById]
+    [bumpRenameRequestId, clearRenameTimeout]
   );
 
   const filteredAssets = useMemo(() => {
@@ -331,6 +532,18 @@ export default function AssetsPage() {
     }
     return assets.filter((asset) => asset.kind === "audio");
   }, [activeTab, assets]);
+
+  const sortedAssets = useMemo(() => {
+    const next = [...filteredAssets];
+    if (assetSortKey === "updated-asc") {
+      next.sort((a, b) => a.createdAt - b.createdAt);
+      return next;
+    }
+    next.sort((a, b) => b.createdAt - a.createdAt);
+    return next;
+  }, [assetSortKey, filteredAssets]);
+
+  const assetSortLabel = sortLabelByKey.get(assetSortKey) ?? "Last Updated";
 
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -352,6 +565,39 @@ export default function AssetsPage() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    if (!sortMenuOpen) {
+      return;
+    }
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && sortMenuRef.current?.contains(target)) {
+        return;
+      }
+      setSortMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [sortMenuOpen]);
+
+  useEffect(() => {
+    assetNameDraftsRef.current = assetNameDrafts;
+  }, [assetNameDrafts]);
+
+  useEffect(() => {
+    editingAssetIdRef.current = editingAssetId;
+  }, [editingAssetId]);
+
+  useEffect(() => {
+    const renameTimeouts = renameTimeoutsRef.current;
+    return () => {
+      renameTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      renameTimeouts.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (resolvedNavIndex == null || resolvedNavIndex < 0) {
@@ -720,7 +966,7 @@ export default function AssetsPage() {
           <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
             <div className="flex flex-col space-y-3 lg:flex-row lg:items-end lg:justify-between lg:space-y-0">
               <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-                <div className="relative flex h-fit gap-4 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                <div className="relative flex h-fit gap-4 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
                   {assetTabs.map((tab) => (
                     <button
                       key={tab}
@@ -757,111 +1003,172 @@ export default function AssetsPage() {
                   >
                     Upload Assets
                   </button>
-                  <button className="w-full lg:w-64" type="button">
-                    <div className="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 transition-colors hover:bg-gray-100">
-                      <p className="text-sm text-gray-800">All</p>
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4 text-gray-700"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="m21 16-4 4-4-4" />
-                        <path d="M17 20V4" />
-                        <path d="m3 8 4-4 4 4" />
-                        <path d="M7 4v16" />
-                      </svg>
+                  <div className="relative w-full lg:w-64" ref={sortMenuRef}>
+                    <button
+                      className="w-full"
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={sortMenuOpen}
+                      onClick={() => setSortMenuOpen((open) => !open)}
+                    >
+                      <div className="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 transition-colors hover:bg-gray-100">
+                        <p className="text-sm text-gray-800">{assetSortLabel}</p>
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4 text-gray-700"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="m21 16-4 4-4-4" />
+                          <path d="M17 20V4" />
+                          <path d="m3 8 4-4 4 4" />
+                          <path d="M7 4v16" />
+                        </svg>
+                      </div>
+                    </button>
+                    <div
+                      role="listbox"
+                      aria-label="Sort assets"
+                      className={`absolute z-30 mt-2 w-full rounded-lg border border-gray-200 bg-white p-1 text-sm shadow-md transition-all ${
+                        sortMenuOpen
+                          ? "pointer-events-auto translate-y-0 opacity-100"
+                          : "pointer-events-none translate-y-1 opacity-0"
+                      }`}
+                    >
+                      {assetSortOptions.map((option) => {
+                        const isSelected = option.key === assetSortKey;
+                        return (
+                          <button
+                            key={option.key}
+                            role="option"
+                            aria-selected={isSelected}
+                            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors ${
+                              isSelected
+                                ? "bg-gray-100 text-gray-900"
+                                : "text-gray-700 hover:bg-gray-50"
+                            }`}
+                            type="button"
+                            onClick={() => {
+                              setAssetSortKey(option.key);
+                              setSortMenuOpen(false);
+                            }}
+                          >
+                            <span>{option.label}</span>
+                            {isSelected ? (
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                className="h-4 w-4 text-[#335CFF]"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="m20 6-11 11-5-5" />
+                              </svg>
+                            ) : null}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </button>
-                  <button className="w-full lg:w-64" type="button">
-                    <div className="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 transition-colors hover:bg-gray-100">
-                      <p className="text-sm text-gray-800">Last Updated</p>
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4 text-gray-700"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="m21 16-4 4-4-4" />
-                        <path d="M17 20V4" />
-                        <path d="m3 8 4-4 4 4" />
-                        <path d="M7 4v16" />
-                      </svg>
-                    </div>
-                  </button>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="grid flex-1 auto-rows-max grid-cols-1 content-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {filteredAssets.length ? (
-                filteredAssets.map((asset) => (
-                  <div
-                    key={asset.id}
-                    className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-                  >
-                    <div className="relative h-40 w-full overflow-hidden bg-gray-100">
-                      {asset.kind === "image" ? (
-                        <img
-                          src={asset.url}
-                          alt={asset.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : asset.kind === "audio" ? (
-                        <div className="flex h-full items-center justify-center">
-                          <audio src={asset.url} controls className="w-full px-3" />
-                        </div>
-                      ) : (
-                        <video
-                          src={asset.url}
-                          className="h-full w-full object-cover"
-                          controls
-                          muted
-                          playsInline
-                          preload="metadata"
-                        />
-                      )}
-                      <button
-                        type="button"
-                        className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-white hover:text-gray-700"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          handleDeleteAsset(asset.id);
-                        }}
-                        aria-label={`Delete ${asset.name}`}
-                      >
-                        <svg viewBox="0 0 16 16" className="h-3 w-3">
-                          <path
-                            d="M12 4 4 12M4 4l8 8"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+              {sortedAssets.length ? (
+                sortedAssets.map((asset) => {
+                  const isEditingName = editingAssetId === asset.id;
+                  const nameDraft = assetNameDrafts[asset.id] ?? asset.name;
+                  return (
+                    <div
+                      key={asset.id}
+                      className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                    >
+                      <div className="relative h-40 w-full overflow-hidden bg-gray-100">
+                        {asset.kind === "image" ? (
+                          <img
+                            src={asset.url}
+                            alt={asset.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
                           />
-                        </svg>
-                      </button>
+                        ) : asset.kind === "audio" ? (
+                          <div className="flex h-full items-center justify-center">
+                            <audio src={asset.url} controls className="w-full px-3" />
+                          </div>
+                        ) : (
+                          <video
+                            src={asset.url}
+                            className="h-full w-full object-cover"
+                            controls
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-white hover:text-gray-700"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleDeleteAsset(asset.id);
+                          }}
+                          aria-label={`Delete ${asset.name}`}
+                        >
+                          <svg viewBox="0 0 16 16" className="h-3 w-3">
+                            <path
+                              d="M12 4 4 12M4 4l8 8"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="flex flex-1 flex-col gap-1 p-3">
+                        {isEditingName ? (
+                          <input
+                            value={nameDraft}
+                            autoFocus
+                            maxLength={120}
+                            className="h-7 w-full rounded-md border border-[#335CFF]/30 bg-white px-2 text-sm font-medium text-gray-900 outline-none ring-0 transition focus:border-[#335CFF] focus:ring-2 focus:ring-[#335CFF]/20"
+                            onChange={(event) =>
+                              handleAssetNameChange(
+                                asset.id,
+                                event.currentTarget.value
+                              )
+                            }
+                            onBlur={() => handleAssetNameBlur(asset.id)}
+                            onKeyDown={(event) => handleAssetNameKeyDown(event, asset)}
+                            aria-label="Asset name"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="truncate rounded px-1 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-100"
+                            onClick={() => handleAssetNameClick(asset)}
+                            aria-label={`Rename ${asset.name}`}
+                          >
+                            <span className="truncate">{asset.name}</span>
+                          </button>
+                        )}
+                        <p className="text-xs uppercase tracking-wider text-gray-400">
+                          {asset.kind}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex flex-1 flex-col gap-1 p-3">
-                      <p className="text-sm font-medium text-gray-900">
-                        {asset.name}
-                      </p>
-                      <p className="text-xs uppercase tracking-wider text-gray-400">
-                        {asset.kind}
-                      </p>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="col-span-full flex cursor-default flex-col items-center justify-center py-12">
                   <p className="text-sm text-gray-600 sm:text-base">

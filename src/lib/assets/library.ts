@@ -99,6 +99,11 @@ const sanitizeFilename = (value: string) => {
   return collapsed || "asset";
 };
 
+const normalizeAssetName = (value: string) => {
+  const trimmed = value.slice(0, 120).trim();
+  return trimmed.length > 0 ? trimmed : "Untitled asset";
+};
+
 const toTimestamp = (value: string | null) => {
   if (!value) {
     return Date.now();
@@ -687,6 +692,38 @@ export const deleteAssetById = async (assetId: string): Promise<void> => {
   } catch {
     // Ignore dispatch failures.
   }
+};
+
+export const renameAssetById = async (
+  assetId: string,
+  name: string
+): Promise<{ id: string; name: string } | null> => {
+  if (!hasWindow()) {
+    return null;
+  }
+  const supabase = createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) {
+    return null;
+  }
+  const nextName = normalizeAssetName(name);
+  const { data, error } = await supabase
+    .from("assets")
+    .update({ name: nextName })
+    .eq("id", assetId)
+    .eq("user_id", user.id)
+    .select("id,name")
+    .maybeSingle();
+
+  if (error || !data?.id || typeof data.name !== "string") {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: normalizeAssetName(data.name),
+  };
 };
 
 export const consumeDeletedAssetIds = (): string[] => {

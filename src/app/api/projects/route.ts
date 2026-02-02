@@ -548,6 +548,91 @@ export async function GET(request: Request) {
   });
 }
 
+export async function PATCH(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const projectId =
+    typeof body?.id === "string" ? body.id.trim() : "";
+  const nextTitle =
+    typeof body?.title === "string" ? trimTitle(body.title) : "";
+
+  if (!projectId) {
+    return NextResponse.json({ error: "Missing id." }, { status: 400 });
+  }
+  if (!nextTitle) {
+    return NextResponse.json({ error: "Missing title." }, { status: 400 });
+  }
+
+  const { data: project, error: projectError } = await supabaseServer
+    .from("projects")
+    .select("id,title,project_state")
+    .eq("id", projectId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (projectError) {
+    return NextResponse.json(
+      { error: "Unable to rename project." },
+      { status: 500 }
+    );
+  }
+
+  if (!project) {
+    return NextResponse.json({ error: "Project not found." }, { status: 404 });
+  }
+
+  const state = isRecord(project.project_state) ? project.project_state : null;
+  const stateProject = state && isRecord(state.project) ? state.project : null;
+  const nextProjectState =
+    state && stateProject
+      ? {
+          ...state,
+          project: {
+            ...stateProject,
+            name: nextTitle,
+          },
+        }
+      : state;
+
+  const updatePayload: Record<string, unknown> = {
+    title: nextTitle,
+    updated_at: new Date().toISOString(),
+  };
+  if (nextProjectState && nextProjectState !== project.project_state) {
+    updatePayload.project_state = nextProjectState;
+  }
+
+  const { data: updatedProject, error: updateError } = await supabaseServer
+    .from("projects")
+    .update(updatePayload)
+    .eq("id", projectId)
+    .eq("user_id", user.id)
+    .select("id,title,updated_at")
+    .maybeSingle();
+
+  if (updateError || !updatedProject) {
+    return NextResponse.json(
+      { error: "Unable to rename project." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    project: {
+      id: updatedProject.id,
+      title: updatedProject.title,
+      updatedAt: updatedProject.updated_at,
+    },
+  });
+}
+
 export async function DELETE(request: Request) {
   const supabase = await createClient();
   const {
