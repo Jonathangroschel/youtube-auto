@@ -13,6 +13,7 @@ import {
   type StreamerVideoImportPayloadV1,
 } from "@/lib/editor/imports";
 import { subtitleStylePresets } from "@/app/editor/advanced/data";
+import { useSubtitleStyleFontPreload } from "./use-subtitle-style-font-preload";
 
 type WizardStep = 1 | 2;
 
@@ -111,6 +112,12 @@ export default function StreamerVideoWizard() {
       (preset) => !Boolean((preset as any)?.settings?.wordHighlightEnabled)
     );
   }, [subtitleMode]);
+  const subtitleStyleFontFamilies = useMemo(
+    () =>
+      subtitleStylePresets.map((preset) => preset.preview?.fontFamily ?? null),
+    []
+  );
+  useSubtitleStyleFontPreload(subtitleStyleFontFamilies);
 
   useEffect(() => {
     if (subtitleStyleOptions.length === 0) {

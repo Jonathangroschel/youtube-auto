@@ -18,8 +18,6 @@ export type SplitScreenImportPayloadV1 = {
   };
 };
 
-export const SPLIT_SCREEN_IMPORT_STORAGE_KEY = "editor:import:splitscreen";
-
 export type StreamerVideoImportPayloadV1 = {
   version: 1;
   mainVideo: {
@@ -67,8 +65,6 @@ export type RedditVideoImportPayloadV1 = {
     introSeconds: number;
   };
 };
-
-export const REDDIT_VIDEO_IMPORT_STORAGE_KEY = "editor:import:reddit-video";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

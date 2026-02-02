@@ -46,6 +46,16 @@ type AssetRow = {
   created_at: string | null;
 };
 
+type UploadAssetMeta = {
+  name?: string;
+  kind?: AssetLibraryKind;
+  source?: AssetLibrarySource;
+  duration?: number;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+};
+
 const ASSET_BUCKET = "user-assets";
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const DELETED_ASSETS_KEY = "satura:deleted-assets";
@@ -180,6 +190,104 @@ const dedupeAssets = (items: AssetLibraryItem[]) => {
 
 const persistedAssetIds = new Set<string>();
 
+const hasFinitePositiveNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0;
+
+const isCloseNumber = (a: number, b: number, tolerance: number) =>
+  Math.abs(a - b) <= tolerance;
+
+const rowMatchesUploadMeta = (row: AssetRow, meta?: UploadAssetMeta) => {
+  if (!meta) {
+    return true;
+  }
+
+  const checks: boolean[] = [];
+
+  if (
+    hasFinitePositiveNumber(meta.duration) &&
+    hasFinitePositiveNumber(row.duration_seconds)
+  ) {
+    checks.push(
+      isCloseNumber(
+        row.duration_seconds,
+        meta.duration,
+        Math.max(0.35, meta.duration * 0.02)
+      )
+    );
+  }
+
+  if (hasFinitePositiveNumber(meta.width) && hasFinitePositiveNumber(row.width)) {
+    checks.push(Math.round(row.width) === Math.round(meta.width));
+  }
+
+  if (hasFinitePositiveNumber(meta.height) && hasFinitePositiveNumber(row.height)) {
+    checks.push(Math.round(row.height) === Math.round(meta.height));
+  }
+
+  if (
+    hasFinitePositiveNumber(meta.aspectRatio) &&
+    hasFinitePositiveNumber(row.aspect_ratio)
+  ) {
+    checks.push(isCloseNumber(row.aspect_ratio, meta.aspectRatio, 0.02));
+  }
+
+  return checks.length === 0 ? true : checks.every(Boolean);
+};
+
+const findExistingUploadedAsset = async ({
+  supabase,
+  userId,
+  file,
+  name,
+  kind,
+  meta,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  userId: string;
+  file: File;
+  name: string;
+  kind: AssetLibraryKind;
+  meta?: UploadAssetMeta;
+}): Promise<AssetLibraryItem | null> => {
+  let query = supabase
+    .from("assets")
+    .select(
+      "id,name,kind,source,storage_bucket,storage_path,external_url,mime_type,size_bytes,duration_seconds,width,height,aspect_ratio,created_at"
+    )
+    .eq("user_id", userId)
+    .eq("kind", kind)
+    .eq("name", name)
+    .eq("size_bytes", file.size)
+    .order("created_at", { ascending: false })
+    .limit(15);
+
+  if (file.type) {
+    query = query.eq("mime_type", file.type);
+  } else {
+    query = query.is("mime_type", null);
+  }
+
+  const { data, error } = await query;
+  if (error || !data || data.length === 0) {
+    return null;
+  }
+
+  const rows = data as AssetRow[];
+  const strictMatches = rows.filter((row) => rowMatchesUploadMeta(row, meta));
+  const candidates = strictMatches.length > 0 ? strictMatches : rows;
+  const signedUrlMap = await fetchSignedUrls(candidates);
+
+  for (const row of candidates) {
+    const item = mapRowToItem(row, signedUrlMap);
+    if (item) {
+      persistedAssetIds.add(item.id);
+      return item;
+    }
+  }
+
+  return null;
+};
+
 const fetchSignedUrls = async (rows: AssetRow[]) => {
   const supabase = createClient();
   const byBucket = new Map<string, string[]>();
@@ -286,15 +394,7 @@ export const loadAssetLibrary = async (): Promise<AssetLibraryItem[]> => {
 
 export const uploadAssetFile = async (
   file: File,
-  meta?: {
-    name?: string;
-    kind?: AssetLibraryKind;
-    source?: AssetLibrarySource;
-    duration?: number;
-    width?: number;
-    height?: number;
-    aspectRatio?: number;
-  }
+  meta?: UploadAssetMeta
 ): Promise<AssetLibraryItem | null> => {
   if (!hasWindow()) {
     return null;
@@ -312,6 +412,24 @@ export const uploadAssetFile = async (
   const id = crypto.randomUUID();
   const name = meta?.name?.trim() || file.name || "Uploaded asset";
   const kind = meta?.kind ?? inferKindFromFile(file);
+  const existingAsset = await findExistingUploadedAsset({
+    supabase,
+    userId: user.id,
+    file,
+    name,
+    kind,
+    meta,
+  });
+  if (existingAsset) {
+    assetDebug("[assets] upload dedupe hit", {
+      userId: user.id,
+      assetId: existingAsset.id,
+      name,
+      kind,
+      size: file.size,
+    });
+    return existingAsset;
+  }
   const filename = sanitizeFilename(file.name || `${id}.bin`);
   const storagePath = `${user.id}/assets/${id}/${filename}`;
   assetDebug("[assets] upload start", {

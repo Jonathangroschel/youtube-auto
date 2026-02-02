@@ -31,6 +31,7 @@ import {
   backgroundSwatches,
   mediaFilters,
   subtitleStyleFilters,
+  tiktokTextBackgroundSwatches,
   textFontFamilies,
   textLetterSpacingOptions,
   textLineHeightOptions,
@@ -1561,15 +1562,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     return styles.filter((style) => style.category === subtitleStyleFilter);
   }, [subtitleStyleFilter, subtitleStylePresets]);
   const hasSubtitleResults = subtitleSegments?.length > 0;
-  const subtitlesMissingWordTimings = useMemo(() => {
-    if (!Array.isArray(subtitleSegments) || subtitleSegments.length === 0) {
-      return false;
-    }
-    return subtitleSegments.some((segment: any) => {
-      const words = segment?.words;
-      return !Array.isArray(words) || words.length === 0;
-    });
-  }, [subtitleSegments]);
   const currentStyleBeatEnabled = Boolean(
     (recentStylePreset as any)?.settings?.subtitleBeatEnabled !== false
   );
@@ -4481,6 +4473,49 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </div>
 
                             <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                              <div className="flex items-center justify-between gap-4">
+                                <div>
+                                  <span className="text-xs font-semibold text-gray-700">
+                                    Word highlight
+                                  </span>
+                                  <p className="mt-0.5 text-[11px] text-gray-500">
+                                    Highlight spoken words in real-time for any font.
+                                  </p>
+                                </div>
+                                <ToggleSwitch
+                                  checked={Boolean(subtitleStyleDraft.wordHighlightEnabled)}
+                                  onChange={(next) =>
+                                    updateSubtitleStyleDraft({
+                                      ...subtitleStyleDraft,
+                                      wordHighlightEnabled: next,
+                                      wordHighlightColor:
+                                        subtitleStyleDraft.wordHighlightColor || "#FDE047",
+                                    })
+                                  }
+                                  ariaLabel="Toggle word highlight"
+                                />
+                              </div>
+                              {subtitleStyleDraft.wordHighlightEnabled && (
+                                <div className="mt-3 flex items-center justify-between">
+                                  <span className="text-xs font-semibold text-gray-600">
+                                    Highlight color
+                                  </span>
+                                  <input
+                                    type="color"
+                                    value={subtitleStyleDraft.wordHighlightColor || "#FDE047"}
+                                    onChange={(event) =>
+                                      updateSubtitleStyleDraft({
+                                        ...subtitleStyleDraft,
+                                        wordHighlightColor: event.target.value,
+                                      })
+                                    }
+                                    className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-gray-700">
                                   Background
@@ -4549,6 +4584,32 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       }
                                       className="h-8 w-12 rounded-md border border-gray-200 bg-white"
                                     />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                                      TikTok colors
+                                    </span>
+                                    <div className="flex flex-wrap gap-2">
+                                      {tiktokTextBackgroundSwatches.map((swatch) => (
+                                        <button
+                                          key={swatch}
+                                          type="button"
+                                          className={`h-6 w-6 rounded-full border transition ${
+                                            subtitleStyleDraft.backgroundColor.toLowerCase() === swatch.toLowerCase()
+                                              ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
+                                              : "border-gray-200"
+                                          }`}
+                                          style={{ backgroundColor: swatch }}
+                                          onClick={() =>
+                                            updateSubtitleStyleDraft({
+                                              ...subtitleStyleDraft,
+                                              backgroundColor: swatch,
+                                            })
+                                          }
+                                          aria-label={`Set subtitle background to ${swatch}`}
+                                        />
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
                               )}
@@ -4628,17 +4689,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               />
                             </div>
                           </div>
-                          {currentStyleBeatEnabled && subtitlesMissingWordTimings && (
-                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                              Beat mode works best with word-level timestamps. Some subtitles are missing word
-                              timings, so beat timing will be approximate until you regenerate subtitles.
-                            </div>
-                          )}
                           <div className="grid grid-cols-2 gap-4">
                             {filteredSubtitleStyles.map((preset) => {
-                              const isBeat = Boolean(
-                                (preset as any)?.settings?.subtitleBeatEnabled
-                              );
                               const previewSettings: TextClipSettings = {
                                 ...fallbackTextSettings,
                                 ...preset.settings,
@@ -4670,11 +4722,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   }
                                 >
                                   <div className="relative flex h-20 items-center justify-center bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70">
-                                    {isBeat && (
-                                      <span className="absolute left-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                        BEAT
-                                      </span>
-                                    )}
                                     <span
                                       className="max-h-10 overflow-hidden text-center text-xs font-semibold leading-snug"
                                       style={previewStyles.textStyle}
@@ -5908,6 +5955,39 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
                                     />
                                   </label>
+                                </div>
+                                <div className="mt-3">
+                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                                    TikTok background colors
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {tiktokTextBackgroundSwatches.map((swatch) => (
+                                      <button
+                                        key={swatch}
+                                        type="button"
+                                        className={`h-6 w-6 rounded-full border transition ${
+                                          textPanelBackgroundColor.toLowerCase() === swatch.toLowerCase()
+                                            ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
+                                            : "border-gray-200"
+                                        }`}
+                                        style={{ backgroundColor: swatch }}
+                                        onClick={() => {
+                                          setTextPanelStylePresetId(null);
+                                          setTextPanelBackgroundColor(swatch);
+                                          if (selectedTextEntry) {
+                                            updateTextSettings(
+                                              selectedTextEntry.clip.id,
+                                              (current) => ({
+                                                ...current,
+                                                backgroundColor: swatch,
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        aria-label={`Set text background to ${swatch}`}
+                                      />
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
 

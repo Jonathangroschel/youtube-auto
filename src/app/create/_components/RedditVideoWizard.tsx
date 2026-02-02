@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { uploadAssetFile } from "@/lib/assets/library";
 import { cn } from "@/lib/utils";
 import {
-  REDDIT_VIDEO_IMPORT_STORAGE_KEY,
   type RedditVideoImportPayloadV1,
 } from "@/lib/editor/imports";
 import { subtitleStylePresets } from "@/app/editor/advanced/data";
+import { useSubtitleStyleFontPreload } from "./use-subtitle-style-font-preload";
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -504,6 +504,12 @@ export default function RedditVideoWizard() {
       (preset) => !Boolean(preset.settings?.wordHighlightEnabled)
     );
   }, [subtitleMode]);
+  const subtitleStyleFontFamilies = useMemo(
+    () =>
+      subtitleStylePresets.map((preset) => preset.preview?.fontFamily ?? null),
+    []
+  );
+  useSubtitleStyleFontPreload(subtitleStyleFontFamilies);
 
   useEffect(() => {
     if (subtitleStyleOptions.length === 0) {
@@ -546,6 +552,7 @@ export default function RedditVideoWizard() {
   const [musicTracks, setMusicTracks] = useState<PublicAudioItem[]>([]);
   const [selectedMusic, setSelectedMusic] = useState<PublicAudioItem | null>(null);
   const [musicVolume, setMusicVolume] = useState(25);
+  const [generateBusy, setGenerateBusy] = useState(false);
 
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
@@ -670,7 +677,7 @@ export default function RedditVideoWizard() {
     setStep((prev) => (prev === 4 ? 3 : prev === 3 ? 2 : prev === 2 ? 1 : 1));
   }, []);
 
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     if (!gameplaySelected || !subtitleStyleId || !scriptVoice) {
       return;
     }
@@ -710,15 +717,41 @@ export default function RedditVideoWizard() {
       },
     };
 
+    setGenerateBusy(true);
     try {
-      window.localStorage.setItem(
-        REDDIT_VIDEO_IMPORT_STORAGE_KEY,
-        JSON.stringify(payload)
+      const response = await fetch("/api/editor/import-payload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "reddit-video",
+          payload,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === "string" && data.error
+            ? data.error
+            : "Unable to prepare import payload."
+        );
+      }
+      const payloadId =
+        typeof data?.id === "string" && data.id.trim().length > 0
+          ? data.id.trim()
+          : "";
+      if (!payloadId) {
+        throw new Error("Import payload id missing.");
+      }
+      router.push(
+        `/editor/advanced?import=reddit-video&payloadId=${encodeURIComponent(payloadId)}&ts=${Date.now()}`
       );
-    } catch {
-      // ignore
+    } catch (error) {
+      setVoiceError(
+        error instanceof Error ? error.message : "Unable to continue."
+      );
+    } finally {
+      setGenerateBusy(false);
     }
-    router.push(`/editor/advanced?import=reddit-video&ts=${Date.now()}`);
   }, [
     gameplaySelected,
     introVoice,
@@ -952,8 +985,11 @@ export default function RedditVideoWizard() {
                 </svg>
               </Button>
             ) : (
-              <Button onClick={handleGenerate} disabled={!canGenerate}>
-                Generate
+              <Button
+                onClick={handleGenerate}
+                disabled={!canGenerate || generateBusy}
+              >
+                {generateBusy ? "Preparing..." : "Generate"}
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 256 256"
@@ -1821,8 +1857,12 @@ export default function RedditVideoWizard() {
               Next
             </Button>
           ) : (
-            <Button onClick={handleGenerate} disabled={!canGenerate} className="flex-1">
-              Generate video
+            <Button
+              onClick={handleGenerate}
+              disabled={!canGenerate || generateBusy}
+              className="flex-1"
+            >
+              {generateBusy ? "Preparing..." : "Generate video"}
             </Button>
           )}
         </div>

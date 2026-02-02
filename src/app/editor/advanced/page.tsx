@@ -30,8 +30,6 @@ import { createClient } from "@/lib/supabase/client";
 import {
   parseRedditVideoImportPayload,
   parseSplitScreenImportPayload,
-  REDDIT_VIDEO_IMPORT_STORAGE_KEY,
-  SPLIT_SCREEN_IMPORT_STORAGE_KEY,
   type RedditVideoImportPayloadV1,
   type StreamerVideoImportPayloadV1,
   type SplitScreenImportPayloadV1,
@@ -353,6 +351,13 @@ type EditorProjectState = {
 
 type ProjectSaveState = "idle" | "saving" | "saved" | "error";
 
+type EditorReloadSessionPayload = {
+  version: 1;
+  savedAt: number;
+  projectId: string | null;
+  state: EditorProjectState;
+};
+
 type ExportStatus =
   | "idle"
   | "starting"
@@ -463,6 +468,7 @@ const projectSizeOptions: ProjectSizeOption[] = [
 const AI_IMAGE_STORAGE_PREFIX = "satura:ai-image:";
 const AI_VOICEOVER_STORAGE_PREFIX = "satura:ai-voiceover:";
 const AI_VIDEO_STORAGE_PREFIX = "satura:ai-video:";
+const EDITOR_RELOAD_SESSION_KEY = "satura:editor:reload-session:v1";
 const TTS_VOICES_BUCKET_NAME =
   process.env.NEXT_PUBLIC_TTS_VOICES_BUCKET ?? "tts-voices";
 const TTS_VOICES_ROOT_PREFIX =
@@ -528,6 +534,8 @@ type SubtitleBeatGroup = {
   end: number;
   text: string;
   emphasis: boolean;
+  startWordIndex: number;
+  endWordIndex: number;
 };
 
 const joinSubtitleTokens = (tokens: string[]) => {
@@ -719,6 +727,8 @@ const buildSubtitleBeatGroups = (
         end,
         text,
         emphasis: tokens.length === 1 && looksLikeEmphasisToken(tokens[0] ?? ""),
+        startWordIndex: range.startIndex,
+        endWordIndex: range.endIndex,
       };
     })
     .filter((group) => Boolean(group.text));
@@ -830,6 +840,104 @@ const consumeDeletedAssetIds = (): string[] => {
   } catch {
     return [];
   }
+};
+
+const isValidEditorProjectState = (
+  value: unknown
+): value is EditorProjectState => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<EditorProjectState>;
+  const snapshot = candidate.snapshot as Partial<EditorSnapshot> | undefined;
+  return Boolean(
+    snapshot &&
+      Array.isArray(snapshot.assets) &&
+      Array.isArray(snapshot.timeline) &&
+      Array.isArray(snapshot.lanes)
+  );
+};
+
+const readEditorReloadSessionState = (): {
+  projectId: string | null;
+  state: EditorProjectState;
+} | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(EDITOR_RELOAD_SESSION_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<EditorReloadSessionPayload> | null;
+    if (!parsed || parsed.version !== 1 || !isValidEditorProjectState(parsed.state)) {
+      return null;
+    }
+    const projectId =
+      typeof parsed.projectId === "string" && parsed.projectId.trim().length > 0
+        ? parsed.projectId.trim()
+        : null;
+    return {
+      projectId,
+      state: parsed.state,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const persistEditorReloadSessionState = (
+  state: EditorProjectState,
+  projectId: string | null
+) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    const payload: EditorReloadSessionPayload = {
+      version: 1,
+      savedAt: Date.now(),
+      projectId,
+      state,
+    };
+    window.sessionStorage.setItem(
+      EDITOR_RELOAD_SESSION_KEY,
+      JSON.stringify(payload)
+    );
+  } catch {
+    // Ignore quota/storage failures.
+  }
+};
+
+const clearEditorReloadSessionState = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.sessionStorage.removeItem(EDITOR_RELOAD_SESSION_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
+const isReloadNavigation = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const navigationEntries = window.performance?.getEntriesByType?.(
+    "navigation"
+  ) as PerformanceNavigationTiming[] | undefined;
+  const navigationType = navigationEntries?.[0]?.type;
+  if (navigationType) {
+    return navigationType === "reload";
+  }
+  const legacyNavigation = (
+    window.performance as Performance & {
+      navigation?: { type?: number };
+    }
+  )?.navigation;
+  return legacyNavigation?.type === 1;
 };
 
 const DELETED_ASSETS_EVENT = "satura:assets-deleted";
@@ -1351,7 +1459,7 @@ function AdvancedEditorContent() {
   >("style");
   const [subtitleStyleFilter, setSubtitleStyleFilter] = useState("All");
   const defaultSubtitleStyleId =
-    subtitleStylePresets.find((preset) => preset.id === "clean-cut")?.id ??
+    subtitleStylePresets.find((preset) => preset.id === "bold-pop")?.id ??
     subtitleStylePresets[0]?.id ??
     null;
   const [subtitleStyleId, setSubtitleStyleId] = useState<string | null>(
@@ -1563,6 +1671,7 @@ function AdvancedEditorContent() {
   }>({ past: [], future: [], locked: false });
   const projectIdRef = useRef<string | null>(null);
   const projectSaveTimeoutRef = useRef<number | null>(null);
+  const reloadStateSaveTimeoutRef = useRef<number | null>(null);
   const historyThrottleRef = useRef(0);
   const clipboardRef = useRef<ClipboardData | null>(null);
   const dragTransformHistoryRef = useRef(false);
@@ -1583,6 +1692,7 @@ function AdvancedEditorContent() {
   }>({ startX: 0, scrollLeft: 0, active: false });
   const playbackTimeRef = useRef(currentTime);
   const playbackUiTickRef = useRef(0);
+  const isPlayingRef = useRef(isPlaying);
   const keyboardEffectDeps = useRef<number[]>(
     Array.from({ length: 12 }, () => 0)
   );
@@ -3062,6 +3172,22 @@ function AdvancedEditorContent() {
     }
     let cancelled = false;
     const loadProject = async () => {
+      const queryProjectId = searchParams.get("projectId");
+      if (!queryProjectId) {
+        if (isReloadNavigation()) {
+          const reloadSession = readEditorReloadSessionState();
+          if (!cancelled && reloadSession?.state) {
+            applyProjectState(reloadSession.state);
+            if (reloadSession.projectId) {
+              setProjectId(reloadSession.projectId);
+            }
+            setProjectReady(true);
+            return;
+          }
+        } else {
+          clearEditorReloadSessionState();
+        }
+      }
       const supabase = createClient();
       const { data: userData } = await supabase.auth.getUser();
       const user = userData?.user;
@@ -3071,7 +3197,6 @@ function AdvancedEditorContent() {
         }
         return;
       }
-      const queryProjectId = searchParams.get("projectId");
       const fetchProjectById = async (id: string) => {
         const { data } = await supabase
           .from("projects")
@@ -3192,6 +3317,44 @@ function AdvancedEditorContent() {
   }, [projectId, projectStarted]);
 
   useEffect(() => {
+    if (isExportMode || typeof window === "undefined") {
+      return;
+    }
+    if (!projectReady || !projectStarted) {
+      return;
+    }
+    if (reloadStateSaveTimeoutRef.current) {
+      window.clearTimeout(reloadStateSaveTimeoutRef.current);
+    }
+    reloadStateSaveTimeoutRef.current = window.setTimeout(() => {
+      const state = buildProjectState();
+      persistEditorReloadSessionState(state, projectIdRef.current);
+    }, 350);
+    return () => {
+      if (reloadStateSaveTimeoutRef.current) {
+        window.clearTimeout(reloadStateSaveTimeoutRef.current);
+      }
+    };
+  }, [buildProjectState, isExportMode, projectReady, projectStarted, projectId]);
+
+  useEffect(() => {
+    if (isExportMode || typeof window === "undefined") {
+      return;
+    }
+    const handleBeforeUnload = () => {
+      if (!projectReady) {
+        return;
+      }
+      const state = buildProjectState();
+      persistEditorReloadSessionState(state, projectIdRef.current);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [buildProjectState, isExportMode, projectReady]);
+
+  useEffect(() => {
     if (isExportMode) {
       return;
     }
@@ -3216,6 +3379,9 @@ function AdvancedEditorContent() {
     return () => {
       if (saveStatusTimeoutRef.current) {
         window.clearTimeout(saveStatusTimeoutRef.current);
+      }
+      if (reloadStateSaveTimeoutRef.current) {
+        window.clearTimeout(reloadStateSaveTimeoutRef.current);
       }
     };
   }, []);
@@ -5044,10 +5210,18 @@ function AdvancedEditorContent() {
     }
   }, [stockVideoCategories, stockVideoCategory]);
 
+  const assetById = useMemo(() => {
+    const byId = new Map<string, MediaAsset>();
+    assets.forEach((asset) => {
+      byId.set(asset.id, asset);
+    });
+    return byId;
+  }, [assets]);
+
   const timelineClips = useMemo(() => {
     return timeline
       .map((clip) => {
-        const asset = assets.find((item) => item.id === clip.assetId);
+        const asset = assetById.get(clip.assetId);
         if (!asset) {
           return null;
         }
@@ -5057,7 +5231,7 @@ function AdvancedEditorContent() {
         };
       })
       .filter(Boolean) as { clip: TimelineClip; asset: MediaAsset }[];
-  }, [assets, timeline]);
+  }, [assetById, timeline]);
 
   const timelineLayout = useMemo(() => {
     return timelineClips.map((entry) => ({
@@ -6264,22 +6438,62 @@ function AdvancedEditorContent() {
 	        const nextText = nextGroup?.text ?? cached.text;
 	        const beatChanged =
 	          force || nextBeatIndex !== activeSubtitleBeatIndexRef.current;
+	        const canBeatWordHighlight =
+	          cached.wordHighlightEnabled &&
+	          cached.effectWordsSource === "segment" &&
+	          words.length > 0 &&
+	          Boolean(nextGroup);
+	        let beatWordAbsoluteIndex = -1;
+	        let beatWordRelativeIndex = -1;
+	        if (canBeatWordHighlight && nextGroup) {
+	          const activeWordIdx = findActiveWordIndex(words, localTime);
+	          if (
+	            activeWordIdx >= nextGroup.startWordIndex &&
+	            activeWordIdx <= nextGroup.endWordIndex
+	          ) {
+	            beatWordAbsoluteIndex = activeWordIdx;
+	            beatWordRelativeIndex = activeWordIdx - nextGroup.startWordIndex;
+	          }
+	        }
+	        const beatWordChanged =
+	          beatWordAbsoluteIndex !== activeSubtitleWordIndexRef.current;
 
 	        if (beatChanged) {
 	          activeSubtitleBeatIndexRef.current = nextBeatIndex;
-	          activeSubtitleWordIndexRef.current = -1;
 	          activeSubtitleBeatAnimationDoneRef.current = false;
-	          textEl.textContent = nextText;
-	        } else if (force) {
-	          textEl.textContent = nextText;
+	        }
+
+	        if (canBeatWordHighlight && nextGroup) {
+	          if (beatChanged || force || beatWordChanged) {
+	            const groupWords = words.slice(
+	              nextGroup.startWordIndex,
+	              nextGroup.endWordIndex + 1
+	            );
+	            textEl.innerHTML = buildHighlightedSubtitleHtml(
+	              groupWords,
+	              beatWordRelativeIndex,
+	              cached.wordHighlightColor
+	            );
+	            activeSubtitleWordIndexRef.current = beatWordAbsoluteIndex;
+	          }
+	        } else {
+	          activeSubtitleWordIndexRef.current = -1;
+	          if (beatChanged || force) {
+	            textEl.textContent = nextText;
+	          }
 	        }
 
 		        if (cached.beatAnimate) {
 		          const enterSeconds = cached.beatEnterSeconds;
-		          const elapsed = Math.max(0, localTime - (nextGroup?.start ?? localTime));
+		          const beatStart = nextGroup?.start ?? localTime;
+		          const beatEnd = nextGroup?.end ?? beatStart + enterSeconds;
+		          const beatDuration = Math.max(0.01, beatEnd - beatStart);
+		          const fastBeat = beatDuration < 0.3;
+		          const elapsed = Math.max(0, localTime - beatStart);
 		          if (
 		            !force &&
 		            !beatChanged &&
+		            !beatWordChanged &&
 		            activeSubtitleBeatAnimationDoneRef.current &&
 		            elapsed >= enterSeconds
 		          ) {
@@ -6287,11 +6501,24 @@ function AdvancedEditorContent() {
 		            return;
 		          }
 		          const progress = computeBeatEnterProgress(elapsed, enterSeconds);
-		          const baseTranslateY = (nextGroup?.emphasis ? 56 : 44) * (1 - progress);
-		          const scaleFrom = nextGroup?.emphasis ? 0.74 : 0.8;
-		          const scaleTo = nextGroup?.emphasis ? 1.02 : 1;
-		          const scale = scaleFrom + (scaleTo - scaleFrom) * progress;
-		          const opacity = clamp(elapsed / Math.min(0.08, enterSeconds), 0, 1);
+		          const translateFrom = nextGroup?.emphasis
+		            ? fastBeat
+		              ? 8
+		              : 12
+		            : fastBeat
+		              ? 5
+		              : 9;
+		          const scaleFrom = nextGroup?.emphasis
+		            ? fastBeat
+		              ? 0.98
+		              : 0.95
+		            : fastBeat
+		              ? 0.992
+		              : 0.975;
+		          const opacityFrom = fastBeat ? 0.9 : 0.84;
+		          const baseTranslateY = translateFrom * (1 - progress);
+		          const scale = scaleFrom + (1 - scaleFrom) * progress;
+		          const opacity = opacityFrom + (1 - opacityFrom) * progress;
 		          const translateY = Math.round(baseTranslateY * 100) / 100;
 		          const roundedScale = Math.round(scale * 10000) / 10000;
 		          const roundedOpacity = Math.round(opacity * 1000) / 1000;
@@ -10051,6 +10278,10 @@ function AdvancedEditorContent() {
   }, [currentTime, isPlaying]);
 
   useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
     if (!isPlaying) {
       updatePlayheadDom(currentTime);
       playheadVisualTimeRef.current = currentTime;
@@ -10091,6 +10322,10 @@ function AdvancedEditorContent() {
   // Video playback control effect - handles play/pause state changes
   // Includes readyState check for blob URLs which need time to buffer
   useEffect(() => {
+    const canPlayListeners: Array<{
+      element: HTMLVideoElement;
+      listener: () => void;
+    }> = [];
     const visibleIds = new Set(visualStack.map((entry) => entry.clip.id));
     visualRefs.current.forEach((element, clipId) => {
       if (!element || visibleIds.has(clipId)) {
@@ -10122,22 +10357,41 @@ function AdvancedEditorContent() {
           } else {
             // Video not ready - wait for canplay event
             const handleCanPlay = () => {
-              element.removeEventListener('canplay', handleCanPlay);
-              if (isPlaying && element.paused) {
-                const playPromise = element.play();
-                if (playPromise) {
-                  playPromise.catch(() => {});
-                }
+              if (!isPlayingRef.current || !element.paused) {
+                return;
+              }
+              const playPromise = element.play();
+              if (playPromise) {
+                playPromise.catch(() => {});
               }
             };
-            element.addEventListener('canplay', handleCanPlay, { once: true });
+            canPlayListeners.push({ element, listener: handleCanPlay });
+            element.addEventListener("canplay", handleCanPlay, {
+              once: true,
+            });
           }
         }
       } else {
         element.pause();
       }
     });
+    return () => {
+      canPlayListeners.forEach(({ element, listener }) => {
+        element.removeEventListener("canplay", listener);
+      });
+    };
   }, [visualStack, isPlaying, clipSettings, fallbackVideoSettings]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      return;
+    }
+    const preview = previewAudioRef.current;
+    if (preview && !preview.paused) {
+      preview.pause();
+    }
+    setIsPreviewPlaying((prev) => (prev ? false : prev));
+  }, [isPlaying]);
 
   // Track last volume set per clip to avoid redundant updates
   const lastVolumeRef = useRef<Map<string, number>>(new Map());
@@ -10570,7 +10824,10 @@ function AdvancedEditorContent() {
   const handleTogglePlayback = () => {
     if (!activeClipEntry) {
       if (firstClipEntry) {
-        setCurrentTime(firstClipEntry.clip.startTime);
+        const nextStartTime = firstClipEntry.clip.startTime;
+        playbackTimeRef.current = nextStartTime;
+        playheadVisualTimeRef.current = nextStartTime;
+        setCurrentTime(nextStartTime);
         setSelectedClipId(firstClipEntry.clip.id);
         setSelectedClipIds([firstClipEntry.clip.id]);
         setActiveAssetId(firstClipEntry.asset.id);
@@ -13286,15 +13543,17 @@ function AdvancedEditorContent() {
 
   const importQuery = searchParams.get("import");
   const importTs = searchParams.get("ts") ?? "";
+  const importPayloadId =
+    typeof searchParams.get("payloadId") === "string"
+      ? searchParams.get("payloadId")?.trim() ?? ""
+      : "";
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
-    const shouldAttemptImport =
-      importQuery === "splitscreen" ||
-      Boolean(window.localStorage.getItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY));
+    const shouldAttemptImport = importQuery === "splitscreen";
 
     if (!shouldAttemptImport) {
       return;
@@ -13311,6 +13570,7 @@ function AdvancedEditorContent() {
         const url = new URL(window.location.href);
         url.searchParams.delete("import");
         url.searchParams.delete("ts");
+        url.searchParams.delete("payloadId");
         const query = url.searchParams.toString();
         const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
         window.history.replaceState({}, "", nextUrl);
@@ -13327,33 +13587,57 @@ function AdvancedEditorContent() {
       splitScreenImportTokenRef.current = token;
     }
 
-    const raw = window.localStorage.getItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY);
-    if (!raw) {
-      console.warn("[split-screen] import requested but payload missing");
+    if (!importPayloadId) {
+      console.warn("[split-screen] import requested but payloadId missing");
       setSplitScreenImportOverlayOpen(false);
       clearImportQuery();
       return;
     }
-    const payload = parseSplitScreenImportPayload(raw);
-    if (!payload) {
-      console.warn("[split-screen] invalid import payload");
-      window.localStorage.removeItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY);
-      setSplitScreenImportOverlayOpen(false);
-      clearImportQuery();
-      return;
-    }
-    window.localStorage.removeItem(SPLIT_SCREEN_IMPORT_STORAGE_KEY);
-    console.info("[split-screen] applying import", payload);
-    applySplitScreenImport(payload)
-      .catch((error) => {
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const response = await fetch(
+          `/api/editor/import-payload?type=splitscreen&id=${encodeURIComponent(importPayloadId)}`
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            typeof data?.error === "string" && data.error
+              ? data.error
+              : "Split-screen payload could not be loaded."
+          );
+        }
+        const payload = parseSplitScreenImportPayload(
+          JSON.stringify(data?.payload ?? null)
+        );
+        if (!payload) {
+          throw new Error("Split-screen payload is invalid.");
+        }
+        if (cancelled) {
+          return;
+        }
+        console.info("[split-screen] applying import", payload);
+        await applySplitScreenImport(payload);
+      } catch (error) {
         console.error("[split-screen] import failed", error);
-        setSplitScreenImportOverlayOpen(false);
-      })
-      .finally(() => {
-        clearImportQuery();
-      });
+        if (!cancelled) {
+          setSplitScreenImportOverlayOpen(false);
+        }
+      } finally {
+        if (!cancelled) {
+          clearImportQuery();
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [
     applySplitScreenImport,
+    importPayloadId,
     importQuery,
     importTs,
   ]);
@@ -13471,9 +13755,7 @@ function AdvancedEditorContent() {
       return;
     }
 
-    const shouldAttemptImport =
-      importQuery === "reddit-video" ||
-      Boolean(window.localStorage.getItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY));
+    const shouldAttemptImport = importQuery === "reddit-video";
 
     if (!shouldAttemptImport) {
       return;
@@ -13491,6 +13773,7 @@ function AdvancedEditorContent() {
         const url = new URL(window.location.href);
         url.searchParams.delete("import");
         url.searchParams.delete("ts");
+        url.searchParams.delete("payloadId");
         const query = url.searchParams.toString();
         const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
         window.history.replaceState({}, "", nextUrl);
@@ -13507,35 +13790,58 @@ function AdvancedEditorContent() {
       redditVideoImportTokenRef.current = token;
     }
 
-    const raw = window.localStorage.getItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY);
-    if (!raw) {
-      console.warn("[reddit-video] import requested but payload missing");
+    if (!importPayloadId) {
+      console.warn("[reddit-video] import requested but payloadId missing");
       setRedditVideoImportOverlayOpen(false);
       clearImportQuery();
       return;
     }
-    const payload = parseRedditVideoImportPayload(raw);
-    if (!payload) {
-      console.warn("[reddit-video] invalid import payload");
-      window.localStorage.removeItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY);
-      setRedditVideoImportOverlayOpen(false);
-      clearImportQuery();
-      return;
-    }
-    window.localStorage.removeItem(REDDIT_VIDEO_IMPORT_STORAGE_KEY);
-    console.info("[reddit-video] applying import", payload);
-    applyRedditVideoImport(payload)
-      .catch((error) => {
-        console.error("[reddit-video] import failed", error);
-        setRedditVideoImportOverlayStage("finalizing");
-        setRedditVideoImportError(
-          error instanceof Error ? error.message : "Reddit video import failed."
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const response = await fetch(
+          `/api/editor/import-payload?type=reddit-video&id=${encodeURIComponent(importPayloadId)}`
         );
-      })
-      .finally(() => {
-        clearImportQuery();
-      });
-  }, [applyRedditVideoImport, importQuery, importTs]);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            typeof data?.error === "string" && data.error
+              ? data.error
+              : "Reddit payload could not be loaded."
+          );
+        }
+        const payload = parseRedditVideoImportPayload(
+          JSON.stringify(data?.payload ?? null)
+        );
+        if (!payload) {
+          throw new Error("Reddit payload is invalid.");
+        }
+        if (cancelled) {
+          return;
+        }
+        console.info("[reddit-video] applying import", payload);
+        await applyRedditVideoImport(payload);
+      } catch (error) {
+        console.error("[reddit-video] import failed", error);
+        if (!cancelled) {
+          setRedditVideoImportOverlayStage("finalizing");
+          setRedditVideoImportError(
+            error instanceof Error ? error.message : "Reddit video import failed."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          clearImportQuery();
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyRedditVideoImport, importPayloadId, importQuery, importTs]);
 
   useEffect(() => {
     if (!assetLibraryReady) {

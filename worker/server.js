@@ -121,6 +121,15 @@ const EXPORT_FRAME_FORMAT =
     : "png";
 const EXPORT_FRAME_CODEC = EXPORT_FRAME_FORMAT === "jpeg" ? "mjpeg" : "png";
 const EXPORT_SCALE_FLAGS = process.env.EDITOR_EXPORT_SCALE_FLAGS || "lanczos";
+const EXPORT_RENDER_MODE = (
+  process.env.EDITOR_EXPORT_RENDER_MODE || "css"
+).toLowerCase();
+const EXPORT_VIDEO_PRESET = process.env.EDITOR_EXPORT_PRESET || "medium";
+const EXPORT_VIDEO_CRF = Math.min(
+  30,
+  Math.max(10, toPositiveInt(process.env.EDITOR_EXPORT_CRF, 14))
+);
+const EXPORT_VIDEO_TUNE = (process.env.EDITOR_EXPORT_TUNE || "").trim();
 const EXPORT_FRAME_TIMEOUT_MS = toPositiveInt(
   process.env.EDITOR_EXPORT_FRAME_TIMEOUT_MS,
   20000
@@ -369,7 +378,8 @@ const runEditorExportJob = async (job) => {
     Number.isFinite(scaleX) &&
     Number.isFinite(scaleY) &&
     Math.abs(scaleX - scaleY) <= 0.02;
-  const renderScaleMode = canDeviceScale ? "device" : "css";
+  const renderScaleMode =
+    EXPORT_RENDER_MODE === "device" && canDeviceScale ? "device" : "css";
   const viewportWidth = renderScaleMode === "device" ? previewWidth : width;
   const viewportHeight = renderScaleMode === "device" ? previewHeight : height;
   const deviceScaleFactor = renderScaleMode === "device" ? scaleX : 1;
@@ -542,7 +552,11 @@ const runEditorExportJob = async (job) => {
       EXPORT_FRAME_FORMAT === "jpeg"
         ? { type: "jpeg", quality: EXPORT_JPEG_QUALITY }
         : { type: "png" };
-    const ffmpeg = spawn("ffmpeg", [
+    const needsScaleFilter =
+      renderScaleMode === "device" ||
+      viewportWidth !== width ||
+      viewportHeight !== height;
+    const ffmpegArgs = [
       "-hide_banner", "-loglevel", "error",
       "-y",
       "-f", "image2pipe",
@@ -550,15 +564,24 @@ const runEditorExportJob = async (job) => {
       "-r", String(fps),
       "-i", "pipe:0",
       "-an",
-      "-vf", `scale=${width}:${height}:flags=${EXPORT_SCALE_FLAGS}`,
+    ];
+    if (needsScaleFilter) {
+      ffmpegArgs.push("-vf", `scale=${width}:${height}:flags=${EXPORT_SCALE_FLAGS}`);
+    }
+    ffmpegArgs.push(
       "-c:v", "libx264",
-      "-preset", RENDER_PRESET,
-      "-crf", "18",
+      "-preset", EXPORT_VIDEO_PRESET,
+      "-crf", String(EXPORT_VIDEO_CRF),
       "-pix_fmt", "yuv420p",
+      "-profile:v", "high",
       "-threads", String(FFMPEG_THREADS),
-      "-movflags", "+faststart",
-      videoPath,
-    ]);
+      "-movflags", "+faststart"
+    );
+    if (EXPORT_VIDEO_TUNE) {
+      ffmpegArgs.push("-tune", EXPORT_VIDEO_TUNE);
+    }
+    ffmpegArgs.push(videoPath);
+    const ffmpeg = spawn("ffmpeg", ffmpegArgs);
     let ffmpegStderr = "";
     let ffmpegExitCode = null;
     let ffmpegExitSignal = null;

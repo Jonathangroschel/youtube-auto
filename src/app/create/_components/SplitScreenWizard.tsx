@@ -10,11 +10,11 @@ import {
 } from "@/lib/assets/library";
 import { cn } from "@/lib/utils";
 import {
-  SPLIT_SCREEN_IMPORT_STORAGE_KEY,
   type SplitScreenImportPayloadV1,
   type SplitScreenLayout,
 } from "@/lib/editor/imports";
 import { subtitleStylePresets } from "@/app/editor/advanced/data";
+import { useSubtitleStyleFontPreload } from "./use-subtitle-style-font-preload";
 
 type WizardStep = 1 | 2 | 3;
 
@@ -90,6 +90,7 @@ export default function SplitScreenWizard({
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [sourceBusy, setSourceBusy] = useState(false);
   const [sourceLink, setSourceLink] = useState("");
+  const [generateBusy, setGenerateBusy] = useState(false);
 
   const [gameplayLoading, setGameplayLoading] = useState(false);
   const [gameplayError, setGameplayError] = useState<string | null>(null);
@@ -122,6 +123,12 @@ export default function SplitScreenWizard({
       (preset) => !Boolean((preset as any)?.settings?.wordHighlightEnabled)
     );
   }, [subtitleMode]);
+  const subtitleStyleFontFamilies = useMemo(
+    () =>
+      subtitleStylePresets.map((preset) => preset.preview?.fontFamily ?? null),
+    []
+  );
+  useSubtitleStyleFontPreload(subtitleStyleFontFamilies);
 
   useEffect(() => {
     if (subtitleStyleOptions.length === 0) {
@@ -296,8 +303,13 @@ export default function SplitScreenWizard({
     setStep((prev) => (prev === 3 ? 2 : prev === 2 ? 1 : 1));
   }, []);
 
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     if (!sourceVideo || !gameplaySelected || !subtitleStyleId) {
+      return;
+    }
+    if (!sourceVideo.assetId) {
+      setSourceError("Please upload or download a video first.");
+      setStep(1);
       return;
     }
     const payload: SplitScreenImportPayloadV1 = {
@@ -317,15 +329,41 @@ export default function SplitScreenWizard({
         styleId: subtitleStyleId,
       },
     };
+    setGenerateBusy(true);
     try {
-      window.localStorage.setItem(
-        SPLIT_SCREEN_IMPORT_STORAGE_KEY,
-        JSON.stringify(payload)
+      const response = await fetch("/api/editor/import-payload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "splitscreen",
+          payload,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === "string" && data.error
+            ? data.error
+            : "Unable to prepare import payload."
+        );
+      }
+      const payloadId =
+        typeof data?.id === "string" && data.id.trim().length > 0
+          ? data.id.trim()
+          : "";
+      if (!payloadId) {
+        throw new Error("Import payload id missing.");
+      }
+      router.push(
+        `/editor/advanced?import=splitscreen&payloadId=${encodeURIComponent(payloadId)}&ts=${Date.now()}`
       );
-    } catch {
-      // ignore
+    } catch (error) {
+      setSourceError(
+        error instanceof Error ? error.message : "Unable to continue."
+      );
+    } finally {
+      setGenerateBusy(false);
     }
-    router.push(`/editor/advanced?import=splitscreen&ts=${Date.now()}`);
   }, [
     autoGenerateSubtitles,
     gameplaySelected,
@@ -433,8 +471,11 @@ export default function SplitScreenWizard({
                 </svg>
               </Button>
             ) : (
-              <Button onClick={handleGenerate} disabled={!canGenerate}>
-                Generate
+              <Button
+                onClick={handleGenerate}
+                disabled={!canGenerate || generateBusy}
+              >
+                {generateBusy ? "Preparing..." : "Generate"}
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 256 256"
@@ -792,8 +833,12 @@ export default function SplitScreenWizard({
               Next
             </Button>
           ) : (
-            <Button onClick={handleGenerate} disabled={!canGenerate} className="flex-1">
-              Generate video
+            <Button
+              onClick={handleGenerate}
+              disabled={!canGenerate || generateBusy}
+              className="flex-1"
+            >
+              {generateBusy ? "Preparing..." : "Generate video"}
             </Button>
           )}
         </div>
