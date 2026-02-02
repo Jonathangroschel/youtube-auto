@@ -30,6 +30,22 @@ OPENAI_API_KEY=your-openai-key
 WORKER_SECRET=generate-a-random-secret-here
 EDITOR_RENDER_URL=https://your-app-url.vercel.app
 EDITOR_EXPORT_BUCKET=autoclip-files
+
+# Optional export tuning (recommended on Railway)
+# Hard override if you want a fixed value:
+# EDITOR_EXPORT_CONCURRENCY=3
+# Auto-tune inputs (used when EDITOR_EXPORT_CONCURRENCY is not set):
+EDITOR_EXPORT_MAX_CONCURRENCY=3
+EDITOR_EXPORT_MEMORY_PER_JOB_MB=2200
+EDITOR_EXPORT_MEMORY_RESERVE_MB=1000
+EDITOR_EXPORT_CPU_PER_JOB=1
+# FFmpeg threads per export job (defaults to CPU_COUNT / export_concurrency)
+# EDITOR_EXPORT_FFMPEG_THREADS=2
+
+# Quality-first defaults (already high by default in worker/server.js)
+# EDITOR_EXPORT_PRESET=slow
+# EDITOR_EXPORT_CRF=12
+# EDITOR_EXPORT_AUDIO_BITRATE=320k
 ```
 
 Generate a secure secret:
@@ -90,3 +106,18 @@ All endpoints require `Authorization: Bearer {WORKER_SECRET}` header.
 - **Railway**: ~$5/month for light usage (free tier: $5 credit)
 - **Supabase Storage**: Free tier includes 1GB
 - **OpenAI Whisper**: ~$0.006/minute of audio
+
+## Export Concurrency Tuning (Railway)
+
+The worker now auto-computes editor export concurrency from CPU + memory:
+
+- CPU bound = `CPU_COUNT / EDITOR_EXPORT_CPU_PER_JOB`
+- Memory bound = `(TOTAL_MEMORY_MB - EDITOR_EXPORT_MEMORY_RESERVE_MB) / EDITOR_EXPORT_MEMORY_PER_JOB_MB`
+- Auto concurrency = `min(EDITOR_EXPORT_MAX_CONCURRENCY, cpuBound, memoryBound)`
+
+For an **8 vCPU / 8 GB** Railway instance, the defaults target **2-3 concurrent exports** depending on your real memory footprint.
+
+If you see OOM/restarts, lower concurrency with one of:
+
+- `EDITOR_EXPORT_CONCURRENCY=2` (hard cap)
+- or raise `EDITOR_EXPORT_MEMORY_PER_JOB_MB` (e.g. 2600-3000)

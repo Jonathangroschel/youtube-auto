@@ -3,7 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { spawn } from "child_process";
-import { promises as fs } from "fs";
+import { createReadStream, promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
@@ -78,6 +78,10 @@ const toEven = (value) => {
 };
 
 const CPU_COUNT = Math.max(1, os.cpus()?.length ?? 1);
+const TOTAL_MEMORY_MB = Math.max(
+  1,
+  Math.floor((os.totalmem?.() ?? 0) / (1024 * 1024))
+);
 const MAX_RENDER_CONCURRENCY = toPositiveInt(
   process.env.AUTOCLIP_RENDER_CONCURRENCY,
   Math.max(1, Math.min(2, Math.floor(CPU_COUNT / 2)))
@@ -124,12 +128,13 @@ const EXPORT_SCALE_FLAGS = process.env.EDITOR_EXPORT_SCALE_FLAGS || "lanczos";
 const EXPORT_RENDER_MODE = (
   process.env.EDITOR_EXPORT_RENDER_MODE || "css"
 ).toLowerCase();
-const EXPORT_VIDEO_PRESET = process.env.EDITOR_EXPORT_PRESET || "medium";
+const EXPORT_VIDEO_PRESET = process.env.EDITOR_EXPORT_PRESET || "slow";
 const EXPORT_VIDEO_CRF = Math.min(
-  30,
-  Math.max(10, toPositiveInt(process.env.EDITOR_EXPORT_CRF, 14))
+  24,
+  Math.max(8, toPositiveInt(process.env.EDITOR_EXPORT_CRF, 12))
 );
 const EXPORT_VIDEO_TUNE = (process.env.EDITOR_EXPORT_TUNE || "").trim();
+const EXPORT_AUDIO_BITRATE = process.env.EDITOR_EXPORT_AUDIO_BITRATE || "320k";
 const EXPORT_FRAME_TIMEOUT_MS = toPositiveInt(
   process.env.EDITOR_EXPORT_FRAME_TIMEOUT_MS,
   20000
@@ -138,13 +143,55 @@ const EXPORT_PROGRESS_LOG_MS = toPositiveInt(
   process.env.EDITOR_EXPORT_PROGRESS_LOG_MS,
   5000
 );
+const EXPORT_CPU_PER_JOB = toPositiveInt(
+  process.env.EDITOR_EXPORT_CPU_PER_JOB,
+  1
+);
+const EXPORT_MEMORY_PER_JOB_MB = toPositiveInt(
+  process.env.EDITOR_EXPORT_MEMORY_PER_JOB_MB,
+  2200
+);
+const EXPORT_MEMORY_RESERVE_MB = toPositiveInt(
+  process.env.EDITOR_EXPORT_MEMORY_RESERVE_MB,
+  1000
+);
+const EXPORT_CONCURRENCY_CAP = toPositiveInt(
+  process.env.EDITOR_EXPORT_MAX_CONCURRENCY,
+  3
+);
+const memoryBoundExportConcurrency = Math.max(
+  1,
+  Math.floor(
+    Math.max(0, TOTAL_MEMORY_MB - EXPORT_MEMORY_RESERVE_MB) /
+      EXPORT_MEMORY_PER_JOB_MB
+  )
+);
+const cpuBoundExportConcurrency = Math.max(
+  1,
+  Math.floor(CPU_COUNT / EXPORT_CPU_PER_JOB)
+);
+const AUTO_EXPORT_CONCURRENCY = Math.max(
+  1,
+  Math.min(
+    EXPORT_CONCURRENCY_CAP,
+    memoryBoundExportConcurrency,
+    cpuBoundExportConcurrency
+  )
+);
 const MAX_EXPORT_CONCURRENCY = toPositiveInt(
   process.env.EDITOR_EXPORT_CONCURRENCY,
-  Math.max(1, Math.min(2, Math.floor(CPU_COUNT / 2)))
+  AUTO_EXPORT_CONCURRENCY
+);
+const EXPORT_FFMPEG_THREADS = toPositiveInt(
+  process.env.EDITOR_EXPORT_FFMPEG_THREADS,
+  Math.max(1, Math.floor(CPU_COUNT / Math.max(1, MAX_EXPORT_CONCURRENCY)))
 );
 
 const exportQueue = [];
 const exportJobs = new Map();
+let exportQueueRunning = false;
+let sharedExportBrowser = null;
+let sharedExportBrowserLaunch = null;
 
 // Supabase client
 const supabase = createClient(
@@ -194,6 +241,85 @@ const updateExportJob = (jobId, patch) => {
   return next;
 };
 
+const getOrCreateSharedExportBrowser = async () => {
+  if (sharedExportBrowser) {
+    return sharedExportBrowser;
+  }
+  if (!sharedExportBrowserLaunch) {
+    sharedExportBrowserLaunch = chromium
+      .launch({
+        args: ["--disable-dev-shm-usage", "--no-sandbox"],
+      })
+      .then((browser) => {
+        sharedExportBrowser = browser;
+        sharedExportBrowserLaunch = null;
+        browser.on("disconnected", () => {
+          if (sharedExportBrowser === browser) {
+            sharedExportBrowser = null;
+          }
+          sharedExportBrowserLaunch = null;
+          console.error("[export][browser] shared browser disconnected");
+        });
+        return browser;
+      })
+      .catch((error) => {
+        sharedExportBrowserLaunch = null;
+        throw error;
+      });
+  }
+  return sharedExportBrowserLaunch;
+};
+
+const uploadPathToStorage = async ({
+  bucket,
+  key,
+  filePath,
+  contentType,
+}) => {
+  let streamUploadError = null;
+  try {
+    const { error } = await supabase.storage.from(bucket).upload(
+      key,
+      createReadStream(filePath),
+      {
+        contentType,
+        upsert: true,
+      }
+    );
+    if (!error) {
+      return;
+    }
+    streamUploadError = error;
+  } catch (error) {
+    streamUploadError = error;
+  }
+
+  const message =
+    streamUploadError instanceof Error
+      ? streamUploadError.message
+      : typeof streamUploadError?.message === "string"
+        ? streamUploadError.message
+        : "";
+  const canRetryWithBuffer =
+    message.length === 0 ||
+    /duplex|stream|readable|body|unsupported/i.test(message);
+  if (!canRetryWithBuffer) {
+    throw streamUploadError;
+  }
+
+  // Fallback for runtimes/adapters that don't accept Node streams for uploads.
+  const fileBuffer = await fs.readFile(filePath);
+  const { error: bufferUploadError } = await supabase.storage
+    .from(bucket)
+    .upload(key, fileBuffer, {
+      contentType,
+      upsert: true,
+    });
+  if (bufferUploadError) {
+    throw bufferUploadError;
+  }
+};
+
 const enqueueExportJob = (payload) => {
   const jobId = uuidv4().slice(0, 12);
   const now = new Date().toISOString();
@@ -212,7 +338,7 @@ const enqueueExportJob = (payload) => {
   };
   exportJobs.set(jobId, job);
   exportQueue.push(jobId);
-  processExportQueue().catch(() => {});
+  processExportQueue();
   return job;
 };
 
@@ -356,6 +482,7 @@ const runEditorExportJob = async (job) => {
   const renderUrl = payload.renderUrl || EXPORT_RENDER_URL;
   const fonts = Array.isArray(payload.fonts) ? payload.fonts : [];
   let browser = null;
+  let browserDisconnectHandler = null;
   let context = null;
   let page = null;
   let rendererClosed = false;
@@ -429,14 +556,13 @@ const runEditorExportJob = async (job) => {
   let finalPath = null;
   let audioPath = null;
   try {
-    browser = await chromium.launch({
-      args: ["--disable-dev-shm-usage", "--no-sandbox"],
-    });
-    browser.on("disconnected", () => {
+    browser = await getOrCreateSharedExportBrowser();
+    browserDisconnectHandler = () => {
       rendererClosed = true;
       rendererCloseReason = "browser disconnected";
       console.error("[export][browser] disconnected");
-    });
+    };
+    browser.on("disconnected", browserDisconnectHandler);
 
     context = await browser.newContext({
       viewport: { width: viewportWidth, height: viewportHeight },
@@ -574,7 +700,7 @@ const runEditorExportJob = async (job) => {
       "-crf", String(EXPORT_VIDEO_CRF),
       "-pix_fmt", "yuv420p",
       "-profile:v", "high",
-      "-threads", String(FFMPEG_THREADS),
+      "-threads", String(EXPORT_FFMPEG_THREADS),
       "-movflags", "+faststart"
     );
     if (EXPORT_VIDEO_TUNE) {
@@ -708,7 +834,7 @@ const runEditorExportJob = async (job) => {
           "-i", audioPath,
           "-c:v", "copy",
           "-c:a", "aac",
-          "-b:a", "192k",
+          "-b:a", EXPORT_AUDIO_BITRATE,
           "-shortest",
           "-movflags", "+faststart",
           muxPath,
@@ -734,16 +860,12 @@ const runEditorExportJob = async (job) => {
     });
 
     const exportKey = `exports/${job.id}/export.mp4`;
-    const buffer = await fs.readFile(finalPath);
-    const { error: uploadError } = await supabase.storage
-      .from(EXPORT_BUCKET)
-      .upload(exportKey, buffer, {
-        contentType: "video/mp4",
-        upsert: true,
-      });
-    if (uploadError) {
-      throw uploadError;
-    }
+    await uploadPathToStorage({
+      bucket: EXPORT_BUCKET,
+      key: exportKey,
+      filePath: finalPath,
+      contentType: "video/mp4",
+    });
     const { data: urlData } = await supabase.storage
       .from(EXPORT_BUCKET)
       .createSignedUrl(exportKey, 60 * 60 * 24);
@@ -755,14 +877,14 @@ const runEditorExportJob = async (job) => {
       downloadUrl: urlData?.signedUrl ?? null,
     });
   } finally {
+    if (browser && browserDisconnectHandler) {
+      browser.off("disconnected", browserDisconnectHandler);
+    }
     if (page) {
       await page.close().catch(() => {});
     }
     if (context) {
       await context.close().catch(() => {});
-    }
-    if (browser) {
-      await browser.close().catch(() => {});
     }
     await Promise.all([
       videoPath ? fs.unlink(videoPath).catch(() => {}) : Promise.resolve(),
@@ -774,38 +896,54 @@ const runEditorExportJob = async (job) => {
   }
 };
 
-const processExportQueue = async () => {
-  if (activeExports >= MAX_EXPORT_CONCURRENCY) {
+const processExportQueue = () => {
+  if (exportQueueRunning) {
     return;
   }
-  const nextId = exportQueue.shift();
-  if (!nextId) {
-    return;
-  }
-  const job = exportJobs.get(nextId);
-  if (!job) {
-    processExportQueue().catch(() => {});
-    return;
-  }
-  activeExports += 1;
+  exportQueueRunning = true;
   try {
-    await runEditorExportJob(job);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Export failed.";
-    updateExportJob(job.id, {
-      status: "error",
-      stage: "Export failed",
-      error: message,
-    });
+    while (activeExports < MAX_EXPORT_CONCURRENCY) {
+      const nextId = exportQueue.shift();
+      if (!nextId) {
+        break;
+      }
+      const job = exportJobs.get(nextId);
+      if (!job) {
+        continue;
+      }
+      activeExports += 1;
+      runEditorExportJob(job)
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : "Export failed.";
+          updateExportJob(job.id, {
+            status: "error",
+            stage: "Export failed",
+            error: message,
+          });
+        })
+        .finally(() => {
+          activeExports = Math.max(0, activeExports - 1);
+          processExportQueue();
+        });
+    }
   } finally {
-    activeExports = Math.max(0, activeExports - 1);
-    processExportQueue().catch(() => {});
+    exportQueueRunning = false;
   }
 };
 
 // Health check
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    exports: {
+      active: activeExports,
+      queued: exportQueue.length,
+      maxConcurrency: MAX_EXPORT_CONCURRENCY,
+      ffmpegThreadsPerExport: EXPORT_FFMPEG_THREADS,
+    },
+  });
 });
 
 // Upload video and get session
@@ -1258,11 +1396,15 @@ app.post("/editor-export/start", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Missing export payload." });
     }
     const job = enqueueExportJob(payload);
+    const queueIndex = exportQueue.indexOf(job.id);
     res.json({
       jobId: job.id,
       status: job.status,
       stage: job.stage,
       progress: job.progress,
+      queuePosition: queueIndex >= 0 ? queueIndex + 1 : null,
+      activeExports,
+      maxConcurrency: MAX_EXPORT_CONCURRENCY,
     });
   } catch (error) {
     res.status(500).json({ error: error.message || "Failed to queue export." });
@@ -1275,6 +1417,7 @@ app.get("/editor-export/status/:jobId", authMiddleware, (req, res) => {
   if (!job) {
     return res.status(404).json({ error: "Export job not found." });
   }
+  const queueIndex = exportQueue.indexOf(jobId);
   res.json({
     jobId: job.id,
     status: job.status,
@@ -1284,6 +1427,9 @@ app.get("/editor-export/status/:jobId", authMiddleware, (req, res) => {
     framesTotal: job.framesTotal,
     downloadUrl: job.downloadUrl,
     error: job.error,
+    queuePosition: queueIndex >= 0 ? queueIndex + 1 : null,
+    activeExports,
+    maxConcurrency: MAX_EXPORT_CONCURRENCY,
   });
 });
 
@@ -1478,4 +1624,13 @@ async function getVideoMetadata(filePath) {
 
 app.listen(PORT, () => {
   console.log(`AutoClip Worker running on port ${PORT}`);
+  console.log(
+    `[worker] export concurrency=${MAX_EXPORT_CONCURRENCY} (auto=${AUTO_EXPORT_CONCURRENCY}, cpuBound=${cpuBoundExportConcurrency}, memoryBound=${memoryBoundExportConcurrency}, totalMemoryMb=${TOTAL_MEMORY_MB})`
+  );
+  console.log(
+    `[worker] editor export ffmpeg threads per job=${EXPORT_FFMPEG_THREADS} (cpuCount=${CPU_COUNT})`
+  );
+  console.log(
+    `[worker] editor export quality preset=${EXPORT_VIDEO_PRESET} crf=${EXPORT_VIDEO_CRF} audioBitrate=${EXPORT_AUDIO_BITRATE} frameFormat=${EXPORT_FRAME_FORMAT}`
+  );
 });
