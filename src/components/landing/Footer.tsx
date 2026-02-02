@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Twitter, Instagram, MessageCircle } from "lucide-react";
+import { Twitter, Instagram, Youtube, MessageCircle } from "lucide-react";
 import { useState } from "react";
 
 const SUPPORT_EMAIL = "support@saturaai.com";
@@ -102,16 +102,28 @@ export default function Footer() {
           {/* Social Links */}
           <div className="flex gap-3">
             <a
-              href="#"
+              href="https://x.com/Satura_AI"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-10 h-10 bg-[#9aed00] rounded-full flex items-center justify-center hover:bg-[#8ad600] transition-colors"
             >
               <Twitter className="h-5 w-5 text-[#1a1240]" />
             </a>
             <a
-              href="#"
+              href="https://www.instagram.com/saturaai"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-10 h-10 bg-[#9aed00] rounded-full flex items-center justify-center hover:bg-[#8ad600] transition-colors"
             >
               <Instagram className="h-5 w-5 text-[#1a1240]" />
+            </a>
+            <a
+              href="https://www.youtube.com/@SaturaAI"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-10 h-10 bg-[#9aed00] rounded-full flex items-center justify-center hover:bg-[#8ad600] transition-colors"
+            >
+              <Youtube className="h-5 w-5 text-[#1a1240]" />
             </a>
             <button
               onClick={copyEmail}
