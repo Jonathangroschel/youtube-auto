@@ -154,6 +154,20 @@ export type TextClipSettings = {
   autoSize?: boolean;
   wordHighlightEnabled?: boolean;
   wordHighlightColor?: string;
+  /** Subtitle-only: Show 2–4 words per beat (TikTok-style), rendered deterministically for export. */
+  subtitleBeatEnabled?: boolean;
+  /** Minimum words per beat (defaults to 2). */
+  subtitleBeatMinWords?: number;
+  /** Maximum words per beat (defaults to 4). */
+  subtitleBeatMaxWords?: number;
+  /** Prefer beats to be at most this long in seconds (defaults to 1.2). */
+  subtitleBeatMaxSpanSeconds?: number;
+  /** Break beats on pauses longer than this in seconds (defaults to 0.25). */
+  subtitleBeatLongPauseSeconds?: number;
+  /** Animate beat entry with a short pop (defaults to true when beat enabled). */
+  subtitleBeatAnimate?: boolean;
+  /** Beat enter animation duration in seconds (defaults to 0.17). */
+  subtitleBeatEnterSeconds?: number;
 };
 
 export type TransformHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";

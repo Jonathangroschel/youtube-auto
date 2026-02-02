@@ -978,7 +978,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   }, [subtitleStyleEditorId, subtitleStylePresets]);
 
   const buildSubtitleStyleDraft = (preset: typeof subtitleStylePresets[number]) => {
-    return {
+    const baseDraft = {
       ...fallbackTextSettings,
       ...preset.settings,
       text: subtitleStyleSampleText,
@@ -987,6 +987,42 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       bold: preset.preview?.bold ?? fallbackTextSettings.bold,
       italic: preset.preview?.italic ?? fallbackTextSettings.italic,
       align: "center",
+    };
+    const beatEnabled = (baseDraft as any)?.subtitleBeatEnabled !== false;
+    const beatMinWords =
+      typeof (baseDraft as any)?.subtitleBeatMinWords === "number" &&
+      Number.isFinite((baseDraft as any).subtitleBeatMinWords)
+        ? Math.max(1, Math.floor((baseDraft as any).subtitleBeatMinWords))
+        : 2;
+    const beatMaxWords =
+      typeof (baseDraft as any)?.subtitleBeatMaxWords === "number" &&
+      Number.isFinite((baseDraft as any).subtitleBeatMaxWords)
+        ? Math.max(beatMinWords, Math.floor((baseDraft as any).subtitleBeatMaxWords))
+        : Math.max(beatMinWords, 2);
+    const beatMaxSpanSeconds =
+      typeof (baseDraft as any)?.subtitleBeatMaxSpanSeconds === "number" &&
+      Number.isFinite((baseDraft as any).subtitleBeatMaxSpanSeconds)
+        ? (baseDraft as any).subtitleBeatMaxSpanSeconds
+        : 1.2;
+    const beatLongPauseSeconds =
+      typeof (baseDraft as any)?.subtitleBeatLongPauseSeconds === "number" &&
+      Number.isFinite((baseDraft as any).subtitleBeatLongPauseSeconds)
+        ? (baseDraft as any).subtitleBeatLongPauseSeconds
+        : 0.25;
+    const beatEnterSeconds =
+      typeof (baseDraft as any)?.subtitleBeatEnterSeconds === "number" &&
+      Number.isFinite((baseDraft as any).subtitleBeatEnterSeconds)
+        ? (baseDraft as any).subtitleBeatEnterSeconds
+        : 0.17;
+    return {
+      ...baseDraft,
+      subtitleBeatEnabled: beatEnabled,
+      subtitleBeatMinWords: beatMinWords,
+      subtitleBeatMaxWords: beatMaxWords,
+      subtitleBeatMaxSpanSeconds: beatMaxSpanSeconds,
+      subtitleBeatLongPauseSeconds: beatLongPauseSeconds,
+      subtitleBeatAnimate: (baseDraft as any)?.subtitleBeatAnimate !== false,
+      subtitleBeatEnterSeconds: beatEnterSeconds,
     };
   };
 
@@ -1525,6 +1561,44 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     return styles.filter((style) => style.category === subtitleStyleFilter);
   }, [subtitleStyleFilter, subtitleStylePresets]);
   const hasSubtitleResults = subtitleSegments?.length > 0;
+  const subtitlesMissingWordTimings = useMemo(() => {
+    if (!Array.isArray(subtitleSegments) || subtitleSegments.length === 0) {
+      return false;
+    }
+    return subtitleSegments.some((segment: any) => {
+      const words = segment?.words;
+      return !Array.isArray(words) || words.length === 0;
+    });
+  }, [subtitleSegments]);
+  const currentStyleBeatEnabled = Boolean(
+    (recentStylePreset as any)?.settings?.subtitleBeatEnabled !== false
+  );
+  const currentBeatMinWords =
+    typeof (recentStylePreset as any)?.settings?.subtitleBeatMinWords === "number" &&
+    Number.isFinite((recentStylePreset as any).settings.subtitleBeatMinWords)
+      ? Math.max(1, Math.floor((recentStylePreset as any).settings.subtitleBeatMinWords))
+      : 2;
+  const currentBeatMaxWords =
+    typeof (recentStylePreset as any)?.settings?.subtitleBeatMaxWords === "number" &&
+    Number.isFinite((recentStylePreset as any).settings.subtitleBeatMaxWords)
+      ? Math.max(currentBeatMinWords, Math.floor((recentStylePreset as any).settings.subtitleBeatMaxWords))
+      : Math.max(currentBeatMinWords, 2);
+  const currentBeatMaxSpanSeconds =
+    typeof (recentStylePreset as any)?.settings?.subtitleBeatMaxSpanSeconds === "number" &&
+    Number.isFinite((recentStylePreset as any).settings.subtitleBeatMaxSpanSeconds)
+      ? (recentStylePreset as any).settings.subtitleBeatMaxSpanSeconds
+      : 1.2;
+  const currentBeatLongPauseSeconds =
+    typeof (recentStylePreset as any)?.settings?.subtitleBeatLongPauseSeconds === "number" &&
+    Number.isFinite((recentStylePreset as any).settings.subtitleBeatLongPauseSeconds)
+      ? (recentStylePreset as any).settings.subtitleBeatLongPauseSeconds
+      : 0.25;
+  const currentBeatAnimate = (recentStylePreset as any)?.settings?.subtitleBeatAnimate !== false;
+  const currentBeatEnterSeconds =
+    typeof (recentStylePreset as any)?.settings?.subtitleBeatEnterSeconds === "number" &&
+    Number.isFinite((recentStylePreset as any).settings.subtitleBeatEnterSeconds)
+      ? (recentStylePreset as any).settings.subtitleBeatEnterSeconds
+      : 0.17;
 
   return (
     <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
@@ -4201,6 +4275,212 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </div>
 
                             <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                              <div className="flex items-center justify-between gap-4">
+                                <div>
+                                  <span className="text-xs font-semibold text-gray-700">
+                                    Beat mode
+                                  </span>
+                                  <p className="mt-0.5 text-[11px] text-gray-500">
+                                    Defaults to 2-word beats with export-safe pop animation.
+                                  </p>
+                                </div>
+                                <ToggleSwitch
+                                  checked={Boolean(subtitleStyleDraft.subtitleBeatEnabled)}
+                                  onChange={(next) => {
+                                    if (!next) {
+                                      updateSubtitleStyleDraft({
+                                        ...subtitleStyleDraft,
+                                        subtitleBeatEnabled: false,
+                                      });
+                                      return;
+                                    }
+                                    const minWords =
+                                      typeof subtitleStyleDraft.subtitleBeatMinWords === "number" &&
+                                      Number.isFinite(subtitleStyleDraft.subtitleBeatMinWords)
+                                        ? Math.max(1, Math.floor(subtitleStyleDraft.subtitleBeatMinWords))
+                                        : 2;
+                                    const maxWords =
+                                      typeof subtitleStyleDraft.subtitleBeatMaxWords === "number" &&
+                                      Number.isFinite(subtitleStyleDraft.subtitleBeatMaxWords)
+                                        ? Math.max(minWords, Math.floor(subtitleStyleDraft.subtitleBeatMaxWords))
+                                        : Math.max(minWords, 2);
+                                    updateSubtitleStyleDraft({
+                                      ...subtitleStyleDraft,
+                                      subtitleBeatEnabled: true,
+                                      subtitleBeatMinWords: minWords,
+                                      subtitleBeatMaxWords: maxWords,
+                                      subtitleBeatMaxSpanSeconds:
+                                        typeof subtitleStyleDraft.subtitleBeatMaxSpanSeconds === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatMaxSpanSeconds)
+                                          ? subtitleStyleDraft.subtitleBeatMaxSpanSeconds
+                                          : 1.2,
+                                      subtitleBeatLongPauseSeconds:
+                                        typeof subtitleStyleDraft.subtitleBeatLongPauseSeconds === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatLongPauseSeconds)
+                                          ? subtitleStyleDraft.subtitleBeatLongPauseSeconds
+                                          : 0.25,
+                                      subtitleBeatAnimate:
+                                        subtitleStyleDraft.subtitleBeatAnimate !== false,
+                                      subtitleBeatEnterSeconds:
+                                        typeof subtitleStyleDraft.subtitleBeatEnterSeconds === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatEnterSeconds)
+                                          ? subtitleStyleDraft.subtitleBeatEnterSeconds
+                                          : 0.17,
+                                    });
+                                  }}
+                                  ariaLabel="Toggle beat mode"
+                                />
+                              </div>
+                              {subtitleStyleDraft.subtitleBeatEnabled && (
+                                <div className="mt-3 space-y-3">
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <SliderField
+                                      label="Min words"
+                                      value={
+                                        typeof subtitleStyleDraft.subtitleBeatMinWords === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatMinWords)
+                                          ? Math.max(1, Math.floor(subtitleStyleDraft.subtitleBeatMinWords))
+                                          : 2
+                                      }
+                                      min={1}
+                                      max={6}
+                                      step={1}
+                                      onChange={(value) => {
+                                        const nextMin = Math.max(1, Math.floor(value));
+                                        const currentMax =
+                                          typeof subtitleStyleDraft.subtitleBeatMaxWords === "number" &&
+                                          Number.isFinite(subtitleStyleDraft.subtitleBeatMaxWords)
+                                            ? Math.floor(subtitleStyleDraft.subtitleBeatMaxWords)
+                                            : 2;
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          subtitleBeatMinWords: nextMin,
+                                          subtitleBeatMaxWords: Math.max(nextMin, currentMax),
+                                        });
+                                      }}
+                                    />
+                                    <SliderField
+                                      label="Max words"
+                                      value={
+                                        typeof subtitleStyleDraft.subtitleBeatMaxWords === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatMaxWords)
+                                          ? Math.max(1, Math.floor(subtitleStyleDraft.subtitleBeatMaxWords))
+                                          : 2
+                                      }
+                                      min={
+                                        typeof subtitleStyleDraft.subtitleBeatMinWords === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatMinWords)
+                                          ? Math.max(1, Math.floor(subtitleStyleDraft.subtitleBeatMinWords))
+                                          : 2
+                                      }
+                                      max={8}
+                                      step={1}
+                                      onChange={(value) =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          subtitleBeatMaxWords: Math.max(1, Math.floor(value)),
+                                        })
+                                      }
+                                    />
+                                  </div>
+
+                                  <SliderField
+                                    label="Max span"
+                                    value={
+                                      typeof subtitleStyleDraft.subtitleBeatMaxSpanSeconds === "number" &&
+                                      Number.isFinite(subtitleStyleDraft.subtitleBeatMaxSpanSeconds)
+                                        ? subtitleStyleDraft.subtitleBeatMaxSpanSeconds
+                                        : 1.2
+                                    }
+                                    min={0.2}
+                                    max={3}
+                                    step={0.05}
+                                    valueLabel={`${(
+                                      typeof subtitleStyleDraft.subtitleBeatMaxSpanSeconds === "number" &&
+                                      Number.isFinite(subtitleStyleDraft.subtitleBeatMaxSpanSeconds)
+                                        ? subtitleStyleDraft.subtitleBeatMaxSpanSeconds
+                                        : 1.2
+                                    ).toFixed(2)}s`}
+                                    onChange={(value) =>
+                                      updateSubtitleStyleDraft({
+                                        ...subtitleStyleDraft,
+                                        subtitleBeatMaxSpanSeconds: value,
+                                      })
+                                    }
+                                  />
+
+                                  <SliderField
+                                    label="Pause break"
+                                    value={
+                                      typeof subtitleStyleDraft.subtitleBeatLongPauseSeconds === "number" &&
+                                      Number.isFinite(subtitleStyleDraft.subtitleBeatLongPauseSeconds)
+                                        ? subtitleStyleDraft.subtitleBeatLongPauseSeconds
+                                        : 0.25
+                                    }
+                                    min={0.05}
+                                    max={0.8}
+                                    step={0.01}
+                                    valueLabel={`${(
+                                      typeof subtitleStyleDraft.subtitleBeatLongPauseSeconds === "number" &&
+                                      Number.isFinite(subtitleStyleDraft.subtitleBeatLongPauseSeconds)
+                                        ? subtitleStyleDraft.subtitleBeatLongPauseSeconds
+                                        : 0.25
+                                    ).toFixed(2)}s`}
+                                    onChange={(value) =>
+                                      updateSubtitleStyleDraft({
+                                        ...subtitleStyleDraft,
+                                        subtitleBeatLongPauseSeconds: value,
+                                      })
+                                    }
+                                  />
+
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-600">
+                                      Pop animation
+                                    </span>
+                                    <ToggleSwitch
+                                      checked={subtitleStyleDraft.subtitleBeatAnimate !== false}
+                                      onChange={(next) =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          subtitleBeatAnimate: next,
+                                        })
+                                      }
+                                      ariaLabel="Toggle beat animation"
+                                    />
+                                  </div>
+
+                                  {subtitleStyleDraft.subtitleBeatAnimate !== false && (
+                                    <SliderField
+                                      label="Pop duration"
+                                      value={
+                                        typeof subtitleStyleDraft.subtitleBeatEnterSeconds === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatEnterSeconds)
+                                          ? subtitleStyleDraft.subtitleBeatEnterSeconds
+                                          : 0.17
+                                      }
+                                      min={0.05}
+                                      max={0.6}
+                                      step={0.01}
+                                      valueLabel={`${(
+                                        typeof subtitleStyleDraft.subtitleBeatEnterSeconds === "number" &&
+                                        Number.isFinite(subtitleStyleDraft.subtitleBeatEnterSeconds)
+                                          ? subtitleStyleDraft.subtitleBeatEnterSeconds
+                                          : 0.17
+                                      ).toFixed(2)}s`}
+                                      onChange={(value) =>
+                                        updateSubtitleStyleDraft({
+                                          ...subtitleStyleDraft,
+                                          subtitleBeatEnterSeconds: value,
+                                        })
+                                      }
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-gray-700">
                                   Background
@@ -4313,9 +4593,52 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </span>
                               </div>
                             </div>
+                            <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3">
+                              <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                  Beat mode
+                                </div>
+                                <div className="text-xs font-semibold text-gray-700">
+                                  {currentBeatMinWords}–{currentBeatMaxWords} words per beat
+                                </div>
+                              </div>
+                              <ToggleSwitch
+                                checked={currentStyleBeatEnabled}
+                                onChange={(next) => {
+                                  if (!subtitleStyleId) {
+                                    return;
+                                  }
+                                  if (!next) {
+                                    handleSubtitleStyleUpdate(subtitleStyleId, {
+                                      subtitleBeatEnabled: false,
+                                    });
+                                    return;
+                                  }
+                                  handleSubtitleStyleUpdate(subtitleStyleId, {
+                                    subtitleBeatEnabled: true,
+                                    subtitleBeatMinWords: currentBeatMinWords,
+                                    subtitleBeatMaxWords: currentBeatMaxWords,
+                                    subtitleBeatMaxSpanSeconds: currentBeatMaxSpanSeconds,
+                                    subtitleBeatLongPauseSeconds: currentBeatLongPauseSeconds,
+                                    subtitleBeatAnimate: currentBeatAnimate,
+                                    subtitleBeatEnterSeconds: currentBeatEnterSeconds,
+                                  });
+                                }}
+                                ariaLabel="Toggle beat mode"
+                              />
+                            </div>
                           </div>
+                          {currentStyleBeatEnabled && subtitlesMissingWordTimings && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                              Beat mode works best with word-level timestamps. Some subtitles are missing word
+                              timings, so beat timing will be approximate until you regenerate subtitles.
+                            </div>
+                          )}
                           <div className="grid grid-cols-2 gap-4">
                             {filteredSubtitleStyles.map((preset) => {
+                              const isBeat = Boolean(
+                                (preset as any)?.settings?.subtitleBeatEnabled
+                              );
                               const previewSettings: TextClipSettings = {
                                 ...fallbackTextSettings,
                                 ...preset.settings,
@@ -4347,6 +4670,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   }
                                 >
                                   <div className="relative flex h-20 items-center justify-center bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70">
+                                    {isBeat && (
+                                      <span className="absolute left-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                        BEAT
+                                      </span>
+                                    )}
                                     <span
                                       className="max-h-10 overflow-hidden text-center text-xs font-semibold leading-snug"
                                       style={previewStyles.textStyle}

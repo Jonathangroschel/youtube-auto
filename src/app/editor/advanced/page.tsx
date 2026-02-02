@@ -523,6 +523,214 @@ const findActiveWordIndex = (
   return -1;
 };
 
+type SubtitleBeatGroup = {
+  start: number;
+  end: number;
+  text: string;
+  emphasis: boolean;
+};
+
+const joinSubtitleTokens = (tokens: string[]) => {
+  const shouldOmitSpaceBefore = (token: string) => /^[,.;:!?%)\]}]/.test(token) || token.startsWith("'");
+  const shouldOmitSpaceAfter = (token: string) => /[(\[{]$/.test(token);
+  let out = "";
+  tokens.forEach((raw) => {
+    const token = raw.trim();
+    if (!token) {
+      return;
+    }
+    const needsSpace =
+      out.length > 0 &&
+      !out.endsWith(" ") &&
+      !out.endsWith("\n") &&
+      !shouldOmitSpaceBefore(token) &&
+      !shouldOmitSpaceAfter(out.slice(-1));
+    out += `${needsSpace ? " " : ""}${token}`;
+  });
+  return out;
+};
+
+const tokenizeSubtitleText = (value: string) =>
+  value
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+const buildSyntheticTimedWords = (
+  text: string,
+  startTime: number,
+  endTime: number
+): TimedWord[] => {
+  const start = Number(startTime);
+  const end = Number(endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return [];
+  }
+  const tokens = tokenizeSubtitleText(text);
+  if (tokens.length === 0) {
+    return [];
+  }
+  const duration = end - start;
+  const perWord = duration / tokens.length;
+  if (!Number.isFinite(perWord) || perWord <= 0) {
+    return [];
+  }
+  return tokens.map((token, index) => {
+    const wordStart = start + index * perWord;
+    const wordEnd = index === tokens.length - 1 ? end : start + (index + 1) * perWord;
+    const safeStart = clamp(wordStart, start, end);
+    const safeEnd = clamp(Math.max(wordEnd, safeStart + 0.001), start, end);
+    return {
+      start: safeStart,
+      end: safeEnd,
+      word: token,
+      text: token,
+    };
+  });
+};
+
+const looksLikeEmphasisToken = (token: string) => {
+  const trimmed = token.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/[.!?]+$/.test(trimmed)) {
+    return true;
+  }
+  const lettersOnly = trimmed.replace(/[^A-Za-z]/g, "");
+  if (lettersOnly.length >= 3 && lettersOnly.length <= 6 && lettersOnly === lettersOnly.toUpperCase()) {
+    return true;
+  }
+  return false;
+};
+
+const buildSubtitleBeatGroups = (
+  words: TimedWord[],
+  options: {
+    minWords: number;
+    maxWords: number;
+    maxSpanSeconds: number;
+    longPauseSeconds: number;
+  }
+): SubtitleBeatGroup[] => {
+  const normalized = (words ?? [])
+    .map((word) => ({
+      start: Number(word.start),
+      end: Number(word.end),
+      token: String(word.word ?? word.text ?? "").trim(),
+    }))
+    .filter(
+      (word) =>
+        Number.isFinite(word.start) &&
+        Number.isFinite(word.end) &&
+        word.end > word.start &&
+        word.token.length > 0
+    )
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const minWords = Math.max(1, Math.floor(options.minWords));
+  const maxWords = Math.max(minWords, Math.floor(options.maxWords));
+  const maxSpanSeconds = Math.max(0.1, options.maxSpanSeconds);
+  const longPauseSeconds = Math.max(0.05, options.longPauseSeconds);
+
+  type GroupRange = { startIndex: number; endIndex: number };
+  const ranges: GroupRange[] = [];
+
+  let i = 0;
+  while (i < normalized.length) {
+    const startIndex = i;
+    let endIndex = i;
+
+    while (endIndex + 1 < normalized.length) {
+      const currentCount = endIndex - startIndex + 1;
+      if (currentCount >= maxWords) {
+        break;
+      }
+      const current = normalized[endIndex];
+      if (/[.!?]+$/.test(current.token)) {
+        break;
+      }
+      const next = normalized[endIndex + 1];
+      const gapToNext = next.start - current.end;
+      if (gapToNext > longPauseSeconds) {
+        break;
+      }
+      const nextCount = currentCount + 1;
+      const nextSpan = next.end - normalized[startIndex].start;
+      if (nextCount >= minWords && nextSpan > maxSpanSeconds) {
+        break;
+      }
+      endIndex += 1;
+    }
+
+    ranges.push({ startIndex, endIndex });
+    i = endIndex + 1;
+  }
+
+  // Rebalance non-emphasis 1-word groups to avoid "karaoke" by borrowing from neighbors.
+  for (let idx = 0; idx < ranges.length; idx += 1) {
+    const range = ranges[idx];
+    const size = range.endIndex - range.startIndex + 1;
+    if (size !== 1) {
+      continue;
+    }
+    const token = normalized[range.startIndex]?.token ?? "";
+    const emphasis = looksLikeEmphasisToken(token);
+    if (emphasis) {
+      continue;
+    }
+    const prev = idx > 0 ? ranges[idx - 1] : null;
+    if (prev) {
+      const prevSize = prev.endIndex - prev.startIndex + 1;
+      if (prevSize > minWords) {
+        // Move the last word from prev into this range (e.g. 4+1 -> 3+2).
+        range.startIndex = prev.endIndex;
+        prev.endIndex -= 1;
+        continue;
+      }
+    }
+    const next = idx + 1 < ranges.length ? ranges[idx + 1] : null;
+    if (next) {
+      const nextSize = next.endIndex - next.startIndex + 1;
+      if (nextSize < maxWords) {
+        // Merge into next range (e.g. 1+3 -> 4).
+        next.startIndex = range.startIndex;
+        ranges.splice(idx, 1);
+        idx -= 1;
+      }
+    }
+  }
+
+  return ranges
+    .map((range) => {
+      const start = normalized[range.startIndex]?.start ?? 0;
+      const end = normalized[range.endIndex]?.end ?? start;
+      const tokens = normalized
+        .slice(range.startIndex, range.endIndex + 1)
+        .map((word) => word.token);
+      const text = joinSubtitleTokens(tokens);
+      return {
+        start,
+        end,
+        text,
+        emphasis: tokens.length === 1 && looksLikeEmphasisToken(tokens[0] ?? ""),
+      };
+    })
+    .filter((group) => Boolean(group.text));
+};
+
+const computeBeatEnterProgress = (elapsedSeconds: number, enterSeconds: number) => {
+  const duration = Math.max(0.01, enterSeconds);
+  const t = clamp(elapsedSeconds / duration, 0, 1);
+  // Smooth, deterministic, export-friendly "pop in" (Remotion-like, but time-based).
+  return 1 - Math.pow(1 - t, 3);
+};
+
 const buildGifPayload = (gif: IGif): GifDragPayload | null => {
   const assetImage = resolveGiphyAssetImage(gif);
   if (!assetImage) {
@@ -5733,13 +5941,17 @@ function AdvancedEditorContent() {
     });
   }, [subtitleSegments, timeline]);
 
-  // Direct DOM manipulation for subtitle rendering - bypasses React entirely during playback
-  // This is how professional video players render subtitles for smooth performance
-  const activeSubtitleIndexRef = useRef<number>(-1);
-  const lastRenderedSubtitleIdRef = useRef<string | null>(null);
-  const activeSubtitleWordIndexRef = useRef<number>(-1);
-  const subtitleOverlayRef = useRef<HTMLDivElement>(null);
-  const subtitleTextRef = useRef<HTMLSpanElement>(null);
+	  // Direct DOM manipulation for subtitle rendering - bypasses React entirely during playback
+	  // This is how professional video players render subtitles for smooth performance
+	  const activeSubtitleIndexRef = useRef<number>(-1);
+	  const lastRenderedSubtitleIdRef = useRef<string | null>(null);
+	  const activeSubtitleWordIndexRef = useRef<number>(-1);
+	  const activeSubtitleBeatIndexRef = useRef<number>(-1);
+	  const activeSubtitleBeatAnimationDoneRef = useRef<boolean>(false);
+	  const lastSubtitleBeatLocalTimeRef = useRef<number>(-1);
+	  const lastSubtitleEffectModeRef = useRef<"none" | "beat">("none");
+	  const subtitleOverlayRef = useRef<HTMLDivElement>(null);
+	  const subtitleTextRef = useRef<HTMLSpanElement>(null);
 
   // Helper to compute visible clips - used by both stable and live visual stacks
   const computeVisibleClips = useCallback((entries: typeof visualEntries, time: number) => {
@@ -5835,46 +6047,124 @@ function AdvancedEditorContent() {
     transform: ClipTransform;
     wordHighlightEnabled: boolean;
     wordHighlightColor: string;
+    effectWords: TimedWord[];
+    effectWordsSource: "segment" | "synthetic" | "none";
+    beatEnabled: boolean;
+    beatGroups: SubtitleBeatGroup[] | null;
+    beatAnimate: boolean;
+    beatEnterSeconds: number;
   }>>(new Map());
   const subtitleCacheReadyRef = useRef(false);
   
   // Pre-compute styles for all subtitles when they change
   useEffect(() => {
-    const cache = new Map<
-      string,
-      {
-        text: string;
-        styles: ReturnType<typeof getTextRenderStyles>;
-        transform: ClipTransform;
-        wordHighlightEnabled: boolean;
-        wordHighlightColor: string;
-      }
-    >();
+	    const cache = new Map<
+	      string,
+	      {
+	        text: string;
+	        styles: ReturnType<typeof getTextRenderStyles>;
+	        transform: ClipTransform;
+	        wordHighlightEnabled: boolean;
+	        wordHighlightColor: string;
+	        effectWords: TimedWord[];
+	        effectWordsSource: "segment" | "synthetic" | "none";
+	        beatEnabled: boolean;
+	        beatGroups: SubtitleBeatGroup[] | null;
+	        beatAnimate: boolean;
+	        beatEnterSeconds: number;
+	      }
+	    >();
     const aspectRatio = stageAspectRatioRef.current || 16 / 9;
     
-    subtitleSegments.forEach(segment => {
-      const settings = textSettings[segment.clipId] ?? fallbackTextSettings;
-      const transform = clipTransforms[segment.clipId] ?? createSubtitleTransform(aspectRatio);
-      cache.set(segment.clipId, {
-        text: settings.text ?? segment.text,
-        styles: getTextRenderStyles(settings),
-        transform,
-        wordHighlightEnabled: Boolean(settings.wordHighlightEnabled),
-        wordHighlightColor: settings.wordHighlightColor ?? "#FDE047",
-      });
-    });
+	    subtitleSegments.forEach(segment => {
+	      const settings = textSettings[segment.clipId] ?? fallbackTextSettings;
+	      const transform = clipTransforms[segment.clipId] ?? createSubtitleTransform(aspectRatio);
+	      const effectiveText =
+	        typeof settings.text === "string" && settings.text.trim().length > 0
+	          ? settings.text
+	          : segment.text;
+	      // Beat mode is the default subtitle render mode; users opt out via `subtitleBeatEnabled: false`.
+	      const beatEnabled = settings.subtitleBeatEnabled !== false;
+	      const beatMinWords =
+	        typeof settings.subtitleBeatMinWords === "number" && Number.isFinite(settings.subtitleBeatMinWords)
+	          ? clamp(settings.subtitleBeatMinWords, 1, 6)
+	          : 2;
+	      const beatMaxWords =
+	        typeof settings.subtitleBeatMaxWords === "number" && Number.isFinite(settings.subtitleBeatMaxWords)
+	          ? clamp(settings.subtitleBeatMaxWords, beatMinWords, 8)
+	          : Math.max(beatMinWords, 2);
+	      const beatMaxSpanSeconds =
+	        typeof settings.subtitleBeatMaxSpanSeconds === "number" &&
+	        Number.isFinite(settings.subtitleBeatMaxSpanSeconds)
+	          ? clamp(settings.subtitleBeatMaxSpanSeconds, 0.2, 3)
+          : 1.2;
+	      const beatLongPauseSeconds =
+	        typeof settings.subtitleBeatLongPauseSeconds === "number" &&
+	        Number.isFinite(settings.subtitleBeatLongPauseSeconds)
+	          ? clamp(settings.subtitleBeatLongPauseSeconds, 0.05, 2)
+	          : 0.25;
+
+	      const wordHighlightEnabled = Boolean(settings.wordHighlightEnabled);
+	      const wantsWordEffects = beatEnabled || wordHighlightEnabled;
+	      const hasSegmentWords = Array.isArray(segment.words) && segment.words.length > 0;
+	      const effectWords = hasSegmentWords
+	        ? (segment.words as TimedWord[])
+	        : wantsWordEffects
+	          ? buildSyntheticTimedWords(effectiveText, segment.startTime, segment.endTime)
+	          : [];
+	      const effectWordsSource: "segment" | "synthetic" | "none" = hasSegmentWords
+	        ? "segment"
+	        : effectWords.length > 0
+	          ? "synthetic"
+	          : "none";
+	      const beatGroups =
+	        beatEnabled && effectWords.length > 0
+	          ? buildSubtitleBeatGroups(effectWords, {
+	              minWords: beatMinWords,
+	              maxWords: beatMaxWords,
+	              maxSpanSeconds: beatMaxSpanSeconds,
+	              longPauseSeconds: beatLongPauseSeconds,
+	            })
+	          : null;
+      const beatAnimate =
+        beatEnabled
+          ? settings.subtitleBeatAnimate !== false
+          : false;
+      const beatEnterSeconds =
+        typeof settings.subtitleBeatEnterSeconds === "number" &&
+        Number.isFinite(settings.subtitleBeatEnterSeconds)
+          ? clamp(settings.subtitleBeatEnterSeconds, 0.05, 0.8)
+          : 0.17;
+	      cache.set(segment.clipId, {
+	        text: effectiveText,
+	        styles: getTextRenderStyles(settings),
+	        transform,
+	        wordHighlightEnabled,
+	        wordHighlightColor: settings.wordHighlightColor ?? "#FDE047",
+	        effectWords,
+	        effectWordsSource,
+	        beatEnabled,
+	        beatGroups,
+	        beatAnimate,
+	        beatEnterSeconds,
+	      });
+	    });
     
     subtitleStyleCacheRef.current = cache;
     subtitleCacheReadyRef.current = true;
     
-    // Reset tracking refs when subtitle data changes to avoid stale matches
-    activeSubtitleIndexRef.current = -1;
-    lastRenderedSubtitleIdRef.current = null;
-    activeSubtitleWordIndexRef.current = -1;
-    if (!isPlaying) {
-      updateSubtitleForTimeRef.current(playbackTimeRef.current);
-    }
-  }, [subtitleSegments, textSettings, fallbackTextSettings, clipTransforms, isPlaying]);
+	    // Reset tracking refs when subtitle data changes to avoid stale matches
+	    activeSubtitleIndexRef.current = -1;
+	    lastRenderedSubtitleIdRef.current = null;
+	    activeSubtitleWordIndexRef.current = -1;
+	    activeSubtitleBeatIndexRef.current = -1;
+	    activeSubtitleBeatAnimationDoneRef.current = false;
+	    lastSubtitleBeatLocalTimeRef.current = -1;
+	    lastSubtitleEffectModeRef.current = "none";
+	    if (!isPlaying) {
+	      updateSubtitleForTimeRef.current(playbackTimeRef.current);
+	    }
+	  }, [subtitleSegments, textSettings, fallbackTextSettings, clipTransforms, isPlaying]);
 
   // Ultra-lightweight DOM update - just reads from cache
   // Uses direct property assignment for maximum performance during playback
@@ -5884,18 +6174,152 @@ function AdvancedEditorContent() {
       time: number,
       force: boolean
     ) => {
-      const textEl = subtitleTextRef.current;
-      if (!entry || !textEl) {
-        activeSubtitleWordIndexRef.current = -1;
+	      const textEl = subtitleTextRef.current;
+	      if (!entry || !textEl) {
+	        activeSubtitleWordIndexRef.current = -1;
+	        activeSubtitleBeatIndexRef.current = -1;
+	        activeSubtitleBeatAnimationDoneRef.current = false;
+	        lastSubtitleBeatLocalTimeRef.current = -1;
+	        if (lastSubtitleEffectModeRef.current === "beat") {
+	          textEl?.style && (textEl.style.transform = "");
+	          textEl?.style && (textEl.style.opacity = "1");
+	          lastSubtitleEffectModeRef.current = "none";
+	        }
         return;
       }
       const { segment } = entry;
-      const cached = subtitleStyleCacheRef.current.get(segment.clipId);
-      if (!cached) {
-        activeSubtitleWordIndexRef.current = -1;
+	      const cached = subtitleStyleCacheRef.current.get(segment.clipId);
+	      if (!cached) {
+	        activeSubtitleWordIndexRef.current = -1;
+	        activeSubtitleBeatIndexRef.current = -1;
+	        activeSubtitleBeatAnimationDoneRef.current = false;
+	        lastSubtitleBeatLocalTimeRef.current = -1;
+	        if (lastSubtitleEffectModeRef.current === "beat") {
+	          textEl.style.transform = "";
+	          textEl.style.opacity = "1";
+	          lastSubtitleEffectModeRef.current = "none";
+	        }
         return;
       }
-      const words = segment.words ?? [];
+	      const words = cached.effectWords ?? segment.words ?? [];
+
+	      const canBeat =
+	        cached.beatEnabled &&
+	        Array.isArray(cached.beatGroups) &&
+	        cached.beatGroups.length > 0 &&
+        words.length > 0;
+
+	      if (canBeat) {
+	        const epsilon = 0.005;
+	        const offset = entry.startTime - segment.startTime;
+	        const localTime = offset ? time - offset : time;
+	        const groups = cached.beatGroups as SubtitleBeatGroup[];
+	        const previousLocalTime = lastSubtitleBeatLocalTimeRef.current;
+	        if (
+	          Number.isFinite(previousLocalTime) &&
+	          previousLocalTime >= 0 &&
+	          localTime < previousLocalTime - epsilon
+	        ) {
+	          // Scrubbed/jumped backwards within the same subtitle: re-enable deterministic animation.
+	          activeSubtitleBeatAnimationDoneRef.current = false;
+	        }
+	        lastSubtitleBeatLocalTimeRef.current = localTime;
+
+	        const lastBeatIndex = activeSubtitleBeatIndexRef.current;
+	        let nextBeatIndex =
+	          Number.isFinite(lastBeatIndex) && lastBeatIndex >= 0
+	            ? lastBeatIndex
+	            : 0;
+	        if (nextBeatIndex >= groups.length) {
+	          nextBeatIndex = 0;
+	        }
+
+	        const currentStart = groups[nextBeatIndex]?.start ?? 0;
+	        if (localTime < currentStart - epsilon) {
+	          // Time moved backwards (seek/scrub) - binary search for the last group that has started.
+	          let low = 0;
+	          let high = groups.length - 1;
+	          let best = 0;
+	          while (low <= high) {
+	            const mid = (low + high) >> 1;
+	            if (localTime >= groups[mid].start - epsilon) {
+	              best = mid;
+	              low = mid + 1;
+	            } else {
+	              high = mid - 1;
+	            }
+	          }
+	          nextBeatIndex = best;
+	        } else {
+	          // Forward playback: advance from the current index.
+	          while (
+	            nextBeatIndex + 1 < groups.length &&
+	            localTime >= groups[nextBeatIndex + 1].start - epsilon
+	          ) {
+	            nextBeatIndex += 1;
+	          }
+	        }
+
+	        const nextGroup = groups[nextBeatIndex];
+	        const nextText = nextGroup?.text ?? cached.text;
+	        const beatChanged =
+	          force || nextBeatIndex !== activeSubtitleBeatIndexRef.current;
+
+	        if (beatChanged) {
+	          activeSubtitleBeatIndexRef.current = nextBeatIndex;
+	          activeSubtitleWordIndexRef.current = -1;
+	          activeSubtitleBeatAnimationDoneRef.current = false;
+	          textEl.textContent = nextText;
+	        } else if (force) {
+	          textEl.textContent = nextText;
+	        }
+
+		        if (cached.beatAnimate) {
+		          const enterSeconds = cached.beatEnterSeconds;
+		          const elapsed = Math.max(0, localTime - (nextGroup?.start ?? localTime));
+		          if (
+		            !force &&
+		            !beatChanged &&
+		            activeSubtitleBeatAnimationDoneRef.current &&
+		            elapsed >= enterSeconds
+		          ) {
+		            // Animation has settled and time is still moving forward; avoid per-frame DOM writes.
+		            return;
+		          }
+		          const progress = computeBeatEnterProgress(elapsed, enterSeconds);
+		          const baseTranslateY = (nextGroup?.emphasis ? 56 : 44) * (1 - progress);
+		          const scaleFrom = nextGroup?.emphasis ? 0.74 : 0.8;
+		          const scaleTo = nextGroup?.emphasis ? 1.02 : 1;
+		          const scale = scaleFrom + (scaleTo - scaleFrom) * progress;
+		          const opacity = clamp(elapsed / Math.min(0.08, enterSeconds), 0, 1);
+		          const translateY = Math.round(baseTranslateY * 100) / 100;
+		          const roundedScale = Math.round(scale * 10000) / 10000;
+		          const roundedOpacity = Math.round(opacity * 1000) / 1000;
+		          textEl.style.transform = `translate3d(0, ${translateY}px, 0) scale(${roundedScale})`;
+		          textEl.style.opacity = String(roundedOpacity);
+		          lastSubtitleEffectModeRef.current = "beat";
+		          if (elapsed >= enterSeconds) {
+		            activeSubtitleBeatAnimationDoneRef.current = true;
+		          }
+		        } else if (lastSubtitleEffectModeRef.current === "beat") {
+		          textEl.style.transform = "";
+		          textEl.style.opacity = "1";
+		          activeSubtitleBeatAnimationDoneRef.current = false;
+		          lastSubtitleBeatLocalTimeRef.current = -1;
+	          lastSubtitleEffectModeRef.current = "none";
+	        }
+	        return;
+	      }
+
+	      if (lastSubtitleEffectModeRef.current === "beat") {
+	        textEl.style.transform = "";
+	        textEl.style.opacity = "1";
+	        lastSubtitleEffectModeRef.current = "none";
+	      }
+	      activeSubtitleBeatIndexRef.current = -1;
+	      activeSubtitleBeatAnimationDoneRef.current = false;
+	      lastSubtitleBeatLocalTimeRef.current = -1;
+
       const canHighlight =
         cached.wordHighlightEnabled &&
         words.length > 0 &&
@@ -5907,23 +6331,15 @@ function AdvancedEditorContent() {
         activeSubtitleWordIndexRef.current = -1;
         return;
       }
+      const epsilon = 0.02;
       const offset = entry.startTime - segment.startTime;
-      const timedWords = offset
-        ? words.map((word) => ({
-            start: word.start + offset,
-            end: word.end + offset,
-          }))
-        : words;
-      const nextIndex = findActiveWordIndex(timedWords, time);
+      const localTime = offset ? time - offset : time;
+      const nextIndex = findActiveWordIndex(words, localTime, epsilon);
       if (!force && nextIndex === activeSubtitleWordIndexRef.current) {
         return;
       }
       activeSubtitleWordIndexRef.current = nextIndex;
-      textEl.innerHTML = buildHighlightedSubtitleHtml(
-        words,
-        nextIndex,
-        cached.wordHighlightColor
-      );
+      textEl.innerHTML = buildHighlightedSubtitleHtml(words, nextIndex, cached.wordHighlightColor);
     },
     []
   );
@@ -5938,22 +6354,38 @@ function AdvancedEditorContent() {
     const textEl = subtitleTextRef.current;
     if (!overlay || !textEl) return;
     
-    if (!clipId) {
-      overlay.style.opacity = '0';
-      overlay.style.visibility = 'hidden';
-      overlay.style.pointerEvents = 'none';
-      delete overlay.dataset.clipId;
-      activeSubtitleWordIndexRef.current = -1;
+	    if (!clipId) {
+	      overlay.style.opacity = '0';
+	      overlay.style.visibility = 'hidden';
+	      overlay.style.pointerEvents = 'none';
+	      delete overlay.dataset.clipId;
+	      activeSubtitleWordIndexRef.current = -1;
+	      activeSubtitleBeatIndexRef.current = -1;
+	      activeSubtitleBeatAnimationDoneRef.current = false;
+	      lastSubtitleBeatLocalTimeRef.current = -1;
+	      if (lastSubtitleEffectModeRef.current === "beat") {
+	        textEl.style.transform = "";
+	        textEl.style.opacity = "1";
+	        lastSubtitleEffectModeRef.current = "none";
+	      }
       return;
     }
     
     const cached = subtitleStyleCacheRef.current.get(clipId);
-    if (!cached) {
-      overlay.style.opacity = '0';
-      overlay.style.visibility = 'hidden';
-      overlay.style.pointerEvents = 'none';
-      delete overlay.dataset.clipId;
-      activeSubtitleWordIndexRef.current = -1;
+	    if (!cached) {
+	      overlay.style.opacity = '0';
+	      overlay.style.visibility = 'hidden';
+	      overlay.style.pointerEvents = 'none';
+	      delete overlay.dataset.clipId;
+	      activeSubtitleWordIndexRef.current = -1;
+	      activeSubtitleBeatIndexRef.current = -1;
+	      activeSubtitleBeatAnimationDoneRef.current = false;
+	      lastSubtitleBeatLocalTimeRef.current = -1;
+	      if (lastSubtitleEffectModeRef.current === "beat") {
+	        textEl.style.transform = "";
+	        textEl.style.opacity = "1";
+	        lastSubtitleEffectModeRef.current = "none";
+	      }
       return;
     }
     
@@ -6121,27 +6553,33 @@ function AdvancedEditorContent() {
   
   useEffect(() => {
     updateSubtitleForTimeRef.current = (time: number) => {
-      if (sortedSubtitleClips.length === 0) {
-        if (lastRenderedSubtitleIdRef.current !== null) {
-          activeSubtitleIndexRef.current = -1;
-          lastRenderedSubtitleIdRef.current = null;
-          activeSubtitleWordIndexRef.current = -1;
-          updateSubtitleDOM(null);
-        }
-        return;
-      }
+	      if (sortedSubtitleClips.length === 0) {
+	        if (lastRenderedSubtitleIdRef.current !== null) {
+	          activeSubtitleIndexRef.current = -1;
+	          lastRenderedSubtitleIdRef.current = null;
+	          activeSubtitleWordIndexRef.current = -1;
+	          activeSubtitleBeatIndexRef.current = -1;
+	          activeSubtitleBeatAnimationDoneRef.current = false;
+	          lastSubtitleBeatLocalTimeRef.current = -1;
+	          updateSubtitleDOM(null);
+	        }
+	        return;
+	      }
       
       const idx = findActiveSubtitleIndex(time);
       const entry = idx >= 0 ? sortedSubtitleClips[idx] : null;
       const newId = entry?.segment.clipId ?? null;
       
-      if (newId !== lastRenderedSubtitleIdRef.current) {
-        activeSubtitleIndexRef.current = idx;
-        lastRenderedSubtitleIdRef.current = newId;
-        activeSubtitleWordIndexRef.current = -1;
-        updateSubtitleDOM(newId, entry ?? null, time);
-        return;
-      }
+	      if (newId !== lastRenderedSubtitleIdRef.current) {
+	        activeSubtitleIndexRef.current = idx;
+	        lastRenderedSubtitleIdRef.current = newId;
+	        activeSubtitleWordIndexRef.current = -1;
+	        activeSubtitleBeatIndexRef.current = -1;
+	        activeSubtitleBeatAnimationDoneRef.current = false;
+	        lastSubtitleBeatLocalTimeRef.current = -1;
+	        updateSubtitleDOM(newId, entry ?? null, time);
+	        return;
+	      }
       if (entry) {
         updateSubtitleWordHighlight(entry, time, false);
       }
@@ -6155,14 +6593,18 @@ function AdvancedEditorContent() {
   
   // Force subtitle update when subtitle data changes (clips moved, edited, etc.)
   // This ensures subtitles stay in sync after timeline edits
-  useEffect(() => {
-    // Reset cached state to force re-evaluation
-    activeSubtitleIndexRef.current = -1;
-    lastRenderedSubtitleIdRef.current = null;
-    activeSubtitleWordIndexRef.current = -1;
-    // Update with current time
-    updateSubtitleForTimeRef.current(playbackTimeRef.current);
-  }, [sortedSubtitleClips]);
+	  useEffect(() => {
+	    // Reset cached state to force re-evaluation
+	    activeSubtitleIndexRef.current = -1;
+	    lastRenderedSubtitleIdRef.current = null;
+	    activeSubtitleWordIndexRef.current = -1;
+	    activeSubtitleBeatIndexRef.current = -1;
+	    activeSubtitleBeatAnimationDoneRef.current = false;
+	    lastSubtitleBeatLocalTimeRef.current = -1;
+	    lastSubtitleEffectModeRef.current = "none";
+	    // Update with current time
+	    updateSubtitleForTimeRef.current(playbackTimeRef.current);
+	  }, [sortedSubtitleClips]);
   
   // Update subtitles when paused/scrubbing (via currentTime changes)
   useEffect(() => {
@@ -6171,11 +6613,11 @@ function AdvancedEditorContent() {
     }
   }, [currentTime, isPlaying]);
 
-  const wasPlayingRef = useRef(false);
-  const timelineJumpRef = useRef(false);
-  const lastTimelineTimeRef = useRef(currentTime);
-  // UI update cadence during playback.
-  const subtitleUiFrameSecondsRef = useRef(1 / 60);
+	  const wasPlayingRef = useRef(false);
+	  const timelineJumpRef = useRef(false);
+	  const lastTimelineTimeRef = useRef(currentTime);
+	  // UI update cadence during playback.
+	  const subtitleUiFrameSecondsRef = useRef(1 / 30);
 
   useEffect(() => {
     if (isPlaying) {
@@ -7134,11 +7576,11 @@ function AdvancedEditorContent() {
     [fetchExportStatus, stopExportPolling, updateExportUi]
   );
 
-  const handleStartExport = useCallback(async () => {
-    if (timeline.length === 0 || isExportInFlightStatus(exportUi.status)) {
-      return;
-    }
-    const exportState = buildExportState();
+	  const handleStartExport = useCallback(async () => {
+	    if (timeline.length === 0 || isExportInFlightStatus(exportUi.status)) {
+	      return;
+	    }
+	    const exportState = buildExportState();
     const blobAssets =
       exportState.snapshot?.assets?.filter(
         (asset) => typeof asset.url === "string" && asset.url.startsWith("blob:")
@@ -7170,37 +7612,54 @@ function AdvancedEditorContent() {
       downloadUrl: null,
       error: null,
     });
-    try {
-      const previewSize =
-        stageDisplay.width > 0 && stageDisplay.height > 0
-          ? stageDisplay
-          : exportDimensions;
-      const previewWidth = ensureEven(previewSize.width);
-      const previewHeight = ensureEven(previewSize.height);
-      const payload = {
-        state: exportState,
-        output: exportDimensions,
-        preview: {
-          width: previewWidth,
-          height: previewHeight,
-        },
-        fps: 30,
-        duration: projectDuration,
-        fonts: exportFonts,
-        name: projectName,
-        projectId: resolvedProjectId ?? undefined,
-      };
-      const response = await fetch("/api/editor/export", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.error || "Export failed.");
-      }
+	    try {
+	      const previewSize =
+	        stageDisplay.width > 0 && stageDisplay.height > 0
+	          ? stageDisplay
+	          : exportDimensions;
+	      const previewWidth = ensureEven(previewSize.width);
+	      const previewHeight = ensureEven(previewSize.height);
+	      const payload = resolvedProjectId
+	        ? {
+	            projectId: resolvedProjectId,
+	            output: exportDimensions,
+	            preview: {
+	              width: previewWidth,
+	              height: previewHeight,
+	            },
+	            fps: 30,
+	            duration: projectDuration,
+	            fonts: exportFonts,
+	            name: projectName,
+	          }
+	        : {
+	            state: exportState,
+	            output: exportDimensions,
+	            preview: {
+	              width: previewWidth,
+	              height: previewHeight,
+	            },
+	            fps: 30,
+	            duration: projectDuration,
+	            fonts: exportFonts,
+	            name: projectName,
+	          };
+	      const response = await fetch("/api/editor/export", {
+	        method: "POST",
+	        headers: {
+	          "Content-Type": "application/json",
+	        },
+	        body: JSON.stringify(payload),
+	      });
+	      const data = await response.json().catch(() => ({}));
+	      if (!response.ok) {
+	        const requestId =
+	          typeof data?.requestId === "string" ? data.requestId.trim() : "";
+	        const baseError = data?.error || "Export failed.";
+	        throw new Error(
+	          requestId ? `${baseError} (requestId: ${requestId})` : baseError
+	        );
+	      }
       const nextJobId =
         typeof data?.jobId === "string"
           ? data.jobId
@@ -7858,7 +8317,26 @@ function AdvancedEditorContent() {
       setSubtitleSegments((prev) =>
         prev.map((segment) =>
           segment.id === segmentId
-            ? { ...segment, text, words: undefined }
+            ? (() => {
+                const existingWords = segment.words;
+                if (!existingWords || existingWords.length === 0) {
+                  return { ...segment, text, words: undefined };
+                }
+                const tokens = text
+                  .trim()
+                  .split(/\s+/)
+                  .map((token) => token.trim())
+                  .filter(Boolean);
+                if (tokens.length !== existingWords.length) {
+                  return { ...segment, text, words: undefined };
+                }
+                const nextWords = existingWords.map((word, index) => ({
+                  start: word.start,
+                  end: word.end,
+                  word: tokens[index],
+                }));
+                return { ...segment, text, words: nextWords };
+              })()
             : segment
         )
       );
@@ -9430,8 +9908,8 @@ function AdvancedEditorContent() {
   };
 
   // Direct DOM updates keep the playhead smooth without forcing React re-renders.
-  const updatePlayheadDom = useCallback(
-    (time: number) => {
+	  const updatePlayheadDom = useCallback(
+	    (time: number) => {
       const clamped = clamp(time, 0, timelineDuration);
       const absoluteLeft = clamped * timelineScale + timelinePadding;
       const contentLeft = absoluteLeft - timelinePadding;
@@ -9445,27 +9923,49 @@ function AdvancedEditorContent() {
       }
     },
     [timelineDuration, timelineScale, timelinePadding]
-  );
+	  );
 
-  const getSubtitlePlaybackTime = useCallback(
-    (time: number) => {
-      const audioEntry = getClipAtTime(time, "audio");
-      const visualEntry = getClipAtTime(time, "visual");
-      const entry = audioEntry ?? visualEntry;
-      if (!entry || entry.asset.kind === "image") {
-        return time;
-      }
-      const element =
-        entry.asset.kind === "audio"
-          ? audioRefs.current.get(entry.clip.id)
-          : visualRefs.current.get(entry.clip.id);
-      if (!element || !Number.isFinite(element.currentTime)) {
-        return time;
-      }
-      return resolveTimelineTimeFromAssetTime(entry.clip, element.currentTime);
-    },
-    [getClipAtTime, resolveTimelineTimeFromAssetTime]
-  );
+	  const subtitlePlaybackAudioEntryRef = useRef<TimelineLayoutEntry | null>(null);
+	  const subtitlePlaybackVisualEntryRef = useRef<TimelineLayoutEntry | null>(null);
+
+	  const getSubtitlePlaybackTime = useCallback(
+	    (time: number) => {
+	      const within = (entry: TimelineLayoutEntry | null) =>
+	        Boolean(
+	          entry &&
+	            time >= entry.left - timelineClipEpsilon &&
+	            time < entry.left + entry.clip.duration + timelineClipEpsilon
+	        );
+
+	      let audioEntry = subtitlePlaybackAudioEntryRef.current;
+	      if (!within(audioEntry)) {
+	        audioEntry = getClipAtTime(time, "audio");
+	        subtitlePlaybackAudioEntryRef.current = audioEntry;
+	      }
+
+	      const entry = audioEntry ?? (() => {
+	        let visualEntry = subtitlePlaybackVisualEntryRef.current;
+	        if (!within(visualEntry)) {
+	          visualEntry = getClipAtTime(time, "visual");
+	          subtitlePlaybackVisualEntryRef.current = visualEntry;
+	        }
+	        return visualEntry;
+	      })();
+
+	      if (!entry || entry.asset.kind === "image") {
+	        return time;
+	      }
+	      const element =
+	        entry.asset.kind === "audio"
+	          ? audioRefs.current.get(entry.clip.id)
+	          : visualRefs.current.get(entry.clip.id);
+	      if (!element || !Number.isFinite(element.currentTime)) {
+	        return time;
+	      }
+	      return resolveTimelineTimeFromAssetTime(entry.clip, element.currentTime);
+	    },
+	    [getClipAtTime, resolveTimelineTimeFromAssetTime]
+	  );
 
   // Main playback RAF loop - CRITICAL: do NOT include currentTime in dependencies
   // The loop uses playbackTimeRef internally and including currentTime would cause
@@ -9476,29 +9976,28 @@ function AdvancedEditorContent() {
     if (!isPlaying) {
       return;
     }
-    let frameId = 0;
-    let last = performance.now();
-    // Capture the current time at the moment playback starts
-    // This uses the ref which is kept in sync when not playing
-    const startTime = playbackTimeRef.current;
-    playbackStartTimeRef.current = startTime;
-    playbackUiTickRef.current = last;
-    playheadVisualTimeRef.current = startTime;
-    updatePlayheadDom(startTime);
+	    let frameId = 0;
+	    let last = performance.now();
+	    // Capture the current time at the moment playback starts
+	    // This uses the ref which is kept in sync when not playing
+	    const startTime = playbackTimeRef.current;
+	    subtitlePlaybackAudioEntryRef.current = null;
+	    subtitlePlaybackVisualEntryRef.current = null;
+	    playbackStartTimeRef.current = startTime;
+	    playbackUiTickRef.current = last;
+	    playheadVisualTimeRef.current = startTime;
+	    updatePlayheadDom(startTime);
 
     const tick = (timestamp: number) => {
-      const deltaSeconds = (timestamp - last) / 1000;
-      last = timestamp;
-      const rawNext = playbackTimeRef.current + deltaSeconds;
-      const subtitleTime = getSubtitlePlaybackTime(rawNext);
-      const drift = subtitleTime - rawNext;
-      const next =
-        Math.abs(drift) > 0.045
-          ? subtitleTime
-          : rawNext + drift * 0.2;
-      if (next >= projectDuration) {
-        playbackTimeRef.current = projectDuration;
-        playheadVisualTimeRef.current = projectDuration;
+	      const deltaSeconds = (timestamp - last) / 1000;
+	      last = timestamp;
+	      const rawNext = playbackTimeRef.current + deltaSeconds;
+	      const subtitleTime = getSubtitlePlaybackTime(rawNext);
+	      // Drive timeline time from media time for subtitle-perfect sync.
+	      const next = subtitleTime;
+	      if (next >= projectDuration) {
+	        playbackTimeRef.current = projectDuration;
+	        playheadVisualTimeRef.current = projectDuration;
         updatePlayheadDom(projectDuration);
         startTransition(() => {
           setCurrentTime(projectDuration);
@@ -18908,17 +19407,17 @@ function AdvancedEditorContent() {
                   <div
                     ref={subtitleOverlayRef}
                     className="cursor-grab"
-                    style={{
-                      position: 'absolute',
-                      zIndex: 100000,
-                      opacity: 0,
-                      visibility: 'hidden',
-                      pointerEvents: 'none',
-                      willChange: 'opacity, transform',
-                      contain: 'layout style',
-                    }}
-                    onPointerDown={handleSubtitleOverlayPointerDown}
-                  >
+	                    style={{
+	                      position: 'absolute',
+	                      zIndex: 100000,
+	                      opacity: 0,
+	                      visibility: 'hidden',
+	                      pointerEvents: 'none',
+	                      willChange: 'opacity, transform',
+	                      contain: 'layout paint style',
+	                    }}
+	                    onPointerDown={handleSubtitleOverlayPointerDown}
+	                  >
                     <div 
                       className="flex items-end justify-center px-3"
                       style={{
@@ -18928,16 +19427,18 @@ function AdvancedEditorContent() {
                       }}
                     >
                       <div className="w-full text-center">
-                        <span
-                          ref={subtitleTextRef}
-                          className="inline-block max-w-full"
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            overflowWrap: 'break-word',
-                            textRendering: 'geometricPrecision',
-                          }}
-                        />
+	                        <span
+	                          ref={subtitleTextRef}
+	                          className="inline-block max-w-full"
+	                          style={{
+	                            whiteSpace: 'pre-wrap',
+	                            wordBreak: 'break-word',
+	                            overflowWrap: 'break-word',
+	                            textRendering: 'geometricPrecision',
+	                            willChange: 'transform, opacity',
+	                            backfaceVisibility: 'hidden',
+	                          }}
+	                        />
                       </div>
                     </div>
                   </div>

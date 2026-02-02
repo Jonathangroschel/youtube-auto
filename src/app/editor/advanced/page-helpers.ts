@@ -288,7 +288,12 @@ const generateVideoThumbnails = async (
 
 let textMeasureContext: CanvasRenderingContext2D | null = null;
 const textStagePaddingX = 24; // Matches `px-3` padding on the stage text wrapper.
-const systemFontFamilies = new Set(["Georgia", "Times New Roman", "Courier New"]);
+const systemFontFamilies = new Set([
+  "Georgia",
+  "Times New Roman",
+  "Courier New",
+  "TheBoldFont",
+]);
 const textResizeMinFontSize = 8;
 const textResizeMaxFontSize = 240;
 const stockMusicBucketName =

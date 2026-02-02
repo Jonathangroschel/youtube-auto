@@ -10,9 +10,57 @@ import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { chromium } from "playwright";
 
+const parseDotenv = (contents) => {
+  const out = new Map();
+  const lines = String(contents).split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (!key) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    out.set(key, value);
+  }
+  return out;
+};
+
+const loadEnvFileIfPresent = async (filePath) => {
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = parseDotenv(raw);
+    for (const [key, value] of parsed.entries()) {
+      if (process.env[key] == null || process.env[key] === "") {
+        process.env[key] = value;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Local dev ergonomics: running `node worker/server.js` does not automatically load `.env.local`.
+// Load from the repo root (or current dir) if present, without overriding existing env vars.
+const ENV_CANDIDATES = [
+  path.join(process.cwd(), ".env.local"),
+  path.join(process.cwd(), ".env"),
+  path.join(process.cwd(), "..", ".env.local"),
+  path.join(process.cwd(), "..", ".env"),
+];
+await Promise.all(ENV_CANDIDATES.map(loadEnvFileIfPresent));
+
 const app = express();
 const PORT = process.env.PORT || 3001;
-const WORKER_SECRET = process.env.WORKER_SECRET || "dev-secret";
+const WORKER_SECRET =
+  process.env.WORKER_SECRET || process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";
 const TEMP_DIR = process.env.TEMP_DIR || "/tmp/autoclip";
 const BUCKET = "autoclip-files";
 
@@ -444,9 +492,23 @@ const runEditorExportJob = async (job) => {
     }
     const renderTarget = `${renderUrl}/editor/advanced?${renderParams.toString()}`;
     console.log("[export] goto", renderTarget);
-    const response = await page.goto(renderTarget, {
-      waitUntil: "domcontentloaded",
-    });
+    let response = null;
+    try {
+      response = await page.goto(renderTarget, {
+        waitUntil: "domcontentloaded",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const hints = [];
+      if (/localhost|127\.0\.0\.1/.test(renderUrl)) {
+        hints.push(
+          "renderUrl points to localhost; the worker must run on the same machine (or use EDITOR_RENDER_URL / a tunnel like ngrok)."
+        );
+      }
+      throw new Error(
+        `page.goto failed: ${message}${hints.length ? ` (${hints.join(" ")})` : ""}`
+      );
+    }
     if (response) {
       console.log("[export] goto status", response.status(), response.url());
     }
@@ -1227,13 +1289,17 @@ app.post("/preview", authMiddleware, async (req, res) => {
         "-ss", String(start),
         "-i", videoPath,
         "-t", String(Math.min(end - start, 60)), // Max 60s preview
-        "-vf", "scale=540:-2",
+        "-map", "0:v:0",
+        "-map", "0:a?",
+        "-vf", "scale=540:-2:flags=fast_bilinear",
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-crf", "28",
+        "-pix_fmt", "yuv420p",
         "-threads", String(FFMPEG_THREADS),
         "-c:a", "aac",
         "-b:a", "96k",
+        "-movflags", "+faststart",
         previewPath,
       ]);
       let stderr = "";
