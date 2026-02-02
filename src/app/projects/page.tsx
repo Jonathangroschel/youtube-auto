@@ -1026,8 +1026,10 @@ function ProjectsPageInner() {
           throw new Error(message);
         }
         if (!isUnmountedRef.current) {
-          const nextProjects = Array.isArray(payload?.projects)
-            ? payload.projects
+          const nextProjects: ProjectLibraryItem[] = Array.isArray(
+            payload?.projects
+          )
+            ? (payload.projects as ProjectLibraryItem[])
             : [];
           if (requestId !== projectsRequestIdRef.current) {
             return;
