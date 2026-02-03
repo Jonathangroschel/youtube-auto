@@ -2,6 +2,7 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
+import { TrustScoreShareExperience } from "@/components/trust-score/trust-score-share-experience";
 import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -223,29 +224,29 @@ const mobileFooterActions: MobileFooterAction[] = [
 
 const ANALYSIS_STEPS = [
   {
-    title: "Getting your channel ready",
-    detail: "Checking channel basics and recent uploads.",
-    durationMs: 9000,
+    title: "Connecting your channel",
+    detail: "Verifying account and grabbing channel profile.",
+    durationMs: 2800,
   },
   {
-    title: "Pulling recent videos",
-    detail: "Syncing titles, categories, and metadata.",
-    durationMs: 9000,
+    title: "Pulling recent uploads",
+    detail: "Collecting titles, cadence, and video metadata.",
+    durationMs: 2800,
   },
   {
     title: "Reading watch signals",
-    detail: "Looking at retention and start rates.",
-    durationMs: 9000,
+    detail: "Calculating retention, hook strength, and shares.",
+    durationMs: 2800,
   },
   {
-    title: "Scoring engagement",
-    detail: "Likes, comments, and subscriber gain.",
-    durationMs: 9000,
+    title: "Building your score",
+    detail: "Weighting performance and trust factors.",
+    durationMs: 2800,
   },
   {
-    title: "Building your action plan",
-    detail: "Highlighting the fastest wins.",
-    durationMs: 9000,
+    title: "Finalizing your result",
+    detail: "Getting your score card ready to share.",
+    durationMs: 2800,
   },
 ];
 
@@ -563,6 +564,9 @@ export default function TrustScorePage() {
   const [studioApplyError, setStudioApplyError] = useState<string | null>(null);
   const [disconnectingChannelId, setDisconnectingChannelId] = useState<string | null>(null);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [shareExperienceOpen, setShareExperienceOpen] = useState(false);
+  const [shareExperienceMode, setShareExperienceMode] = useState<"reveal" | "share">("share");
+  const [shareExperienceScore, setShareExperienceScore] = useState<number | null>(null);
   const autoAnalyzeTriggeredRef = useRef(false);
 
   useEffect(() => {
@@ -600,6 +604,37 @@ export default function TrustScorePage() {
   const toggleSection = (label: string) => {
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
   };
+
+  // Hover intent refs for profile menu
+  const hoverOpenTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hoverCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleProfileMouseEnter = useCallback(() => {
+    if (hoverCloseTimeoutRef.current) {
+      clearTimeout(hoverCloseTimeoutRef.current);
+      hoverCloseTimeoutRef.current = null;
+    }
+    hoverOpenTimeoutRef.current = setTimeout(() => {
+      setProfileMenuOpen(true);
+    }, 80);
+  }, []);
+
+  const handleProfileMouseLeave = useCallback(() => {
+    if (hoverOpenTimeoutRef.current) {
+      clearTimeout(hoverOpenTimeoutRef.current);
+      hoverOpenTimeoutRef.current = null;
+    }
+    hoverCloseTimeoutRef.current = setTimeout(() => {
+      setProfileMenuOpen(false);
+    }, 150);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hoverOpenTimeoutRef.current) clearTimeout(hoverOpenTimeoutRef.current);
+      if (hoverCloseTimeoutRef.current) clearTimeout(hoverCloseTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!profileMenuOpen) {
@@ -685,8 +720,12 @@ export default function TrustScorePage() {
 
   useEffect(() => {
     if (!selectedChannelId) {
+      setShareExperienceOpen(false);
+      setShareExperienceScore(null);
       return;
     }
+    setShareExperienceOpen(false);
+    setShareExperienceScore(null);
     setAnalysisResult(null);
     setAnalysisError(null);
     setStudioApplyError(null);
@@ -829,15 +868,20 @@ export default function TrustScorePage() {
         await new Promise((resolve) => setTimeout(resolve, remaining));
       }
 
-      setAnalysisResult(data as TrustScoreResult);
+      const computedResult = data as TrustScoreResult;
+      setAnalysisResult(computedResult);
       await loadChannels();
       await loadHistory(channelId);
+      setShareExperienceScore(computedResult.score);
+      setShareExperienceMode("reveal");
+      setShareExperienceOpen(true);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to compute trust score";
       setAnalysisError(message);
     } finally {
       setAnalysisActive(false);
+      setAnalysisModalOpen(false);
     }
   };
 
@@ -921,6 +965,14 @@ export default function TrustScorePage() {
     latestSnapshot?.score ??
     selectedChannel?.lastScore ??
     null;
+  const openShareExperience = useCallback(() => {
+    if (currentScore === null) {
+      return;
+    }
+    setShareExperienceScore(Math.round(currentScore));
+    setShareExperienceMode("share");
+    setShareExperienceOpen(true);
+  }, [currentScore]);
   const currentComponents =
     analysisResult?.components ?? latestSnapshot?.components ?? null;
   const studioSwipeRateParsed = useMemo(
@@ -1233,9 +1285,16 @@ export default function TrustScorePage() {
                 </h2>
               </div>
             </div>
-            <div className="relative" ref={profileMenuRef}>
+            <div
+              className="relative"
+              ref={profileMenuRef}
+              onMouseEnter={handleProfileMouseEnter}
+              onMouseLeave={handleProfileMouseLeave}
+            >
               <button
-                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 px-2 transition-colors hover:bg-[#252729] focus:outline-none"
+                className={`flex h-10 w-auto items-center space-x-3 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 px-2 transition-all duration-200 hover:bg-[#252729] focus:outline-none ${
+                  profileMenuOpen ? "bg-[#252729]" : ""
+                }`}
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={profileMenuOpen}
@@ -1257,7 +1316,9 @@ export default function TrustScorePage() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-4 w-4 text-[#898a8b]"
+                  className={`h-4 w-4 transition-transform duration-200 ${
+                    profileMenuOpen ? "rotate-180 text-[#f7f7f8]" : "text-[#898a8b]"
+                  }`}
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1268,52 +1329,86 @@ export default function TrustScorePage() {
                 </svg>
               </button>
               <div
+                className={`absolute right-0 top-full h-2 w-full ${
+                  profileMenuOpen ? "pointer-events-auto" : "pointer-events-none"
+                }`}
+              />
+              <div
                 id="trust-score-profile-menu"
-                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg transition-all duration-150 ${profileMenuOpen
-                    ? "pointer-events-auto translate-y-0 opacity-100"
-                    : "pointer-events-none translate-y-1 opacity-0"
-                  }`}
+                className={`absolute right-0 top-full z-30 mt-2 w-64 origin-top-right rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg transition-all duration-200 ease-out ${
+                  profileMenuOpen
+                    ? "pointer-events-auto scale-100 opacity-100"
+                    : "pointer-events-none scale-95 opacity-0"
+                }`}
               >
-                <div className="flex flex-row items-center space-x-2 px-3 py-2">
+                <div className="flex flex-row items-center space-x-3 px-3 py-3">
                   {userAvatar ? (
                     <img
                       src={userAvatar}
                       alt="Profile"
-                      className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                      className="h-10 w-10 select-none rounded-full object-cover"
                       draggable="false"
                     />
                   ) : (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-xs font-semibold text-black md:h-8 md:w-8 md:text-sm">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9aed00] text-sm font-semibold text-black">
                       {userInitials}
                     </div>
                   )}
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium text-[#f7f7f8]">{userName}</p>
-                    <p className="text-xs text-[#898a8b]">{userEmail}</p>
+                    <p className="text-sm font-medium text-[#f7f7f8]">{userName}</p>
+                    <p className="text-xs text-[#898a8b] truncate max-w-[160px]">{userEmail}</p>
                   </div>
                 </div>
-                <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
-                  type="button"
-                  onClick={() => setProfileMenuOpen(false)}
-                >
-                  Settings
-                </button>
-                <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
-                  type="button"
-                  onClick={() => setProfileMenuOpen(false)}
-                >
-                  Upgrade
-                </button>
-                <button
-                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] sm:px-3 sm:py-2 sm:text-sm"
-                  type="button"
-                  onClick={handleSignOut}
-                  disabled={isLoggingOut}
-                >
-                  {isLoggingOut ? "Logging out..." : "Log Out"}
-                </button>
+                <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
+                  <a
+                    href="/settings"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    Settings
+                  </a>
+                  <a
+                    href="/upgrade"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M6 3h12l4 6-10 13L2 9z" />
+                      <path d="M12 22V9" />
+                      <path d="m2 9 10 4 10-4" />
+                      <path d="m6 3 6 6 6-6" />
+                    </svg>
+                    Upgrade
+                  </a>
+                  <a
+                    href="/support"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                      <path d="M12 17h.01" />
+                    </svg>
+                    24/7 Support
+                  </a>
+                </div>
+                <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
+                  <button
+                    className="flex w-full items-center gap-2 rounded-b-lg px-3 py-2 text-left text-sm text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] disabled:opacity-50"
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={isLoggingOut}
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16,17 21,12 16,7" />
+                      <line x1="21" x2="9" y1="12" y2="12" />
+                    </svg>
+                    {isLoggingOut ? "Logging out..." : "Log Out"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1376,15 +1471,24 @@ export default function TrustScorePage() {
                     </svg>
                   </div>
 
-                  <div className="mt-8 flex gap-2">
+                  <div className="mt-8 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {selectedChannel ? (
                       <button
-                        className="flex-1 rounded-xl bg-[#f7f7f8] px-4 py-3 text-sm font-semibold text-[#1c1e20] transition-all hover:bg-white/90"
+                        className="rounded-xl bg-[#f7f7f8] px-4 py-3 text-sm font-semibold text-[#1c1e20] transition-all hover:bg-white/90"
                         type="button"
                         onClick={() => handleAnalyze(selectedChannel.id)}
                         disabled={analysisActive}
                       >
                         {analysisActive ? "Analyzing..." : "Recalculate"}
+                      </button>
+                    ) : null}
+                    {currentScore !== null ? (
+                      <button
+                        className="rounded-xl border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-sm font-semibold text-[#f7f7f8] transition-all hover:bg-[rgba(255,255,255,0.06)]"
+                        type="button"
+                        onClick={openShareExperience}
+                      >
+                        Share
                       </button>
                     ) : null}
                     <a
@@ -1418,7 +1522,7 @@ export default function TrustScorePage() {
                         <div
                           key={channel.id}
                           className={`group relative flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer ${selectedChannelId === channel.id
-                              ? "bg-[rgba(154,237,0,0.1)] ring-1 ring-[#9aed00]/20"
+                              ? "bg-[rgba(106,71,255,0.14)] ring-1 ring-[rgba(106,71,255,0.35)]"
                               : "hover:bg-[rgba(255,255,255,0.05)]"
                             }`}
                           onClick={() => setSelectedChannelId(channel.id)}
@@ -1434,7 +1538,7 @@ export default function TrustScorePage() {
                             <p className="truncate text-sm font-medium text-[#f7f7f8]">{channel.title}</p>
                             <p className="text-xs text-[#898a8b]">{formatHandle(channel.handle)}</p>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0">
                             <p className={`text-lg font-semibold ${getScoreTone(channel.lastScore ?? null)}`}>
                               {channel.lastScore ?? "—"}
                             </p>
@@ -1791,9 +1895,9 @@ export default function TrustScorePage() {
         </main>
       </div>
 
-      {analysisActive ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-2xl rounded-3xl bg-[#1a1c1e] border border-[rgba(255,255,255,0.08)] p-6 shadow-2xl">
+      {analysisActive && analysisModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4">
+          <div className="w-full max-w-2xl rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#060608] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.6)]">
             <div className="flex items-center gap-3">
               {selectedChannel?.thumbnailUrl ? (
                 <img
@@ -1808,22 +1912,22 @@ export default function TrustScorePage() {
               )}
               <div>
                 <p className="text-[11px] uppercase tracking-[0.2em] text-[#898a8b]">
-                  {channelHandle ? `Analyzing ${channelHandle}` : "Analyzing"}
+                  {channelHandle ? `Syncing ${channelHandle}` : "Syncing channel"}
                 </p>
                 <h3 className="text-lg font-semibold text-[#f7f7f8]">
-                  {selectedChannel?.title ?? "Your channel"}
+                  Pulling live data for your trustscore
                 </h3>
               </div>
             </div>
             <div className="mt-4 flex items-center justify-between text-xs text-[#898a8b]">
-              <span>Estimated time: ~45s</span>
+              <span>Estimated time: ~{Math.ceil(MIN_ANALYSIS_MS / 1000)}s</span>
               <span className="rounded-full bg-[rgba(154,237,0,0.1)] px-3 py-1 text-xs font-semibold text-[#9aed00]">
                 {Math.min(100, Math.round(analysisProgress))}%
               </span>
             </div>
             <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#0e1012]">
               <div
-                className="h-full rounded-full bg-[#9aed00] transition-all duration-1000"
+                className="h-full rounded-full bg-[linear-gradient(90deg,#38bdf8_0%,#6a47ff_50%,#ac5cff_100%)] transition-all duration-1000"
                 style={{ width: `${analysisProgress}%` }}
               />
             </div>
@@ -1835,10 +1939,10 @@ export default function TrustScorePage() {
                   <div key={step.title} className="flex items-start gap-3">
                     <div
                       className={`flex h-6 w-6 items-center justify-center rounded-full border ${isComplete
-                          ? "border-[#4caf50] bg-[rgba(76,175,80,0.1)]"
-                          : isActive
-                            ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)]"
-                            : "border-[rgba(255,255,255,0.08)] bg-[#0e1012]"
+                        ? "border-[#4caf50] bg-[rgba(76,175,80,0.1)]"
+                        : isActive
+                          ? "border-[#6a47ff] bg-[rgba(106,71,255,0.2)]"
+                          : "border-[rgba(255,255,255,0.08)] bg-[#0e1012]"
                         }`}
                     >
                       {isComplete ? (
@@ -1856,7 +1960,7 @@ export default function TrustScorePage() {
                         </svg>
                       ) : (
                         <span
-                          className={`h-2 w-2 rounded-full ${isActive ? "bg-[#9aed00]" : "bg-[#898a8b]"
+                          className={`h-2 w-2 rounded-full ${isActive ? "bg-[#ac5cff]" : "bg-[#898a8b]"
                             }`}
                         />
                       )}
@@ -1882,6 +1986,14 @@ export default function TrustScorePage() {
           </div>
         </div>
       ) : null}
+
+      <TrustScoreShareExperience
+        open={shareExperienceOpen}
+        mode={shareExperienceMode}
+        score={shareExperienceScore ?? currentScore}
+        channelTitle={selectedChannel?.title ?? null}
+        onClose={() => setShareExperienceOpen(false)}
+      />
 
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
