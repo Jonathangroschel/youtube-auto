@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { usePathname } from "next/navigation";
 
 import SearchOverlay from "@/components/search-overlay";
+import { SaturaLogo } from "@/components/satura-logo";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -23,6 +24,7 @@ const resolveActivePath = (pathname: string) => {
   return pathname;
 };
 
+// Satura brand green: #9aed00
 const navItems: NavItem[] = [
   {
     label: "Dashboard",
@@ -32,7 +34,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className={cn("h-5 w-5", active ? "text-[#335CFF]" : "text-gray-500")}
+        className={cn("h-5 w-5 transition-colors", active ? "text-[#9aed00]" : "text-[#898a8b]")}
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -52,7 +54,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className={cn("h-5 w-5", active ? "text-[#335CFF]" : "text-gray-500")}
+        className={cn("h-5 w-5 transition-colors", active ? "text-[#9aed00]" : "text-[#898a8b]")}
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -71,7 +73,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className={cn("h-5 w-5", active ? "text-[#335CFF]" : "text-gray-500")}
+        className={cn("h-5 w-5 transition-colors", active ? "text-[#9aed00]" : "text-[#898a8b]")}
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -92,7 +94,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className={cn("h-5 w-5", active ? "text-[#335CFF]" : "text-gray-500")}
+        className={cn("h-5 w-5 transition-colors", active ? "text-[#9aed00]" : "text-[#898a8b]")}
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -118,7 +120,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className={cn("h-5 w-5", active ? "text-[#335CFF]" : "text-gray-500")}
+        className={cn("h-5 w-5 transition-colors", active ? "text-[#9aed00]" : "text-[#898a8b]")}
         fill="none"
         stroke="currentColor"
         strokeWidth="1.8"
@@ -140,7 +142,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className={cn("h-5 w-5", active ? "text-[#335CFF]" : "text-gray-500")}
+        className={cn("h-5 w-5 transition-colors", active ? "text-[#9aed00]" : "text-[#898a8b]")}
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -220,32 +222,24 @@ export default function AppSidebar() {
   return (
     <>
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
-      <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
+      <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-3 md:flex">
         <div
           ref={navContainerRef}
           className="relative flex w-full flex-1 flex-col items-center gap-4"
         >
+          {/* Active indicator - brand green */}
           <div
-            className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#9aed00] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{
               transform: `translateY(${indicatorStyle.top}px)`,
               height: `${indicatorStyle.height}px`,
               opacity: indicatorStyle.opacity,
               transition: indicatorReady ? undefined : "none",
+              boxShadow: "0px 0px 12px rgba(154, 237, 0, 0.5)",
             }}
           />
-          <a
-            className="flex h-12 w-12 items-center justify-center rounded-2xl"
-            href="/dashboard"
-            aria-label="Dashboard"
-          >
-            <img
-              src="/icon.svg"
-              alt="Youtube Auto"
-              className="h-7 w-7 scale-[1.5] origin-center"
-            />
-          </a>
-          <div className="h-px w-10 bg-gray-200" />
+          <SaturaLogo size="md" />
+          <div className="h-px w-10 bg-[rgba(255,255,255,0.08)]" />
           <nav
             className="flex flex-col gap-2"
             onMouseLeave={() => setHoveredNavIndex(null)}
@@ -260,8 +254,10 @@ export default function AppSidebar() {
                     navItemRefs.current[index] = element;
                   }}
                   className={cn(
-                    "flex h-11 w-11 items-center justify-center rounded-lg transition-colors",
-                    active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
+                    "flex h-11 w-11 items-center justify-center rounded-lg transition-all duration-200",
+                    active 
+                      ? "bg-[rgba(154,237,0,0.1)]" 
+                      : "hover:bg-[rgba(255,255,255,0.05)]"
                   )}
                   aria-label={item.label}
                   onMouseEnter={() => setHoveredNavIndex(index)}
@@ -273,7 +269,7 @@ export default function AppSidebar() {
           </nav>
           <div className="mt-auto pb-6">
             <button
-              className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100 xl:h-14 xl:w-14"
+              className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-all duration-200 hover:border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)] xl:h-14 xl:w-14"
               type="button"
               aria-label="Search"
               onClick={() => setSearchOpen(true)}
@@ -281,7 +277,7 @@ export default function AppSidebar() {
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-5 w-5 text-gray-400 group-hover:text-gray-600"
+                className="h-5 w-5 text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -291,7 +287,7 @@ export default function AppSidebar() {
                 <circle cx="11" cy="11" r="7" />
                 <path d="m20 20-3.5-3.5" />
               </svg>
-              <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600">
+              <span className="text-[10px] font-medium text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]">
                 Cmd+K
               </span>
             </button>

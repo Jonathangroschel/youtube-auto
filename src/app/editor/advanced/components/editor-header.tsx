@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SaturaLogo } from "@/components/satura-logo";
 
 type EditorHeaderProps = {
   projectName: string;
@@ -46,13 +47,13 @@ export const EditorHeader = ({
       return null;
     }
     if (projectSaveState === "saving") {
-      return { label: "Saving...", className: "text-amber-600" };
+      return { label: "Saving...", className: "text-[#f1c40f]" };
     }
     if (projectSaveState === "error") {
-      return { label: "Save failed", className: "text-rose-600" };
+      return { label: "Save failed", className: "text-[#e72930]" };
     }
     if (projectSaveState === "saved") {
-      return { label: "Saved", className: "text-emerald-600" };
+      return { label: "Saved", className: "text-[#07bc0c]" };
     }
     return null;
   })();
@@ -70,18 +71,12 @@ export const EditorHeader = ({
   }, []);
 
   return (
-    <header className="min-h-16 border-b border-gray-200 bg-white px-5 py-2">
+    <header className="min-h-16 border-b border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-5 py-2">
       <div className="flex w-full items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <a
-            className="flex h-10 w-10 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
-            href="/dashboard"
-            aria-label="Home"
-          >
-            <img src="/icon.svg" alt="Home" className="h-9 w-9 ml-[-2px]" />
-          </a>
-          <div className="flex h-10 items-center gap-2 rounded-full bg-gray-100/80 px-3.5">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+          <SaturaLogo size="lg" className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]" />
+          <div className="flex h-10 items-center gap-2 rounded-full bg-[#1a1c1e] border border-[rgba(255,255,255,0.08)] px-3.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#898a8b]">
               Project
             </span>
             <label htmlFor="project-name-input" className="sr-only">
@@ -89,7 +84,7 @@ export const EditorHeader = ({
             </label>
             <input
               id="project-name-input"
-              className="w-44 rounded-md bg-transparent px-1 text-[15px] font-semibold text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-1"
+              className="w-44 rounded-md bg-transparent px-1 text-[15px] font-semibold text-[#f7f7f8] outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
               value={draftProjectName}
               onChange={(event) => {
                 const nextValue = event.target.value;
@@ -122,7 +117,7 @@ export const EditorHeader = ({
             ) : null}
           </div>
           <button
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.1)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
             type="button"
             aria-label="Project options"
           >
@@ -133,13 +128,13 @@ export const EditorHeader = ({
               />
             </svg>
           </button>
-          <div className="hidden h-6 w-px bg-gray-200 md:block" />
+          <div className="hidden h-6 w-px bg-[rgba(255,255,255,0.08)] md:block" />
           <div className="flex items-center gap-1">
             <button
-              className={`flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition ${
+              className={`flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] transition ${
                 undoDisabled
-                  ? "cursor-not-allowed text-gray-300"
-                  : "text-gray-500 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
+                  ? "cursor-not-allowed text-[#5e636e]"
+                  : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.1)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
               }`}
               type="button"
               aria-label="Undo"
@@ -158,10 +153,10 @@ export const EditorHeader = ({
               </svg>
             </button>
             <button
-              className={`flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 transition ${
+              className={`flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] transition ${
                 redoDisabled
-                  ? "cursor-not-allowed text-gray-300"
-                  : "text-gray-500 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
+                  ? "cursor-not-allowed text-[#5e636e]"
+                  : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.1)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
               }`}
               type="button"
               aria-label="Redo"
@@ -183,10 +178,10 @@ export const EditorHeader = ({
         </div>
         <div className="flex items-center justify-end">
           <button
-            className={`flex h-10 items-center gap-2 rounded-full px-5 text-sm font-semibold text-white shadow-[0_8px_16px_rgba(51,92,255,0.22)] transition ${
+            className={`flex h-10 items-center gap-2 rounded-xl px-5 text-sm font-semibold transition ${
               exportDisabled
-                ? "cursor-not-allowed bg-[#9DB5FF] shadow-none"
-                : "bg-[#335CFF] hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2"
+                ? "cursor-not-allowed bg-[#5e636e] text-[#898a8b] shadow-none"
+                : "bg-[#9aed00] text-black shadow-[0px_0px_0px_0px_rgba(154,237,0,0.48)] hover:shadow-[0px_0px_20px_0px_rgba(154,237,0,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
             }`}
             type="button"
             disabled={exportDisabled}
@@ -194,8 +189,8 @@ export const EditorHeader = ({
           >
             {exportBusy ? (
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/70" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-black/50" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-black" />
               </span>
             ) : null}
             {resolvedExportLabel}

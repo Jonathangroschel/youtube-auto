@@ -48,7 +48,7 @@ const SubtitleModeToggle = ({
 }) => {
   return (
     <div className="flex items-center gap-3">
-      <span className={cn("text-sm font-medium", value === "one-word" ? "text-gray-900" : "text-gray-500")}>
+      <span className={cn("text-sm font-medium", value === "one-word" ? "text-[#f7f7f8]" : "text-[#898a8b]")}>
         One Word
       </span>
       <button
@@ -56,7 +56,7 @@ const SubtitleModeToggle = ({
         aria-label="Toggle subtitle mode"
         className={cn(
           "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
-          value === "lines" ? "bg-[#335CFF]" : "bg-gray-200"
+          value === "lines" ? "bg-[#9aed00]" : "bg-[rgba(255,255,255,0.08)]"
         )}
         onClick={() => onChange(value === "lines" ? "one-word" : "lines")}
       >
@@ -67,7 +67,7 @@ const SubtitleModeToggle = ({
           )}
         />
       </button>
-      <span className={cn("text-sm font-medium", value === "lines" ? "text-gray-900" : "text-gray-500")}>
+      <span className={cn("text-sm font-medium", value === "lines" ? "text-[#f7f7f8]" : "text-[#898a8b]")}>
         Lines
       </span>
     </div>
@@ -381,13 +381,13 @@ export default function SplitScreenWizard({
 
   return (
     <div className="mx-auto flex h-[100dvh] w-full max-w-[1920px] flex-col space-y-4 p-2 md:p-4">
-      <header className="sticky top-0 z-40 flex items-center justify-between rounded-xl border border-gray-200 bg-white/70 px-3 py-3 backdrop-blur md:px-4">
+      <header className="sticky top-0 z-40 flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]/70 px-3 py-3 backdrop-blur md:px-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
-              className="h-5 w-5 text-gray-900"
+              className="h-5 w-5 text-[#f7f7f8]"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -399,18 +399,18 @@ export default function SplitScreenWizard({
             </svg>
           </div>
           <div className="flex flex-col">
-            <h1 className="text-base font-medium text-black md:text-lg">
+            <h1 className="text-base font-medium text-[#f7f7f8] md:text-lg">
               {title}
             </h1>
-            <p className="text-xs text-gray-500 md:text-sm">
+            <p className="text-xs text-[#898a8b] md:text-sm">
               {stepLabel}
             </p>
           </div>
         </div>
       </header>
 
-      <div className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-200 px-3 py-3 md:px-4">
+      <div className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
+        <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-3 py-3 md:px-4">
           <div className="flex items-center gap-3 overflow-x-auto">
             {[
               { id: 1, label: "Upload Video" },
@@ -425,20 +425,20 @@ export default function SplitScreenWizard({
                     className={cn(
                       "flex h-5 w-5 items-center justify-center rounded-full text-xs",
                       isActive || isDone
-                        ? "bg-[#335CFF] text-white"
-                        : "border border-gray-200 bg-white text-gray-500"
+                        ? "bg-[#9aed00] text-black"
+                        : "border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#898a8b]"
                     )}
                   >
                     {entry.id}
                   </div>
-                  <p className={cn("text-sm", isActive ? "text-gray-950" : "text-gray-500")}>
+                  <p className={cn("text-sm", isActive ? "text-[#f7f7f8]" : "text-[#898a8b]")}>
                     {entry.label}
                   </p>
                   {entry.id !== 3 && (
                     <svg
                       aria-hidden="true"
                       viewBox="0 0 320 512"
-                      className="h-3.5 w-3.5 text-gray-400"
+                      className="h-3.5 w-3.5 text-[#898a8b]"
                       fill="currentColor"
                     >
                       <path d="M310.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-192 192c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 256 73.4 86.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l192 192z" />
@@ -489,27 +489,27 @@ export default function SplitScreenWizard({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-[#F7F7F7] p-3 md:p-6">
+        <div className="flex-1 overflow-y-auto bg-[#0e1012] p-3 md:p-6">
           {step === 1 && (
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-              <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-medium text-gray-950">
+                    <h2 className="text-base font-medium text-[#f7f7f8]">
                       Upload your video
                     </h2>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[#898a8b]">
                       Upload a clip, or download from YouTube/TikTok.
                     </p>
                   </div>
-                  <div className="flex rounded-lg bg-gray-100 p-1">
+                  <div className="flex rounded-lg bg-[#252729] p-1">
                     <button
                       type="button"
                       className={cn(
                         "rounded-md px-3 py-1.5 text-sm font-medium",
                         inputMode === "upload"
-                          ? "bg-white text-gray-950 shadow-sm"
-                          : "text-gray-600"
+                          ? "bg-[#1a1c1e] text-[#f7f7f8] shadow-sm"
+                          : "text-[#898a8b]"
                       )}
                       onClick={() => setInputMode("upload")}
                     >
@@ -520,8 +520,8 @@ export default function SplitScreenWizard({
                       className={cn(
                         "rounded-md px-3 py-1.5 text-sm font-medium",
                         inputMode === "link"
-                          ? "bg-white text-gray-950 shadow-sm"
-                          : "text-gray-600"
+                          ? "bg-[#1a1c1e] text-[#f7f7f8] shadow-sm"
+                          : "text-[#898a8b]"
                       )}
                       onClick={() => setInputMode("link")}
                     >
@@ -546,14 +546,14 @@ export default function SplitScreenWizard({
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={handleDrop}
                       className={cn(
-                        "flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center transition",
-                        sourceBusy ? "opacity-60" : "hover:border-gray-400"
+                        "flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-8 text-center transition",
+                        sourceBusy ? "opacity-60" : "hover:border-[rgba(255,255,255,0.12)]"
                       )}
                     >
-                      <p className="text-base text-gray-700">
+                      <p className="text-base text-[#898a8b]">
                         Choose a clip or drag & drop it here.
                       </p>
-                      <p className="mt-1 text-sm text-gray-400">
+                      <p className="mt-1 text-sm text-[#898a8b]">
                         MP4/MOV/WEBM, up to 500 MB.
                       </p>
                       <div className="mt-4">
@@ -565,7 +565,7 @@ export default function SplitScreenWizard({
                   </div>
                 ) : (
                   <div className="mt-4 space-y-2">
-                    <label className="text-sm text-gray-500">
+                    <label className="text-sm text-[#898a8b]">
                       Add YouTube or TikTok link
                     </label>
                     <div className="flex gap-2">
@@ -573,7 +573,7 @@ export default function SplitScreenWizard({
                         value={sourceLink}
                         onChange={(e) => setSourceLink(e.target.value)}
                         placeholder="https://youtube.com/watch?v=..."
-                        className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm focus:border-[#335CFF] focus:outline-none"
+                        className="h-10 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 text-sm text-[#f7f7f8] focus:border-[#9aed00]/30 focus:ring-[#9aed00]/20 focus:outline-none"
                       />
                       <Button
                         type="button"
@@ -588,19 +588,19 @@ export default function SplitScreenWizard({
                 )}
 
                 {sourceError && (
-                  <p className="mt-3 text-sm text-red-600">{sourceError}</p>
+                  <p className="mt-3 text-sm text-[#e72930]">{sourceError}</p>
                 )}
               </div>
 
               {sourceVideo && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm text-gray-500">Selected video</p>
-                      <p className="truncate text-base font-medium text-gray-950">
+                      <p className="text-sm text-[#898a8b]">Selected video</p>
+                      <p className="truncate text-base font-medium text-[#f7f7f8]">
                         {sourceVideo.name}
                       </p>
-                      <p className="mt-1 text-xs text-gray-500">
+                      <p className="mt-1 text-xs text-[#898a8b]">
                         Asset ID: {sourceVideo.assetId ?? "external"}
                       </p>
                     </div>
@@ -630,10 +630,10 @@ export default function SplitScreenWizard({
             <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-medium text-gray-950">
+                  <h2 className="text-lg font-medium text-[#f7f7f8]">
                     Select Background Video
                   </h2>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-[#898a8b]">
                     Tip: You can replace the background video later in the editor.
                   </p>
                 </div>
@@ -649,20 +649,20 @@ export default function SplitScreenWizard({
               </div>
 
               {gameplayError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="rounded-lg border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
                   {gameplayError}
                 </div>
               )}
 
               {gameplayLoading && gameplayItems.length === 0 && (
-                <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
                   Loading gameplay footage...
                 </div>
               )}
 
               {!gameplayLoading && gameplayItems.length === 0 && (
-                <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
-                  No gameplay footage yet. Once the <code className="rounded bg-gray-100 px-1">gameplay-footage</code> bucket finishes uploading, videos will show up here.
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
+                  No gameplay footage yet. Once the <code className="rounded bg-[#252729] px-1">gameplay-footage</code> bucket finishes uploading, videos will show up here.
                 </div>
               )}
 
@@ -675,13 +675,13 @@ export default function SplitScreenWizard({
                         key={item.path}
                         type="button"
                         className={cn(
-                          "group relative overflow-hidden rounded-xl border bg-white text-left transition",
-                          isSelected ? "border-blue-600 shadow-lg shadow-blue-500/10" : "border-gray-200 hover:border-gray-300"
+                          "group relative overflow-hidden rounded-xl border bg-[#1a1c1e] text-left transition",
+                          isSelected ? "border-[#9aed00] shadow-lg shadow-[#9aed00]/10" : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.12)]"
                         )}
                         onClick={() => setGameplaySelected(item)}
                       >
                         {isSelected && (
-                          <div className="absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-white">
+                          <div className="absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[#9aed00] text-black">
                             <svg
                               aria-hidden="true"
                               viewBox="0 0 20 20"
@@ -725,22 +725,22 @@ export default function SplitScreenWizard({
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-medium text-gray-950">
+                  <h2 className="text-lg font-medium text-[#f7f7f8]">
                     Select Subtitle Template
                   </h2>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-[#898a8b]">
                     Uses the editor’s transcription + timestamped subtitle engine.
                   </p>
                 </div>
                 <SubtitleModeToggle value={subtitleMode} onChange={setSubtitleMode} />
               </div>
 
-              <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-950">
+                  <p className="text-sm font-medium text-[#f7f7f8]">
                     Auto-generate subtitles
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-[#898a8b]">
                     Creates subtitles in the editor automatically after import.
                   </p>
                 </div>
@@ -748,7 +748,7 @@ export default function SplitScreenWizard({
                   type="button"
                   className={cn(
                     "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
-                    autoGenerateSubtitles ? "bg-[#335CFF]" : "bg-gray-200"
+                    autoGenerateSubtitles ? "bg-[#9aed00]" : "bg-[rgba(255,255,255,0.08)]"
                   )}
                   onClick={() => setAutoGenerateSubtitles((prev) => !prev)}
                   aria-label="Toggle auto-generate subtitles"
@@ -772,13 +772,13 @@ export default function SplitScreenWizard({
                       type="button"
                       className={cn(
                         "group relative flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-slate-800 transition",
-                        selected ? "ring-2 ring-[#335CFF] ring-offset-2 ring-offset-[#F7F7F7]" : "hover:opacity-95"
+                        selected ? "ring-2 ring-[#9aed00] ring-offset-2 ring-offset-[#1c1e20]" : "hover:opacity-95"
                       )}
                       onClick={() => setSubtitleStyleId(preset.id)}
                     >
                       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.14),_rgba(255,255,255,0)_55%)]" />
                       {selected && (
-                        <div className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[#335CFF] text-white">
+                        <div className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-black">
                           <svg
                             aria-hidden="true"
                             viewBox="0 0 24 24"
@@ -820,7 +820,7 @@ export default function SplitScreenWizard({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-gray-200 bg-white px-3 py-3 md:hidden">
+        <div className="flex items-center justify-between gap-2 border-t border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-3 md:hidden">
           <Button variant="outline" onClick={handleBack} disabled={step === 1}>
             Back
           </Button>

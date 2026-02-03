@@ -55,7 +55,7 @@ export const StockVideoCard = ({
     <div className="space-y-2">
       <button
         type="button"
-        className="group relative h-24 w-full overflow-hidden rounded-2xl border border-gray-200"
+        className="group relative h-24 w-full overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)]"
         onClick={() => onAdd(video)}
         onMouseEnter={handleHoverStart}
         onMouseLeave={handleHoverEnd}
@@ -76,7 +76,7 @@ export const StockVideoCard = ({
           />
         ) : (
           <div
-            className={`absolute inset-0 flex h-full w-full items-center justify-center bg-gray-100 text-gray-400 transition-opacity duration-200 ${
+            className={`absolute inset-0 flex h-full w-full items-center justify-center bg-[#1a1c1e] text-[#5e636e] transition-opacity duration-200 ${
               showVideoPreview ? "opacity-0" : "opacity-100"
             }`}
           >

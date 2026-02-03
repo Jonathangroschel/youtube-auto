@@ -13262,8 +13262,8 @@ function AdvancedEditorContent() {
         container.style.pointerEvents = "none";
         container.style.opacity = "0";
 
-        const cardBg = darkMode ? "bg-black" : "bg-white";
-        const borderColor = darkMode ? "border-transparent" : "border-gray-200";
+        const cardBg = darkMode ? "bg-black" : "bg-[#1a1c1e]";
+        const borderColor = darkMode ? "border-transparent" : "border-[rgba(255,255,255,0.08)]";
         const textPrimary = darkMode ? "text-white" : "text-black";
         const iconText = darkMode ? "text-[#ADADAD]" : "text-[#adadad]";
         const stroke = darkMode ? "#575757" : "#adadad";
@@ -19519,7 +19519,7 @@ function AdvancedEditorContent() {
   }, []);
 
   const renderToolRail = () => (
-    <aside className="hidden w-20 flex-col items-center border-r border-gray-200 bg-white lg:flex">
+    <aside className="hidden w-20 flex-col items-center border-r border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] lg:flex">
       <nav
         className="md:m-auto flex gap-3 p-4 md:gap-4 lg:mt-2 lg:w-full lg:flex-col lg:items-center lg:p-0"
         style={
@@ -19535,14 +19535,14 @@ function AdvancedEditorContent() {
         {toolbarItems.map((item) => {
           const isActive = item.id === activeTool;
           const itemClassName = isActive
-            ? "group relative flex h-[60px] w-[60px] cursor-pointer select-none flex-col items-center justify-center font-medium text-blue-600 active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-            : "group relative flex h-[60px] w-[60px] cursor-pointer select-none flex-col items-center justify-center font-normal text-gray-600 hover:text-gray-600 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+            ? "group relative flex h-[60px] w-[60px] cursor-pointer select-none flex-col items-center justify-center font-medium text-[#6a47ff] active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.24)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0e1012]"
+            : "group relative flex h-[60px] w-[60px] cursor-pointer select-none flex-col items-center justify-center font-normal text-[#898a8b] hover:text-[#898a8b] hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.24)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0e1012]";
           const iconWrapperClassName = isActive
-            ? "relative w-9 h-9 rounded-xl flex justify-center items-center bg-light-blue"
-            : "relative w-9 h-9 rounded-xl flex justify-center items-center bg-transparent group-hover:bg-gray-500/10";
+            ? "relative w-9 h-9 rounded-xl flex justify-center items-center bg-[rgba(106,71,255,0.1)]"
+            : "relative w-9 h-9 rounded-xl flex justify-center items-center bg-transparent group-hover:bg-[rgba(255,255,255,0.03)]";
           const iconClassName = isActive
-            ? "text-primary"
-            : "text-gray-200 group-hover:text-gray-300";
+            ? "text-[#6a47ff]"
+            : "text-[#5e636e] group-hover:text-[#5e636e]";
 
           return (
             <button
@@ -19898,7 +19898,7 @@ function AdvancedEditorContent() {
         <div
           ref={stageRef}
           data-export-stage
-          className={`relative overflow-visible ${dragOverCanvas ? "ring-2 ring-[#335CFF]" : ""
+          className={`relative overflow-visible ${dragOverCanvas ? "ring-2 ring-[#9aed00]" : ""
             }`}
           style={{
             width: stageDisplay.width ? `${stageDisplay.width}px` : "100%",
@@ -19921,13 +19921,23 @@ function AdvancedEditorContent() {
             >
               {!isExportMode && (
                 <div
-                  className="pointer-events-none absolute inset-0 border border-gray-200 shadow-sm"
-                  style={{ backgroundColor: "#f2f3fa" }}
+                  className="pointer-events-none absolute inset-0 border border-[rgba(255,255,255,0.06)] rounded-xl"
+                  style={{ 
+                    backgroundColor: "#1a1c1e",
+                    backgroundImage: "radial-gradient(ellipse at center, rgba(106, 71, 255, 0.08) 0%, transparent 70%)"
+                  }}
                 />
               )}
               {dragOverCanvas && (
-                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm font-semibold text-[#335CFF]">
-                  Drop to add to timeline
+                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-[#0e1012]/90 backdrop-blur-sm border-2 border-dashed border-[#6a47ff]">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[rgba(106,71,255,0.15)]">
+                      <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#6a47ff]">
+                        <path d="M12 4v10m0 0-4-4m4 4 4-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold text-[#6a47ff]">Drop to add to timeline</span>
+                  </div>
                 </div>
               )}
               {baseBackgroundTransform && (
@@ -19952,41 +19962,36 @@ function AdvancedEditorContent() {
                 />
               )}
               {showEmptyState ? (
-                <div className="relative z-10 flex flex-col items-center gap-3 text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
-                    <svg viewBox="0 0 24 24" className="h-8 w-8">
-                      <path
-                        d="M12 4v10m0 0-4-4m4 4 4-4M5 18h14"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
+                <div className="relative z-10 flex flex-col items-center gap-4 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[rgba(106,71,255,0.1)] border border-[rgba(106,71,255,0.2)]">
+                    {showUploadingState ? (
+                      <svg className="h-6 w-6 text-[#6a47ff] animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="h-6 w-6 text-[#6a47ff]">
+                        <path d="M12 16V4m0 0L8 8m4-4 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
                   </div>
-                  <div>
-                    <h2 className="text-lg font-semibold">
-                      {showUploadingState ? "Uploading clip" : "Drop your first clip"}
+                  <div className="space-y-1">
+                    <h2 className="text-base font-medium text-[#f7f7f8]">
+                      {showUploadingState ? "Uploading..." : "Drop your first clip"}
                     </h2>
-                    <p className="text-sm text-gray-500">
-                      {showUploadingState
-                        ? "Hang tight while we add your media."
-                        : "Upload media to preview it here"}
+                    <p className="text-sm text-[#5e636e]">
+                      {showUploadingState ? "Adding media to timeline" : "or click to browse"}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                      showUploadingState
-                        ? "cursor-wait bg-[#9DB5FF]"
-                        : "bg-[#335CFF]"
-                    }`}
-                    onClick={handleUploadClick}
-                    disabled={showUploadingState}
-                  >
-                    {showUploadingState ? "Uploading..." : "Upload media"}
-                  </button>
+                  {!showUploadingState && (
+                    <button
+                      type="button"
+                      className="rounded-lg bg-[#6a47ff] px-4 py-2 text-sm font-medium text-white hover:bg-[#5c24f7] transition-colors"
+                      onClick={handleUploadClick}
+                    >
+                      Upload media
+                    </button>
+                  )}
                 </div>
               ) : visualStack.length > 0 ? (
                 <div className="relative z-10 h-full w-full">
@@ -20256,7 +20261,7 @@ function AdvancedEditorContent() {
                 </div>
               ) : activeAsset?.kind === "audio" ? (
                 <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-[#E7EDFF] text-[#335CFF]">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-[#E7EDFF] text-[#9aed00]">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="24"
@@ -20360,7 +20365,7 @@ function AdvancedEditorContent() {
                       </defs>
                     </svg>
                   </div>
-                  <p className="text-sm text-gray-500">Audio preview ready</p>
+                  <p className="text-sm text-[#898a8b]">Audio preview ready</p>
                 </div>
               ) : null}
               {audioStack.length > 0 && (
@@ -20381,7 +20386,7 @@ function AdvancedEditorContent() {
               {stageSelection && stageSelectionStyle && (
                 <div className="pointer-events-none absolute inset-0">
                   <div
-                    className="absolute rounded-lg border border-dashed border-[#5B6CFF] bg-[#5B6CFF]/10"
+                    className="absolute rounded-lg border border-dashed border-[#9aed00] bg-[#9aed00]/10"
                     style={{
                       left: stageSelectionStyle.left,
                       top: stageSelectionStyle.top,
@@ -20397,14 +20402,14 @@ function AdvancedEditorContent() {
                     {snapGuides.x.map((line) => (
                       <div
                         key={`snap-x-${line}`}
-                        className="absolute top-0 bottom-0 w-px bg-[#5B6CFF]/70"
+                        className="absolute top-0 bottom-0 w-px bg-[#9aed00]/70"
                         style={{ left: `${line}px` }}
                       />
                     ))}
                     {snapGuides.y.map((line) => (
                       <div
                         key={`snap-y-${line}`}
-                        className="absolute left-0 right-0 h-px bg-[#5B6CFF]/70"
+                        className="absolute left-0 right-0 h-px bg-[#9aed00]/70"
                         style={{ top: `${line}px` }}
                       />
                     ))}
@@ -20441,7 +20446,7 @@ function AdvancedEditorContent() {
                         }}
                       >
                         {isSelected && (
-                          <div className="pointer-events-none absolute inset-0 border-2 border-[#335CFF] shadow-[0_0_0_1px_rgba(51,92,255,0.35)]" />
+                          <div className="pointer-events-none absolute inset-0 border-2 border-[#9aed00] shadow-[0_0_0_1px_rgba(154,237,0,0.35)]" />
                         )}
                         {isActive && (
                           <div className="absolute inset-0">
@@ -20465,7 +20470,7 @@ function AdvancedEditorContent() {
                                 height="14"
                                 fill="none"
                                 viewBox="0 0 24 24"
-                                className="text-[#8F9199] hover:text-[#335CFF] transition-colors"
+                                className="text-[#8F9199] hover:text-[#9aed00] transition-colors"
                               >
                                 <path
                                   stroke="currentColor"
@@ -20477,7 +20482,7 @@ function AdvancedEditorContent() {
                               </svg>
                             </button>
                             <div
-                              className="pointer-events-none absolute left-1/2 -translate-x-1/2 w-px bg-[#335CFF]/40"
+                              className="pointer-events-none absolute left-1/2 -translate-x-1/2 w-px bg-[#9aed00]/40"
                               style={{
                                 top: "-12px",
                                 height: "12px",
@@ -20487,7 +20492,7 @@ function AdvancedEditorContent() {
                               <button
                                 key={`${entry.clip.id}-${handle.id}-overlay`}
                                 type="button"
-                                className={`pointer-events-auto absolute border border-[#335CFF] bg-white shadow-sm ${handle.className} ${handle.cursor} ${
+                                className={`pointer-events-auto absolute border border-[#9aed00] bg-[#1a1c1e] shadow-sm ${handle.className} ${handle.cursor} ${
                                   handle.isCorner
                                     ? "h-3 w-3 rounded-full"
                                     : handle.id === "n" || handle.id === "s"
@@ -20527,7 +20532,7 @@ function AdvancedEditorContent() {
                         {selectedClipIdsSet.has(
                           selectedSubtitleEntry.clip.id
                         ) && (
-                          <div className="pointer-events-none absolute inset-0 border-2 border-[#335CFF] shadow-[0_0_0_1px_rgba(51,92,255,0.35)]" />
+                          <div className="pointer-events-none absolute inset-0 border-2 border-[#9aed00] shadow-[0_0_0_1px_rgba(154,237,0,0.35)]" />
                         )}
                         {activeCanvasClipId === selectedSubtitleEntry.clip.id && (
                           <div className="absolute inset-0">
@@ -20551,7 +20556,7 @@ function AdvancedEditorContent() {
                                 height="14"
                                 fill="none"
                                 viewBox="0 0 24 24"
-                                className="text-[#8F9199] hover:text-[#335CFF] transition-colors"
+                                className="text-[#8F9199] hover:text-[#9aed00] transition-colors"
                               >
                                 <path
                                   stroke="currentColor"
@@ -20563,7 +20568,7 @@ function AdvancedEditorContent() {
                               </svg>
                             </button>
                             <div
-                              className="pointer-events-none absolute left-1/2 -translate-x-1/2 w-px bg-[#335CFF]/40"
+                              className="pointer-events-none absolute left-1/2 -translate-x-1/2 w-px bg-[#9aed00]/40"
                               style={{
                                 top: "-12px",
                                 height: "12px",
@@ -20573,7 +20578,7 @@ function AdvancedEditorContent() {
                               <button
                                 key={`${selectedSubtitleEntry.clip.id}-${handle.id}-subtitle`}
                                 type="button"
-                                className={`pointer-events-auto absolute border border-[#335CFF] bg-white shadow-sm ${handle.className} ${handle.cursor} ${
+                                className={`pointer-events-auto absolute border border-[#9aed00] bg-[#1a1c1e] shadow-sm ${handle.className} ${handle.cursor} ${
                                   handle.isCorner
                                     ? "h-3 w-3 rounded-full"
                                     : handle.id === "n" || handle.id === "s"
@@ -20646,7 +20651,7 @@ function AdvancedEditorContent() {
                     : "Volume"}
                 </span>
               </button>
-              <div className="h-6 w-px bg-gray-100" />
+              <div className="h-6 w-px bg-[rgba(255,255,255,0.05)]" />
               <button
                 type="button"
                 className={`${floaterPillClass} ${floatingVideoSettings ? "" : "cursor-not-allowed opacity-50"}`}
@@ -20678,7 +20683,7 @@ function AdvancedEditorContent() {
                     : "Speed"}
                 </span>
               </button>
-              <div className="h-6 w-px bg-gray-100" />
+              <div className="h-6 w-px bg-[rgba(255,255,255,0.05)]" />
               <button
                 type="button"
                 className={floaterButtonClass}
@@ -20712,7 +20717,7 @@ function AdvancedEditorContent() {
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200/70 bg-white text-gray-600 transition hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
                     onClick={() =>
                       updateClipSettings(floatingMenuEntry.clip.id, (current) => ({
                         ...current,
@@ -20732,9 +20737,9 @@ function AdvancedEditorContent() {
                     )}
                   </button>
                   <div className="relative flex-1">
-                    <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/90" />
+                    <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.08)]/90" />
                     <div
-                      className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                      className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#9aed00]"
                       style={{
                         width: `${floatingVideoSettings.muted ? 0 : floatingVideoSettings.volume}%`,
                       }}
@@ -20759,10 +20764,10 @@ function AdvancedEditorContent() {
                   <input
                     readOnly
                     value={`${floatingVideoSettings.muted ? 0 : floatingVideoSettings.volume}%`}
-                    className="h-7 w-14 rounded-lg border border-transparent bg-gray-50 px-2 text-right text-xs font-semibold text-gray-600"
+                    className="h-7 w-14 rounded-lg border border-transparent bg-[rgba(255,255,255,0.03)] px-2 text-right text-xs font-semibold text-[#898a8b]"
                   />
                 </div>
-                <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
+                <div className="flex items-center justify-between text-xs font-semibold text-[#898a8b]">
                   <span>Fade Audio In/Out</span>
                   <ToggleSwitch
                     checked={floatingVideoSettings.fadeEnabled}
@@ -20782,7 +20787,7 @@ function AdvancedEditorContent() {
                 className={`mt-2 space-y-3 p-3 ${floaterSurfaceClass}`}
                 style={{ width: floaterPanelWidth }}
               >
-                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                   Speed
                 </span>
                 <div className="flex flex-wrap gap-2">
@@ -20794,8 +20799,8 @@ function AdvancedEditorContent() {
                         type="button"
                         className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                           isActive
-                            ? "bg-[#EEF2FF] text-[#335CFF] shadow-[inset_0_0_0_1px_rgba(51,92,255,0.25)]"
-                            : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                            ? "bg-[rgba(154,237,0,0.1)] text-[#9aed00] shadow-[inset_0_0_0_1px_rgba(154,237,0,0.25)]"
+                            : "bg-[rgba(255,255,255,0.03)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)]"
                         }`}
                         onClick={() =>
                           updateClipSettings(floatingMenuEntry.clip.id, (current) => ({
@@ -20813,8 +20818,8 @@ function AdvancedEditorContent() {
                     type="button"
                     className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                       speedPresets.includes(floatingVideoSettings.speed)
-                        ? "bg-gray-50 text-gray-600 hover:bg-gray-100"
-                        : "bg-[#EEF2FF] text-[#335CFF] shadow-[inset_0_0_0_1px_rgba(51,92,255,0.25)]"
+                        ? "bg-[rgba(255,255,255,0.03)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)]"
+                        : "bg-[rgba(154,237,0,0.1)] text-[#9aed00] shadow-[inset_0_0_0_1px_rgba(154,237,0,0.25)]"
                     }`}
                     onClick={() =>
                       updateClipSettings(floatingMenuEntry.clip.id, (current) => ({
@@ -20827,8 +20832,8 @@ function AdvancedEditorContent() {
                   </button>
                 </div>
                 {!speedPresets.includes(floatingVideoSettings.speed) && (
-                  <div className="flex items-center justify-between rounded-lg border border-gray-200/70 bg-gray-50/70 px-3 py-2 text-xs text-gray-500">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                  <div className="flex items-center justify-between rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[rgba(255,255,255,0.03)]/70 px-3 py-2 text-xs text-[#898a8b]">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                       Custom
                     </span>
                     <div className="flex items-center gap-1">
@@ -20844,9 +20849,9 @@ function AdvancedEditorContent() {
                             speed: clamp(Number(event.target.value), 0.1, 4),
                           }))
                         }
-                        className="w-16 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
+                        className="w-16 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2 py-1 text-xs font-semibold text-[#f7f7f8]"
                       />
-                      <span className="text-xs text-gray-400">x</span>
+                      <span className="text-xs text-[#5e636e]">x</span>
                     </div>
                   </div>
                 )}
@@ -20875,12 +20880,12 @@ function AdvancedEditorContent() {
                         }}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                             <path d="M13 10a5 5 0 0 1-10 0c0-3.5 5-9 5-9s5 5.5 5 9" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                           <span className="truncate">Opacity</span>
                         </span>
-                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-400">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#5e636e]">
                           <path d="m6 12 4-4-4-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </button>
@@ -20899,12 +20904,12 @@ function AdvancedEditorContent() {
                         }}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                             <path d="M12.2 13a.8.8 0 1 0 1.6 0zM13 9h-.8zM7 3v.8zm-4-.8a.8.8 0 1 0 0 1.6zM14 13V9h-1.6v4zM7 2.2H3v1.6h4zM13.8 9A6.8 6.8 0 0 0 7 2.2v1.6c2.9 0 5.2 2.3 5.2 5.2z" fill="currentColor" />
                           </svg>
                           <span className="truncate">Round Corners</span>
                         </span>
-                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-400">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#5e636e]">
                           <path d="m6 12 4-4-4-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </button>
@@ -20917,13 +20922,13 @@ function AdvancedEditorContent() {
                         }}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                             <path d="M10 5.3a2 2 0 1 0 4 0 2 2 0 0 0-4 0m0 0H2.7m3.3 5.4a2 2 0 1 0-4 0 2 2 0 0 0 4 0m0 0h7.3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                           </svg>
                           <span className="truncate">Adjust</span>
                         </span>
                       </button>
-                      <div className="my-1 h-px bg-gray-100" />
+                      <div className="my-1 h-px bg-[rgba(255,255,255,0.05)]" />
                     </>
                   )}
                   <button
@@ -20935,7 +20940,7 @@ function AdvancedEditorContent() {
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                         <path d="M11 5V2a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3m1-7h7a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6c0-.6.4-1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                       <span className="truncate">Copy</span>
@@ -20956,16 +20961,16 @@ function AdvancedEditorContent() {
                     }
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                         <path d="m1 10.3 6.4 3.5a2 2 0 0 0 1.9 0l6.4-3.5M1 6.6l6.4 3.1a2.3 2.3 0 0 0 2.1 0l6.4-3.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                       <span className="truncate">Order</span>
                     </span>
-                    <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-400">
+                    <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#5e636e]">
                       <path d="m6 12 4-4-4-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
-                  <div className="my-1 h-px bg-gray-100" />
+                  <div className="my-1 h-px bg-[rgba(255,255,255,0.05)]" />
                   <button
                     type="button"
                     className={floaterMenuItemClass}
@@ -20981,12 +20986,12 @@ function AdvancedEditorContent() {
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                         <path d="M8 2.7a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 0V1.3m0 4v3.3m2 0H8m2-7.3H6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                       <span className="truncate">Adjust Timing</span>
                     </span>
-                    <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-400">
+                    <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#5e636e]">
                       <path d="m6 12 4-4-4-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
@@ -21001,7 +21006,7 @@ function AdvancedEditorContent() {
                         }}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                             <path d="m2 9 2.4 2.5A4.9 4.9 0 0 0 8 13a5 5 0 0 0 4-2M2 9v2.8M2 9h2.8M14 7l-2.4-2.5A4.9 4.9 0 0 0 8 3a5 5 0 0 0-4 2M14 7V4.2M14 7h-2.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                           <span className="truncate">Replace Video</span>
@@ -21016,7 +21021,7 @@ function AdvancedEditorContent() {
                         }}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                             <path d="m8.9 11.8-1.4 1.4a3.3 3.3 0 0 1-4.7-4.7l1.4-1.4M7.1 4.2l1.4-1.4a3.3 3.3 0 0 1 4.7 4.7l-1.4 1.4M9.9 6.1 6.1 9.9" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                           <span className="truncate">Detach Audio</span>
@@ -21054,7 +21059,7 @@ function AdvancedEditorContent() {
                       }}
                     >
                       <span className="flex min-w-0 items-center gap-2">
-                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                           <path d="M1 15.8h14M3 7.8h10M13.3 8v3M13 11.2H3M2.8 11V8M8 1l-3 3m3-3 3 3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                         <span className="truncate">Bring to Front</span>
@@ -21069,7 +21074,7 @@ function AdvancedEditorContent() {
                       }}
                     >
                       <span className="flex min-w-0 items-center gap-2">
-                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                           <path d="M3 9.8h10M13.3 10v3M13 13.2H3M2.8 13V10M8 2l-3 3m3-3 3 3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                         <span className="truncate">Bring Forward</span>
@@ -21084,7 +21089,7 @@ function AdvancedEditorContent() {
                       }}
                     >
                       <span className="flex min-w-0 items-center gap-2">
-                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                           <path d="M13 6.2H3M2.8 6V3M3 2.8h10M13.3 3v3M8 15l-3-3m3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                         <span className="truncate">Send Backward</span>
@@ -21099,7 +21104,7 @@ function AdvancedEditorContent() {
                       }}
                     >
                       <span className="flex min-w-0 items-center gap-2">
-                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                        <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                           <path d="M15 1.2H1M13 8.2H3M2.8 8V5M3 4.8h10M13.3 5v3M8 15l-3-3m3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                         <span className="truncate">Send to Back</span>
@@ -21115,17 +21120,17 @@ function AdvancedEditorContent() {
                     {floatingVideoSettings ? (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-600">Opacity</span>
+                          <span className="text-xs font-semibold text-[#898a8b]">Opacity</span>
                           <input
                             readOnly
                             value={`${floatingVideoSettings.opacity}%`}
-                            className="h-7 w-14 rounded-lg border border-transparent bg-gray-50 px-2 text-right text-xs font-semibold text-gray-600"
+                            className="h-7 w-14 rounded-lg border border-transparent bg-[rgba(255,255,255,0.03)] px-2 text-right text-xs font-semibold text-[#898a8b]"
                           />
                         </div>
                         <div className="relative">
-                          <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/90" />
+                          <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.08)]/90" />
                           <div
-                            className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                            className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#9aed00]"
                             style={{ width: `${floatingVideoSettings.opacity}%` }}
                           />
                           <input
@@ -21146,7 +21151,7 @@ function AdvancedEditorContent() {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-500">Opacity controls are available for video clips.</div>
+                      <div className="text-xs text-[#898a8b]">Opacity controls are available for video clips.</div>
                     )}
                   </div>
                 )}
@@ -21157,7 +21162,7 @@ function AdvancedEditorContent() {
                   >
                     {floatingVideoSettings ? (
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold text-gray-600">Round Corners</span>
+                        <span className="text-xs font-semibold text-[#898a8b]">Round Corners</span>
                         <ToggleSwitch
                           checked={floatingVideoSettings.roundCorners}
                           onChange={(next) =>
@@ -21188,7 +21193,7 @@ function AdvancedEditorContent() {
                         />
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-500">Corner controls are available for video clips.</div>
+                      <div className="text-xs text-[#898a8b]">Corner controls are available for video clips.</div>
                     )}
                   </div>
                 )}
@@ -21198,7 +21203,7 @@ function AdvancedEditorContent() {
                     style={{ width: floaterSubmenuWidth }}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-gray-600">Duration</span>
+                      <span className="text-xs font-semibold text-[#898a8b]">Duration</span>
                       <input
                         key={`${floatingMenuEntry.clip.id}-duration-${floatingMenuEntry.clip.duration}`}
                         defaultValue={formatTimeWithTenths(floatingMenuEntry.clip.duration)}
@@ -21208,11 +21213,11 @@ function AdvancedEditorContent() {
                             event.target.value
                           )
                         }
-                        className="h-7 w-20 rounded-lg border border-gray-200/70 bg-white px-2 text-right text-xs font-semibold text-gray-700"
+                        className="h-7 w-20 rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-2 text-right text-xs font-semibold text-[#f7f7f8]"
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-gray-600">Start</span>
+                      <span className="text-xs font-semibold text-[#898a8b]">Start</span>
                       <div className="flex items-center gap-2">
                         <input
                           key={`${floatingMenuEntry.clip.id}-start-${floatingMenuEntry.clip.startTime}`}
@@ -21225,11 +21230,11 @@ function AdvancedEditorContent() {
                               event.target.value
                             )
                           }
-                          className="h-7 w-20 rounded-lg border border-gray-200/70 bg-white px-2 text-right text-xs font-semibold text-gray-700"
+                          className="h-7 w-20 rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-2 text-right text-xs font-semibold text-[#f7f7f8]"
                         />
                         <button
                           type="button"
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
                           aria-label="Set start to playhead"
                           onClick={() =>
                             handleSetStartAtPlayhead(floatingMenuEntry.clip)
@@ -21249,7 +21254,7 @@ function AdvancedEditorContent() {
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-gray-600">End</span>
+                      <span className="text-xs font-semibold text-[#898a8b]">End</span>
                       <div className="flex items-center gap-2">
                         <input
                           key={`${floatingMenuEntry.clip.id}-end-${floatingMenuEntry.clip.startTime}-${floatingMenuEntry.clip.duration}`}
@@ -21263,11 +21268,11 @@ function AdvancedEditorContent() {
                               event.target.value
                             )
                           }
-                          className="h-7 w-20 rounded-lg border border-gray-200/70 bg-white px-2 text-right text-xs font-semibold text-gray-700"
+                          className="h-7 w-20 rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-2 text-right text-xs font-semibold text-[#f7f7f8]"
                         />
                         <button
                           type="button"
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
                           aria-label="Set end to playhead"
                           onClick={() =>
                             handleSetEndAtPlayhead(floatingMenuEntry.clip)
@@ -21299,13 +21304,13 @@ function AdvancedEditorContent() {
 
   const renderTimeline = () => (
     <div
-      className="group flex min-w-0 flex-col border-t border-gray-200 bg-white"
+      className="group flex min-w-0 flex-col border-t border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
       style={{ height: `${timelineHeight}px` }}
     >
       <div
-        className={`group relative flex cursor-row-resize items-center justify-center bg-white touch-none ${isResizingTimeline
-          ? "border-b border-[#335CFF]"
-          : "border-b border-gray-100"
+        className={`group relative flex cursor-row-resize items-center justify-center bg-[#1a1c1e] touch-none ${isResizingTimeline
+          ? "border-b border-[#9aed00]"
+          : "border-b border-[rgba(255,255,255,0.06)]"
           }`}
         style={{ height: `${timelineHandleHeight}px` }}
         onPointerDown={handleTimelineResizeStart}
@@ -21313,12 +21318,12 @@ function AdvancedEditorContent() {
       >
         <span
           className={`h-0.5 w-16 rounded-full transition ${isResizingTimeline
-            ? "bg-[#335CFF] opacity-100"
-            : "bg-gray-300 opacity-0 group-hover:opacity-100 group-hover:bg-[#94A3B8]"
+            ? "bg-[#9aed00] opacity-100"
+            : "bg-[rgba(255,255,255,0.14)] opacity-0 group-hover:opacity-100 group-hover:bg-[#94A3B8]"
             }`}
         />
         {isResizingTimeline && (
-          <span className="absolute left-0 right-0 top-0 h-0.5 bg-[#335CFF]" />
+          <span className="absolute left-0 right-0 top-0 h-0.5 bg-[#9aed00]" />
         )}
       </div>
       <div
@@ -21343,7 +21348,7 @@ function AdvancedEditorContent() {
       >
         <div className="flex flex-1 items-center gap-2">
           <button
-            className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center gap-2 rounded-lg bg-[rgba(255,255,255,0.05)] px-3 py-2 text-xs font-semibold text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-60"
             type="button"
             onClick={handleSplitClip}
             disabled={timeline.length === 0}
@@ -21364,8 +21369,8 @@ function AdvancedEditorContent() {
             <button
               className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                 isTimelineSnappingEnabled
-                  ? "border-[#335CFF]/30 bg-[#EEF2FF] text-[#335CFF]"
-                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  ? "border-[rgba(154,237,0,0.3)] bg-[rgba(154,237,0,0.1)] text-[#9aed00]"
+                  : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
               }`}
               type="button"
               aria-pressed={isTimelineSnappingEnabled}
@@ -21396,7 +21401,7 @@ function AdvancedEditorContent() {
           <div className="flex items-center gap-0.5">
             {/* Jump to clip start */}
             <button
-              className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              className="flex h-5 w-5 items-center justify-center rounded-full text-[#5e636e] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#898a8b]"
               type="button"
               aria-label="Jump to clip start"
               title="Jump to clip start"
@@ -21424,7 +21429,7 @@ function AdvancedEditorContent() {
             </button>
             {/* Frame back */}
             <button
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-700"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[#f7f7f8]"
               type="button"
               aria-label="Step back"
               title={`Step back (${frameStepLabel})`}
@@ -21444,7 +21449,7 @@ function AdvancedEditorContent() {
             </button>
             {/* Play/Pause */}
             <button
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-900"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[#f7f7f8]"
               type="button"
               aria-label="Play"
               onClick={handleTogglePlayback}
@@ -21465,7 +21470,7 @@ function AdvancedEditorContent() {
             </button>
             {/* Frame forward */}
             <button
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-700"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[#f7f7f8]"
               type="button"
               aria-label="Step forward"
               title={`Step forward (${frameStepLabel})`}
@@ -21485,7 +21490,7 @@ function AdvancedEditorContent() {
             </button>
             {/* Jump to clip end */}
             <button
-              className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              className="flex h-5 w-5 items-center justify-center rounded-full text-[#5e636e] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#898a8b]"
               type="button"
               aria-label="Jump to clip end"
               title="Jump to clip end"
@@ -21514,7 +21519,7 @@ function AdvancedEditorContent() {
               </svg>
             </button>
           </div>
-          <div className="absolute left-full ml-2 flex items-center gap-1 text-xs font-medium text-gray-500">
+          <div className="absolute left-full ml-2 flex items-center gap-1 text-xs font-medium text-[#898a8b]">
             <span className="min-w-[48px]">
               {formatTimelineLabel(currentTime)}
             </span>
@@ -21524,7 +21529,7 @@ function AdvancedEditorContent() {
         </div>
         <div className="flex flex-1 items-center justify-end gap-2">
           <button
-            className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700"
+            className="rounded-lg bg-[rgba(255,255,255,0.05)] px-3 py-2 text-xs font-semibold text-[#f7f7f8]"
             type="button"
             aria-label="Zoom out"
             onClick={() =>
@@ -21545,12 +21550,12 @@ function AdvancedEditorContent() {
               onChange={(event) =>
                 setTimelineScale(Number(event.target.value))
               }
-              className="w-full accent-[#335CFF]"
+              className="w-full accent-[#9aed00]"
               aria-label="Timeline zoom"
             />
           </div>
           <button
-            className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700"
+            className="rounded-lg bg-[rgba(255,255,255,0.05)] px-3 py-2 text-xs font-semibold text-[#f7f7f8]"
             type="button"
             aria-label="Zoom in"
             onClick={() =>
@@ -21562,7 +21567,7 @@ function AdvancedEditorContent() {
             +
           </button>
           <button
-            className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700"
+            className="rounded-lg bg-[rgba(255,255,255,0.05)] px-3 py-2 text-xs font-semibold text-[#f7f7f8]"
             type="button"
             onClick={handleFitTimeline}
           >
@@ -21587,7 +21592,7 @@ function AdvancedEditorContent() {
           }}
         >
           <div
-            className="relative h-6 text-[11px] text-gray-400"
+            className="relative h-6 text-[11px] text-[#5e636e]"
             style={{ paddingLeft: `${timelinePadding}px` }}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -21621,7 +21626,7 @@ function AdvancedEditorContent() {
           </div>
           <div
             ref={timelineTrackRef}
-            className={`relative isolate mt-2 rounded-2xl border border-gray-200 bg-[linear-gradient(90deg,_rgba(148,163,184,0.15)_1px,_transparent_1px)] p-4 transition ${dragOverTimeline ? "ring-2 ring-[#335CFF]" : ""
+            className={`relative isolate mt-2 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(90deg,_rgba(148,163,184,0.15)_1px,_transparent_1px)] p-4 transition ${dragOverTimeline ? "ring-2 ring-[#9aed00]" : ""
               }`}
             style={{
               backgroundSize: `${timelineScale * tickStep}px 100%`,
@@ -21634,7 +21639,7 @@ function AdvancedEditorContent() {
             onDrop={handleTimelineDrop}
           >
             {dragOverTimeline && (
-              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/80 text-sm font-semibold text-[#335CFF]">
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#1a1c1e]/80 text-sm font-semibold text-[#9aed00]">
                 Drop to add to timeline
               </div>
             )}
@@ -21643,8 +21648,8 @@ function AdvancedEditorContent() {
                 className="pointer-events-none absolute left-0 right-0 top-0 z-30"
                 style={{ height: `${topCreateZonePx}px` }}
               >
-                <div className="absolute inset-0 rounded-t-2xl bg-[#335CFF]/8" />
-                <div className="absolute left-0 right-0 bottom-0 h-px bg-[#335CFF]/40" />
+                <div className="absolute inset-0 rounded-t-2xl bg-[#9aed00]/8" />
+                <div className="absolute left-0 right-0 bottom-0 h-px bg-[#9aed00]/40" />
               </div>
             )}
             {pendingInsertPreview && (
@@ -21655,10 +21660,10 @@ function AdvancedEditorContent() {
                   height: `${pendingInsertPreview.laneHeight}px`,
                 }}
               >
-                <div className="absolute left-0 right-0 top-0 h-px bg-[#335CFF]/35" />
-                <div className="absolute left-0 right-0 bottom-0 h-px bg-[#335CFF]/25" />
+                <div className="absolute left-0 right-0 top-0 h-px bg-[#9aed00]/35" />
+                <div className="absolute left-0 right-0 bottom-0 h-px bg-[#9aed00]/25" />
                 <div
-                  className="absolute rounded-sm border-2 border-dashed border-[#335CFF]/40 bg-[#335CFF]/10"
+                  className="absolute rounded-sm border-2 border-dashed border-[rgba(154,237,0,0.4)] bg-[#9aed00]/10"
                   style={{
                     left: `${pendingInsertPreview.startTime * timelineScale}px`,
                     width: `${pendingInsertPreview.duration * timelineScale}px`,
@@ -21670,7 +21675,7 @@ function AdvancedEditorContent() {
             )}
             {rangeSelection && (
               <div
-                className="pointer-events-none absolute z-30 rounded-lg border border-[#2DD4BF] bg-[#2DD4BF]/25 shadow-[0_0_0_1px_rgba(45,212,191,0.6)]"
+                className="pointer-events-none absolute z-30 rounded-lg border border-[#6a47ff] bg-[#6a47ff]/25 shadow-[0_0_0_1px_rgba(106,71,255,0.6)]"
                 style={{
                   left: `${clamp(
                     Math.min(
@@ -21745,11 +21750,11 @@ function AdvancedEditorContent() {
               <button
                 type="button"
                 data-testid="@editor/timeline/add-media-button"
-                className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 rounded-full border border-dashed border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-500 shadow-sm"
+                className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 rounded-full border border-dashed border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-2 text-sm font-semibold text-[#898a8b] shadow-sm"
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={handleUploadClick}
               >
-                <span className="text-lg text-gray-400">＋</span>
+                <span className="text-lg text-[#5e636e]">＋</span>
                 Add media to this project
               </button>
             ) : (
@@ -21761,7 +21766,7 @@ function AdvancedEditorContent() {
                   {timelineLaneRows}
                   <span
                     ref={playheadLineRef}
-                    className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] bg-[#335CFF]"
+                    className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] bg-[#9aed00]"
                     style={{
                       transform: playheadContentTransform,
                       willChange: isPlaying ? "transform" : "auto",
@@ -21776,7 +21781,7 @@ function AdvancedEditorContent() {
                 >
                   {timelineSnapGuide !== null && (
                     <div
-                      className="absolute top-4 bottom-4 w-px bg-amber-400/90 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]"
+                      className="absolute top-4 bottom-4 w-px bg-[#ffbe4c]/90 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]"
                       style={{
                         left: `${timelineSnapGuide * timelineScale + timelinePadding}px`,
                       }}
@@ -21784,7 +21789,7 @@ function AdvancedEditorContent() {
                   )}
                   {timelineCollisionGuide !== null && (
                     <div
-                      className="absolute top-4 bottom-4 w-px border-l border-dashed border-amber-300/90"
+                      className="absolute top-4 bottom-4 w-px border-l border-dashed border-[#ffbe4c]/90"
                       style={{
                         left: `${timelineCollisionGuide * timelineScale + timelinePadding}px`,
                       }}
@@ -21801,7 +21806,7 @@ function AdvancedEditorContent() {
                     }}
                     onPointerDown={handlePlayheadPointerDown}
                   >
-                    <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#335CFF] shadow-[0_0_0_2px_rgba(255,255,255,0.85)]" />
+                    <span className="absolute -top-2 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#9aed00] shadow-[0_0_0_2px_rgba(255,255,255,0.85)]" />
                   </button>
                 </div>
               </>
@@ -21831,7 +21836,7 @@ function AdvancedEditorContent() {
                 }}
               >
                 <div className="flex items-center gap-3">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-[#898a8b]">
                     <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5.413 5.413 8 8m1.647 1.653 3.686 3.68m-7.919-2.747a2 2 0 1 0-2.828 2.828 2 2 0 0 0 2.828-2.828m0 0 7.92-7.92m-7.92 7.92zM6 4a2 2 0 1 1-4 0 2 2 0 0 1 4 0" />
                   </svg>
                   <span>Split Element</span>
@@ -21839,7 +21844,7 @@ function AdvancedEditorContent() {
               </button>
 
               {/* Divider */}
-              <div className="mx-3 my-1.5 h-px bg-gray-100" />
+              <div className="mx-3 my-1.5 h-px bg-[rgba(255,255,255,0.05)]" />
 
               {/* Copy */}
               <button
@@ -21851,7 +21856,7 @@ function AdvancedEditorContent() {
                 }}
               >
                 <div className="flex items-center gap-3">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-[#898a8b]">
                     <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M11 5V2a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3m.997-6h8.005c.553 0 .998.448.998 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6c0-.552.445-1 .997-1" />
                   </svg>
                   <span>Copy</span>
@@ -21875,12 +21880,12 @@ function AdvancedEditorContent() {
                     }
                   >
                     <div className="flex items-center gap-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-[#898a8b]">
                         <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13.594 9.45A5.632 5.632 0 0 0 3.135 5.83m10.459 3.62 1.442-1.563M13.594 9.45l-1.635-1.508M2.442 7.85a5.631 5.631 0 0 0 10.46 3.616M2.443 7.85 1 9.413M2.442 7.85l1.635 1.508" />
                       </svg>
                       <span>Replace Media</span>
                     </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 16 16" className="text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 16 16" className="text-[#5e636e]">
                       <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 12 4-4-4-4" />
                     </svg>
                   </button>
@@ -21900,7 +21905,7 @@ function AdvancedEditorContent() {
                         }}
                       >
                         <div className="flex items-center gap-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-[#898a8b]">
                             <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v7a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 11.5v-7z" />
                             <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m2 11 3.5-3.5L8 10l2.5-2.5L14 11" />
                             <circle cx="5.5" cy="5.5" r="1" fill="currentColor" />
@@ -21917,7 +21922,7 @@ function AdvancedEditorContent() {
                         }}
                       >
                         <div className="flex items-center gap-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-[#898a8b]">
                             <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14 11v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2m6-1V2m0 0L5 5m3-3 3 3" />
                           </svg>
                           <span>Upload New</span>
@@ -21929,7 +21934,7 @@ function AdvancedEditorContent() {
               )}
 
               {/* Divider */}
-              <div className="mx-3 my-1.5 h-px bg-gray-100" />
+              <div className="mx-3 my-1.5 h-px bg-[rgba(255,255,255,0.05)]" />
 
               {/* Audio - only for video/audio clips */}
               {(timelineContextMenuEntry.asset.kind === "video" || 
@@ -21947,12 +21952,12 @@ function AdvancedEditorContent() {
                     }
                   >
                     <div className="flex items-center gap-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-[#898a8b]">
                         <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M6 12.667V4.295c0-.574.367-1.084.912-1.265l5.333-1.778A1.333 1.333 0 0 1 14 2.517v8.817m0 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0m-8 1.333a2 2 0 1 1-4 0 2 2 0 0 1 4 0" />
                       </svg>
                       <span>Audio</span>
                     </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 16 16" className="text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 16 16" className="text-[#5e636e]">
                       <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m6 12 4-4-4-4" />
                     </svg>
                   </button>
@@ -21971,7 +21976,7 @@ function AdvancedEditorContent() {
                           }}
                         >
                           <div className="flex items-center gap-3">
-                            <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                            <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                               <path d="m8.9 11.8-1.4 1.4a3.3 3.3 0 0 1-4.7-4.7l1.4-1.4M7.1 4.2l1.4-1.4a3.3 3.3 0 0 1 4.7 4.7l-1.4 1.4M9.9 6.1 6.1 9.9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                             <span>Detach Audio</span>
@@ -21979,7 +21984,7 @@ function AdvancedEditorContent() {
                         </button>
                       )}
                       {timelineContextMenuEntry.asset.kind === "video" && (
-                        <div className="mx-3 my-1.5 h-px bg-gray-100" />
+                        <div className="mx-3 my-1.5 h-px bg-[rgba(255,255,255,0.05)]" />
                       )}
                       <button
                         type="button"
@@ -21996,11 +22001,11 @@ function AdvancedEditorContent() {
                       >
                         <div className="flex items-center gap-3">
                           {timelineContextMenuSettings?.muted ? (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-gray-500">
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#898a8b]">
                               <path d="M12 6.1 7.6 9H5a3 3 0 0 0-3 3v0a3 3 0 0 0 3 3h2.6l4.4 3.6V6.1zM18.1 4.9a8.8 8.8 0 0 1 0 14.2M15.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           ) : (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-gray-500">
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#898a8b]">
                               <path d="M6 9h4l5-4v14l-5-4H6zM19 9l-4 4m0-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           )}
@@ -22013,7 +22018,7 @@ function AdvancedEditorContent() {
               )}
 
               {/* Divider before delete */}
-              <div className="mx-3 my-1.5 h-px bg-gray-100" />
+              <div className="mx-3 my-1.5 h-px bg-[rgba(255,255,255,0.05)]" />
 
               {/* Delete */}
               <button
@@ -22025,7 +22030,7 @@ function AdvancedEditorContent() {
                 }}
               >
                 <div className="flex items-center gap-3">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-gray-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16" className="text-[#898a8b]">
                     <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M6.4 7.2V12zm3.2 0V12zM1.6 4h12.8zm12 0-.694 9.714A1.6 1.6 0 0 1 11.31 15.2H4.69a1.6 1.6 0 0 1-1.596-1.486L2.4 4zm-3.2 0V1.6a.8.8 0 0 0-.8-.8H6.4a.8.8 0 0 0-.8.8V4z" />
                   </svg>
                   <span>Delete</span>
@@ -22052,15 +22057,15 @@ function AdvancedEditorContent() {
       return (
         <div
           key={lane.id}
-          className="relative overflow-hidden rounded-xl border border-gray-100 bg-white/70"
+          className="relative overflow-hidden rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e]/70"
           style={{ height: `${lane.height}px` }}
         >
-          <div className="absolute left-2 top-2 text-[10px] uppercase tracking-[0.12em] text-gray-400">
+          <div className="absolute left-2 top-2 text-[10px] uppercase tracking-[0.12em] text-[#5e636e]">
             {lane.label}
           </div>
           {dragPreview && dragPreview.laneId === lane.id && (
             <div
-              className="pointer-events-none absolute rounded-sm border-2 border-dashed border-amber-300/90 bg-amber-100/30"
+              className="pointer-events-none absolute rounded-sm border-2 border-dashed border-[#ffbe4c]/90 bg-[rgba(255,190,76,0.2)]"
               style={{
                 left: `${dragPreview.startTime * timelineScale}px`,
                 width: `${dragPreview.duration * timelineScale}px`,
@@ -22093,7 +22098,7 @@ function AdvancedEditorContent() {
                 ? Math.min(thumbnailCount, 8)
                 : thumbnailCount;
             const clipBorderClass = isSelected
-              ? "border-[#335CFF]"
+              ? "border-[#9aed00]"
               : "border-transparent";
             const collisionHighlight =
               isDragging && timelineCollisionActive
@@ -22101,7 +22106,7 @@ function AdvancedEditorContent() {
                 : "";
             const dragLiftClass = isDragging ? "z-30 -translate-y-1" : "";
             const dragLiftShadow = isDragging
-              ? "shadow-[0_18px_30px_rgba(15,23,42,0.25)] cursor-grabbing"
+              ? "shadow-[0_18px_30px_rgba(0,0,0,0.5)] cursor-grabbing"
               : "";
             const clipTransitionClass = isDragging ? "transition-none" : "transition";
             const clipBackgroundClass =
@@ -22109,7 +22114,7 @@ function AdvancedEditorContent() {
                 ? isSubtitleClip
                   ? "bg-[#CAA7FC]"
                   : "bg-[#F8FAFF]"
-                : "bg-white";
+                : "bg-[#1a1c1e]";
             const trimHandleClass = isSubtitleClip ? "bg-[#CAA7FC]" : "bg-black/5";
             return (
               <div
@@ -22202,7 +22207,7 @@ function AdvancedEditorContent() {
                         return (
                           <div
                             key={`${clip.id}-thumb-${index}`}
-                            className="relative h-full w-full overflow-hidden border-r border-white/30 bg-slate-100 last:border-r-0"
+                            className="relative h-full w-full overflow-hidden border-r border-[rgba(255,255,255,0.1)] bg-[#1a1c1e] last:border-r-0"
                           >
                             {asset.kind === "image" ? (
                               <img
@@ -22259,11 +22264,11 @@ function AdvancedEditorContent() {
                     </div>
                   )}
                   {lane.type === "audio" && (
-                    <div className="absolute inset-0 bg-[#EEF2FF]" />
+                    <div className="absolute inset-0 bg-[rgba(154,237,0,0.1)]" />
                   )}
                   {lane.type === "audio" && (
                     <div className="absolute inset-0 px-2 py-2">
-                      <span className="pointer-events-none absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-[#A5B4FC]/60" />
+                      <span className="pointer-events-none absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-[rgba(154,237,0,0.4)]" />
                       <div
                         className="grid h-full w-full items-center gap-[2px]"
                         style={
@@ -22342,7 +22347,7 @@ function AdvancedEditorContent() {
             >
               <span
                 className={`h-0.5 w-16 rounded-full transition ${
-                  isResizingAudioLane ? "bg-[#335CFF]" : "bg-gray-300/80"
+                  isResizingAudioLane ? "bg-[#9aed00]" : "bg-[rgba(255,255,255,0.14)]/80"
                 }`}
               />
             </div>
@@ -22414,7 +22419,7 @@ function AdvancedEditorContent() {
   }
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#F2F4FA] text-[#0E121B]">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#0e1012] text-[#f7f7f8]">
       <EditorHeader
         projectName={projectName}
         onProjectNameChange={handleProjectNameCommit}
@@ -22462,17 +22467,17 @@ function AdvancedEditorContent() {
 	        </div>
 	      </div>
 	      {splitScreenImportOverlayOpen && (
-	        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 px-4 backdrop-blur-sm">
-	          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+	        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#1a1c1e]/70 px-4 backdrop-blur-sm">
+	          <div className="w-full max-w-md rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
 	            <div className="flex items-start gap-4">
-	              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
-	                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#9aed00]">
+	                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 	              </div>
 	              <div className="min-w-0 flex-1">
-	                <h3 className="text-lg font-semibold text-gray-900">
+	                <h3 className="text-lg font-semibold text-[#f7f7f8]">
 	                  Preparing your split-screen project
 	                </h3>
-		                <p className="mt-1 text-sm text-gray-500">
+		                <p className="mt-1 text-sm text-[#898a8b]">
 		                  {subtitleStatus === "error"
 		                    ? "Subtitle generation failed."
 		                    : splitScreenImportOverlayStage === "uploading"
@@ -22487,10 +22492,10 @@ function AdvancedEditorContent() {
 	            </div>
 	            <div className="mt-6 space-y-3 text-sm">
 	              <div className="flex items-center gap-3">
-	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
 		                  {splitScreenImportOverlayStage === "preparing" ||
 		                  splitScreenImportOverlayStage === "uploading" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 		                  ) : (
 	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 	                      <path
@@ -22503,14 +22508,14 @@ function AdvancedEditorContent() {
 	                    </svg>
 	                  )}
 	                </div>
-	                <span className="text-gray-700">Create split-screen layout</span>
+	                <span className="text-[#f7f7f8]">Create split-screen layout</span>
 	              </div>
 		              <div className="flex items-center gap-3">
 		                <div
 		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
 		                    subtitleStatus === "error"
-		                      ? "bg-rose-50 text-rose-600"
-		                      : "bg-[#E7EDFF] text-[#335CFF]"
+		                      ? "bg-[rgba(231,41,48,0.1)] text-[#e72930]"
+		                      : "bg-[#E7EDFF] text-[#9aed00]"
 		                  }`}
 		                >
 		                  {subtitleStatus === "error" ? (
@@ -22524,7 +22529,7 @@ function AdvancedEditorContent() {
 		                      />
 		                    </svg>
 		                  ) : splitScreenImportOverlayStage === "subtitles" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 		                  ) : splitScreenImportOverlayStage === "finalizing" ? (
 		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 		                      <path
@@ -22536,23 +22541,23 @@ function AdvancedEditorContent() {
 	                      />
 	                    </svg>
 	                  ) : (
-	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
 	                  )}
 	                </div>
-	                <span className="text-gray-700">Generate subtitles</span>
+	                <span className="text-[#f7f7f8]">Generate subtitles</span>
 	              </div>
 	              <div className="flex items-center gap-3">
-	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
 	                  {splitScreenImportOverlayStage === "finalizing" ? (
-	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 	                  ) : (
-	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
 	                  )}
 	                </div>
-	                <span className="text-gray-700">Finalize timeline</span>
+	                <span className="text-[#f7f7f8]">Finalize timeline</span>
 	              </div>
 		              {subtitleStatus === "error" && subtitleError ? (
-		                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+		                <div className="mt-4 rounded-2xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
 		                  {subtitleError}
 		                </div>
 		              ) : null}
@@ -22560,7 +22565,7 @@ function AdvancedEditorContent() {
 		                <div className="mt-4">
 		                  <button
 		                    type="button"
-		                    className="w-full rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+		                    className="w-full rounded-full bg-[#9aed00] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
 		                    onClick={() => setSplitScreenImportOverlayOpen(false)}
 		                  >
 		                    Continue to editor
@@ -22572,17 +22577,17 @@ function AdvancedEditorContent() {
 			        </div>
 			      )}
 	      {streamerVideoImportOverlayOpen && (
-	        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 px-4 backdrop-blur-sm">
-	          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+	        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#1a1c1e]/70 px-4 backdrop-blur-sm">
+	          <div className="w-full max-w-md rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
 	            <div className="flex items-start gap-4">
-	              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
-	                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#9aed00]">
+	                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 	              </div>
 	              <div className="min-w-0 flex-1">
-	                <h3 className="text-lg font-semibold text-gray-900">
+	                <h3 className="text-lg font-semibold text-[#f7f7f8]">
 	                  Preparing your streamer video
 	                </h3>
-	                <p className="mt-1 text-sm text-gray-500">
+	                <p className="mt-1 text-sm text-[#898a8b]">
 	                  {subtitleStatus === "error"
 	                    ? "Subtitle generation failed."
 	                    : streamerVideoImportOverlayStage === "uploading"
@@ -22597,10 +22602,10 @@ function AdvancedEditorContent() {
 	            </div>
 	            <div className="mt-6 space-y-3 text-sm">
 	              <div className="flex items-center gap-3">
-	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
 	                  {streamerVideoImportOverlayStage === "preparing" ||
 	                  streamerVideoImportOverlayStage === "uploading" ? (
-	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 	                  ) : (
 	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 	                      <path
@@ -22613,14 +22618,14 @@ function AdvancedEditorContent() {
 	                    </svg>
 	                  )}
 	                </div>
-	                <span className="text-gray-700">Create blur layout</span>
+	                <span className="text-[#f7f7f8]">Create blur layout</span>
 	              </div>
 	              <div className="flex items-center gap-3">
 	                <div
 	                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
 	                    subtitleStatus === "error"
-	                      ? "bg-rose-50 text-rose-600"
-	                      : "bg-[#E7EDFF] text-[#335CFF]"
+	                      ? "bg-[rgba(231,41,48,0.1)] text-[#e72930]"
+	                      : "bg-[#E7EDFF] text-[#9aed00]"
 	                  }`}
 	                >
 	                  {subtitleStatus === "error" ? (
@@ -22634,7 +22639,7 @@ function AdvancedEditorContent() {
 	                      />
 	                    </svg>
 	                  ) : streamerVideoImportOverlayStage === "subtitles" ? (
-	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 	                  ) : streamerVideoImportOverlayStage === "finalizing" ? (
 	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 	                      <path
@@ -22646,23 +22651,23 @@ function AdvancedEditorContent() {
 	                      />
 	                    </svg>
 	                  ) : (
-	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
 	                  )}
 	                </div>
-	                <span className="text-gray-700">Generate subtitles</span>
+	                <span className="text-[#f7f7f8]">Generate subtitles</span>
 	              </div>
 	              <div className="flex items-center gap-3">
-	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
 	                  {streamerVideoImportOverlayStage === "finalizing" ? (
-	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 	                  ) : (
-	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
 	                  )}
 	                </div>
-	                <span className="text-gray-700">Finalize timeline</span>
+	                <span className="text-[#f7f7f8]">Finalize timeline</span>
 	              </div>
 	              {subtitleStatus === "error" && subtitleError ? (
-	                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+	                <div className="mt-4 rounded-2xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
 	                  {subtitleError}
 	                </div>
 	              ) : null}
@@ -22670,7 +22675,7 @@ function AdvancedEditorContent() {
 	                <div className="mt-4">
 	                  <button
 	                    type="button"
-	                    className="w-full rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+	                    className="w-full rounded-full bg-[#9aed00] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
 	                    onClick={() => setStreamerVideoImportOverlayOpen(false)}
 	                  >
 	                    Continue to editor
@@ -22682,17 +22687,17 @@ function AdvancedEditorContent() {
 	        </div>
 	      )}
 		      {redditVideoImportOverlayOpen && (
-		        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 px-4 backdrop-blur-sm">
-		          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+		        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#1a1c1e]/70 px-4 backdrop-blur-sm">
+		          <div className="w-full max-w-md rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
 		            <div className="flex items-start gap-4">
-		              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
-		                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#9aed00]">
+		                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 		              </div>
 		              <div className="min-w-0 flex-1">
-		                <h3 className="text-lg font-semibold text-gray-900">
+		                <h3 className="text-lg font-semibold text-[#f7f7f8]">
 		                  Preparing your Reddit video
 		                </h3>
-		                <p className="mt-1 text-sm text-gray-500">
+		                <p className="mt-1 text-sm text-[#898a8b]">
 		                  {redditVideoImportError
 		                    ? "Reddit video import failed."
 		                    : subtitleStatus === "error"
@@ -22712,8 +22717,8 @@ function AdvancedEditorContent() {
 		                <div
 		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
 		                    redditVideoImportError
-		                      ? "bg-rose-50 text-rose-600"
-		                      : "bg-[#E7EDFF] text-[#335CFF]"
+		                      ? "bg-[rgba(231,41,48,0.1)] text-[#e72930]"
+		                      : "bg-[#E7EDFF] text-[#9aed00]"
 		                  }`}
 		                >
 		                  {redditVideoImportError ? (
@@ -22728,7 +22733,7 @@ function AdvancedEditorContent() {
 		                    </svg>
 		                  ) : redditVideoImportOverlayStage === "preparing" ||
 		                      redditVideoImportOverlayStage === "voiceover" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 		                  ) : (
 		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 		                      <path
@@ -22741,7 +22746,7 @@ function AdvancedEditorContent() {
 		                    </svg>
 		                  )}
 		                </div>
-		                <span className="text-gray-700">
+		                <span className="text-[#f7f7f8]">
 		                  Generate voiceover &amp; build timeline
 		                </span>
 		              </div>
@@ -22749,8 +22754,8 @@ function AdvancedEditorContent() {
 		                <div
 		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
 		                    subtitleStatus === "error"
-		                      ? "bg-rose-50 text-rose-600"
-		                      : "bg-[#E7EDFF] text-[#335CFF]"
+		                      ? "bg-[rgba(231,41,48,0.1)] text-[#e72930]"
+		                      : "bg-[#E7EDFF] text-[#9aed00]"
 		                  }`}
 		                >
 		                  {subtitleStatus === "error" ? (
@@ -22764,7 +22769,7 @@ function AdvancedEditorContent() {
 		                      />
 		                    </svg>
 		                  ) : redditVideoImportOverlayStage === "subtitles" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 		                  ) : redditVideoImportOverlayStage === "finalizing" ? (
 		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 		                      <path
@@ -22776,29 +22781,29 @@ function AdvancedEditorContent() {
 		                      />
 		                    </svg>
 		                  ) : (
-		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
 		                  )}
 		                </div>
-		                <span className="text-gray-700">Generate subtitles</span>
+		                <span className="text-[#f7f7f8]">Generate subtitles</span>
 		              </div>
 		              <div className="flex items-center gap-3">
-		                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#335CFF]">
+		                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
 		                  {redditVideoImportOverlayStage === "finalizing" &&
 		                  !redditVideoImportError &&
 		                  subtitleStatus !== "error" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#335CFF]/25 border-t-[#335CFF]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
 		                  ) : (
-		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[#335CFF]/25" />
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
 		                  )}
 		                </div>
-		                <span className="text-gray-700">Finalize timeline</span>
+		                <span className="text-[#f7f7f8]">Finalize timeline</span>
 		              </div>
 		              {redditVideoImportError ? (
-		                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+		                <div className="mt-4 rounded-2xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
 		                  {redditVideoImportError}
 		                </div>
 		              ) : subtitleStatus === "error" && subtitleError ? (
-		                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+		                <div className="mt-4 rounded-2xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
 		                  {subtitleError}
 		                </div>
 		              ) : null}
@@ -22806,7 +22811,7 @@ function AdvancedEditorContent() {
 		                <div className="mt-4">
 		                  <button
 		                    type="button"
-		                    className="w-full rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+		                    className="w-full rounded-full bg-[#9aed00] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
 		                    onClick={() => setRedditVideoImportOverlayOpen(false)}
 		                  >
 		                    Continue to editor
@@ -22819,10 +22824,10 @@ function AdvancedEditorContent() {
 		      )}
 		      {exportUi.open && (
 		        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-		          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
+		          <div className="w-full max-w-md rounded-3xl bg-[#1a1c1e] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
 		            <div className="flex items-start justify-between gap-4">
 		              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#335CFF]">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#9aed00]">
                   <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
                     <path
                       d="M12 4v10m0 0-4-4m4 4 4-4M5 18h14"
@@ -22834,50 +22839,50 @@ function AdvancedEditorContent() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
+                  <h3 className="text-lg font-semibold text-[#f7f7f8]">
                     {exportUi.status === "complete"
                       ? "Export ready"
                       : exportUi.status === "error"
                         ? "Export failed"
                         : "Exporting"}
                   </h3>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-[#898a8b]">
                     {exportUi.stage || "Preparing export..."}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-gray-500 transition hover:bg-gray-50"
+                className="rounded-full border border-[rgba(255,255,255,0.08)] px-3 py-1 text-xs font-semibold uppercase tracking-widest text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                 onClick={() => setExportUi((prev) => ({ ...prev, open: false }))}
               >
                 Close
               </button>
             </div>
             <div className="mt-6">
-              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest text-gray-400">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest text-[#5e636e]">
                 <span>Progress</span>
-                <span className="text-gray-600">{exportProgressPercent}%</span>
+                <span className="text-[#898a8b]">{exportProgressPercent}%</span>
               </div>
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[rgba(255,255,255,0.05)]">
                 <div
                   className={`h-full transition-all duration-500 ease-out ${
                     exportUi.status === "error"
-                      ? "bg-rose-500"
-                      : "bg-[#335CFF]"
+                      ? "bg-[rgba(231,41,48,0.1)]0"
+                      : "bg-[#9aed00]"
                   }`}
                   style={{ width: `${exportProgressPercent}%` }}
                 />
               </div>
               {exportUi.error && (
-                <p className="mt-3 text-sm text-rose-600">{exportUi.error}</p>
+                <p className="mt-3 text-sm text-[#e72930]">{exportUi.error}</p>
               )}
             </div>
             <div className="mt-6 flex items-center gap-3">
               {exportUi.status === "complete" && exportUi.downloadUrl ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+                  className="flex-1 rounded-full bg-[#9aed00] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
                   onClick={() => triggerExportDownload(exportUi.downloadUrl!)}
                 >
                   Download MP4
@@ -22885,7 +22890,7 @@ function AdvancedEditorContent() {
               ) : exportUi.status === "error" ? (
                 <button
                   type="button"
-                  className="flex-1 rounded-full bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
+                  className="flex-1 rounded-full bg-[#9aed00] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(51,92,255,0.28)] transition hover:brightness-105"
                   onClick={handleStartExport}
                 >
                   Try again
@@ -22893,7 +22898,7 @@ function AdvancedEditorContent() {
               ) : (
                 <button
                   type="button"
-                  className="flex-1 cursor-wait rounded-full bg-[#9DB5FF] px-4 py-2.5 text-sm font-semibold text-white"
+                  className="flex-1 cursor-wait rounded-full bg-[#5e636e] px-4 py-2.5 text-sm font-semibold text-white"
                   disabled
                 >
                   Exporting...
@@ -22910,7 +22915,7 @@ function AdvancedEditorContent() {
 export default function AdvancedEditorPage() {
   return (
     <Suspense
-      fallback={<div className="h-screen w-full bg-[#F2F4FA]" />}
+      fallback={<div className="h-screen w-full bg-[#0e1012]" />}
     >
       <AdvancedEditorContent />
     </Suspense>

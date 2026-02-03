@@ -1,6 +1,7 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
+import { SaturaLogo } from "@/components/satura-logo";
 import {
   buildAssetLibraryItem,
   type AssetLibraryItem,
@@ -32,7 +33,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -51,7 +52,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -69,7 +70,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -89,7 +90,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -115,7 +116,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#335CFF]"
+        className="h-5 w-5 text-[#9aed00] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.8"
@@ -136,7 +137,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -165,7 +166,7 @@ const mobileSections: MobileSection[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-4 w-4 text-gray-600"
+        className="h-4 w-4 text-[#9aed00]"
         fill="currentColor"
       >
         <path fill="none" d="M0 0h24v24H0V0z" />
@@ -338,8 +339,8 @@ const howItWorksItems = [
   {
     title: "Upload Video",
     description: "Upload your long form video for processing and analysis.",
-    iconBg: "bg-gray-100",
-    iconColor: "text-gray-600",
+    iconBg: "bg-[#252729]",
+    iconColor: "text-[#9aed00]",
     icon: (
       <svg
         aria-hidden="true"
@@ -365,8 +366,8 @@ const howItWorksItems = [
   {
     title: "Finds Viral Moments",
     description: "AI identifies the most viral moments in your video.",
-    iconBg: "bg-gray-100",
-    iconColor: "text-gray-600",
+    iconBg: "bg-[#252729]",
+    iconColor: "text-[#9aed00]",
     icon: (
       <svg
         aria-hidden="true"
@@ -392,8 +393,8 @@ const howItWorksItems = [
   {
     title: "Review and Approve",
     description: "Review and adjust timestamps before auto editing.",
-    iconBg: "bg-gray-100",
-    iconColor: "text-gray-600",
+    iconBg: "bg-[#252729]",
+    iconColor: "text-[#9aed00]",
     icon: (
       <svg
         aria-hidden="true"
@@ -413,8 +414,8 @@ const howItWorksItems = [
   {
     title: "Auto Edit",
     description: "We auto edit the clips into vertical content format.",
-    iconBg: "bg-gray-100",
-    iconColor: "text-gray-600",
+    iconBg: "bg-[#252729]",
+    iconColor: "text-[#9aed00]",
     icon: (
       <svg
         aria-hidden="true"
@@ -434,8 +435,8 @@ const howItWorksItems = [
   {
     title: "Automatic Face Detection",
     description: "Always keep the subject centered and in frame.",
-    iconBg: "bg-gray-100",
-    iconColor: "text-gray-600",
+    iconBg: "bg-[#252729]",
+    iconColor: "text-[#9aed00]",
     icon: (
       <svg
         aria-hidden="true"
@@ -459,8 +460,8 @@ const howItWorksItems = [
   {
     title: "Export",
     description: "Export your videos as MP4 files with no watermark.",
-    iconBg: "bg-gray-100",
-    iconColor: "text-gray-600",
+    iconBg: "bg-[#252729]",
+    iconColor: "text-[#9aed00]",
     icon: (
       <svg
         aria-hidden="true"
@@ -946,10 +947,10 @@ export default function AutoClipPage() {
       ? "Restore a clip to continue"
       : `${activeHighlightsCount - approvedActiveCount} left to review`;
   const approvalStatusTone = approvalReady
-    ? "text-green-600"
+    ? "text-[#4caf50]"
     : activeHighlightsCount === 0
-      ? "text-red-500"
-      : "text-amber-600";
+      ? "text-[#e72930]"
+      : "text-[#ffa726]";
   const approvalMessage =
     activeHighlightsCount === 0
       ? "Restore at least one clip to continue."
@@ -2087,34 +2088,25 @@ export default function AutoClipPage() {
   }, [inputPreviewUrl]);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
+    <div className="min-h-screen overflow-x-hidden bg-[#0e1012] font-sans text-[#f7f7f8]">
       <div className="mx-auto flex w-full md:max-w-[90rem]">
-        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r bg-white py-3 md:flex" style={{ borderColor: '#e4e6eb' }}>
+        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-3 md:flex">
           <div
             ref={navContainerRef}
             className="relative flex w-full flex-1 flex-col items-center gap-4"
           >
             <div
-              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#6a47ff] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 transform: `translateY(${indicatorStyle.top}px)`,
                 height: `${indicatorStyle.height}px`,
                 opacity: indicatorStyle.opacity,
                 transition: indicatorReady ? undefined : "none",
+                boxShadow: "0px 0px 12px rgba(106, 71, 255, 0.5)",
               }}
             />
-            <a
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-7 w-7 scale-[1.5] origin-center"
-              />
-            </a>
-            <div className="h-px w-10 bg-gray-200" />
+            <SaturaLogo size="md" />
+            <div className="h-px w-10 bg-[rgba(255,255,255,0.08)]" />
             <nav
               className="flex flex-col gap-2"
               onMouseLeave={() => setHoveredNavIndex(null)}
@@ -2126,7 +2118,7 @@ export default function AutoClipPage() {
                   ref={(element) => {
                     navItemRefs.current[index] = element;
                   }}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${item.active ? "bg-[rgba(154,237,0,0.1)]" : "hover:bg-[rgba(255,255,255,0.05)]"
                     }`}
                   aria-label={item.label}
                   onMouseEnter={() => setHoveredNavIndex(index)}
@@ -2137,7 +2129,7 @@ export default function AutoClipPage() {
             </nav>
             <div className="mt-auto pb-6">
               <button
-                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100 xl:h-14 xl:w-14"
+                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)] xl:h-14 xl:w-14"
                 type="button"
                 aria-label="Search"
                 onClick={() => setSearchOpen(true)}
@@ -2145,7 +2137,7 @@ export default function AutoClipPage() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-400 group-hover:text-gray-600"
+                  className="h-5 w-5 text-[#898a8b] group-hover:text-[#f7f7f8]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -2155,7 +2147,7 @@ export default function AutoClipPage() {
                   <circle cx="11" cy="11" r="7" />
                   <path d="m20 20-3.5-3.5" />
                 </svg>
-                <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600">
+                <span className="text-[10px] font-medium text-[#898a8b] group-hover:text-[#f7f7f8]">
                   Cmd+K
                 </span>
               </button>
@@ -2164,20 +2156,10 @@ export default function AutoClipPage() {
         </aside>
 
         <main className="flex min-h-[100dvh] w-full flex-1 flex-col px-4 pb-16 pt-3 md:px-6 md:py-6">
-          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
-            <a
-              className="flex h-10 w-10 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-6 w-6 scale-[1.5] origin-center"
-              />
-            </a>
+          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#0e1012]/90 px-4 py-3 backdrop-blur-xl md:hidden">
+            <SaturaLogo size="sm" />
             <button
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white transition-colors hover:bg-gray-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] transition-colors hover:bg-[#252729]"
               type="button"
               aria-label="Open menu"
               aria-expanded={mobileMenuOpen}
@@ -2186,7 +2168,7 @@ export default function AutoClipPage() {
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-4 w-4 text-gray-700"
+                className="h-4 w-4 text-[#f7f7f8]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -2204,13 +2186,13 @@ export default function AutoClipPage() {
             className={`fixed inset-0 z-40 md:hidden ${mobileMenuOpen ? "" : "pointer-events-none"
               }`}
           >
+<div
+            className={`absolute inset-0 bg-black/50 transition-opacity ${mobileMenuOpen ? "opacity-100" : "opacity-0"
+              }`}
+            onClick={() => setMobileMenuOpen(false)}
+          />
             <div
-              className={`absolute inset-0 bg-black/20 transition-opacity ${mobileMenuOpen ? "opacity-100" : "opacity-0"
-                }`}
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            <div
-              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-white shadow-xl transition-transform ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-[#0e1012] shadow-xl transition-transform ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
                 }`}
             >
               <div className="p-3">
@@ -2222,10 +2204,10 @@ export default function AutoClipPage() {
                     draggable="false"
                   />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-[#f7f7f8]">
                       Jonathan Groschel
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[#898a8b]">
                       jonathangroschel5@gmail.com
                     </p>
                   </div>
@@ -2233,20 +2215,20 @@ export default function AutoClipPage() {
               </div>
               <div className="flex flex-col gap-2 px-3 pb-3">
                 {mobileSections.map((section) => (
-                  <div key={section.label} className="rounded-xl border border-gray-200">
+                  <div key={section.label} className="rounded-xl border border-[rgba(255,255,255,0.08)]">
                     <button
                       className="flex w-full items-center justify-between px-3 py-2 text-left"
                       type="button"
                       onClick={() => toggleSection(section.label)}
                     >
-                      <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                      <span className="flex items-center gap-2 text-sm font-medium text-[#f7f7f8]">
                         {section.icon}
                         {section.label}
                       </span>
                       <svg
                         aria-hidden="true"
                         viewBox="0 0 24 24"
-                        className={`h-4 w-4 text-gray-400 transition-transform ${openSections[section.label] ? "rotate-180" : ""
+                        className={`h-4 w-4 text-[#898a8b] transition-transform ${openSections[section.label] ? "rotate-180" : ""
                           }`}
                         fill="none"
                         stroke="currentColor"
@@ -2263,7 +2245,7 @@ export default function AutoClipPage() {
                           <a
                             key={item.label}
                             href={item.href}
-                            className="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                            className="rounded-lg px-2 py-1 text-sm text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                             onClick={() => setMobileMenuOpen(false)}
                           >
                             {item.label}
@@ -2274,14 +2256,14 @@ export default function AutoClipPage() {
                   </div>
                 ))}
               </div>
-              <div className="mt-auto space-y-2 border-t border-gray-200 px-3 py-3">
+              <div className="mt-auto space-y-2 border-t border-[rgba(255,255,255,0.08)] px-3 py-3">
                 {mobileFooterActions.map((action) => (
                   <a
                     key={action.label}
                     href={action.href}
                     className={`block rounded-lg px-3 py-2 text-sm font-medium ${action.tone === "danger"
-                      ? "text-red-600 hover:bg-red-50"
-                      : "text-gray-700 hover:bg-gray-100"
+                      ? "text-[#e72930] hover:bg-[rgba(231,41,48,0.1)]"
+                      : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                       }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
@@ -2292,13 +2274,13 @@ export default function AutoClipPage() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
+          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#0e1012]/95 py-3 backdrop-blur-xl md:flex">
             <div className="flex items-center gap-2">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-700"
+                  className="h-5 w-5 text-[#9aed00]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -2312,12 +2294,12 @@ export default function AutoClipPage() {
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-medium text-black">AutoClip</h2>
+                <h2 className="font-[family-name:var(--font-geist-sans)] text-lg font-semibold uppercase tracking-tight text-[#f7f7f8]">AutoClip</h2>
               </div>
             </div>
             <div className="relative" ref={profileMenuRef}>
               <button
-                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
+                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 px-2 hover:bg-[#252729] focus:outline-none"
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={profileMenuOpen}
@@ -2333,7 +2315,7 @@ export default function AutoClipPage() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-4 w-4 text-gray-600"
+                  className="h-4 w-4 text-[#898a8b]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -2345,7 +2327,7 @@ export default function AutoClipPage() {
               </button>
               <div
                 id="autoclip-profile-menu"
-                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${profileMenuOpen
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg transition-all duration-150 ${profileMenuOpen
                   ? "pointer-events-auto translate-y-0 opacity-100"
                   : "pointer-events-none translate-y-1 opacity-0"
                   }`}
@@ -2358,35 +2340,35 @@ export default function AutoClipPage() {
                     draggable="false"
                   />
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium">Jonathan Groschel</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-base font-medium text-[#f7f7f8]">Jonathan Groschel</p>
+                    <p className="text-xs text-[#898a8b]">
                       jonathangroschel5@gmail.com
                     </p>
                   </div>
                 </div>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Settings
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Upgrade
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   24/7 Support
                 </button>
                 <button
-                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-[#e72930] hover:bg-[rgba(231,41,48,0.1)] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
@@ -2396,13 +2378,13 @@ export default function AutoClipPage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col border-t md:border-none" style={{ borderColor: '#e4e6eb' }}>
+          <div className="flex flex-1 flex-col border-t border-[rgba(255,255,255,0.08)] md:border-none">
             {view === "home" ? (
               <div className="flex min-h-full flex-col items-center justify-center px-6 py-12 sm:px-8 sm:py-16 lg:px-12 lg:py-20">
                 <div className="flex w-full max-w-2xl flex-col gap-6">
                   {/* Header */}
                   <div className="text-center">
-                    <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-gray-900 to-gray-700">
+                    <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#252729] to-[#1a1c1e]">
                       <svg
                         aria-hidden="true"
                         viewBox="0 0 24 24"
@@ -2416,44 +2398,44 @@ export default function AutoClipPage() {
                         <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
                       </svg>
                     </div>
-                    <h1 className="text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
+                    <h1 className="text-3xl font-semibold tracking-tight text-[#f7f7f8] sm:text-4xl">
                       AutoClip
                     </h1>
-                    <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-gray-500">
+                    <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-[#898a8b]">
                       Transform long videos into viral clips with AI
                     </p>
                   </div>
 
                   {/* Upload Card */}
-                  <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-sm">
                     {/* Tabs */}
-                    <div className="flex border-b border-gray-100">
+                    <div className="flex border-b border-[rgba(255,255,255,0.08)]">
                       <button
                         type="button"
                         className={`relative flex-1 px-6 py-4 text-sm font-medium transition-colors ${
                           inputMode === "upload"
-                            ? "text-gray-900"
-                            : "text-gray-400 hover:text-gray-600"
+                            ? "text-[#f7f7f8]"
+                            : "text-[#898a8b] hover:text-[#f7f7f8]"
                         }`}
                         onClick={() => setInputMode("upload")}
                       >
                         Upload File
                         {inputMode === "upload" && (
-                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#9aed00]" />
                         )}
                       </button>
                       <button
                         type="button"
                         className={`relative flex-1 px-6 py-4 text-sm font-medium transition-colors ${
                           inputMode === "youtube"
-                            ? "text-gray-900"
-                            : "text-gray-400 hover:text-gray-600"
+                            ? "text-[#f7f7f8]"
+                            : "text-[#898a8b] hover:text-[#f7f7f8]"
                         }`}
                         onClick={() => setInputMode("youtube")}
                       >
                         YouTube URL
                         {inputMode === "youtube" && (
-                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#9aed00]" />
                         )}
                       </button>
                     </div>
@@ -2461,7 +2443,7 @@ export default function AutoClipPage() {
                     {/* Content */}
                     <div className="p-6 sm:p-8">
                       {sessionError && (
-                        <div className="mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                        <div className="mb-6 rounded-xl border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
                           {sessionError}
                         </div>
                       )}
@@ -2473,10 +2455,10 @@ export default function AutoClipPage() {
                             type="button"
                             className={`group relative flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-16 transition-all duration-200 ${
                               dragActive
-                                ? "border-gray-400 bg-gray-50"
+                                ? "border-[#9aed00] bg-[rgba(154,237,0,0.05)]"
                                 : uploadReady
-                                  ? "border-gray-200 bg-gray-50"
-                                  : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                  ? "border-[rgba(255,255,255,0.12)] bg-[#0e1012]"
+                                  : "border-[rgba(255,255,255,0.08)] bg-[#0e1012] hover:border-[rgba(255,255,255,0.15)] hover:bg-[rgba(255,255,255,0.02)]"
                             }`}
                             onClick={() => {
                               if (!uploadReady) {
@@ -2500,11 +2482,11 @@ export default function AutoClipPage() {
 
                             {uploadReady ? (
                               <div className="flex flex-col items-center gap-1 pb-2.5">
-                                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(76,175,80,0.2)]">
                                   <svg
                                     aria-hidden="true"
                                     viewBox="0 0 24 24"
-                                    className="h-6 w-6 text-green-600"
+                                    className="h-6 w-6 text-[#4caf50]"
                                     fill="none"
                                     stroke="currentColor"
                                     strokeWidth="2"
@@ -2514,16 +2496,16 @@ export default function AutoClipPage() {
                                     <path d="M20 6 9 17l-5-5" />
                                   </svg>
                                 </div>
-                                <p className="max-w-[280px] truncate text-sm font-medium text-gray-900">
+                                <p className="max-w-[280px] truncate text-sm font-medium text-[#f7f7f8]">
                                   {inputName}
                                 </p>
-                                <p className="mb-3 text-xs text-gray-500">
+                                <p className="mb-3 text-xs text-[#898a8b]">
                                   {inputSizeLabel}
                                 </p>
                                 <span
                                   role="button"
                                   tabIndex={0}
-                                  className="cursor-pointer text-xs font-medium text-gray-500 underline underline-offset-2 hover:text-gray-700"
+                                  className="cursor-pointer text-xs font-medium text-[#898a8b] underline underline-offset-2 hover:text-[#f7f7f8]"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     resetInput();
@@ -2540,18 +2522,18 @@ export default function AutoClipPage() {
                               </div>
                             ) : inputUploading ? (
                               <div className="flex flex-col items-center">
-                                <div className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900" />
-                                <p className="text-sm font-medium text-gray-600">
+                                <div className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[rgba(255,255,255,0.1)] border-t-[#9aed00]" />
+                                <p className="text-sm font-medium text-[#898a8b]">
                                   Uploading...
                                 </p>
                               </div>
                             ) : (
                               <div className="flex flex-col items-center gap-1 py-2.5">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 transition-colors group-hover:bg-gray-200">
+                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#252729] transition-colors group-hover:bg-[rgba(154,237,0,0.1)]">
                                   <svg
                                     aria-hidden="true"
                                     viewBox="0 0 24 24"
-                                    className="h-6 w-6 text-gray-400"
+                                    className="h-6 w-6 text-[#898a8b] group-hover:text-[#9aed00]"
                                     fill="none"
                                     stroke="currentColor"
                                     strokeWidth="1.5"
@@ -2563,13 +2545,13 @@ export default function AutoClipPage() {
                                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                                   </svg>
                                 </div>
-                                <p className="mt-4 text-base font-medium text-gray-900">
+                                <p className="mt-4 text-base font-medium text-[#f7f7f8]">
                                   {dragActive ? "Drop your video" : "Drop video here"}
                                 </p>
-                                <p className="text-sm text-gray-500">
+                                <p className="text-sm text-[#898a8b]">
                                   or click to browse
                                 </p>
-                                <p className="mt-3 text-xs text-gray-400">
+                                <p className="mt-3 text-xs text-[#898a8b]">
                                   MP4, MOV, AVI, WebM up to 300MB
                                 </p>
                               </div>
@@ -2577,14 +2559,14 @@ export default function AutoClipPage() {
                           </button>
 
                           {inputError && (
-                            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                            <div className="rounded-xl border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
                               {inputError}
                             </div>
                           )}
 
                           {/* Continue Button */}
                           <button
-                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-4 text-sm font-medium text-white transition-all hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#9aed00] px-6 py-4 text-sm font-medium text-black transition-all hover:bg-[#8ad600] disabled:cursor-not-allowed disabled:bg-[#252729] disabled:text-[#898a8b]"
                             type="button"
                             disabled={!uploadReady || inputUploading}
                             onClick={() => setView("instructions")}
@@ -2610,7 +2592,7 @@ export default function AutoClipPage() {
                           <div className="space-y-3">
                             <label
                               htmlFor="youtube-url-home"
-                              className="block text-sm font-medium text-gray-700"
+                              className="block text-sm font-medium text-[#898a8b]"
                             >
                               Paste YouTube URL
                             </label>
@@ -2627,18 +2609,18 @@ export default function AutoClipPage() {
                                 }
                               }}
                               placeholder="https://youtube.com/watch?v=..."
-                              className="h-14 w-full rounded-xl border border-gray-200 bg-white px-4 text-base text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none focus:ring-0"
+                              className="h-14 w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-4 text-base text-[#f7f7f8] placeholder:text-[#898a8b] focus:border-[#9aed00]/30 focus:outline-none focus:ring-1 focus:ring-[#9aed00]/20"
                             />
                           </div>
 
                           {uploadReady && (
-                            <div className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-3">
+                            <div className="flex items-center justify-between rounded-xl bg-[rgba(76,175,80,0.1)] px-4 py-3">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(76,175,80,0.2)]">
                                   <svg
                                     aria-hidden="true"
                                     viewBox="0 0 24 24"
-                                    className="h-4 w-4 text-green-600"
+                                    className="h-4 w-4 text-[#4caf50]"
                                     fill="none"
                                     stroke="currentColor"
                                     strokeWidth="2"
@@ -2649,15 +2631,15 @@ export default function AutoClipPage() {
                                   </svg>
                                 </div>
                                 <div>
-                                  <p className="max-w-[200px] truncate text-sm font-medium text-gray-900 sm:max-w-[300px]">
+                                  <p className="max-w-[200px] truncate text-sm font-medium text-[#f7f7f8] sm:max-w-[300px]">
                                     {inputName}
                                   </p>
-                                  <p className="text-xs text-gray-500">{inputSizeLabel}</p>
+                                  <p className="text-xs text-[#898a8b]">{inputSizeLabel}</p>
                                 </div>
                               </div>
                               <button
                                 type="button"
-                                className="text-gray-400 hover:text-gray-600"
+                                className="text-[#898a8b] hover:text-[#f7f7f8]"
                                 onClick={resetInput}
                               >
                                 <svg
@@ -2678,7 +2660,7 @@ export default function AutoClipPage() {
                           )}
 
                           {inputError && (
-                            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                            <div className="rounded-xl border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] px-4 py-3 text-sm text-[#e72930]">
                               {inputError}
                             </div>
                           )}
@@ -2686,7 +2668,7 @@ export default function AutoClipPage() {
                           {/* Import / Continue Button */}
                           {uploadReady ? (
                             <button
-                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-4 text-sm font-medium text-white transition-all hover:bg-gray-800"
+                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#9aed00] px-6 py-4 text-sm font-medium text-black transition-all hover:bg-[#8ad600]"
                               type="button"
                               onClick={() => setView("instructions")}
                             >
@@ -2706,7 +2688,7 @@ export default function AutoClipPage() {
                             </button>
                           ) : (
                             <button
-                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-6 py-4 text-sm font-medium text-white transition-all hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#9aed00] px-6 py-4 text-sm font-medium text-black transition-all hover:bg-[#8ad600] disabled:cursor-not-allowed disabled:bg-[#252729] disabled:text-[#898a8b]"
                               type="button"
                               disabled={inputUploading || sessionBusy || !videoUrl.trim()}
                               onClick={() => {
@@ -2716,7 +2698,7 @@ export default function AutoClipPage() {
                             >
                               {inputUploading ? (
                                 <>
-                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-white" />
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-[rgba(0,0,0,0.2)] border-t-black" />
                                   Importing...
                                 </>
                               ) : (
@@ -2747,24 +2729,24 @@ export default function AutoClipPage() {
                   <div className="mt-12">
                     <div className="flex items-center justify-center gap-8 text-center sm:gap-12">
                       <div className="flex flex-col items-center">
-                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-sm font-medium text-gray-600">
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#252729] text-sm font-medium text-[#9aed00]">
                           1
                         </div>
-                        <p className="text-xs font-medium text-gray-600">Upload</p>
+                        <p className="text-xs font-medium text-[#898a8b]">Upload</p>
                       </div>
-                      <div className="h-px w-8 bg-gray-200 sm:w-12" />
+                      <div className="h-px w-8 bg-[rgba(255,255,255,0.08)] sm:w-12" />
                       <div className="flex flex-col items-center">
-                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-sm font-medium text-gray-600">
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#252729] text-sm font-medium text-[#9aed00]">
                           2
                         </div>
-                        <p className="text-xs font-medium text-gray-600">AI Finds Clips</p>
+                        <p className="text-xs font-medium text-[#898a8b]">AI Finds Clips</p>
                       </div>
-                      <div className="h-px w-8 bg-gray-200 sm:w-12" />
+                      <div className="h-px w-8 bg-[rgba(255,255,255,0.08)] sm:w-12" />
                       <div className="flex flex-col items-center">
-                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-sm font-medium text-gray-600">
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#252729] text-sm font-medium text-[#9aed00]">
                           3
                         </div>
-                        <p className="text-xs font-medium text-gray-600">Export</p>
+                        <p className="text-xs font-medium text-[#898a8b]">Export</p>
                       </div>
                     </div>
                   </div>
@@ -2772,11 +2754,11 @@ export default function AutoClipPage() {
               </div>
             ) : (
               <div className="flex flex-1 gap-6">
-                <aside className="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full transform bg-white shadow-lg transition-transform duration-200 ease-out lg:relative lg:w-80 lg:translate-x-0 lg:border-r lg:shadow-none" style={{ borderColor: '#e4e6eb' }}>
+                <aside className="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full transform bg-[#0e1012] shadow-lg transition-transform duration-200 ease-out lg:relative lg:w-80 lg:translate-x-0 lg:border-r lg:border-[rgba(255,255,255,0.08)] lg:shadow-none">
                   <div className="flex h-full flex-col">
                     <div className="rounded-t-2xl p-6 pb-5">
                       <button
-                        className="mb-6 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400 transition-colors hover:text-gray-600"
+                        className="mb-6 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-[#898a8b] transition-colors hover:text-[#f7f7f8]"
                         type="button"
                         onClick={() => setView("home")}
                       >
@@ -2795,10 +2777,10 @@ export default function AutoClipPage() {
                         </svg>
                         <span>Back to AutoClip Home</span>
                       </button>
-                      <h2 className="text-base font-semibold tracking-tight text-gray-900">
+                      <h2 className="text-base font-semibold tracking-tight text-[#f7f7f8]">
                         AI Clip Creator
                       </h2>
-                      <p className="mt-2 text-xs text-gray-500">
+                      <p className="mt-2 text-xs text-[#898a8b]">
                         Transform your videos into viral clips
                       </p>
                     </div>
@@ -2809,31 +2791,31 @@ export default function AutoClipPage() {
                           const isComplete =
                             currentStep !== null && step.id < currentStep;
                           const wrapperClass = isActive
-                            ? "bg-gray-50/80 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-                            : "hover:bg-gray-50/50";
+                            ? "bg-[rgba(154,237,0,0.05)] shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
+                            : "hover:bg-[rgba(255,255,255,0.03)]";
                           const iconBgClass = isActive
-                            ? "bg-blue-50"
-                            : "bg-gray-100";
+                            ? "bg-[rgba(154,237,0,0.15)]"
+                            : "bg-[#252729]";
                           const iconColorClass = isActive
-                            ? "text-blue-600"
+                            ? "text-[#9aed00]"
                             : isComplete
-                              ? "text-gray-700"
-                              : "text-gray-400";
+                              ? "text-[#f7f7f8]"
+                              : "text-[#898a8b]";
                           const textClass = isActive
-                            ? "text-gray-900"
+                            ? "text-[#f7f7f8]"
                             : isComplete
-                              ? "text-gray-700"
-                              : "text-gray-400";
+                              ? "text-[#f7f7f8]"
+                              : "text-[#898a8b]";
                           const detailClass = isActive
-                            ? "text-gray-500"
+                            ? "text-[#898a8b]"
                             : isComplete
-                              ? "text-gray-400"
-                              : "text-gray-300";
+                              ? "text-[#898a8b]"
+                              : "text-[#666]";
                           const numberClass = isActive
-                            ? "text-blue-600"
+                            ? "text-[#9aed00]"
                             : isComplete
-                              ? "text-gray-600"
-                              : "text-gray-400";
+                              ? "text-[#898a8b]"
+                              : "text-[#666]";
 
                           return (
                             <button
@@ -2881,23 +2863,23 @@ export default function AutoClipPage() {
                         })}
                       </nav>
                     </div>
-                    <div className="border-t border-gray-100 p-6">
+                    <div className="border-t border-[rgba(255,255,255,0.08)] p-6">
                       <div className="mb-4">
-                        <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest text-gray-400">
+                        <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest text-[#898a8b]">
                           <span>Progress</span>
-                          <span className="text-gray-600">
+                          <span className="text-[#f7f7f8]">
                             {progressPercent}%
                           </span>
                         </div>
-                        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#252729]">
                           <div
-                            className="h-full bg-blue-600 transition-all duration-500 ease-out"
+                            className="h-full bg-[#9aed00] transition-all duration-500 ease-out"
                             style={{ width: `${progressPercent}%` }}
                           />
                         </div>
                       </div>
                       <button
-                        className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-all hover:bg-gray-50 hover:text-gray-800"
+                        className="flex w-full items-center justify-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-2.5 text-sm font-semibold text-[#898a8b] transition-all hover:bg-[#252729] hover:text-[#f7f7f8]"
                         type="button"
                         onClick={handleStartOver}
                       >
@@ -2925,31 +2907,31 @@ export default function AutoClipPage() {
                     <div className="mx-auto h-full p-6 lg:p-10">
                       <div className="flex h-full flex-col gap-6 overflow-hidden">
                         <div className="flex flex-col gap-1">
-                          <h1 className="text-2xl font-semibold tracking-tight text-gray-900 md:text-3xl">
+                          <h1 className="text-2xl font-semibold tracking-tight text-[#f7f7f8] md:text-3xl">
                             Clip Instructions
                           </h1>
-                          <p className="text-sm text-gray-600 md:text-base">
+                          <p className="text-sm text-[#898a8b] md:text-base">
                             Tell our AI what type of viral clips to create from
                             your video
                           </p>
                         </div>
                         <div className="flex flex-col gap-6 overflow-y-auto overflow-x-hidden lg:flex-row lg:gap-6">
-                          <div className="flex min-h-fit min-w-0 flex-1 flex-col gap-5 rounded-2xl border border-gray-100 bg-white p-5 md:p-6">
-                            <h3 className="text-base font-semibold tracking-tight text-gray-900">
+                          <div className="flex min-h-fit min-w-0 flex-1 flex-col gap-5 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-5 md:p-6">
+                            <h3 className="text-base font-semibold tracking-tight text-[#f7f7f8]">
                               Instructions
                             </h3>
-                            <div className="h-px w-full bg-gray-100" />
+                            <div className="h-px w-full bg-[rgba(255,255,255,0.08)]" />
                             <div className="flex flex-col gap-3">
                               <div className="flex items-center justify-between">
                                 <label
-                                  className="text-sm font-semibold text-gray-700"
+                                  className="text-sm font-semibold text-[#f7f7f8]"
                                   htmlFor="clip-request"
                                 >
                                   What clips do you want to create?
-                                  <span className="ml-1 text-red-500">*</span>
+                                  <span className="ml-1 text-[#e72930]">*</span>
                                 </label>
                                 <button
-                                  className="inline-flex items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
+                                  className="inline-flex items-center justify-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                                   type="button"
                                   onClick={() => setInstructions(defaultInstructions)}
                                 >
@@ -2971,12 +2953,12 @@ export default function AutoClipPage() {
                                   Use default
                                 </button>
                               </div>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-[#898a8b]">
                                 We will find 6 viral moments (7-45 seconds each)
                                 based on your instructions
                               </p>
                               <textarea
-                                className="min-h-[90px] w-full resize-none rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                                className="min-h-[90px] w-full resize-none rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-2 text-sm text-[#f7f7f8] placeholder:text-[#898a8b] focus:border-[#9aed00]/30 focus:outline-none focus:ring-1 focus:ring-[#9aed00]/20"
                                 id="clip-request"
                                 placeholder="Find the most engaging moments, funny reactions, key insights..."
                                 value={instructions}
@@ -2985,29 +2967,29 @@ export default function AutoClipPage() {
                             </div>
                             <div className="flex flex-col gap-3">
                               <label
-                                className="text-sm font-semibold text-gray-700"
+                                className="text-sm font-semibold text-[#f7f7f8]"
                                 htmlFor="description"
                               >
                                 Describe your video content
-                                <span className="ml-1 text-xs font-normal text-gray-500">
+                                <span className="ml-1 text-xs font-normal text-[#898a8b]">
                                   (optional)
                                 </span>
                               </label>
                               <textarea
-                                className="min-h-[110px] w-full resize-none rounded-lg border border-gray-200/70 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                                className="min-h-[110px] w-full resize-none rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-2 text-sm text-[#f7f7f8] placeholder:text-[#898a8b] focus:border-[#9aed00]/30 focus:outline-none focus:ring-1 focus:ring-[#9aed00]/20"
                                 id="description"
                                 placeholder="e.g., A tutorial on React hooks, gameplay footage, product demo..."
                                 maxLength={500}
                                 value={description}
                                 onChange={(event) => setDescription(event.target.value)}
                               />
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-[#898a8b]">
                                 Help our AI understand your content better
                               </p>
                             </div>
                             <div className="flex flex-col gap-2">
                               <label
-                                className="text-sm font-semibold text-gray-700"
+                                className="text-sm font-semibold text-[#f7f7f8]"
                                 htmlFor="transcription-language"
                               >
                                 Transcription language
@@ -3019,7 +3001,7 @@ export default function AutoClipPage() {
                                   onChange={(event) =>
                                     setTranscriptionLanguage(event.target.value)
                                   }
-                                  className="h-10 w-full rounded-md border border-gray-200/70 bg-white px-3 text-sm text-gray-900 focus:border-gray-400 focus:outline-none sm:max-w-xs"
+                                  className="h-10 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 text-sm text-[#f7f7f8] focus:border-[#9aed00]/30 focus:outline-none focus:ring-1 focus:ring-[#9aed00]/20 sm:max-w-xs"
                                 >
                                   <option value="auto">Auto detect</option>
                                   <option value="en">English</option>
@@ -3032,17 +3014,17 @@ export default function AutoClipPage() {
                                   <option value="sv">Swedish</option>
                                   <option value="pl">Polish</option>
                                 </select>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-[#898a8b]">
                                   Set this if the transcript language looks off.
                                 </p>
                               </div>
                             </div>
-                            <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                            <div className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e1012] p-4">
                               <div className="flex gap-3">
                                 <svg
                                   aria-hidden="true"
                                   viewBox="0 0 24 24"
-                                  className="h-4 w-4 flex-shrink-0 text-gray-400"
+                                  className="h-4 w-4 flex-shrink-0 text-[#9aed00]"
                                   fill="none"
                                   stroke="currentColor"
                                   strokeWidth="2"
@@ -3054,10 +3036,10 @@ export default function AutoClipPage() {
                                   <line x1="12" x2="12.01" y1="16" y2="16" />
                                 </svg>
                                 <div className="space-y-1">
-                                  <h4 className="text-sm font-semibold text-gray-800">
+                                  <h4 className="text-sm font-semibold text-[#f7f7f8]">
                                     Finding Viral Moments
                                   </h4>
-                                  <p className="text-xs text-gray-600">
+                                  <p className="text-xs text-[#898a8b]">
                                     Our AI analyzes your video to find the most
                                     engaging moments. This process typically
                                     takes 3 to 5 minutes depending on video
@@ -3068,11 +3050,11 @@ export default function AutoClipPage() {
                             </div>
                           </div>
 
-                          <div className="flex min-h-fit w-full min-w-0 flex-col gap-5 rounded-2xl border border-gray-100 bg-white p-5 md:p-6 lg:w-[40%] max-lg:order-first">
-                            <h3 className="text-base font-semibold tracking-tight text-gray-900">
+                          <div className="flex min-h-fit w-full min-w-0 flex-col gap-5 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-5 md:p-6 lg:w-[40%] max-lg:order-first">
+                            <h3 className="text-base font-semibold tracking-tight text-[#f7f7f8]">
                               Video Preview
                             </h3>
-                            <div className="h-px w-full bg-gray-100" />
+                            <div className="h-px w-full bg-[rgba(255,255,255,0.08)]" />
                             <div className="flex w-full flex-col gap-4">
                               <div className="flex w-full items-center justify-center overflow-hidden rounded-2xl bg-black/90 ring-1 ring-black/5">
                                 {inputPreviewUrl ? (
@@ -3098,37 +3080,37 @@ export default function AutoClipPage() {
                                     />
                                   </div>
                                 ) : (
-                                  <div className="flex min-h-[290px] items-center justify-center text-xs text-gray-400 md:min-h-[420px]">
+                                  <div className="flex min-h-[290px] items-center justify-center text-xs text-[#898a8b] md:min-h-[420px]">
                                     Preview available after upload
                                   </div>
                                 )}
                               </div>
                               <div className="flex w-full min-w-0 flex-col gap-4">
-                                <p className="w-0 min-w-full truncate text-base font-semibold text-gray-900">
+                                <p className="w-0 min-w-full truncate text-base font-semibold text-[#f7f7f8]">
                                   {inputName}
                                 </p>
                                 <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
                                   <div className="space-y-1">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#898a8b]">
                                       Size
                                     </p>
-                                    <p className="text-sm font-medium text-gray-700">
+                                    <p className="text-sm font-medium text-[#f7f7f8]">
                                       {inputSizeLabel}
                                     </p>
                                   </div>
                                   <div className="space-y-1">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#898a8b]">
                                       Width
                                     </p>
-                                    <p className="text-sm font-medium text-gray-700">
+                                    <p className="text-sm font-medium text-[#f7f7f8]">
                                       {inputWidthLabel}
                                     </p>
                                   </div>
                                   <div className="space-y-1">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#898a8b]">
                                       Height
                                     </p>
-                                    <p className="text-sm font-medium text-gray-700">
+                                    <p className="text-sm font-medium text-[#f7f7f8]">
                                       {inputHeightLabel}
                                     </p>
                                   </div>
@@ -3138,18 +3120,18 @@ export default function AutoClipPage() {
                           </div>
                         </div>
                         {processingError && (
-                          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                          <div className="rounded-lg border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] p-3 text-sm text-[#e72930]">
                             {processingError}
                           </div>
                         )}
                         <button
-                          className="flex w-fit flex-shrink-0 items-center justify-center gap-2 self-end rounded-lg px-4 py-2 text-sm font-medium text-white transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.37),_rgba(255,_255,_255,_0)),_#3860FF] outline outline-1 outline-[#5B7CFF] outline-offset-[-1px] shadow-[0_6px_16px_rgba(51,_92,_255,_0.25)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(51,_92,_255,_0.25)] disabled:cursor-not-allowed disabled:text-gray-400 disabled:shadow-none disabled:outline-gray-200 disabled:[background:#E5E7EB]"
+                          className="flex w-fit flex-shrink-0 items-center justify-center gap-2 self-end rounded-lg px-4 py-2 text-sm font-medium text-black transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.2),_rgba(255,_255,_255,_0)),_#9aed00] outline outline-1 outline-[#9aed00] outline-offset-[-1px] shadow-[0_6px_16px_rgba(154,_237,_0,_0.25)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(154,_237,_0,_0.25)] disabled:cursor-not-allowed disabled:text-[#898a8b] disabled:shadow-none disabled:outline-[#2e3031] disabled:[background:#2e3031]"
                           type="button"
                           onClick={handleFindMoments}
                           disabled={!uploadReady || processing}
                         >
                           {processing ? "Working..." : "Find Viral Moments"}
-                          <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/70">
+                          <span className="rounded-full border border-black/20 bg-black/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-black/70">
                             Cmd+Enter
                           </span>
                         </button>
@@ -3163,13 +3145,13 @@ export default function AutoClipPage() {
                         <div className="mx-auto max-w-lg text-center">
                           <div className="relative mx-auto mb-6 h-16 w-16 animate-bounce [animation-duration:4s]">
                             <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="h-16 w-16 rounded-full border border-gray-200" />
+                              <div className="h-16 w-16 rounded-full border border-[rgba(255,255,255,0.08)]" />
                             </div>
                             <div className="absolute inset-0 flex items-center justify-center">
                               <svg
                                 aria-hidden="true"
                                 viewBox="0 0 24 24"
-                                className="h-8 w-8 text-blue-600"
+                                className="h-8 w-8 text-[#9aed00]"
                                 fill="none"
                                 stroke="currentColor"
                                 strokeWidth="2"
@@ -3181,23 +3163,23 @@ export default function AutoClipPage() {
                               </svg>
                             </div>
                           </div>
-                          <h3 className="mb-2 text-lg font-medium">
+                          <h3 className="mb-2 text-lg font-medium text-[#f7f7f8]">
                             Finding Viral Moments
                           </h3>
-                          <p className="mb-2 text-sm text-gray-500">
+                          <p className="mb-2 text-sm text-[#898a8b]">
                             {processingLabel}
                           </p>
-                          <p className="mb-6 text-sm text-gray-500">
+                          <p className="mb-6 text-sm text-[#898a8b]">
                             AI is analyzing your video to find the best
                             highlights...
                           </p>
-                          <div className="mx-auto max-w-md rounded-lg border border-amber-200 bg-amber-50 shadow-sm">
+                          <div className="mx-auto max-w-md rounded-lg border border-[rgba(255,167,38,0.3)] bg-[rgba(255,167,38,0.1)] shadow-sm">
                             <div className="p-6">
                               <div className="flex gap-3">
                                 <svg
                                   aria-hidden="true"
                                   viewBox="0 0 24 24"
-                                  className="h-5 w-5 flex-shrink-0 text-amber-600"
+                                  className="h-5 w-5 flex-shrink-0 text-[#ffa726]"
                                   fill="none"
                                   stroke="currentColor"
                                   strokeWidth="2"
@@ -3209,10 +3191,10 @@ export default function AutoClipPage() {
                                   <line x1="12" x2="12.01" y1="16" y2="16" />
                                 </svg>
                                 <div className="text-left">
-                                  <h4 className="text-sm font-medium text-amber-900">
+                                  <h4 className="text-sm font-medium text-[#ffa726]">
                                     Note
                                   </h4>
-                                  <p className="mt-1 text-xs text-amber-700">
+                                  <p className="mt-1 text-xs text-[#898a8b]">
                                     This may take up to 1 to 2 minutes. Progress
                                     is saved and you can come back when it is
                                     ready.
@@ -3230,19 +3212,19 @@ export default function AutoClipPage() {
                     <div className="mx-auto h-full p-5 lg:p-8">
                       <div className="flex h-full w-full flex-col gap-4 overflow-hidden">
                         <div className="flex flex-col gap-2">
-                          <h1 className="text-2xl font-semibold">
+                          <h1 className="text-2xl font-semibold text-[#f7f7f8]">
                             Review AI Found Clips
                           </h1>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-[#898a8b]">
                             We found {totalHighlights} viral moments. Review
                             and approve the clips you want, then remove the
                             rest to continue.
                           </p>
                         </div>
-                        <div className="flex flex-col gap-3 overflow-hidden rounded-xl border border-gray-200 bg-white p-3 md:p-4">
+                        <div className="flex flex-col gap-3 overflow-hidden rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:p-4">
                           <div className="flex flex-col gap-2">
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-gray-500">
+                              <span className="text-[#898a8b]">
                                 {approvedActiveCount} of {activeHighlightsCount} clips
                                 approved
                               </span>
@@ -3250,9 +3232,9 @@ export default function AutoClipPage() {
                                 {approvalStatusLabel}
                               </span>
                             </div>
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-[#0e1012]">
                               <div
-                                className="h-full rounded-full bg-blue-600 transition-all duration-300 ease-out"
+                                className="h-full rounded-full bg-[#9aed00] transition-all duration-300 ease-out"
                                 style={{ width: `${approvalProgress}%` }}
                               />
                             </div>
@@ -3277,22 +3259,22 @@ export default function AutoClipPage() {
                                   <div
                                     key={`highlight-${index}`}
                                     className={`group relative min-w-fit rounded-xl border transition-all duration-200 ${isRemoved
-                                      ? "border-gray-200 bg-white/60 opacity-40"
+                                      ? "border-[rgba(255,255,255,0.05)] bg-[#1a1c1e]/40 opacity-40"
                                       : isApproved
-                                        ? "border-blue-500 bg-blue-50/70 shadow-[0_8px_24px_rgba(37,_99,_235,_0.2)] ring-1 ring-blue-200"
-                                        : "border-gray-200 bg-white shadow-sm hover:border-gray-300 hover:shadow-md"
+                                        ? "border-[#9aed00] bg-[rgba(154,237,0,0.05)] shadow-[0_8px_24px_rgba(154,_237,_0,_0.15)] ring-1 ring-[rgba(154,237,0,0.3)]"
+                                        : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-sm hover:border-[rgba(255,255,255,0.15)] hover:shadow-md"
                                       }`}
                                   >
                                     <div className="flex h-full flex-col gap-3 p-4">
                                       <div className="flex items-start gap-3">
                                         <h3
-                                          className="text-sm font-medium leading-5"
+                                          className="text-sm font-medium leading-5 text-[#f7f7f8]"
                                           title={item.content}
                                         >
                                           {title}
                                         </h3>
                                       </div>
-                                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                                      <div className="flex items-center gap-2 text-xs text-[#898a8b]">
                                         <div className="flex items-center gap-1">
                                           <svg
                                             aria-hidden="true"
@@ -3314,7 +3296,7 @@ export default function AutoClipPage() {
                                         {isEdited && !isRemoved && (
                                           <>
                                             <span>•</span>
-                                            <span className="text-blue-600">
+                                            <span className="text-[#9aed00]">
                                               edited
                                             </span>
                                           </>
@@ -3322,7 +3304,7 @@ export default function AutoClipPage() {
                                       </div>
                                       <div className="mt-auto flex items-center gap-2">
                                         <button
-                                          className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-600 bg-blue-600 px-3 text-sm font-medium text-white transition-all duration-200 hover:border-blue-700 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                          className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-[#9aed00] bg-[#9aed00] px-3 text-sm font-medium text-black transition-all duration-200 hover:border-[#8ad600] hover:bg-[#8ad600] disabled:cursor-not-allowed disabled:opacity-60"
                                           onClick={() => {
                                             setActiveHighlightIndex(index);
                                             setReviewModalOpen(true);
@@ -3346,7 +3328,7 @@ export default function AutoClipPage() {
                                         </button>
                                         {isRemoved ? (
                                           <button
-                                            className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-green-100 px-3 text-xs font-medium text-green-600 transition-all duration-200 hover:bg-green-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                            className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-[rgba(76,175,80,0.15)] px-3 text-xs font-medium text-[#4caf50] transition-all duration-200 hover:bg-[#4caf50] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                             onClick={() => handleRestoreHighlight(index)}
                                             disabled={approvalLoading}
                                             title="Restore clip"
@@ -3368,7 +3350,7 @@ export default function AutoClipPage() {
                                           </button>
                                         ) : (
                                           <button
-                                            className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-red-100 px-3 text-xs font-medium text-red-600 transition-all duration-200 hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                            className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-[rgba(231,41,48,0.15)] px-3 text-xs font-medium text-[#e72930] transition-all duration-200 hover:bg-[#e72930] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                             onClick={() =>
                                               handleRemoveHighlight(index)
                                             }
@@ -3400,31 +3382,31 @@ export default function AutoClipPage() {
                                 );
                               })
                             ) : (
-                              <div className="rounded-xl border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                              <div className="rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-6 text-sm text-[#898a8b]">
                                 No highlights yet. Run Find Viral Moments to
                                 generate clips.
                               </div>
                             )}
                           </div>
                           {processingError && (
-                            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                            <div className="rounded-lg border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] p-3 text-sm text-[#e72930]">
                               {processingError}
                             </div>
                           )}
                           {renderError && (
-                            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                            <div className="rounded-lg border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] p-3 text-sm text-[#e72930]">
                               {renderError}
                             </div>
                           )}
                         </div>
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-[#898a8b]">
                               {approvalMessage}
                             </p>
                           </div>
                           <button
-                            className="flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium text-white transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.37),_rgba(255,_255,_255,_0)),_#3860FF] outline outline-1 outline-[#5B7CFF] outline-offset-[-1px] shadow-[0_6px_16px_rgba(51,_92,_255,_0.25)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(51,_92,_255,_0.25)] disabled:cursor-not-allowed disabled:text-gray-400 disabled:shadow-none disabled:outline-gray-200 disabled:[background:#E5E7EB]"
+                            className="flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium text-black transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.2),_rgba(255,_255,_255,_0)),_#9aed00] outline outline-1 outline-[#9aed00] outline-offset-[-1px] shadow-[0_6px_16px_rgba(154,_237,_0,_0.25)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(154,_237,_0,_0.25)] disabled:cursor-not-allowed disabled:text-[#898a8b] disabled:shadow-none disabled:outline-[#2e3031] disabled:[background:#2e3031]"
                             disabled={!approvalReady || rendering}
                             onClick={handleRender}
                           >
@@ -3436,7 +3418,7 @@ export default function AutoClipPage() {
                           <>
                             <div
                               data-state="open"
-                              className="fixed inset-0 z-50 bg-white/60 backdrop-blur-sm"
+                              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
                               style={{ pointerEvents: "auto" }}
                               aria-hidden="true"
                               onClick={() => setReviewModalOpen(false)}
@@ -3450,19 +3432,19 @@ export default function AutoClipPage() {
                               aria-labelledby="autoclip-review-title"
                               aria-describedby="autoclip-review-description"
                               data-state="open"
-                              className="fixed left-[50%] top-[50%] z-[70] flex w-[92vw] max-w-[95svw] max-h-[85svh] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-hidden rounded-xl border border-gray-200 bg-white px-0 py-4 shadow-lg md:max-w-3xl md:py-6"
+                              className="fixed left-[50%] top-[50%] z-[70] flex w-[92vw] max-w-[95svw] max-h-[85svh] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-hidden rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-0 py-4 shadow-lg md:max-w-3xl md:py-6"
                               style={{ pointerEvents: "auto" }}
                             >
-                              <div className="flex flex-col items-start justify-between space-y-1.5 border-b border-gray-200 px-4 pb-4 md:px-6 md:pb-6">
+                              <div className="flex flex-col items-start justify-between space-y-1.5 border-b border-[rgba(255,255,255,0.08)] px-4 pb-4 md:px-6 md:pb-6">
                                 <h2
                                   id="autoclip-review-title"
-                                  className="text-left text-xl font-semibold leading-none"
+                                  className="text-left text-xl font-semibold leading-none text-[#f7f7f8]"
                                 >
                                   Review Clip
                                 </h2>
                                 <p
                                   id="autoclip-review-description"
-                                  className="text-left text-sm text-gray-500"
+                                  className="text-left text-sm text-[#898a8b]"
                                 >
                                   Preview and adjust the clip timing
                                 </p>
@@ -3470,14 +3452,14 @@ export default function AutoClipPage() {
                               <div className="flex flex-col gap-4 overflow-y-auto px-4 md:px-6">
                                 <div className="space-y-4">
                                   <div className="space-y-1">
-                                    <h4 className="text-sm font-medium">
+                                    <h4 className="text-sm font-medium text-[#f7f7f8]">
                                       {highlightTitle}
                                     </h4>
-                                    <p className="max-h-24 overflow-y-auto pr-2 text-xs text-gray-500">
+                                    <p className="max-h-24 overflow-y-auto pr-2 text-xs text-[#898a8b]">
                                       {reviewTranscript}
                                     </p>
                                   </div>
-                                  <div className="relative flex min-h-[240px] w-full items-center justify-center rounded-xl bg-gray-100 sm:min-h-[330px]">
+                                  <div className="relative flex min-h-[240px] w-full items-center justify-center rounded-xl bg-[#0e1012] sm:min-h-[330px]">
                                     {reviewPreviewUrl ? (
                                       <div
                                         className={reviewPreviewFrameClass}
@@ -3503,7 +3485,7 @@ export default function AutoClipPage() {
                                         />
                                       </div>
                                     ) : (
-                                      <div className="text-xs text-gray-400">
+                                      <div className="text-xs text-[#898a8b]">
                                         Preview available after upload
                                       </div>
                                     )}
@@ -3511,14 +3493,14 @@ export default function AutoClipPage() {
                                   <div className="flex select-none flex-col gap-3">
                                     <div
                                       ref={timelineRef}
-                                      className="relative h-12 bg-gray-100 sm:h-14"
+                                      className="relative h-12 bg-[#0e1012] sm:h-14"
                                     >
-                                      <div className="absolute inset-0 overflow-hidden rounded-xl bg-gray-100">
+                                      <div className="absolute inset-0 overflow-hidden rounded-xl bg-[#0e1012]">
                                         <div
-                                          className="absolute left-0 top-1/2 h-2 w-full -translate-y-1/2 rounded-full bg-gray-200"
+                                          className="absolute left-0 top-1/2 h-2 w-full -translate-y-1/2 rounded-full bg-[#252729]"
                                         />
                                         <div
-                                          className="absolute top-1/2 z-10 flex h-5 -translate-y-1/2 items-center justify-center rounded-full bg-blue-200 shadow-sm"
+                                          className="absolute top-1/2 z-10 flex h-5 -translate-y-1/2 items-center justify-center rounded-full bg-[rgba(154,237,0,0.3)] shadow-sm"
                                           style={{
                                             left: `${timelineStartPercent}%`,
                                             width: `${timelineWidthPercent}%`,
@@ -3543,12 +3525,12 @@ export default function AutoClipPage() {
                                           </svg>
                                         </div>
                                         <div
-                                          className="absolute top-0 z-30 h-full w-0.5 -translate-x-1/2 bg-gray-900"
+                                          className="absolute top-0 z-30 h-full w-0.5 -translate-x-1/2 bg-[#9aed00]"
                                           style={{ left: `${timelineStartPercent}%` }}
                                         />
                                         <div
-                                          className={`absolute top-0 z-20 flex h-full w-3 -translate-x-full items-center justify-center bg-blue-600 transition-colors ${draggingHandle === "end"
-                                            ? "bg-blue-700"
+                                          className={`absolute top-0 z-20 flex h-full w-3 -translate-x-full items-center justify-center bg-[#9aed00] transition-colors ${draggingHandle === "end"
+                                            ? "bg-[#8ad600]"
                                             : ""
                                             } cursor-ew-resize touch-none`}
                                           style={{ left: `${timelineEndPercent}%` }}
@@ -3564,7 +3546,7 @@ export default function AutoClipPage() {
                                           <svg
                                             aria-hidden="true"
                                             viewBox="0 0 24 24"
-                                            className="h-3 w-3 text-white"
+                                            className="h-3 w-3 text-black"
                                             fill="none"
                                             stroke="currentColor"
                                             strokeWidth="2"
@@ -3575,8 +3557,8 @@ export default function AutoClipPage() {
                                           </svg>
                                         </div>
                                         <div
-                                          className={`absolute top-0 z-20 flex h-full w-3 items-center justify-center bg-blue-600 transition-colors ${draggingHandle === "start"
-                                            ? "bg-blue-700"
+                                          className={`absolute top-0 z-20 flex h-full w-3 items-center justify-center bg-[#9aed00] transition-colors ${draggingHandle === "start"
+                                            ? "bg-[#8ad600]"
                                             : ""
                                             } cursor-ew-resize touch-none`}
                                           style={{ left: `${timelineStartPercent}%` }}
@@ -3592,7 +3574,7 @@ export default function AutoClipPage() {
                                           <svg
                                             aria-hidden="true"
                                             viewBox="0 0 24 24"
-                                            className="h-3 w-3 text-white"
+                                            className="h-3 w-3 text-black"
                                             fill="none"
                                             stroke="currentColor"
                                             strokeWidth="2"
@@ -3606,29 +3588,29 @@ export default function AutoClipPage() {
                                     </div>
                                     <div className="flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
                                       <div className="flex w-full items-center justify-between sm:w-auto sm:justify-start">
-                                        <span className="font-mono text-gray-400">
+                                        <span className="font-mono text-[#898a8b]">
                                           0:00
                                         </span>
-                                        <span className="font-mono text-gray-400 sm:hidden">
+                                        <span className="font-mono text-[#898a8b] sm:hidden">
                                           {formatSeconds(timelineDuration)}
                                         </span>
                                       </div>
                                       <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-                                        <span className="font-mono font-medium">
+                                        <span className="font-mono font-medium text-[#f7f7f8]">
                                           {formatSeconds(resolvedDraftStart)}
                                         </span>
-                                        <span className="text-gray-400">•</span>
-                                        <div className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">
+                                        <span className="text-[#898a8b]">•</span>
+                                        <div className="inline-flex items-center rounded-full bg-[#252729] px-2 py-0.5 text-xs font-semibold text-[#9aed00]">
                                           {formatDurationSeconds(
                                             resolvedDraftEnd - resolvedDraftStart
                                           )}
                                         </div>
-                                        <span className="text-gray-400">•</span>
-                                        <span className="font-mono font-medium">
+                                        <span className="text-[#898a8b]">•</span>
+                                        <span className="font-mono font-medium text-[#f7f7f8]">
                                           {formatSeconds(resolvedDraftEnd)}
                                         </span>
                                       </div>
-                                      <span className="hidden font-mono text-gray-400 sm:block">
+                                      <span className="hidden font-mono text-[#898a8b] sm:block">
                                         {formatSeconds(timelineDuration)}
                                       </span>
                                     </div>
@@ -3636,7 +3618,7 @@ export default function AutoClipPage() {
                                   <div className="space-y-2">
                                     <div className="flex flex-row items-stretch gap-2 sm:items-center sm:gap-3">
                                       <button
-                                        className="inline-flex h-10 w-full items-center justify-center rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 sm:h-9 sm:w-32"
+                                        className="inline-flex h-10 w-full items-center justify-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-4 py-2 text-sm font-medium text-[#f7f7f8] hover:bg-[#252729] sm:h-9 sm:w-32"
                                         type="button"
                                         onClick={handlePlayReview}
                                       >
@@ -3655,7 +3637,7 @@ export default function AutoClipPage() {
                                         Play
                                       </button>
                                       <button
-                                        className="inline-flex h-10 items-center justify-center rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 sm:h-9"
+                                        className="inline-flex h-10 items-center justify-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-4 py-2 text-sm font-medium text-[#f7f7f8] hover:bg-[#252729] sm:h-9"
                                         type="button"
                                         onClick={handlePlayFromStart}
                                       >
@@ -3678,13 +3660,13 @@ export default function AutoClipPage() {
                                         <span className="sm:hidden">From start</span>
                                       </button>
                                     </div>
-                                    <p className="hidden text-center text-xs text-gray-500 sm:block sm:text-left">
+                                    <p className="hidden text-center text-xs text-[#898a8b] sm:block sm:text-left">
                                       Tip: Preview plays only the selected clip
                                     </p>
                                   </div>
                                 </div>
                                 <button
-                                  className="inline-flex w-full items-center justify-center rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                                  className="inline-flex w-full items-center justify-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-4 py-2 text-sm font-medium text-[#f7f7f8] hover:bg-[#252729]"
                                   type="button"
                                   onClick={() => setAdjustMode((prev) => !prev)}
                                 >
@@ -3706,36 +3688,36 @@ export default function AutoClipPage() {
                                   <div className="space-y-4">
                                     <div className="space-y-3">
                                       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
-                                        <span className="w-full text-sm font-medium sm:w-20">
+                                        <span className="w-full text-sm font-medium text-[#f7f7f8] sm:w-20">
                                           Start
                                         </span>
                                         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftStart(-5)}
                                           >
                                             -5s
                                           </button>
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftStart(-1)}
                                           >
                                             -1s
                                           </button>
-                                          <div className="rounded-md bg-gray-100 px-3 py-1 font-mono text-sm">
+                                          <div className="rounded-md bg-[#0e1012] px-3 py-1 font-mono text-sm text-[#9aed00]">
                                             {formatSeconds(resolvedDraftStart)}
                                           </div>
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftStart(1)}
                                           >
                                             +1s
                                           </button>
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftStart(5)}
                                           >
@@ -3744,36 +3726,36 @@ export default function AutoClipPage() {
                                         </div>
                                       </div>
                                       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
-                                        <span className="w-full text-sm font-medium sm:w-20">
+                                        <span className="w-full text-sm font-medium text-[#f7f7f8] sm:w-20">
                                           End
                                         </span>
                                         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftEnd(-5)}
                                           >
                                             -5s
                                           </button>
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftEnd(-1)}
                                           >
                                             -1s
                                           </button>
-                                          <div className="rounded-md bg-gray-100 px-3 py-1 font-mono text-sm">
+                                          <div className="rounded-md bg-[#0e1012] px-3 py-1 font-mono text-sm text-[#9aed00]">
                                             {formatSeconds(resolvedDraftEnd)}
                                           </div>
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftEnd(1)}
                                           >
                                             +1s
                                           </button>
                                           <button
-                                            className="rounded-md border border-gray-200 px-2 py-1 text-sm hover:bg-gray-50"
+                                            className="rounded-md border border-[rgba(255,255,255,0.08)] px-2 py-1 text-sm text-[#f7f7f8] hover:bg-[#252729]"
                                             type="button"
                                             onClick={() => nudgeDraftEnd(5)}
                                           >
@@ -3783,7 +3765,7 @@ export default function AutoClipPage() {
                                       </div>
                                     </div>
                                     <button
-                                      className="inline-flex w-full items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
+                                      className="inline-flex w-full items-center justify-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-2 text-sm font-medium text-[#f7f7f8] hover:bg-[#252729]"
                                       type="button"
                                       onClick={resetDraftRange}
                                       disabled={highlightUpdating}
@@ -3808,14 +3790,14 @@ export default function AutoClipPage() {
                               </div>
                               <div className="flex flex-col gap-2 px-4 md:px-6 sm:flex-row sm:justify-end">
                                 <button
-                                  className="inline-flex h-10 w-full items-center justify-center rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                                  className="inline-flex h-10 w-full items-center justify-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-4 py-2 text-sm font-medium text-[#f7f7f8] hover:bg-[#252729]"
                                   type="button"
                                   onClick={() => setReviewModalOpen(false)}
                                 >
                                   Cancel
                                 </button>
                                 <button
-                                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition-all hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] px-4 py-2 text-sm font-medium text-[#e72930] transition-all hover:bg-[rgba(231,41,48,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
                                   type="button"
                                   onClick={() => {
                                     if (activeHighlightIndex == null) {
@@ -3845,7 +3827,7 @@ export default function AutoClipPage() {
                                   Remove Clip
                                 </button>
                                 <button
-                                  className="flex h-10 w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.16)_0%,_rgba(255,_255,_255,_0)_100%),_#335CFF] shadow-[0_6px_16px_rgba(51,_92,_255,_0.2)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(51,_92,_255,_0.2)] disabled:cursor-not-allowed disabled:text-gray-400 disabled:shadow-none disabled:[background:#E5E7EB]"
+                                  className="flex h-10 w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-black transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.2)_0%,_rgba(255,_255,_255,_0)_100%),_#9aed00] shadow-[0_6px_16px_rgba(154,_237,_0,_0.2)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(154,_237,_0,_0.2)] disabled:cursor-not-allowed disabled:text-[#898a8b] disabled:shadow-none disabled:[background:#2e3031]"
                                   type="button"
                                   onClick={handleApproveWithDraft}
                                   disabled={approveButtonDisabled}
@@ -3866,13 +3848,13 @@ export default function AutoClipPage() {
                         <div className="mx-auto max-w-lg text-center">
                           <div className="relative mx-auto mb-6 h-16 w-16 animate-bounce [animation-duration:4s]">
                             <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="h-16 w-16 rounded-full border border-gray-200" />
+                              <div className="h-16 w-16 rounded-full border border-[rgba(255,255,255,0.08)]" />
                             </div>
                             <div className="absolute inset-0 flex items-center justify-center">
                               <svg
                                 aria-hidden="true"
                                 viewBox="0 0 24 24"
-                                className="h-8 w-8 text-blue-600"
+                                className="h-8 w-8 text-[#9aed00]"
                                 fill="none"
                                 stroke="currentColor"
                                 strokeWidth="2"
@@ -3890,20 +3872,20 @@ export default function AutoClipPage() {
                               </svg>
                             </div>
                           </div>
-                          <h3 className="mb-2 text-lg font-medium">
+                          <h3 className="mb-2 text-lg font-medium text-[#f7f7f8]">
                             Processing Magic Crop
                           </h3>
-                          <p className="mb-6 text-sm text-gray-500">
+                          <p className="mb-6 text-sm text-[#898a8b]">
                             Optimizing your clips as vertical content with auto
                             editing...
                           </p>
-                          <div className="mx-auto max-w-md rounded-lg border border-amber-200 bg-amber-50 shadow-sm">
+                          <div className="mx-auto max-w-md rounded-lg border border-[rgba(255,167,38,0.3)] bg-[rgba(255,167,38,0.1)] shadow-sm">
                             <div className="p-4 md:p-6">
                               <div className="flex gap-3">
                                 <svg
                                   aria-hidden="true"
                                   viewBox="0 0 24 24"
-                                  className="h-5 w-5 flex-shrink-0 text-amber-600"
+                                  className="h-5 w-5 flex-shrink-0 text-[#ffa726]"
                                   fill="none"
                                   stroke="currentColor"
                                   strokeWidth="2"
@@ -3915,10 +3897,10 @@ export default function AutoClipPage() {
                                   <line x1="12" x2="12.01" y1="16" y2="16" />
                                 </svg>
                                 <div className="text-left">
-                                  <h4 className="text-sm font-medium text-amber-900">
+                                  <h4 className="text-sm font-medium text-[#ffa726]">
                                     Note
                                   </h4>
-                                  <p className="mt-1 text-xs text-amber-700">
+                                  <p className="mt-1 text-xs text-[#898a8b]">
                                     This sometimes takes up to 5 to 10 minutes.
                                     Progress is saved and you can come back when
                                     it is ready.
@@ -3936,15 +3918,15 @@ export default function AutoClipPage() {
                     <div className="mx-auto h-full p-5 lg:p-8">
                       <div className="flex h-full w-full flex-col gap-4 overflow-hidden">
                         <div className="flex flex-col gap-2">
-                          <h1 className="text-2xl font-semibold">
+                          <h1 className="text-2xl font-semibold text-[#f7f7f8]">
                             Review Your Clips
                           </h1>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-[#898a8b]">
                             Download your ready clips or open them in the
                             editor to add subtitles.
                           </p>
                         </div>
-                        <div className="grid gap-4 overflow-y-auto rounded-xl border border-gray-200 bg-white p-3 sm:grid-cols-2 md:p-4 lg:grid-cols-3">
+                        <div className="grid gap-4 overflow-y-auto rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 sm:grid-cols-2 md:p-4 lg:grid-cols-3">
                           {finalClips.length ? (
                             finalClips.map((clip) => {
                               const isSelected = selectedClipIds.includes(clip.id);
@@ -3953,9 +3935,9 @@ export default function AutoClipPage() {
                               return (
                                 <div
                                   key={`output-${clip.id}`}
-                                  className={`group relative flex flex-col overflow-hidden rounded-xl border bg-white transition-all duration-200 ${isSelected
-                                    ? "border-blue-500 ring-1 ring-blue-200 shadow-[0_8px_20px_rgba(37,_99,_235,_0.15)]"
-                                    : "border-gray-200 hover:border-gray-300 hover:shadow-md"
+                                  className={`group relative flex flex-col overflow-hidden rounded-xl border bg-[#0e1012] transition-all duration-200 ${isSelected
+                                    ? "border-[#9aed00] ring-1 ring-[rgba(154,237,0,0.3)] shadow-[0_8px_20px_rgba(154,_237,_0,_0.15)]"
+                                    : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)] hover:shadow-md"
                                     }`}
                                 >
                                   <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden bg-black transition-all duration-200 md:h-[360px]">
@@ -3983,7 +3965,7 @@ export default function AutoClipPage() {
                                         />
                                       </div>
                                     ) : (
-                                      <div className="flex h-full items-center justify-center text-xs text-gray-400">
+                                      <div className="flex h-full items-center justify-center text-xs text-[#898a8b]">
                                         Preview ready after render
                                       </div>
                                     )}
@@ -3991,10 +3973,10 @@ export default function AutoClipPage() {
                                   <div className="flex flex-1 flex-col gap-3 p-3">
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
-                                        <h3 className="text-base font-medium">
+                                        <h3 className="text-base font-medium text-[#f7f7f8]">
                                           {clip.title}
                                         </h3>
-                                        <p className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                                        <p className="mt-1 flex items-center gap-2 text-xs text-[#898a8b]">
                                           <span className="font-mono">
                                             {clip.range}
                                           </span>
@@ -4005,8 +3987,8 @@ export default function AutoClipPage() {
                                       </div>
                                       <button
                                         className={`inline-flex items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-60 ${isSaved
-                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                          : "border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:text-blue-700"
+                                          ? "border-[rgba(76,175,80,0.3)] bg-[rgba(76,175,80,0.15)] text-[#4caf50]"
+                                          : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#898a8b] hover:border-[rgba(106,71,255,0.3)] hover:text-[#8270ff]"
                                           }`}
                                         type="button"
                                         onClick={() =>
@@ -4032,8 +4014,8 @@ export default function AutoClipPage() {
                                     <div className="mt-auto flex flex-col gap-2">
                                       <button
                                         className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${isSelected
-                                          ? "border border-blue-600 bg-blue-600 text-white hover:bg-blue-700"
-                                          : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                          ? "border border-[#9aed00] bg-[#9aed00] text-black hover:bg-[#8ad600]"
+                                          : "border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#f7f7f8] hover:bg-[#252729]"
                                           }`}
                                         type="button"
                                         onClick={() => handleSelectClip(clip.id)}
@@ -4060,7 +4042,7 @@ export default function AutoClipPage() {
                                       </button>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <button
-                                          className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                          className="inline-flex items-center justify-center rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2.5 py-1.5 text-[11px] font-medium text-[#f7f7f8] transition-all hover:bg-[#252729] disabled:cursor-not-allowed disabled:opacity-60"
                                           type="button"
                                           onClick={() => handleDownload(clip.outputIndex)}
                                           disabled={!clip.downloadUrl}
@@ -4082,7 +4064,7 @@ export default function AutoClipPage() {
                                           Download
                                         </button>
                                         <button
-                                          className="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-medium text-blue-700 transition-all hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                          className="inline-flex items-center justify-center rounded-md border border-[rgba(154,237,0,0.3)] bg-[rgba(154,237,0,0.1)] px-2.5 py-1.5 text-[11px] font-medium text-[#9aed00] transition-all hover:bg-[rgba(154,237,0,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
                                           type="button"
                                           onClick={() =>
                                             handleOpenInEditor(clip.outputIndex)
@@ -4110,30 +4092,30 @@ export default function AutoClipPage() {
                               );
                             })
                           ) : (
-                            <div className="rounded-xl border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                            <div className="rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-6 text-sm text-[#898a8b]">
                               Render a clip to see it here.
                             </div>
                           )}
                         </div>
                         {(selectedClipIds.length > 0 || projectSaveError) && (
-                          <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between md:p-4">
+                          <div className="flex flex-col gap-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 sm:flex-row sm:items-center sm:justify-between md:p-4">
                             <div className="space-y-1">
-                              <p className="text-sm font-semibold">
+                              <p className="text-sm font-semibold text-[#f7f7f8]">
                                 {selectedClipIds.length}/{finalClips.length} clips
                                 selected
                               </p>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-[#898a8b]">
                                 Bulk actions apply to selected clips.
                               </p>
                               {projectSaveError ? (
-                                <p className="text-xs text-red-500">
+                                <p className="text-xs text-[#e72930]">
                                   {projectSaveError}
                                 </p>
                               ) : null}
                             </div>
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <button
-                                className="flex w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                                className="flex w-full items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-4 py-2.5 text-sm font-medium text-[#f7f7f8] transition-all hover:bg-[#252729] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                                 type="button"
                                 onClick={handleDownloadSelected}
                                 disabled={
@@ -4144,7 +4126,7 @@ export default function AutoClipPage() {
                                 Download Selected
                               </button>
                               <button
-                                className="flex w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                                className="flex w-full items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-4 py-2.5 text-sm font-medium text-[#f7f7f8] transition-all hover:bg-[#252729] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                                 type="button"
                                 onClick={handleSaveSelectedToLibrary}
                                 disabled={
@@ -4155,7 +4137,7 @@ export default function AutoClipPage() {
                                 Save Selected
                               </button>
                               <button
-                                className="flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.16)_0%,_rgba(255,_255,_255,_0)_100%),_#335CFF] shadow-[0_6px_16px_rgba(51,_92,_255,_0.2)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(51,_92,_255,_0.2)] disabled:cursor-not-allowed disabled:text-gray-400 disabled:shadow-none disabled:[background:#E5E7EB] sm:w-auto"
+                                className="flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-black transition-all duration-200 [background:linear-gradient(180deg,_rgba(255,_255,_255,_0.2)_0%,_rgba(255,_255,_255,_0)_100%),_#9aed00] shadow-[0_6px_16px_rgba(154,_237,_0,_0.2)] hover:opacity-95 hover:shadow-[0_10px_24px_rgba(154,_237,_0,_0.2)] disabled:cursor-not-allowed disabled:text-[#898a8b] disabled:shadow-none disabled:[background:#2e3031] sm:w-auto"
                                 type="button"
                                 onClick={handleOpenSelectedInEditor}
                                 disabled={

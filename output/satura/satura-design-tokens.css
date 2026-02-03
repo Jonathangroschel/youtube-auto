@@ -1,0 +1,526 @@
+/**
+ * Satura Design System - CSS Custom Properties (Design Tokens)
+ * 
+ * Add this to your globals.css or import it directly.
+ * 
+ * Usage:
+ * 1. npm i geist
+ * 2. Import in layout.tsx: import { GeistSans } from 'geist/font/sans';
+ * 3. Apply to html: <html className={GeistSans.className}>
+ * 4. Add these tokens to your globals.css
+ */
+
+:root {
+  /* ============================================
+     BRAND COLORS
+     ============================================ */
+  
+  /* Primary Brand - Lime Green */
+  --satura-brand-primary: #9aed00;
+  --satura-brand-primary-50: #f4ffe6;
+  --satura-brand-primary-100: #e6ffc9;
+  --satura-brand-primary-200: #ceff99;
+  --satura-brand-primary-300: #aef85c;
+  --satura-brand-primary-400: #9aed00;
+  --satura-brand-primary-500: #7ac700;
+  --satura-brand-primary-600: #5c9e00;
+  --satura-brand-primary-700: #467800;
+  --satura-brand-primary-800: #3a5f00;
+  --satura-brand-primary-900: #324f08;
+  --satura-brand-primary-foreground: #000000;
+
+  /* Secondary Brand - Deep Purple */
+  --satura-brand-secondary: #191240;
+  --satura-brand-secondary-50: #eeeeff;
+  --satura-brand-secondary-100: #e0e0ff;
+  --satura-brand-secondary-200: #c7c5ff;
+  --satura-brand-secondary-300: #a5a0ff;
+  --satura-brand-secondary-400: #8270ff;
+  --satura-brand-secondary-500: #6a47ff;
+  --satura-brand-secondary-600: #5c24f7;
+  --satura-brand-secondary-700: #4f18e3;
+  --satura-brand-secondary-800: #4214bf;
+  --satura-brand-secondary-900: #37139c;
+  --satura-brand-secondary-950: #191240;
+  --satura-brand-secondary-foreground: #ffffff;
+
+  /* Brand Opacity Variants */
+  --satura-brand-primary-5: rgba(154, 237, 0, 0.05);
+  --satura-brand-primary-10: rgba(154, 237, 0, 0.1);
+  --satura-brand-primary-20: rgba(154, 237, 0, 0.2);
+  --satura-brand-primary-24: rgba(154, 237, 0, 0.24);
+  --satura-brand-primary-30: rgba(154, 237, 0, 0.3);
+  --satura-brand-primary-48: rgba(154, 237, 0, 0.48);
+  --satura-brand-primary-60: rgba(154, 237, 0, 0.6);
+  --satura-brand-primary-80: rgba(154, 237, 0, 0.8);
+
+  /* ============================================
+     SURFACE COLORS
+     ============================================ */
+  --satura-surface-primary: #0e1012;
+  --satura-surface-secondary: #1a1c1e;
+  --satura-surface-tertiary: #252729;
+  --satura-surface-subtle: #1a1c1e;
+
+  /* ============================================
+     TEXT/FONT COLORS
+     ============================================ */
+  --satura-font-primary: #f7f7f8;
+  --satura-font-secondary: #898a8b;
+  --satura-font-brand: #9aed00;
+  --satura-font-disabled: #5e636e;
+
+  /* ============================================
+     ICON COLORS
+     ============================================ */
+  --satura-icon-primary: #ffffff;
+  --satura-icon-secondary: #898a8b;
+  --satura-icon-brand: #9aed00;
+
+  /* ============================================
+     DIVIDER & SEPARATOR COLORS
+     ============================================ */
+  --satura-divider-primary: rgba(255, 255, 255, 0.08);
+  --satura-divider-secondary: rgba(255, 255, 255, 0.06);
+  --satura-separator-button: rgba(0, 0, 0, 0.09);
+  --satura-separator-card: rgba(217, 217, 217, 0.04);
+
+  /* ============================================
+     SEMANTIC COLORS
+     ============================================ */
+  
+  /* Success */
+  --satura-success: #07bc0c;
+  --satura-success-surface: rgba(0, 195, 20, 0.2);
+  --satura-separator-success: #00c314;
+  
+  /* Error */
+  --satura-error: #e72930;
+  --satura-error-surface: rgba(231, 41, 48, 0.2);
+  --satura-separator-error: #db3f3e;
+  
+  /* Warning */
+  --satura-warning: #f1c40f;
+  --satura-warning-surface: rgba(255, 190, 76, 0.2);
+  --satura-separator-warning: #ffbe4c;
+  
+  /* Info */
+  --satura-info: #4778f5;
+  --satura-info-surface: rgba(71, 120, 245, 0.2);
+
+  /* ============================================
+     WHITE/BLACK OPACITY SCALES
+     ============================================ */
+  --satura-white-5: rgba(255, 255, 255, 0.05);
+  --satura-white-10: rgba(255, 255, 255, 0.1);
+  --satura-white-14: rgba(255, 255, 255, 0.14);
+  --satura-white-18: rgba(255, 255, 255, 0.18);
+  --satura-white-24: rgba(255, 255, 255, 0.24);
+  --satura-white-32: rgba(255, 255, 255, 0.32);
+  --satura-white-46: rgba(255, 255, 255, 0.46);
+  --satura-white-50: rgba(255, 255, 255, 0.5);
+  --satura-white-60: rgba(255, 255, 255, 0.6);
+  --satura-white-70: rgba(255, 255, 255, 0.7);
+  --satura-white-80: rgba(255, 255, 255, 0.8);
+  --satura-white-90: rgba(255, 255, 255, 0.9);
+
+  --satura-black-5: rgba(0, 0, 0, 0.05);
+  --satura-black-10: rgba(0, 0, 0, 0.1);
+  --satura-black-15: rgba(0, 0, 0, 0.15);
+  --satura-black-20: rgba(0, 0, 0, 0.2);
+  --satura-black-24: rgba(0, 0, 0, 0.24);
+  --satura-black-30: rgba(0, 0, 0, 0.3);
+  --satura-black-50: rgba(0, 0, 0, 0.5);
+  --satura-black-70: rgba(0, 0, 0, 0.7);
+  --satura-black-80: rgba(0, 0, 0, 0.8);
+  --satura-black-90: rgba(0, 0, 0, 0.9);
+
+  /* ============================================
+     GRAY SCALE
+     ============================================ */
+  --satura-gray-4: #c8cad0;
+  --satura-gray-5: #babdc5;
+  --satura-gray-9: #5e636e;
+  --satura-gray-10: #464a53;
+  --satura-gray-11: #333333;
+
+  /* ============================================
+     TYPOGRAPHY
+     ============================================ */
+  
+  /* Font Families */
+  --satura-font-display: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --satura-font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Font Sizes */
+  --satura-text-display-1: 72px;
+  --satura-text-display-2: 64px;
+  --satura-text-h1: 48px;
+  --satura-text-h2: 40px;
+  --satura-text-h3: 36px;
+  --satura-text-h4: 28px;
+  --satura-text-h5: 24px;
+  --satura-text-h6: 20px;
+  --satura-text-subtitle-1: 18px;
+  --satura-text-subtitle-2: 16px;
+  --satura-text-body-lg: 18px;
+  --satura-text-body: 16px;
+  --satura-text-body-sm: 14px;
+  --satura-text-caption: 12px;
+  --satura-text-caption-sm: 10px;
+  --satura-text-button-lg: 16px;
+  --satura-text-button: 14px;
+  --satura-text-button-sm: 12px;
+
+  /* Line Heights */
+  --satura-leading-display: 1.1;
+  --satura-leading-heading: 1.17;
+  --satura-leading-body: 1.5;
+  --satura-leading-caption: 1.4;
+
+  /* Letter Spacing */
+  --satura-tracking-display: -0.03em;
+  --satura-tracking-heading: -0.03em;
+  --satura-tracking-body: 0;
+  --satura-tracking-caption: 0.3px;
+
+  /* Font Weights */
+  --satura-font-normal: 400;
+  --satura-font-medium: 500;
+  --satura-font-semibold: 600;
+  --satura-font-bold: 700;
+
+  /* ============================================
+     SPACING
+     ============================================ */
+  --satura-space-0: 0px;
+  --satura-space-0-5: 2px;
+  --satura-space-1: 4px;
+  --satura-space-1-5: 6px;
+  --satura-space-2: 8px;
+  --satura-space-2-5: 10px;
+  --satura-space-3: 12px;
+  --satura-space-3-5: 14px;
+  --satura-space-4: 16px;
+  --satura-space-5: 20px;
+  --satura-space-6: 24px;
+  --satura-space-7: 28px;
+  --satura-space-8: 32px;
+  --satura-space-9: 36px;
+  --satura-space-10: 40px;
+  --satura-space-12: 48px;
+  --satura-space-14: 56px;
+  --satura-space-16: 64px;
+  --satura-space-20: 80px;
+  --satura-space-24: 96px;
+
+  /* ============================================
+     BORDER RADIUS
+     ============================================ */
+  --satura-radius-none: 0px;
+  --satura-radius-sm: 4px;
+  --satura-radius-default: 8px;
+  --satura-radius-md: 12px;
+  --satura-radius-lg: 16px;
+  --satura-radius-xl: 20px;
+  --satura-radius-2xl: 24px;
+  --satura-radius-3xl: 32px;
+  --satura-radius-full: 9999px;
+
+  /* ============================================
+     SHADOWS
+     ============================================ */
+  --satura-shadow-sm: 0px 1px 2px rgba(0, 0, 0, 0.05);
+  --satura-shadow-default: 0px 1px 3px rgba(0, 0, 0, 0.1), 0px 1px 2px rgba(0, 0, 0, 0.06);
+  --satura-shadow-md: 0px 4px 6px rgba(0, 0, 0, 0.1), 0px 2px 4px rgba(0, 0, 0, 0.06);
+  --satura-shadow-lg: 0px 10px 15px rgba(0, 0, 0, 0.1), 0px 4px 6px rgba(0, 0, 0, 0.05);
+  --satura-shadow-xl: 0px 20px 25px rgba(0, 0, 0, 0.1), 0px 10px 10px rgba(0, 0, 0, 0.04);
+  --satura-shadow-2xl: 0px 25px 50px rgba(0, 0, 0, 0.25);
+  --satura-shadow-inner: inset 0px 2px 4px rgba(0, 0, 0, 0.06);
+  --satura-shadow-glow: 0px 0px 20px 0px rgba(154, 237, 0, 0.3);
+  --satura-shadow-glow-focus: 0px 0px 0px 4px rgba(154, 237, 0, 0.24);
+  --satura-shadow-button-inset: rgba(255, 255, 255, 0.12) -0.5px -0.5px 1px 0px inset, rgba(27, 27, 27, 0.17) 0.8px 0.5px 0.5px 0px inset;
+
+  /* ============================================
+     ANIMATIONS
+     ============================================ */
+  --satura-duration-fast: 150ms;
+  --satura-duration-default: 200ms;
+  --satura-duration-slow: 300ms;
+  --satura-duration-slower: 500ms;
+
+  --satura-ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --satura-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --satura-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --satura-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --satura-ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* ============================================
+     Z-INDEX
+     ============================================ */
+  --satura-z-dropdown: 1000;
+  --satura-z-sticky: 1020;
+  --satura-z-fixed: 1030;
+  --satura-z-modal-backdrop: 1040;
+  --satura-z-modal: 1050;
+  --satura-z-popover: 1060;
+  --satura-z-tooltip: 1070;
+  --satura-z-toast: 1080;
+
+  /* ============================================
+     BREAKPOINTS (for reference)
+     ============================================ */
+  --satura-breakpoint-xs: 440px;
+  --satura-breakpoint-sm: 640px;
+  --satura-breakpoint-md: 768px;
+  --satura-breakpoint-lg: 1024px;
+  --satura-breakpoint-xl: 1280px;
+  --satura-breakpoint-2xl: 1440px;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Typography Classes */
+.satura-h1 {
+  font-family: var(--satura-font-display);
+  font-size: var(--satura-text-h1);
+  font-weight: var(--satura-font-semibold);
+  line-height: var(--satura-leading-heading);
+  letter-spacing: var(--satura-tracking-heading);
+  text-transform: uppercase;
+}
+
+.satura-h2 {
+  font-family: var(--satura-font-display);
+  font-size: var(--satura-text-h2);
+  font-weight: var(--satura-font-semibold);
+  line-height: 1.2;
+  letter-spacing: var(--satura-tracking-heading);
+  text-transform: uppercase;
+}
+
+.satura-h3 {
+  font-family: var(--satura-font-display);
+  font-size: var(--satura-text-h3);
+  font-weight: var(--satura-font-semibold);
+  line-height: 1.11;
+  letter-spacing: var(--satura-tracking-heading);
+  text-transform: uppercase;
+}
+
+.satura-h4 {
+  font-family: var(--satura-font-display);
+  font-size: var(--satura-text-h4);
+  font-weight: var(--satura-font-semibold);
+  line-height: 1.29;
+  letter-spacing: var(--satura-tracking-heading);
+  text-transform: uppercase;
+}
+
+.satura-h5 {
+  font-family: var(--satura-font-display);
+  font-size: var(--satura-text-h5);
+  font-weight: var(--satura-font-semibold);
+  line-height: 1.25;
+  letter-spacing: var(--satura-tracking-heading);
+  text-transform: uppercase;
+}
+
+.satura-h6 {
+  font-family: var(--satura-font-display);
+  font-size: var(--satura-text-h6);
+  font-weight: var(--satura-font-semibold);
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.satura-body {
+  font-family: var(--satura-font-body);
+  font-size: var(--satura-text-body);
+  font-weight: var(--satura-font-normal);
+  line-height: var(--satura-leading-body);
+}
+
+.satura-body-sm {
+  font-family: var(--satura-font-body);
+  font-size: var(--satura-text-body-sm);
+  font-weight: var(--satura-font-normal);
+  line-height: 1.43;
+}
+
+.satura-caption {
+  font-family: var(--satura-font-body);
+  font-size: var(--satura-text-caption);
+  font-weight: var(--satura-font-normal);
+  line-height: var(--satura-leading-caption);
+  letter-spacing: var(--satura-tracking-caption);
+}
+
+.satura-label {
+  font-family: var(--satura-font-display);
+  font-size: var(--satura-text-caption);
+  font-weight: var(--satura-font-semibold);
+  line-height: 2;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+/* Button Classes */
+.satura-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--satura-space-2);
+  font-family: var(--satura-font-body);
+  font-weight: var(--satura-font-semibold);
+  border-radius: var(--satura-radius-md);
+  transition: all var(--satura-duration-default) var(--satura-ease-default);
+  cursor: pointer;
+}
+
+.satura-btn-primary {
+  background-color: var(--satura-brand-primary);
+  color: var(--satura-brand-primary-foreground);
+  border: 2px solid var(--satura-separator-button);
+  padding: 0 var(--satura-space-3);
+  height: 40px;
+  font-size: var(--satura-text-button);
+}
+
+.satura-btn-primary:hover {
+  background-color: var(--satura-brand-primary-80);
+  box-shadow: var(--satura-shadow-glow);
+}
+
+.satura-btn-primary:focus {
+  box-shadow: var(--satura-shadow-glow-focus);
+  outline: none;
+}
+
+.satura-btn-secondary {
+  background-color: var(--satura-brand-primary-24);
+  color: var(--satura-brand-primary);
+  border: 2px solid var(--satura-separator-button);
+  padding: 0 var(--satura-space-3);
+  height: 40px;
+  font-size: var(--satura-text-button);
+}
+
+.satura-btn-secondary:hover {
+  background-color: var(--satura-brand-primary-30);
+}
+
+.satura-btn-ghost {
+  background-color: transparent;
+  color: var(--satura-font-primary);
+  border: 2px solid var(--satura-divider-primary);
+  padding: 0 var(--satura-space-3);
+  height: 40px;
+  font-size: var(--satura-text-button);
+}
+
+.satura-btn-ghost:hover {
+  background-color: var(--satura-white-5);
+  border-color: var(--satura-white-14);
+}
+
+/* Card Classes */
+.satura-card {
+  background-color: var(--satura-surface-secondary);
+  border: 1px solid var(--satura-separator-card);
+  border-radius: var(--satura-radius-lg);
+  padding: var(--satura-space-5);
+}
+
+.satura-card-elevated {
+  background-color: var(--satura-surface-tertiary);
+  border: 1px solid var(--satura-separator-card);
+  border-radius: var(--satura-radius-lg);
+  padding: var(--satura-space-5);
+  box-shadow: rgba(0, 0, 0, 0.35) 1px 2px 8px 0px;
+}
+
+/* Badge Classes */
+.satura-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--satura-space-2-5);
+  border-radius: var(--satura-radius-md);
+  font-family: var(--satura-font-body);
+  font-size: var(--satura-text-button);
+  font-weight: var(--satura-font-semibold);
+  line-height: 20px;
+}
+
+.satura-badge-brand {
+  background-color: var(--satura-brand-primary-5);
+  color: var(--satura-brand-primary);
+  border: 1px solid var(--satura-brand-primary-5);
+}
+
+.satura-badge-brand-solid {
+  background-color: var(--satura-brand-primary);
+  color: var(--satura-brand-primary-foreground);
+  border: 1px solid var(--satura-brand-primary);
+}
+
+.satura-badge-success {
+  background-color: var(--satura-success-surface);
+  color: var(--satura-separator-success);
+  border: 1px solid var(--satura-success-surface);
+}
+
+.satura-badge-error {
+  background-color: var(--satura-error-surface);
+  color: var(--satura-error);
+  border: 1px solid var(--satura-error-surface);
+}
+
+.satura-badge-warning {
+  background-color: var(--satura-warning-surface);
+  color: var(--satura-separator-warning);
+  border: 1px solid var(--satura-warning-surface);
+}
+
+.satura-badge-info {
+  background-color: var(--satura-info-surface);
+  color: var(--satura-info);
+  border: 1px solid var(--satura-info-surface);
+}
+
+/* Link Classes */
+.satura-link {
+  color: var(--satura-font-primary);
+  text-decoration: none;
+  font-weight: var(--satura-font-medium);
+  transition: color var(--satura-duration-fast) var(--satura-ease-default);
+}
+
+.satura-link:hover {
+  color: var(--satura-brand-primary);
+  text-decoration: underline;
+}
+
+.satura-link-brand {
+  color: var(--satura-brand-primary);
+  text-decoration: none;
+  font-weight: var(--satura-font-semibold);
+}
+
+.satura-link-brand:hover {
+  text-decoration: underline;
+}
+
+.satura-link-muted {
+  color: var(--satura-font-secondary);
+  text-decoration: none;
+  font-weight: var(--satura-font-medium);
+}
+
+.satura-link-muted:hover {
+  color: var(--satura-brand-primary);
+  text-decoration: underline;
+}

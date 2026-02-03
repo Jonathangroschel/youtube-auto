@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { login, signup } from "./actions";
 import { createClient } from "@/lib/supabase/client";
-import Image from "next/image";
+import { SaturaLogo } from "@/components/satura-logo";
 import { ShaderRipple } from "@/components/shader-ripple";
 import { ShaderVoid } from "@/components/shader-void";
 import { GradientWave } from "@/components/gradient-wave";
@@ -217,13 +217,7 @@ function LoginContent() {
         <div className="login-form-content">
           {/* Logo */}
           <div className="login-logo">
-            <Image
-              src="/icon.svg"
-              alt="Satura"
-              width={48}
-              height={48}
-              className="login-logo-img"
-            />
+            <SaturaLogo size="login" asDiv className="login-logo-img" />
           </div>
 
           <h1 className="login-title">Welcome to Satura</h1>

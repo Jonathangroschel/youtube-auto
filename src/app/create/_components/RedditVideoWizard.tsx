@@ -55,7 +55,7 @@ const SubtitleModeToggle = ({
       <span
         className={cn(
           "text-sm font-medium",
-          value === "one-word" ? "text-gray-900" : "text-gray-500"
+          value === "one-word" ? "text-[#f7f7f8]" : "text-[#898a8b]"
         )}
       >
         One Word
@@ -65,13 +65,13 @@ const SubtitleModeToggle = ({
         aria-label="Toggle subtitle mode"
         className={cn(
           "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
-          value === "lines" ? "bg-[#335CFF]" : "bg-gray-200"
+          value === "lines" ? "bg-[#9aed00]" : "bg-[rgba(255,255,255,0.08)]"
         )}
         onClick={() => onChange(value === "lines" ? "one-word" : "lines")}
       >
         <span
           className={cn(
-            "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+            "inline-block h-4 w-4 transform rounded-full bg-[#1a1c1e] transition-transform",
             value === "lines" ? "translate-x-6" : "translate-x-1"
           )}
         />
@@ -79,7 +79,7 @@ const SubtitleModeToggle = ({
       <span
         className={cn(
           "text-sm font-medium",
-          value === "lines" ? "text-gray-900" : "text-gray-500"
+          value === "lines" ? "text-[#f7f7f8]" : "text-[#898a8b]"
         )}
       >
         Lines
@@ -116,16 +116,16 @@ function RedditIntroCard({
   darkMode: boolean;
 }) {
   const stroke = darkMode ? "#575757" : "#adadad";
-  const textPrimary = darkMode ? "text-white" : "text-black";
-  const cardBg = darkMode ? "bg-black" : "bg-white";
-  const iconText = darkMode ? "text-[#ADADAD]" : "text-[#adadad]";
+  const textPrimary = darkMode ? "text-white" : "text-[#f7f7f8]";
+  const cardBg = darkMode ? "bg-black" : "bg-[#1a1c1e]";
+  const iconText = darkMode ? "text-[#ADADAD]" : "text-[#898a8b]";
 
   return (
     <div
       id="reddit-card"
-      className={cn(
+        className={cn(
         cardBg,
-        "max-w-xs select-none overflow-hidden border border-gray-200 p-4"
+        "max-w-xs select-none overflow-hidden border border-[rgba(255,255,255,0.08)] p-4"
       )}
       style={{
         borderRadius: 12,
@@ -303,10 +303,10 @@ function ScriptGeneratorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-[750px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
+      <div className="w-full max-w-[750px] overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-[0_24px_60px_rgba(15,23,42,0.2)]">
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="hidden rounded-full border border-gray-200 p-2.5 md:flex">
+            <div className="hidden rounded-full border border-[rgba(255,255,255,0.08)] p-2.5 md:flex">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="24"
@@ -332,7 +332,7 @@ function ScriptGeneratorModal({
             </div>
             <div className="flex flex-col items-start">
               <h2 className="text-base font-medium md:text-lg">Generate Script</h2>
-              <p className="text-left text-xs text-gray-500 md:text-sm">
+              <p className="text-left text-xs text-[#898a8b] md:text-sm">
                 Create your script with ease using AI
               </p>
             </div>
@@ -340,7 +340,7 @@ function ScriptGeneratorModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-gray-100"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-[rgba(255,255,255,0.05)]"
             aria-label="Close"
           >
             <svg
@@ -361,39 +361,39 @@ function ScriptGeneratorModal({
             </svg>
           </button>
         </div>
-        <div className="border-t border-gray-200" />
+        <div className="border-t border-[rgba(255,255,255,0.08)]" />
 
         <div className="flex h-[600px] flex-col space-y-6 px-4 py-4">
           <div className="flex-1 overflow-y-auto">
             <div className="flex h-full flex-col gap-4">
               <div className="space-y-2">
-                <label className="text-base font-medium text-black">Story topic</label>
+                <label className="text-base font-medium text-[#f7f7f8]">Story topic</label>
                 <input
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   placeholder="Enter your story topic here"
-                  className="h-12 w-full rounded-md border border-gray-200 bg-white px-3 py-5 outline-none transition-all focus:border-blue-500"
+                  className="h-12 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-5 text-[#f7f7f8] outline-none transition-all focus:border-[#9aed00]/30 focus:ring-[#9aed00]/20"
                 />
               </div>
 
               <div className="flex flex-col gap-2 md:flex-row">
                 <div className="w-full space-y-2">
-                  <label className="text-base font-medium text-black">Tone</label>
+                  <label className="text-base font-medium text-[#f7f7f8]">Tone</label>
                   <input
                     value={tone}
                     onChange={(e) => setTone(e.target.value)}
                     placeholder="e.g. Funny, dramatic, wholesome"
-                    className="h-12 w-full rounded-md border border-gray-200 bg-white px-3 py-5 outline-none transition-all focus:border-blue-500"
+                    className="h-12 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-5 text-[#f7f7f8] outline-none transition-all focus:border-[#9aed00]/30 focus:ring-[#9aed00]/20"
                   />
                 </div>
                 <div className="w-full space-y-2">
-                  <label className="text-base font-medium text-black">Length</label>
+                  <label className="text-base font-medium text-[#f7f7f8]">Length</label>
                   <select
                     value={length}
                     onChange={(e) =>
                       setLength(e.target.value as "short" | "medium" | "long")
                     }
-                    className="h-12 w-full rounded-md border border-gray-200 bg-white px-3 outline-none transition-all focus:border-blue-500"
+                    className="h-12 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 text-[#f7f7f8] outline-none transition-all focus:border-[#9aed00]/30 focus:ring-[#9aed00]/20"
                   >
                     <option value="short">Short</option>
                     <option value="medium">Medium</option>
@@ -403,30 +403,30 @@ function ScriptGeneratorModal({
               </div>
 
               <div className="hidden space-y-2 md:block">
-                <label className="text-base font-medium text-black">
+                <label className="text-base font-medium text-[#f7f7f8]">
                   Video Starting (Hook)
                 </label>
                 <input
                   value={hook}
                   onChange={(e) => setHook(e.target.value)}
                   placeholder="Have you ever wondered how to..."
-                  className="h-12 w-full rounded-md border border-gray-200 bg-white px-3 py-5 outline-none transition-all focus:border-blue-500"
+                  className="h-12 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-5 text-[#f7f7f8] outline-none transition-all focus:border-[#9aed00]/30 focus:ring-[#9aed00]/20"
                 />
               </div>
               <div className="hidden space-y-2 md:block">
-                <label className="text-base font-medium text-black">
+                <label className="text-base font-medium text-[#f7f7f8]">
                   Video Ending (CTA)
                 </label>
                 <input
                   value={cta}
                   onChange={(e) => setCta(e.target.value)}
                   placeholder="Follow for more..."
-                  className="h-12 w-full rounded-md border border-gray-200 bg-white px-3 py-5 outline-none transition-all focus:border-blue-500"
+                  className="h-12 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-5 text-[#f7f7f8] outline-none transition-all focus:border-[#9aed00]/30 focus:ring-[#9aed00]/20"
                 />
               </div>
 
               {error ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                <div className="rounded-lg border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-3 text-sm text-[#e72930]">
                   {error}
                 </div>
               ) : null}
@@ -438,13 +438,13 @@ function ScriptGeneratorModal({
             onClick={handleGenerate}
             disabled={loading}
             className={cn(
-              "flex h-12 w-full items-center justify-center gap-3 rounded-lg px-2 py-3 text-white transition hover:opacity-90",
-              "[background:linear-gradient(180deg,_rgba(255,_255,_255,_0.16)_0%,_rgba(255,_255,_255,_0)_100%),_#335CFF]",
+              "flex h-12 w-full items-center justify-center gap-3 rounded-lg px-2 py-3 text-black transition hover:opacity-90",
+              "[background:linear-gradient(180deg,_rgba(255,_255,_255,_0.16)_0%,_rgba(255,_255,_255,_0)_100%),_#9aed00]",
               loading && "cursor-wait opacity-80"
             )}
           >
             <span>{loading ? "Generating..." : "Generate Script"}</span>
-            <span className="rounded-md bg-white/10 px-2 py-0.5 text-xs font-medium text-white/70">
+            <span className="rounded-md bg-black/10 px-2 py-0.5 text-xs font-medium text-black/70">
               Enter
             </span>
           </button>
@@ -889,13 +889,13 @@ export default function RedditVideoWizard() {
 
   return (
     <div className="mx-auto flex h-[100dvh] w-full max-w-[1920px] flex-col space-y-4 p-2 md:p-4">
-      <header className="sticky top-0 z-40 flex items-center justify-between rounded-xl border border-gray-200 bg-white/70 px-3 py-3 backdrop-blur md:px-4">
+      <header className="sticky top-0 z-40 flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]/70 px-3 py-3 backdrop-blur md:px-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
-              className="h-5 w-5 text-gray-900"
+              className="h-5 w-5 text-[#f7f7f8]"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -908,16 +908,16 @@ export default function RedditVideoWizard() {
             </svg>
           </div>
           <div className="flex flex-col">
-            <h1 className="text-base font-medium text-black md:text-lg">
+            <h1 className="text-base font-medium text-[#f7f7f8] md:text-lg">
               Reddit Video
             </h1>
-            <p className="text-xs text-gray-500 md:text-sm">{stepLabel}</p>
+            <p className="text-xs text-[#898a8b] md:text-sm">{stepLabel}</p>
           </div>
         </div>
       </header>
 
-      <div className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-200 px-3 py-3 md:px-4">
+      <div className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
+        <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-3 py-3 md:px-4">
           <div className="flex items-center gap-3 overflow-x-auto">
             {[
               { id: 1, label: "Script" },
@@ -933,20 +933,20 @@ export default function RedditVideoWizard() {
                     className={cn(
                       "flex h-5 w-5 items-center justify-center rounded-full text-xs",
                       isActive || isDone
-                        ? "bg-[#335CFF] text-white"
-                        : "border border-gray-200 bg-white text-gray-500"
+                        ? "bg-[#9aed00] text-black"
+                        : "border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#898a8b]"
                     )}
                   >
                     {entry.id}
                   </div>
-                  <p className={cn("text-sm", isActive ? "text-gray-950" : "text-gray-500")}>
+                  <p className={cn("text-sm", isActive ? "text-[#f7f7f8]" : "text-[#898a8b]")}>
                     {entry.label}
                   </p>
                   {index < 3 && (
                     <svg
                       aria-hidden="true"
                       viewBox="0 0 320 512"
-                      className="h-3.5 w-3.5 text-gray-400"
+                      className="h-3.5 w-3.5 text-[#898a8b]"
                       fill="currentColor"
                     >
                       <path d="M310.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-192 192c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 256 73.4 86.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l192 192z" />
@@ -1003,19 +1003,19 @@ export default function RedditVideoWizard() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-[#F7F7F7] p-3 md:p-6">
+        <div className="flex-1 overflow-y-auto bg-[#0e1012] p-3 md:p-6">
           {step === 1 && (
             <div className="flex h-full flex-col gap-4 md:flex-row md:gap-6">
-              <div className="flex w-full flex-col space-y-3 rounded-xl border border-gray-200 bg-white p-3 md:h-full md:space-y-4 md:p-4">
+              <div className="flex w-full flex-col space-y-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:h-full md:space-y-4 md:p-4">
                 <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
-                  <h2 className="text-base font-medium text-black md:text-lg">
+                  <h2 className="text-base font-medium text-[#f7f7f8] md:text-lg">
                     Generate Reddit Video
                   </h2>
                   <div className="flex flex-row items-center gap-2">
                     <button
                       type="button"
                       onClick={applySampleData}
-                      className="flex w-40 items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-black transition hover:bg-gray-100"
+                      className="flex w-40 items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)] px-3 py-2 text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.05)]"
                     >
                       Sample Data
                     </button>
@@ -1023,10 +1023,10 @@ export default function RedditVideoWizard() {
                       type="button"
                       onClick={() => setScriptModalOpen(true)}
                       className={cn(
-                        "flex h-10 items-center justify-center rounded-lg px-3.5 text-sm text-white transition hover:opacity-90",
-                        "outline outline-1 outline-[#5B7CFF] outline-offset-[-1px]",
+                        "flex h-10 items-center justify-center rounded-lg px-3.5 text-sm text-black transition hover:opacity-90",
+                        "outline outline-1 outline-[#9aed00] outline-offset-[-1px]",
                         "filter drop-shadow-[0_1px_1px_rgba(14,_18,_27,_0.24)]",
-                        "[background:linear-gradient(180deg,_rgba(255,_255,_255,_0.37),_rgba(255,_255,_255,_0)),_#3860FF]"
+                        "[background:linear-gradient(180deg,_rgba(255,_255,_255,_0.37),_rgba(255,_255,_255,_0)),_#9aed00]"
                       )}
                     >
                       AI script
@@ -1045,7 +1045,7 @@ export default function RedditVideoWizard() {
                             setProfileSelected(postAvatarUrl);
                             setProfileError(null);
                           }}
-                          className="flex h-10 w-full items-center justify-center rounded-md border border-gray-200 px-3 py-2 text-sm transition hover:bg-gray-100 sm:w-48"
+                          className="flex h-10 w-full items-center justify-center rounded-md border border-[rgba(255,255,255,0.08)] px-3 py-2 text-sm text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.05)] sm:w-48"
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -1067,7 +1067,7 @@ export default function RedditVideoWizard() {
                           Swap PFP
                         </button>
                         <input
-                          className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:border-gray-800 focus:outline-none"
+                          className="h-10 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-2 text-sm text-[#f7f7f8] focus:border-[#9aed00]/30 focus:outline-none focus:ring-[#9aed00]/20"
                           placeholder="Name"
                           value={postUsername}
                           onChange={(e) => setPostUsername(e.target.value)}
@@ -1075,14 +1075,14 @@ export default function RedditVideoWizard() {
                       </div>
                       <div className="flex w-full flex-row items-center space-x-2 sm:w-fit">
                         <input
-                          className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-center focus:border-gray-800 focus:outline-none sm:w-16"
+                          className="h-10 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-2 text-sm text-center text-[#f7f7f8] focus:border-[#9aed00]/30 focus:outline-none focus:ring-[#9aed00]/20 sm:w-16"
                           placeholder="99"
                           maxLength={6}
                           value={postLikes}
                           onChange={(e) => setPostLikes(e.target.value)}
                         />
                         <input
-                          className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-center focus:border-gray-800 focus:outline-none sm:w-16"
+                          className="h-10 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 py-2 text-sm text-center text-[#f7f7f8] focus:border-[#9aed00]/30 focus:outline-none focus:ring-[#9aed00]/20 sm:w-16"
                           placeholder="99"
                           maxLength={6}
                           value={postComments}
@@ -1092,7 +1092,7 @@ export default function RedditVideoWizard() {
                     </div>
 
                     <textarea
-                      className="min-h-[60px] w-full rounded-md border border-gray-200 bg-transparent px-3 py-2 text-sm shadow-sm focus:border-gray-800 focus:outline-none"
+                      className="min-h-[60px] w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-transparent px-3 py-2 text-sm text-[#f7f7f8] shadow-sm focus:border-[#9aed00]/30 focus:outline-none focus:ring-[#9aed00]/20"
                       placeholder="Post title"
                       value={postTitle}
                       onChange={(e) => setPostTitle(e.target.value)}
@@ -1103,8 +1103,8 @@ export default function RedditVideoWizard() {
                         type="button"
                         onClick={() => setPostDarkMode((prev) => !prev)}
                         className={cn(
-                          "w-full rounded-lg border border-gray-200 p-2 focus:outline-none",
-                          postDarkMode ? "bg-black text-white" : "bg-white text-black"
+                          "w-full rounded-lg border border-[rgba(255,255,255,0.08)] p-2 focus:outline-none",
+                          postDarkMode ? "bg-black text-white" : "bg-[#1a1c1e] text-[#f7f7f8]"
                         )}
                       >
                         {postDarkMode ? "Light Mode" : "Dark Mode"}
@@ -1113,8 +1113,8 @@ export default function RedditVideoWizard() {
                         type="button"
                         onClick={() => setPostShowIntroCard((prev) => !prev)}
                         className={cn(
-                          "w-full rounded-lg border border-gray-200 p-2 focus:outline-none",
-                          postDarkMode ? "bg-black text-white" : "bg-white text-black"
+                          "w-full rounded-lg border border-[rgba(255,255,255,0.08)] p-2 focus:outline-none",
+                          postDarkMode ? "bg-black text-white" : "bg-[#1a1c1e] text-[#f7f7f8]"
                         )}
                       >
                         {postShowIntroCard
@@ -1125,17 +1125,17 @@ export default function RedditVideoWizard() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">
+                    <label className="text-sm font-medium text-[#898a8b]">
                       Video Script
                     </label>
                     <textarea
-                      className="min-h-[300px] w-full rounded-md border border-gray-200 bg-transparent px-3 py-4 text-sm shadow-sm focus:border-black focus:outline-none"
+                      className="min-h-[300px] w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-transparent px-3 py-4 text-sm text-[#f7f7f8] shadow-sm focus:border-[#9aed00]/30 focus:outline-none focus:ring-[#9aed00]/20"
                       placeholder="Enter video script content..."
                       value={script}
                       onChange={(e) => setScript(e.target.value)}
                     />
                     {!canContinueFromScript ? (
-                      <p className="text-xs text-rose-600">
+                      <p className="text-xs text-[#e72930]">
                         Add a title, profile picture, and a script to continue.
                       </p>
                     ) : null}
@@ -1143,9 +1143,9 @@ export default function RedditVideoWizard() {
                 </div>
               </div>
 
-              <div className="h-fit w-full space-y-3 rounded-xl border border-gray-200 bg-white p-3 md:h-full md:w-3/4 md:overflow-hidden md:p-4">
+              <div className="h-fit w-full space-y-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:h-full md:w-3/4 md:overflow-hidden md:p-4">
                 <div className="flex flex-col space-y-1.5">
-                  <h3 className="text-lg font-medium">Intro Preview</h3>
+                  <h3 className="text-lg font-medium text-[#f7f7f8]">Intro Preview</h3>
                   <div className="max-w-lg">
                     <RedditIntroCard
                       avatarUrl={postAvatarUrl || DEFAULT_REDDIT_PFPS[0] || ""}
@@ -1156,7 +1156,7 @@ export default function RedditVideoWizard() {
                       darkMode={postDarkMode}
                     />
                     {!postShowIntroCard ? (
-                      <p className="mt-2 text-xs text-gray-500">
+                      <p className="mt-2 text-xs text-[#898a8b]">
                         Intro card disabled — your video will start directly with the voiceover.
                       </p>
                     ) : null}
@@ -1164,9 +1164,9 @@ export default function RedditVideoWizard() {
                 </div>
 
                 <div className="flex h-full flex-col space-y-1.5 pb-4">
-                  <h3 className="text-lg font-medium">Script Preview</h3>
-                  <div className="min-h-40 flex-1 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3">
-                    <p className="whitespace-pre-wrap text-sm text-gray-600">
+                  <h3 className="text-lg font-medium text-[#f7f7f8]">Script Preview</h3>
+                  <div className="min-h-40 flex-1 overflow-y-auto rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] p-3">
+                    <p className="whitespace-pre-wrap text-sm text-[#898a8b]">
                       {script || "Your script will appear here..."}
                     </p>
                   </div>
@@ -1175,15 +1175,15 @@ export default function RedditVideoWizard() {
 
               {profileModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-                  <div className="grid h-[90svh] w-[95vw] max-w-4xl translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-lg border bg-white shadow-lg sm:h-auto sm:max-h-[90vh] sm:w-full">
-                    <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
-                      <h2 className="text-lg font-medium leading-none tracking-tight">
+                  <div className="grid h-[90svh] w-[95vw] max-w-4xl translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg sm:h-auto sm:max-h-[90vh] sm:w-full">
+                    <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4 py-3 sm:px-6 sm:py-4">
+                      <h2 className="text-lg font-medium leading-none tracking-tight text-[#f7f7f8]">
                         Choose Profile Picture
                       </h2>
                       <button
                         type="button"
                         onClick={() => setProfileModalOpen(false)}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-gray-100"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-[rgba(255,255,255,0.05)]"
                         aria-label="Close"
                       >
                         <svg
@@ -1208,7 +1208,7 @@ export default function RedditVideoWizard() {
                     <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
                       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                         <div className="space-y-3">
-                          <h3 className="text-sm font-medium text-gray-700">
+                          <h3 className="text-sm font-medium text-[#898a8b]">
                             Select from gallery
                           </h3>
                           <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -1222,8 +1222,8 @@ export default function RedditVideoWizard() {
                                   className={cn(
                                     "relative cursor-pointer overflow-hidden rounded-lg border-2 transition-all",
                                     selected
-                                      ? "border-[#335CFF]"
-                                      : "border-gray-200 hover:border-gray-300"
+                                      ? "border-[#9aed00]"
+                                      : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]"
                                   )}
                                 >
                                   <img
@@ -1239,7 +1239,7 @@ export default function RedditVideoWizard() {
                         </div>
 
                         <div className="space-y-3 overflow-hidden">
-                          <h3 className="text-sm font-medium text-gray-700">
+                          <h3 className="text-sm font-medium text-[#898a8b]">
                             Upload custom image
                           </h3>
                           <div className="w-full">
@@ -1255,11 +1255,11 @@ export default function RedditVideoWizard() {
                               onClick={triggerPfpUpload}
                               disabled={profileUploading}
                               className={cn(
-                                "relative flex w-full cursor-pointer flex-col items-center justify-center space-y-4 rounded-lg border border-gray-200 bg-white py-8 transition-all duration-300 hover:border-gray-300 hover:bg-gray-50",
+                                "relative flex w-full cursor-pointer flex-col items-center justify-center space-y-4 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] py-8 transition-all duration-300 hover:border-[rgba(255,255,255,0.15)] hover:bg-[rgba(255,255,255,0.05)]",
                                 profileUploading && "cursor-wait opacity-80"
                               )}
                             >
-                              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-gray-200 bg-gray-50">
+                              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#0e1012]">
                                 <svg
                                   stroke="currentColor"
                                   fill="none"
@@ -1267,7 +1267,7 @@ export default function RedditVideoWizard() {
                                   viewBox="0 0 24 24"
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
-                                  className="text-3xl text-gray-500"
+                                  className="text-3xl text-[#898a8b]"
                                   height="1em"
                                   width="1em"
                                   xmlns="http://www.w3.org/2000/svg"
@@ -1276,20 +1276,20 @@ export default function RedditVideoWizard() {
                                 </svg>
                               </div>
                               <div className="space-y-2 text-center">
-                                <p className="text-lg font-medium text-gray-900">
+                                <p className="text-lg font-medium text-[#f7f7f8]">
                                   {profileUploading ? "Uploading..." : "Upload image"}
                                 </p>
-                                <p className="text-sm text-gray-500">
+                                <p className="text-sm text-[#898a8b]">
                                   Drag and drop or click to browse
                                 </p>
-                                <p className="mx-auto px-6 text-xs text-gray-400 sm:px-0">
+                                <p className="mx-auto px-6 text-xs text-[#898a8b] sm:px-0">
                                   .png, .jpg, .jpeg, .webp, .gif • Max 10 MB
                                 </p>
                               </div>
                             </button>
 
                             {profileError ? (
-                              <div className="mt-3 flex items-center space-x-2 rounded-lg border border-red-400 bg-red-50 p-3">
+                              <div className="mt-3 flex items-center space-x-2 rounded-lg border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-3">
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
                                   width="24"
@@ -1300,14 +1300,14 @@ export default function RedditVideoWizard() {
                                   strokeWidth="2"
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
-                                  className="h-4 w-4 flex-shrink-0 text-red-500"
+                                  className="h-4 w-4 flex-shrink-0 text-[#e72930]"
                                   aria-hidden="true"
                                 >
                                   <circle cx="12" cy="12" r="10" />
                                   <line x1="12" x2="12" y1="8" y2="12" />
                                   <line x1="12" x2="12.01" y1="16" y2="16" />
                                 </svg>
-                                <p className="text-sm text-red-600">{profileError}</p>
+                                <p className="text-sm text-[#e72930]">{profileError}</p>
                               </div>
                             ) : null}
                           </div>
@@ -1315,13 +1315,13 @@ export default function RedditVideoWizard() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col-reverse border-t px-4 py-3 sm:flex-row sm:justify-end sm:space-x-2 sm:px-6 sm:py-4">
+                    <div className="flex flex-col-reverse border-t border-[rgba(255,255,255,0.08)] px-4 py-3 sm:flex-row sm:justify-end sm:space-x-2 sm:px-6 sm:py-4">
                       <button
                         type="button"
                         onClick={handleProfileSelect}
                         className={cn(
-                          "flex w-full items-center justify-center gap-2.5 rounded-lg py-3 text-white transition hover:opacity-90 sm:w-auto sm:px-4",
-                          "[background:linear-gradient(180deg,_rgba(255,_255,_255,_0.16)_0%,_rgba(255,_255,_255,_0)_100%),_#335CFF]"
+                          "flex w-full items-center justify-center gap-2.5 rounded-lg py-3 text-black transition hover:opacity-90 sm:w-auto sm:px-4",
+                          "[background:linear-gradient(180deg,_rgba(255,_255,_255,_0.16)_0%,_rgba(255,_255,_255,_0)_100%),_#9aed00]"
                         )}
                       >
                         Select Profile Picture
@@ -1342,13 +1342,13 @@ export default function RedditVideoWizard() {
 
           {step === 2 && (
             <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-              <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex flex-col gap-2 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <h2 className="text-lg font-medium text-gray-950">
+                    <h2 className="text-lg font-medium text-[#f7f7f8]">
                       Select Subtitle Template
                     </h2>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[#898a8b]">
                       Pick a style that matches your channel.
                     </p>
                   </div>
@@ -1367,14 +1367,14 @@ export default function RedditVideoWizard() {
                       className={cn(
                         "group relative flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-slate-800 transition",
                         selected
-                          ? "ring-2 ring-[#335CFF] ring-offset-2 ring-offset-[#F7F7F7]"
+                          ? "ring-2 ring-[#9aed00] ring-offset-2 ring-offset-[#1c1e20]"
                           : "hover:opacity-95"
                       )}
                       onClick={() => setSubtitleStyleId(preset.id)}
                     >
                       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.14),_rgba(255,255,255,0)_55%)]" />
                       {selected && (
-                        <div className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[#335CFF] text-white">
+                        <div className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-black">
                           <svg
                             aria-hidden="true"
                             viewBox="0 0 24 24"
@@ -1417,12 +1417,12 @@ export default function RedditVideoWizard() {
 
           {step === 3 && (
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-              <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-lg font-medium text-gray-950 md:text-xl">
+                  <h2 className="text-lg font-medium text-[#f7f7f8] md:text-xl">
                     Select Background Video
                   </h2>
-                  <p className="text-sm text-gray-600 md:text-base">
+                  <p className="text-sm text-[#898a8b] md:text-base">
                     <span className="font-semibold">Tip:</span> You can replace the
                     background video after generation in the editor.
                   </p>
@@ -1439,21 +1439,21 @@ export default function RedditVideoWizard() {
               </div>
 
               {gameplayError ? (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                <div className="rounded-xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-4 text-sm text-[#e72930]">
                   {gameplayError}
                 </div>
               ) : null}
 
               {gameplayLoading && gameplayItems.length === 0 ? (
-                <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
                   Loading gameplay footage...
                 </div>
               ) : null}
 
               {!gameplayLoading && gameplayItems.length === 0 ? (
-                <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
                   No gameplay footage yet. Once the{" "}
-                  <code className="rounded bg-gray-100 px-1">gameplay-footage</code>{" "}
+                  <code className="rounded bg-[#252729] px-1">gameplay-footage</code>{" "}
                   bucket finishes uploading, videos will show up here.
                 </div>
               ) : null}
@@ -1467,23 +1467,23 @@ export default function RedditVideoWizard() {
                         key={item.path}
                         type="button"
                         className={cn(
-                          "group relative overflow-hidden rounded-xl border bg-white text-left transition",
+                          "group relative overflow-hidden rounded-xl border bg-[#1a1c1e] text-left transition",
                           selected
-                            ? "border-blue-600 shadow-lg shadow-blue-500/10"
-                            : "border-gray-200 hover:border-gray-300"
+                            ? "border-[#9aed00] shadow-lg shadow-[#9aed00]/10"
+                            : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]"
                         )}
                         onClick={() => setGameplaySelected(item)}
                       >
                         <div
                           className={cn(
                             "absolute left-3 top-3 z-30 h-5 w-5 rounded-full border",
-                            selected ? "border-blue-600 bg-blue-500" : "hidden border-gray-200"
+                            selected ? "border-[#9aed00] bg-[#9aed00]" : "hidden border-[rgba(255,255,255,0.08)]"
                           )}
                         >
                           {selected ? (
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
-                              className="h-full w-full text-white"
+                              className="h-full w-full text-black"
                               viewBox="0 0 20 20"
                               fill="currentColor"
                             >
@@ -1523,44 +1523,44 @@ export default function RedditVideoWizard() {
           {step === 4 && (
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:flex-row">
               <div className="flex w-full flex-col gap-4 md:w-1/2">
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-lg font-medium text-gray-950">
+                      <h2 className="text-lg font-medium text-[#f7f7f8]">
                         Voice Settings
                       </h2>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-[#898a8b]">
                         Use your existing editor voices here.
                       </p>
                     </div>
                   </div>
                   <div className="mt-4 space-y-3">
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium text-gray-700">
+                      <label className="text-sm font-medium text-[#898a8b]">
                         Search voices
                       </label>
                       <input
                         value={voiceSearch}
                         onChange={(e) => setVoiceSearch(e.target.value)}
                         placeholder="Search name..."
-                        className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[#335CFF]"
+                        className="h-10 w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] px-3 text-sm text-[#f7f7f8] outline-none focus:border-[#9aed00]/30 focus:ring-[#9aed00]/20"
                       />
                     </div>
 
                     {voiceError ? (
-                      <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                      <div className="rounded-lg border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-3 text-sm text-[#e72930]">
                         {voiceError}
                       </div>
                     ) : null}
 
                     {voiceLoading ? (
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+                      <div className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e1012] p-3 text-sm text-[#898a8b]">
                         Loading voices...
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        <div className="rounded-lg border border-gray-200 p-3">
-                          <p className="text-sm font-medium text-gray-800">
+                        <div className="rounded-lg border border-[rgba(255,255,255,0.08)] p-3">
+                          <p className="text-sm font-medium text-[#f7f7f8]">
                             Pick voices
                           </p>
                           <div className="mt-2 grid grid-cols-1 gap-2">
@@ -1570,8 +1570,8 @@ export default function RedditVideoWizard() {
                               className={cn(
                                 "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm",
                                 voiceSelectTarget === "script"
-                                  ? "border-[#335CFF] bg-[#E7EDFF] text-[#335CFF]"
-                                  : "border-gray-200 text-gray-800 hover:bg-gray-50"
+                                  ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)] text-[#9aed00]"
+                                  : "border-[rgba(255,255,255,0.08)] text-[#f7f7f8] hover:bg-[rgba(255,255,255,0.05)]"
                               )}
                             >
                               <span className="font-medium">
@@ -1587,8 +1587,8 @@ export default function RedditVideoWizard() {
                               className={cn(
                                 "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm",
                                 voiceSelectTarget === "intro"
-                                  ? "border-[#335CFF] bg-[#E7EDFF] text-[#335CFF]"
-                                  : "border-gray-200 text-gray-800 hover:bg-gray-50"
+                                  ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)] text-[#9aed00]"
+                                  : "border-[rgba(255,255,255,0.08)] text-[#f7f7f8] hover:bg-[rgba(255,255,255,0.05)]"
                               )}
                             >
                               <span className="font-medium">
@@ -1600,21 +1600,21 @@ export default function RedditVideoWizard() {
                             </button>
                           </div>
                           {!scriptVoice ? (
-                            <p className="mt-2 text-xs text-rose-600">
+                            <p className="mt-2 text-xs text-[#e72930]">
                               Select a script voice to continue.
                             </p>
                           ) : null}
                         </div>
 
-                        <div className="rounded-lg border border-gray-200 p-3">
+                        <div className="rounded-lg border border-[rgba(255,255,255,0.08)] p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">
+                              <p className="text-sm font-medium text-[#f7f7f8]">
                                 {voiceSelectTarget === "script"
                                   ? "Choose script voice"
                                   : "Choose intro voice"}
                               </p>
-                              <p className="mt-1 text-xs text-gray-500">
+                              <p className="mt-1 text-xs text-[#898a8b]">
                                 {voiceSelectTarget === "script"
                                   ? "This voice reads your full script."
                                   : "Optional hook voice for the title card."}
@@ -1627,8 +1627,8 @@ export default function RedditVideoWizard() {
                                 className={cn(
                                   "rounded-full border px-3 py-1 text-xs font-medium",
                                   !introVoice
-                                    ? "border-[#335CFF] bg-[#E7EDFF] text-[#335CFF]"
-                                    : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                                    ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)] text-[#9aed00]"
+                                    : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)]"
                                 )}
                               >
                                 None
@@ -1636,8 +1636,8 @@ export default function RedditVideoWizard() {
                             ) : null}
                           </div>
 
-                          <div className="mt-3 overflow-hidden rounded-md border border-gray-100">
-                            <div className="max-h-72 overflow-auto divide-y divide-gray-100">
+                          <div className="mt-3 overflow-hidden rounded-md border border-[rgba(255,255,255,0.08)]">
+                            <div className="max-h-72 overflow-auto divide-y divide-[rgba(255,255,255,0.08)]">
                               {filteredVoices.slice(0, 30).map((voice) => {
                                 const selected =
                                   voiceSelectTarget === "script"
@@ -1651,8 +1651,8 @@ export default function RedditVideoWizard() {
                                     className={cn(
                                       "flex items-center justify-between gap-3 px-3 py-2 transition",
                                       selected
-                                        ? "bg-[#E7EDFF]"
-                                        : "bg-white hover:bg-gray-50"
+                                        ? "bg-[rgba(154,237,0,0.1)]"
+                                        : "bg-[#1a1c1e] hover:bg-[rgba(255,255,255,0.05)]"
                                     )}
                                     onClick={() => {
                                       if (voiceSelectTarget === "script") {
@@ -1677,8 +1677,8 @@ export default function RedditVideoWizard() {
                                         className={cn(
                                           "truncate text-sm font-medium",
                                           selected
-                                            ? "text-[#335CFF]"
-                                            : "text-gray-900"
+                                            ? "text-[#9aed00]"
+                                            : "text-[#f7f7f8]"
                                         )}
                                       >
                                         {voice.name}
@@ -1690,7 +1690,7 @@ export default function RedditVideoWizard() {
                                         event.stopPropagation();
                                         playPreview(voice);
                                       }}
-                                      className="ml-3 inline-flex items-center justify-center rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                      className="ml-3 inline-flex items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] px-3 py-1 text-xs font-medium text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)]"
                                     >
                                       {previewTrackId === voice.id && isPreviewPlaying
                                         ? "Stop"
@@ -1703,12 +1703,12 @@ export default function RedditVideoWizard() {
                           </div>
 
                           {filteredVoices.length > 30 ? (
-                            <p className="mt-2 text-xs text-gray-500">
+                            <p className="mt-2 text-xs text-[#898a8b]">
                               Showing the first 30 voices. Search to narrow the list.
                             </p>
                           ) : null}
                           {filteredVoices.length === 0 ? (
-                            <p className="mt-2 text-xs text-gray-500">
+                            <p className="mt-2 text-xs text-[#898a8b]">
                               No voices match your search.
                             </p>
                           ) : null}
@@ -1720,20 +1720,20 @@ export default function RedditVideoWizard() {
               </div>
 
               <div className="flex w-full flex-col gap-4 md:w-1/2">
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <h2 className="text-lg font-medium text-gray-950">
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
+                  <h2 className="text-lg font-medium text-[#f7f7f8]">
                     Background Music (optional)
                   </h2>
 
                   <div className="mt-4 space-y-3">
                     {musicError ? (
-                      <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                      <div className="rounded-lg border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-3 text-sm text-[#e72930]">
                         {musicError}
                       </div>
                     ) : null}
 
                     {musicLoading ? (
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+                      <div className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e1012] p-3 text-sm text-[#898a8b]">
                         Loading background music...
                       </div>
                     ) : (
@@ -1749,17 +1749,17 @@ export default function RedditVideoWizard() {
                             }
                           }}
                           className={cn(
-                            "flex w-full cursor-pointer items-start justify-between rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#335CFF]/30",
+                            "flex w-full cursor-pointer items-start justify-between rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#9aed00]/30",
                             !selectedMusic
-                              ? "border-[#335CFF] bg-[#E7EDFF]"
-                              : "border-gray-200 hover:bg-gray-50"
+                              ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)]"
+                              : "border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)]"
                           )}
                         >
                           <div>
-                            <p className="text-sm font-medium text-gray-900">
+                            <p className="text-sm font-medium text-[#f7f7f8]">
                               No background music
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-[#898a8b]">
                               You can add your own music later in the editor.
                             </p>
                           </div>
@@ -1781,17 +1781,17 @@ export default function RedditVideoWizard() {
                                 }
                               }}
                               className={cn(
-                                "flex w-full cursor-pointer items-start justify-between rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#335CFF]/30",
+                                "flex w-full cursor-pointer items-start justify-between rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#9aed00]/30",
                                 active
-                                  ? "border-[#335CFF] bg-[#E7EDFF]"
-                                  : "border-gray-200 hover:bg-gray-50"
+                                  ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)]"
+                                  : "border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)]"
                               )}
                             >
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-gray-900">
+                                <p className="truncate text-sm font-medium text-[#f7f7f8]">
                                   {track.name}
                                 </p>
-                                <p className="truncate text-xs text-gray-500">
+                                <p className="truncate text-xs text-[#898a8b]">
                                 {track.path}
                               </p>
                               </div>
@@ -1801,7 +1801,7 @@ export default function RedditVideoWizard() {
                                   e.stopPropagation();
                                   playPreview(track);
                                 }}
-                                className="ml-3 inline-flex items-center justify-center rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                className="ml-3 inline-flex items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] px-3 py-1 text-xs font-medium text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)]"
                               >
                                 {previewTrackId === track.id && isPreviewPlaying
                                   ? "Stop"
@@ -1813,8 +1813,8 @@ export default function RedditVideoWizard() {
                       </div>
                     )}
 
-                    <div className="rounded-lg border border-gray-200 p-3">
-                      <label className="text-sm font-medium text-gray-800">
+                    <div className="rounded-lg border border-[rgba(255,255,255,0.08)] p-3">
+                      <label className="text-sm font-medium text-[#f7f7f8]">
                         Music volume
                       </label>
                       <div className="mt-2 flex items-center gap-3">
@@ -1826,7 +1826,7 @@ export default function RedditVideoWizard() {
                           onChange={(e) => setMusicVolume(Number(e.target.value))}
                           className="w-full"
                         />
-                        <span className="w-12 text-right text-sm text-gray-600">
+                        <span className="w-12 text-right text-sm text-[#898a8b]">
                           {musicVolume}%
                         </span>
                       </div>
@@ -1838,7 +1838,7 @@ export default function RedditVideoWizard() {
 	          )}
 	        </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-gray-200 bg-white px-3 py-3 md:hidden">
+        <div className="flex items-center justify-between gap-2 border-t border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-3 md:hidden">
           <Button variant="outline" onClick={handleBack} disabled={step === 1}>
             Back
           </Button>

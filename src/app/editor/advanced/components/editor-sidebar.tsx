@@ -152,7 +152,7 @@ const aiToolConfigs: AiToolConfig[] = [
     title: "Transcription",
     description: "Turn audio or video into timed captions and transcripts.",
     icon: AudioLines,
-    gradient: "from-emerald-50 to-teal-100",
+    gradient: "from-[rgba(154,237,0,0.08)] to-[rgba(154,237,0,0.18)]",
     inputLabel: "Upload media",
     inputPlaceholder: "Drop audio or video files here",
     inputKind: "dropzone",
@@ -166,7 +166,7 @@ const aiToolConfigs: AiToolConfig[] = [
     title: "Image",
     description: "Create visuals from text prompts.",
     icon: ImageIcon,
-    gradient: "from-amber-50 to-orange-100",
+    gradient: "from-[rgba(106,71,255,0.12)] to-[rgba(106,71,255,0.24)]",
     inputLabel: "Prompt",
     inputPlaceholder: "Describe the image you want to create...",
     inputKind: "prompt",
@@ -180,7 +180,7 @@ const aiToolConfigs: AiToolConfig[] = [
     title: "Voiceover",
     description: "Turn scripts into natural voiceovers.",
     icon: Mic,
-    gradient: "from-sky-50 to-blue-100",
+    gradient: "from-[rgba(106,71,255,0.08)] to-[rgba(130,112,255,0.2)]",
     inputLabel: "Script",
     inputPlaceholder: "Paste or write the voiceover script...",
     inputKind: "prompt",
@@ -194,7 +194,7 @@ const aiToolConfigs: AiToolConfig[] = [
     title: "Video",
     description: "Generate short clips from a prompt.",
     icon: VideoIcon,
-    gradient: "from-violet-50 to-fuchsia-100",
+    gradient: "from-[rgba(130,112,255,0.1)] to-[rgba(106,71,255,0.22)]",
     inputLabel: "Scene prompt",
     inputPlaceholder: "Describe the scene, motion, and mood...",
     inputKind: "prompt",
@@ -208,7 +208,7 @@ const aiToolConfigs: AiToolConfig[] = [
     title: "Background Removal",
     description: "Remove the background from a selected clip.",
     icon: Sparkles,
-    gradient: "from-lime-50 to-green-100",
+    gradient: "from-[rgba(154,237,0,0.08)] to-[rgba(154,237,0,0.18)]",
     inputLabel: "Clip",
     inputPlaceholder: "Select a clip on the timeline",
     inputKind: "dropzone",
@@ -222,7 +222,7 @@ const aiToolConfigs: AiToolConfig[] = [
     title: "AI Deven",
     description: "YouTube expert for hooks, titles, scripts, and strategy.",
     icon: Play,
-    gradient: "from-red-50 to-rose-100",
+    gradient: "from-[rgba(231,41,48,0.1)] to-[rgba(231,41,48,0.2)]",
     inputLabel: "Ask AI Deven",
     inputPlaceholder: "Ask about hooks, titles, pacing, or thumbnails...",
     inputKind: "prompt",
@@ -637,8 +637,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const downloadLoader = (
     <div className="flex items-center justify-center py-6">
       <div className="relative h-16 w-16">
-        <div className="absolute inset-0 rounded-full border-2 border-gray-200/70" />
-        <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[#5E81AC] border-r-[#5E81AC]" />
+        <div className="absolute inset-0 rounded-full border-2 border-[rgba(255,255,255,0.08)]" />
+        <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[#9aed00] border-r-[#9aed00]" />
       </div>
       <span className="sr-only">Downloading...</span>
     </div>
@@ -1296,10 +1296,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const isAiImageMagicDisabled =
     aiImageMagicLoading || resolvedAiImagePrompt.trim().length === 0;
   const aiImageMagicButtonClass = aiImageMagicLoading
-    ? "cursor-wait bg-gray-100 text-gray-400"
+    ? "cursor-wait bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
     : isAiImageMagicDisabled
-      ? "cursor-not-allowed bg-gray-100 text-gray-400"
-      : "bg-white text-gray-600 hover:bg-gray-50";
+      ? "cursor-not-allowed bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
+      : "bg-[#1a1c1e] text-[#898a8b] hover:bg-[#252729] hover:text-[#f7f7f8]";
   const canGenerateAiImage =
     resolvedAiImagePrompt.trim().length > 0 &&
     resolvedAiImageStatus !== "loading";
@@ -1326,10 +1326,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const isAiVideoMagicDisabled =
     aiVideoMagicLoading || resolvedAiVideoPrompt.trim().length === 0;
   const aiVideoMagicButtonClass = aiVideoMagicLoading
-    ? "cursor-wait bg-gray-100 text-gray-400"
+    ? "cursor-wait bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
     : isAiVideoMagicDisabled
-      ? "cursor-not-allowed bg-gray-100 text-gray-400"
-      : "bg-white text-gray-600 hover:bg-gray-50";
+      ? "cursor-not-allowed bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
+      : "bg-[#1a1c1e] text-[#898a8b] hover:bg-[#252729] hover:text-[#f7f7f8]";
   const canGenerateAiVideo =
     resolvedAiVideoPrompt.trim().length > 0 &&
     resolvedAiVideoStatus !== "loading";
@@ -1595,14 +1595,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       : 0.17;
 
   return (
-    <aside className="hidden h-full w-[360px] flex-col border-r border-gray-200 bg-white lg:flex">
+    <aside className="hidden h-full w-[360px] flex-col border-r border-[rgba(255,255,255,0.08)] bg-[#0e1012] lg:flex">
       {showVideoPanel && selectedVideoEntry && selectedVideoSettings ? (
       <div className="flex h-full flex-col">
         {/* Minimal Header */}
-        <div className="border-b border-gray-100/80 bg-white/80 px-4 py-4 backdrop-blur">
+        <div className="border-b border-[rgba(255,255,255,0.06)]/80 bg-[#1a1c1e]/80 px-4 py-4 backdrop-blur">
           <div className="flex items-center gap-3">
             <button
-              className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
               type="button"
               aria-label="Back"
               onClick={() => {
@@ -1616,28 +1616,28 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </svg>
             </button>
             <div>
-              <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+              <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                 Edit Video
               </h2>
-              <p className="max-w-[200px] truncate text-[11px] font-medium text-gray-400">
+              <p className="max-w-[200px] truncate text-[11px] font-medium text-[#5e636e]">
                 {selectedVideoEntry.asset.name}
               </p>
             </div>
           </div>
 
           {/* Edit / Adjust Tabs */}
-          <div className="mt-4 flex gap-1 rounded-full bg-gray-100 p-1">
+          <div className="mt-4 flex gap-1 rounded-full bg-[rgba(255,255,255,0.05)] p-1">
             <button
-              className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2 ${videoPanelView === "edit"
-                ? "bg-white text-[#335CFF] shadow-[0_4px_12px_rgba(15,23,42,0.12)]"
-                : "text-gray-500 hover:text-gray-700"
+              className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.4)] focus-visible:ring-offset-2 ${videoPanelView === "edit"
+                ? "bg-[#1a1c1e] text-[#6a47ff] shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px]"
+                : "text-[#898a8b] hover:text-[#f7f7f8]"
                 }`}
               type="button"
               onClick={() => setVideoPanelView("edit")}
             >
               <svg
                 viewBox="0 0 16 16"
-                className={`h-4 w-4 ${videoPanelView === "edit" ? "text-[#335CFF]" : "text-gray-500"}`}
+                className={`h-4 w-4 ${videoPanelView === "edit" ? "text-[#6a47ff]" : "text-[#898a8b]"}`}
               >
                 <path
                   d="M11.5 2.5l2 2-8 8-2.5.5.5-2.5 8-8z"
@@ -1651,16 +1651,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               Edit
             </button>
             <button
-              className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2 ${videoPanelView === "adjust"
-                ? "bg-white text-[#335CFF] shadow-[0_4px_12px_rgba(15,23,42,0.12)]"
-                : "text-gray-500 hover:text-gray-700"
+              className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.4)] focus-visible:ring-offset-2 ${videoPanelView === "adjust"
+                ? "bg-[#1a1c1e] text-[#6a47ff] shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px]"
+                : "text-[#898a8b] hover:text-[#f7f7f8]"
                 }`}
               type="button"
               onClick={() => setVideoPanelView("adjust")}
             >
               <svg
                 viewBox="0 0 16 16"
-                className={`h-4 w-4 ${videoPanelView === "adjust" ? "text-[#335CFF]" : "text-gray-500"}`}
+                className={`h-4 w-4 ${videoPanelView === "adjust" ? "text-[#6a47ff]" : "text-[#898a8b]"}`}
               >
                 <path d="M10 5.3a2 2 0 1 0 4 0 2 2 0 0 0-4 0m0 0H2.7m3.3 5.4a2 2 0 1 0-4 0 2 2 0 0 0 4 0m0 0h7.3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
@@ -1679,12 +1679,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 onClick={() => replaceInputRef.current?.click()}
               >
                 <span className="flex items-center gap-2">
-                  <svg viewBox="0 0 16 16" className="h-5 w-5 text-gray-500">
+                  <svg viewBox="0 0 16 16" className="h-5 w-5 text-[#898a8b]">
                     <path d="m2 9 2.4 2.5A4.9 4.9 0 0 0 8 13a5 5 0 0 0 4-2M2 9v2.8M2 9h2.8M14 7l-2.4-2.5A4.9 4.9 0 0 0 8 3a5 5 0 0 0-4 2M14 7V4.2M14 7h-2.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   Replace
                 </span>
-                <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-400">
+                <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#5e636e]">
                   <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
@@ -1699,15 +1699,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               {/* Speed Control */}
               <div className={panelCardClass}>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-700">Speed</span>
+                  <span className="text-sm font-semibold text-[#f7f7f8]">Speed</span>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {speedPresets.map((preset) => (
                       <button
                         key={preset}
                         type="button"
                         className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${selectedVideoSettings.speed === preset
-                          ? "bg-[#EEF2FF] text-[#335CFF] shadow-[inset_0_0_0_1px_rgba(51,92,255,0.25)]"
-                          : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                          ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] shadow-[inset_0_0_0_1px_rgba(106,71,255,0.35)]"
+                          : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                           }`}
                         onClick={() =>
                           updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
@@ -1722,8 +1722,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     <button
                       type="button"
                       className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${!speedPresets.includes(selectedVideoSettings.speed)
-                        ? "bg-[#EEF2FF] text-[#335CFF] shadow-[inset_0_0_0_1px_rgba(51,92,255,0.25)]"
-                        : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                        ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] shadow-[inset_0_0_0_1px_rgba(106,71,255,0.35)]"
+                        : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                         }`}
                       onClick={() =>
                         updateClipSettings(selectedVideoEntry.clip.id, (current) => ({
@@ -1737,8 +1737,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 </div>
                 {!speedPresets.includes(selectedVideoSettings.speed) && (
-                  <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200/70 bg-gray-50/70 px-3 py-2 text-xs text-gray-500">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[rgba(255,255,255,0.03)]/70 px-3 py-2 text-xs text-[#898a8b]">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                       Custom
                     </span>
                     <div className="flex items-center gap-1">
@@ -1754,9 +1754,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             speed: clamp(Number(event.target.value), 0.1, 4),
                           }))
                         }
-                        className="w-16 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
+                        className="w-16 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2 py-1 text-xs font-semibold text-[#f7f7f8]"
                       />
-                      <span className="text-xs text-gray-400">x</span>
+                      <span className="text-xs text-[#5e636e]">x</span>
                     </div>
                   </div>
                 )}
@@ -1774,7 +1774,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           muted: !current.muted,
                         }))
                       }
-                      className="rounded-full p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                      className="rounded-full p-1.5 text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
                       aria-label={selectedVideoSettings.muted ? "Unmute" : "Mute"}
                     >
                       {selectedVideoSettings.muted ? (
@@ -1787,16 +1787,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </svg>
                       )}
                     </button>
-                    <span className="text-sm font-semibold text-gray-700">Volume</span>
+                    <span className="text-sm font-semibold text-[#f7f7f8]">Volume</span>
                   </div>
-                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+                  <span className="rounded-full bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-[11px] font-semibold text-[#898a8b]">
                     {selectedVideoSettings.muted ? 0 : selectedVideoSettings.volume}%
                   </span>
                 </div>
                 <div className="relative mt-3 h-4">
-                  <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+                  <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.08)]/80" />
                   <div
-                    className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                    className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#9aed00]"
                     style={{
                       width: `${selectedVideoSettings.muted ? 0 : selectedVideoSettings.volume}%`,
                     }}
@@ -1824,10 +1824,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               <div className={panelCardClass}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <svg viewBox="0 0 16 16" className="h-5 w-5 text-gray-500">
+                    <svg viewBox="0 0 16 16" className="h-5 w-5 text-[#898a8b]">
                       <path d="M6.2 14V7.6M10 14V5M14 14V2M2 14V10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                     </svg>
-                    <span className="text-sm font-semibold text-gray-700">Fade Audio In/Out</span>
+                    <span className="text-sm font-semibold text-[#f7f7f8]">Fade Audio In/Out</span>
                   </div>
                   <ToggleSwitch
                     checked={selectedVideoSettings.fadeEnabled}
@@ -1876,7 +1876,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
               <div className={`${panelCardClass} space-y-3`}>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                     <svg viewBox="0 0 16 16" className="h-4 w-4">
                       <path
                         d="M12.2 13a.8.8 0 1 0 1.6 0zM13 9h-.8zM7 3v.8zm-4-.8a.8.8 0 1 0 0 1.6zM14 13V9h-1.6v4zM7 2.2H3v1.6h4zM13.8 9A6.8 6.8 0 0 0 7 2.2v1.6c2.9 0 5.2 2.3 5.2 5.2z"
@@ -1900,8 +1900,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     <button
                       type="button"
                       className={`flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold transition ${selectedVideoSettings.cornerRadiusLinked
-                        ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF]"
-                        : "border-gray-200/70 bg-gray-50 text-gray-500 hover:bg-white"
+                        ? "border-[rgba(106,71,255,0.4)] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                        : "border-[rgba(255,255,255,0.08)]/70 bg-[rgba(255,255,255,0.03)] text-[#898a8b] hover:bg-[#1a1c1e]"
                         }`}
                       onClick={() =>
                         updateClipSettings(
@@ -1942,8 +1942,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         : "Corners unlinked"}
                     </button>
                     {selectedVideoSettings.cornerRadiusLinked ? (
-                      <div className="flex items-center justify-between rounded-lg border border-gray-200/70 bg-gray-50/70 px-3 py-2 text-xs text-gray-500">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                      <div className="flex items-center justify-between rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[rgba(255,255,255,0.03)]/70 px-3 py-2 text-xs text-[#898a8b]">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                           Radius
                         </span>
                         <div className="flex items-center gap-1">
@@ -1965,13 +1965,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 })
                               )
                             }
-                            className="w-16 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
+                            className="w-16 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2 py-1 text-xs font-semibold text-[#f7f7f8]"
                           />
-                          <span className="text-xs text-gray-400">px</span>
+                          <span className="text-xs text-[#5e636e]">px</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                      <div className="grid grid-cols-2 gap-2 text-xs text-[#898a8b]">
                         {(
                           [
                             ["topLeft", "Top Left"],
@@ -1982,9 +1982,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         ).map(([key, label]) => (
                           <label
                             key={key}
-                            className="flex items-center justify-between gap-2 rounded-lg border border-gray-200/70 bg-gray-50/70 px-2.5 py-1.5"
+                            className="flex items-center justify-between gap-2 rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[rgba(255,255,255,0.03)]/70 px-2.5 py-1.5"
                           >
-                            <span className="text-[11px] font-medium text-gray-500">{label}</span>
+                            <span className="text-[11px] font-medium text-[#898a8b]">{label}</span>
                             <input
                               type="number"
                               min={0}
@@ -2006,7 +2006,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   })
                                 )
                               }
-                              className="w-12 bg-transparent text-right text-xs font-semibold text-gray-700 outline-none"
+                              className="w-12 bg-transparent text-right text-xs font-semibold text-[#f7f7f8] outline-none"
                             />
                           </label>
                         ))}
@@ -2033,12 +2033,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
 
               <div className={`${panelCardClass} space-y-3`}>
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200/70 bg-gray-50/70 px-3 py-2">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[rgba(255,255,255,0.03)]/70 px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[#898a8b]">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 16 16"
-                      className="h-4 w-4 text-gray-500"
+                      className="h-4 w-4 text-[#898a8b]"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="1.4"
@@ -2056,7 +2056,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </svg>
                     <span>Rotation</span>
                   </div>
-                  <div className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-semibold text-gray-700 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.2)]">
+                  <div className="flex items-center gap-1 rounded-md bg-[#1a1c1e] px-2 py-1 text-xs font-semibold text-[#f7f7f8] shadow-[inset_0_0_0_1px_rgba(148,163,184,0.2)]">
                     <input
                       type="number"
                       min={-180}
@@ -2075,18 +2075,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           ),
                         }))
                       }
-                      className="w-10 bg-transparent text-right text-xs font-semibold text-gray-700 outline-none"
+                      className="w-10 bg-transparent text-right text-xs font-semibold text-[#f7f7f8] outline-none"
                     />
-                    <span className="text-[11px] text-gray-400">&deg;</span>
+                    <span className="text-[11px] text-[#5e636e]">&deg;</span>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     aria-label="Flip video horizontally"
-                    className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-gray-600 transition ${selectedVideoSettings.flipH
-                      ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_4px_12px_rgba(51,92,255,0.18)]"
-                      : "border-gray-200/70 bg-white hover:border-gray-300 hover:bg-gray-50"
+                    className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-[#898a8b] transition ${selectedVideoSettings.flipH
+                      ? "border-[rgba(106,71,255,0.4)] bg-[rgba(106,71,255,0.12)] text-[#6a47ff] shadow-[0_4px_12px_rgba(106,71,255,0.24)]"
+                      : "border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.03)]"
                       }`}
                     onClick={() =>
                       updateClipSettings(selectedVideoEntry.clip.id, (
@@ -2110,9 +2110,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   <button
                     type="button"
                     aria-label="Flip video vertically"
-                    className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-gray-600 transition ${selectedVideoSettings.flipV
-                      ? "border-[#C7D2FE] bg-[#EEF2FF] text-[#335CFF] shadow-[0_4px_12px_rgba(51,92,255,0.18)]"
-                      : "border-gray-200/70 bg-white hover:border-gray-300 hover:bg-gray-50"
+                    className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-[#898a8b] transition ${selectedVideoSettings.flipV
+                      ? "border-[rgba(106,71,255,0.4)] bg-[rgba(106,71,255,0.12)] text-[#6a47ff] shadow-[0_4px_12px_rgba(106,71,255,0.24)]"
+                      : "border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.03)]"
                       }`}
                     onClick={() =>
                       updateClipSettings(selectedVideoEntry.clip.id, (
@@ -2155,7 +2155,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </button>
 
               <button
-                className="flex w-full items-center justify-center rounded-xl border border-red-200/80 bg-white px-4 py-3 text-sm font-semibold text-red-600 shadow-[0_6px_16px_rgba(239,68,68,0.12)] transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2"
+                className="flex w-full items-center justify-center rounded-xl border border-[rgba(231,41,48,0.3)]/80 bg-[#1a1c1e] px-4 py-3 text-sm font-semibold text-[#e72930] shadow-[0_6px_16px_rgba(239,68,68,0.12)] transition hover:bg-[rgba(231,41,48,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(231,41,48,0.4)] focus-visible:ring-offset-2"
                 type="button"
                 onClick={handleDeleteSelected}
               >
@@ -2165,7 +2165,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
           ) : (
             <>
               <div className={`${panelCardClass} space-y-3`}>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                   Color Correction
                 </span>
                 <SliderField
@@ -2231,7 +2231,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
 
               <div className={`${panelCardClass} space-y-3`}>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                   Effects
                 </span>
                 <SliderField
@@ -2285,7 +2285,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
 
               <button
-                className="w-full rounded-xl border border-[#D6DCFF] bg-[#EEF2FF] px-4 py-3 text-sm font-semibold text-[#335CFF] shadow-[0_6px_16px_rgba(51,92,255,0.18)] transition hover:bg-[#E4E9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                className="w-full rounded-xl border border-[rgba(106,71,255,0.3)] bg-[rgba(106,71,255,0.12)] px-4 py-3 text-sm font-semibold text-[#6a47ff] shadow-[0_6px_16px_rgba(106,71,255,0.18)] transition hover:bg-[rgba(106,71,255,0.2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.4)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0e1012]"
                 type="button"
                 onClick={() =>
                   updateClipSettings(selectedVideoEntry.clip.id, (
@@ -2312,10 +2312,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
       </div>
     ) : showAudioPanel && selectedAudioEntry && selectedAudioSettings ? (
       <div className="flex h-full flex-col">
-        <div className="border-b border-gray-100/80 bg-white/80 px-4 py-4 backdrop-blur">
+        <div className="border-b border-[rgba(255,255,255,0.06)]/80 bg-[#1a1c1e]/80 px-4 py-4 backdrop-blur">
           <div className="flex items-center gap-3">
             <button
-              className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
               type="button"
               aria-label="Back"
               onClick={() => {
@@ -2329,10 +2329,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </svg>
             </button>
             <div>
-              <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+              <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                 Edit Audio
               </h2>
-              <p className="max-w-[200px] truncate text-[11px] font-medium text-gray-400">
+              <p className="max-w-[200px] truncate text-[11px] font-medium text-[#5e636e]">
                 {selectedAudioEntry.asset.name}
               </p>
             </div>
@@ -2341,15 +2341,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           <div className={panelCardClass}>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-700">Volume</span>
-              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+              <span className="text-sm font-semibold text-[#f7f7f8]">Volume</span>
+              <span className="rounded-full bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-[11px] font-semibold text-[#898a8b]">
                 {selectedAudioSettings.volume}%
               </span>
             </div>
             <div className="relative mt-3 h-4">
-              <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+              <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.08)]/80" />
               <div
-                className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#9aed00]"
                 style={{ width: `${selectedAudioSettings.volume}%` }}
               />
               <input
@@ -2380,15 +2380,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
             (activeTool === "image" || activeTool === "elements")) &&
           !(isStickerLibraryExpanded && activeTool === "elements") && (
           <div
-            className={`sticky top-0 z-10 border-b border-gray-100/70 bg-white/95 backdrop-blur ${activeTool === "text" || activeTool === "settings" ? "px-6 py-6" : "px-5 py-5"
+            className={`sticky top-0 z-10 border-b border-[rgba(255,255,255,0.06)]/70 bg-[#1a1c1e]/95 backdrop-blur ${activeTool === "text" || activeTool === "settings" ? "px-6 py-6" : "px-5 py-5"
               }`}
           >
             {activeTool === "settings" ? (
               <div className="flex flex-col gap-1">
-                <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                   Settings
                 </h2>
-                <p className="text-xs font-medium text-gray-500">
+                <p className="text-xs font-medium text-[#898a8b]">
                   Project-wide controls
                 </p>
               </div>
@@ -2396,7 +2396,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                    <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                       Subtitles
                     </h2>
                   </div>
@@ -2404,7 +2404,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 </div>
                 {hasSubtitleResults && (
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[#898a8b]">
                       <span>Group</span>
                       <ToggleSwitch
                         checked={groupToggleChecked}
@@ -2417,7 +2417,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         <button
                           ref={settingsButtonRef}
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-100 bg-white text-gray-500 shadow-sm transition hover:bg-gray-50"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] text-[#898a8b] shadow-sm transition hover:bg-[rgba(255,255,255,0.03)]"
                           aria-label="Subtitle settings"
                           aria-expanded={subtitleSettingsOpen}
                           data-testid="@editor/subtitles/settings-cog"
@@ -2445,12 +2445,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <div
                             ref={settingsMenuRef}
                             data-testid="@context-menu/container/editor/subtitles/settings-dropdown"
-                            className="absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
+                            className="absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
                           >
                             <button
                               type="button"
                               data-testid="@editor/subtitles/settings-cog/shift-all"
-                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                               onClick={() => {
                                 setShiftSeconds("0.0");
                                 setShiftTimingsOpen(true);
@@ -2470,11 +2470,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </svg>
                               Shift all timings
                             </button>
-                            <div className="my-1 h-px bg-gray-100" />
+                            <div className="my-1 h-px bg-[rgba(255,255,255,0.05)]" />
                             <button
                               type="button"
                               data-testid="@editor/subtitles/settings-cog/timings"
-                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                               onClick={() => {
                                 setShowSubtitleTimings((prev) => !prev);
                                 setSubtitleActiveTab("edit");
@@ -2494,11 +2494,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </svg>
                               {showSubtitleTimings ? "Hide timings" : "Show timings"}
                             </button>
-                            <div className="my-1 h-px bg-gray-100" />
+                            <div className="my-1 h-px bg-[rgba(255,255,255,0.05)]" />
                             <button
                               type="button"
                               data-testid="@editor/subtitles/settings-cog/delete-all"
-                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                              className="relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.08)]"
                               onClick={() => {
                                 handleSubtitleDeleteAll();
                                 setSubtitleSettingsOpen(false);
@@ -2520,9 +2520,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </div>
                         )}
                       </div>
-                      <div className="relative inline-flex h-10 items-center justify-center rounded-xl bg-gray-50 p-1">
+                      <div className="relative inline-flex h-10 items-center justify-center rounded-xl bg-[rgba(255,255,255,0.03)] p-1">
                         <span
-                          className="pointer-events-none absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-white shadow-sm transition-all"
+                          className="pointer-events-none absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-[#1a1c1e] shadow-sm transition-all"
                           style={{
                             left:
                               subtitleActiveTab === "style"
@@ -2534,8 +2534,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           type="button"
                           className={`relative z-10 inline-flex h-8 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition ${
                             subtitleActiveTab === "style"
-                              ? "text-gray-900"
-                              : "text-gray-400 hover:text-gray-600"
+                              ? "text-[#f7f7f8]"
+                              : "text-[#5e636e] hover:text-[#898a8b]"
                           }`}
                           onClick={() => setSubtitleActiveTab("style")}
                         >
@@ -2558,8 +2558,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           type="button"
                           className={`relative z-10 inline-flex h-8 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition ${
                             subtitleActiveTab === "edit"
-                              ? "text-gray-900"
-                              : "text-gray-400 hover:text-gray-600"
+                              ? "text-[#f7f7f8]"
+                              : "text-[#5e636e] hover:text-[#898a8b]"
                           }`}
                           onClick={() => setSubtitleActiveTab("edit")}
                         >
@@ -2584,7 +2584,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               <div className="flex flex-col gap-4">
                 {textPanelView === "library" ? (
                   <>
-                    <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                    <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                       Text
                     </h2>
                     <div className="flex flex-wrap gap-1.5">
@@ -2596,8 +2596,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             type="button"
                             data-selected={isActive}
                             className={`inline-flex h-8 select-none items-center rounded-full px-3 py-2 text-xs font-semibold transition ${isActive
-                              ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                              : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                              ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                              : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                               }`}
                             onClick={() => {
                               setTextPanelTag(tag);
@@ -2613,7 +2613,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 ) : (
                   <div className="flex items-center gap-3">
                     <button
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
                       type="button"
                       aria-label="Go back"
                       onClick={() => {
@@ -2636,10 +2636,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </svg>
                     </button>
                     <div>
-                      <h2 className="text-lg font-semibold tracking-[-0.01em] text-gray-900">
+                      <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                         Edit Text
                       </h2>
-                      <p className="max-w-[200px] truncate text-[11px] font-medium text-gray-400">
+                      <p className="max-w-[200px] truncate text-[11px] font-medium text-[#5e636e]">
                         {textPanelPreset?.name ??
                           selectedTextEntry?.asset.name ??
                           "Text"}
@@ -2654,17 +2654,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   <>
                     <div className="flex items-center justify-between">
                       <div className="space-y-1">
-                        <h2 className="text-lg font-semibold tracking-[-0.01em] text-[#111827]">
+                        <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                           {activeToolLabel}
                         </h2>
                         {!hasSupabase && (
-                          <p className="text-xs font-medium text-gray-500">
+                          <p className="text-xs font-medium text-[#898a8b]">
                             Uploads stay in this browser session
                           </p>
                         )}
                       </div>
                       {uploading && (
-                        <span className="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#335CFF]">
+                        <span className="rounded-full bg-[rgba(106,71,255,0.12)] px-2.5 py-1 text-[11px] font-semibold text-[#6a47ff]">
                           Uploading
                         </span>
                       )}
@@ -2672,7 +2672,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     {!isAiTool && (
                       <div className="mt-5">
                         <button
-                          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-transparent bg-[#F3F4F8] px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-[#ECEFF6]"
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#252729] px-4 py-3 text-sm font-semibold text-[#f7f7f8] shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition hover:bg-[#2f3133] hover:border-[rgba(255,255,255,0.14)]"
                           type="button"
                           onClick={handleUploadClick}
                         >
@@ -2693,13 +2693,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </>
                 )}
                 {isBackgroundSelected && (
-                  <div className="mt-5 rounded-2xl border border-gray-100 bg-[#F8FAFF] px-4 py-3">
+                  <div className="mt-5 rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-4 py-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#898a8b]">
                           Video Background
                         </h3>
-                        <p className="text-[11px] text-gray-400">Behind video content</p>
+                        <p className="text-[11px] text-[#5e636e]">Behind video content</p>
                       </div>
                       <input
                         type="color"
@@ -2711,7 +2711,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             setVideoBackground(event.target.value);
                           }
                         }
-                        className="h-7 w-7 cursor-pointer rounded-full border border-gray-200 bg-transparent"
+                        className="h-7 w-7 cursor-pointer rounded-full border border-[rgba(255,255,255,0.08)] bg-transparent"
                       />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -2720,8 +2720,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           key={swatch}
                           type="button"
                           className={`h-6 w-6 rounded-full border transition ${videoBackground.toLowerCase() === swatch.toLowerCase()
-                            ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
-                            : "border-gray-200"
+                            ? "border-[#9aed00] ring-2 ring-[rgba(154,237,0,0.2)]"
+                            : "border-[rgba(255,255,255,0.08)]"
                             }`}
                           style={{ backgroundColor: swatch }}
                           onClick={() => {
@@ -2741,20 +2741,20 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
         <div
           className={`flex-1 min-h-0 overflow-y-auto ${activeTool === "text" || isSettingsTool || activeTool === "ai"
-            ? "bg-white"
+            ? "bg-[#1a1c1e]"
             : isAudioTool
-              ? "bg-gray-50"
-              : "bg-[#F7F8FC]"
+              ? "bg-[rgba(255,255,255,0.03)]"
+              : "bg-[#16181a]"
             }`}
         >
           {isStickerLibraryExpanded && activeTool === "elements" ? (
             <div className="flex min-h-full flex-col">
-              <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="sticky top-0 z-10 border-b border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                      className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.1)]"
                       aria-label="Go back"
                       onClick={() => setIsStickerLibraryExpanded(false)}
                     >
@@ -2769,18 +2769,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         />
                       </svg>
                     </button>
-                    <h2 className="text-lg font-semibold text-gray-900">
+                    <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                       Stickers
                     </h2>
                   </div>
-                  <div className="flex items-center gap-1 text-xs font-medium text-gray-500">
+                  <div className="flex items-center gap-1 text-xs font-medium text-[#898a8b]">
                     <span>Powered by</span>
                     <GiphyLogo className="h-3 w-auto" />
                   </div>
                 </div>
                 <div className="mt-4">
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5e636e]">
                       <svg viewBox="0 0 16 16" className="h-4 w-4">
                         <path
                           d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
@@ -2793,7 +2793,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </svg>
                     </span>
                     <input
-                      className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-9 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                      className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] pl-9 pr-9 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                       placeholder="Search for stickers"
                       value={stickerSearch}
                       onChange={(event) =>
@@ -2803,7 +2803,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     {stickerSearch.trim() && (
                       <button
                         type="button"
-                        className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100"
+                        className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)]"
                         onClick={() => setStickerSearch("")}
                         aria-label="Clear search"
                       >
@@ -2824,7 +2824,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
               <div className="flex-1 px-5 py-5">
                 {!hasGiphy ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                  <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                     Add a GIPHY API key to enable stickers.
                   </div>
                 ) : (stickerGridStatus === "idle" ||
@@ -2834,17 +2834,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     {Array.from({ length: gifPreviewCount }).map((_, index) => (
                       <div
                         key={`sticker-skeleton-${index}`}
-                        className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                        className="h-24 rounded-xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                       />
                     ))}
                   </div>
                 ) : stickerGridStatus === "error" ? (
-                  <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                  <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                     <p>{stickerGridError ?? "Unable to load stickers."}</p>
                     {stickerSearch.trim().length === 0 && (
                       <button
                         type="button"
-                        className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                        className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                         onClick={handleStickerTrendingRetry}
                       >
                         Retry
@@ -2852,7 +2852,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     )}
                   </div>
                 ) : stickerGridItems.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                  <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                     {stickerSearch.trim()
                       ? "No stickers match your search."
                       : "No stickers available right now."}
@@ -2866,7 +2866,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         <button
                           key={sticker.id}
                           type="button"
-                          className="group relative h-24 w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                          className="group relative h-24 w-full overflow-hidden rounded-xl border border-[rgba(255,255,255,0.08)] transition hover:border-[rgba(255,255,255,0.14)]"
                           onClick={() => handleAddSticker(sticker)}
                           draggable
                           onDragStart={(event) =>
@@ -2882,7 +2882,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               loading="lazy"
                             />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                            <div className="flex h-full w-full items-center justify-center bg-[rgba(255,255,255,0.05)] text-xs font-semibold text-[#5e636e]">
                               Sticker
                             </div>
                           )}
@@ -2896,12 +2896,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
           ) : isGifLibraryExpanded &&
           (activeTool === "image" || activeTool === "elements") ? (
             <div className="flex min-h-full flex-col">
-              <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="sticky top-0 z-10 border-b border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                      className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.1)]"
                       aria-label="Go back"
                       onClick={() => setIsGifLibraryExpanded(false)}
                     >
@@ -2916,18 +2916,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         />
                       </svg>
                     </button>
-                    <h2 className="text-lg font-semibold text-gray-900">
+                    <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                       GIFs
                     </h2>
                   </div>
-                  <div className="flex items-center gap-1 text-xs font-medium text-gray-500">
+                  <div className="flex items-center gap-1 text-xs font-medium text-[#898a8b]">
                     <span>Powered by</span>
                     <GiphyLogo className="h-3 w-auto" />
                   </div>
                 </div>
                 <div className="mt-4">
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5e636e]">
                       <svg viewBox="0 0 16 16" className="h-4 w-4">
                         <path
                           d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
@@ -2940,7 +2940,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </svg>
                     </span>
                     <input
-                      className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-9 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                      className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] pl-9 pr-9 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                       placeholder="Search for GIFs"
                       value={gifSearch}
                       onChange={(event) => setGifSearch(event.target.value)}
@@ -2948,7 +2948,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     {gifSearch.trim() && (
                       <button
                         type="button"
-                        className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100"
+                        className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)]"
                         onClick={() => setGifSearch("")}
                         aria-label="Clear search"
                       >
@@ -2969,7 +2969,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
               <div className="flex-1 px-5 py-5">
                 {!hasGiphy ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                  <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                     Add a GIPHY API key to enable GIF search.
                   </div>
                 ) : (gifGridStatus === "idle" ||
@@ -2979,17 +2979,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     {Array.from({ length: gifPreviewCount }).map((_, index) => (
                       <div
                         key={`gif-skeleton-${index}`}
-                        className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                        className="h-24 rounded-xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                       />
                     ))}
                   </div>
                 ) : gifGridStatus === "error" ? (
-                  <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                  <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                     <p>{gifGridError ?? "Unable to load GIFs."}</p>
                     {gifSearch.trim().length === 0 && (
                       <button
                         type="button"
-                        className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                        className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                         onClick={handleGifTrendingRetry}
                       >
                         Retry
@@ -2997,7 +2997,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     )}
                   </div>
                 ) : gifGridItems.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                  <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                     {gifSearch.trim()
                       ? "No GIFs match your search."
                       : "No GIFs available right now."}
@@ -3011,7 +3011,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         <button
                           key={gif.id}
                           type="button"
-                          className="group relative h-24 w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                          className="group relative h-24 w-full overflow-hidden rounded-xl border border-[rgba(255,255,255,0.08)] transition hover:border-[rgba(255,255,255,0.14)]"
                           onClick={() => handleAddGif(gif)}
                           draggable
                           onDragStart={(event) => handleGifDragStart(event, gif)}
@@ -3025,7 +3025,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               loading="lazy"
                             />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                            <div className="flex h-full w-full items-center justify-center bg-[rgba(255,255,255,0.05)] text-xs font-semibold text-[#5e636e]">
                               GIF
                             </div>
                           )}
@@ -3039,11 +3039,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
           ) : isAssetLibraryExpanded &&
           ["video", "audio", "image"].includes(activeTool) ? (
             <div className="flex min-h-full flex-col">
-              <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="sticky top-0 z-10 border-b border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.1)]"
                     aria-label="Go back"
                     onClick={() => setIsAssetLibraryExpanded(false)}
                   >
@@ -3058,13 +3058,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       />
                     </svg>
                   </button>
-                  <h2 className="text-lg font-semibold text-gray-900">
+                  <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                     Asset Library
                   </h2>
                 </div>
                 <div className="mt-4 space-y-3">
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5e636e]">
                       <svg viewBox="0 0 16 16" className="h-4 w-4">
                         <path
                           d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
@@ -3077,14 +3077,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </svg>
                     </span>
                     <input
-                      className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                      className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] pl-9 pr-3 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                       placeholder="Search..."
                       value={assetSearch}
                       onChange={(event) => setAssetSearch(event.target.value)}
                     />
                   </div>
                   <button
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 py-2.5 text-sm font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.05)]"
                     type="button"
                     onClick={handleUploadClick}
                   >
@@ -3107,8 +3107,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       key={filter}
                       type="button"
                       className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${assetFilter === filter
-                        ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                        : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                        ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                        : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                         }`}
                       onClick={() => setAssetFilter(filter)}
                     >
@@ -3119,7 +3119,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
               <div className="flex-1 px-5 py-5">
                 {viewAllAssets.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                  <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                     {assetSearch.trim()
                       ? "No results match your search."
                       : "Upload media to build your library."}
@@ -3134,8 +3134,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         <button
                           type="button"
                           className={`relative h-24 w-full overflow-hidden rounded-xl border transition ${asset.id === activeAssetId
-                            ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
-                            : "border-gray-200 hover:border-gray-300"
+                            ? "border-[#9aed00] shadow-[0_10px_22px_rgba(154,237,0,0.2)]"
+                            : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.14)]"
                             }`}
                           onClick={() => addToTimeline(asset.id)}
                           draggable
@@ -3159,7 +3159,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             />
                           )}
                           {asset.kind === "audio" && (
-                            <div className="flex h-full w-full items-center justify-center bg-[#EEF2FF] text-[#335CFF]">
+                            <div className="flex h-full w-full items-center justify-center bg-[rgba(106,71,255,0.12)] text-[#6a47ff]">
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 width="24"
@@ -3252,13 +3252,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           )}
                         </button>
                         <button type="button" className="text-left">
-                          <div className="truncate text-xs font-medium text-gray-700">
+                          <div className="truncate text-xs font-medium text-[#f7f7f8]">
                             {asset.name}
                           </div>
                         </button>
                         <button
                           type="button"
-                          className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-white hover:text-gray-700"
+                          className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#1a1c1e]/90 text-[#898a8b] opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-[#1a1c1e] hover:text-[#f7f7f8]"
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
@@ -3285,12 +3285,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
             </div>
           ) : isStockVideoExpanded && activeTool === "video" ? (
             <div className="flex min-h-full flex-col">
-              <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="sticky top-0 z-10 border-b border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition hover:bg-gray-200"
+                      className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.1)]"
                       aria-label="Go back"
                       onClick={() => setIsStockVideoExpanded(false)}
                     >
@@ -3305,14 +3305,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         />
                       </svg>
                     </button>
-                    <h2 className="text-lg font-semibold text-gray-900">
+                    <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                       Stock Videos
                     </h2>
                   </div>
                 </div>
                 <div className="mt-4 space-y-3">
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5e636e]">
                       <svg viewBox="0 0 16 16" className="h-4 w-4">
                         <path
                           d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
@@ -3325,7 +3325,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </svg>
                     </span>
                     <input
-                      className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                      className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] pl-9 pr-3 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                       placeholder="Search..."
                       value={stockVideoSearch}
                       onChange={(event) =>
@@ -3345,8 +3345,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         key={option.value}
                         type="button"
                         className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${stockVideoOrientation === option.value
-                          ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                          : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                          ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                          : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                           }`}
                         onClick={() => setStockVideoOrientation(option.value)}
                       >
@@ -3359,8 +3359,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   <button
                     type="button"
                     className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${stockVideoCategory === "All"
-                      ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                      : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                      ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                      : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                       }`}
                     onClick={() => setStockVideoCategory("All")}
                   >
@@ -3371,8 +3371,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       key={category}
                       type="button"
                       className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${stockVideoCategory === category
-                        ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                        : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                        ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                        : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                         }`}
                       onClick={() => setStockVideoCategory(category)}
                     >
@@ -3382,7 +3382,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   {hasMoreStockVideoTags && (
                     <button
                       type="button"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(106,71,255,0.12)] text-[#6a47ff] transition hover:bg-[rgba(106,71,255,0.2)]"
                       onClick={() =>
                         setShowAllStockVideoTags((prev: boolean) => !prev)
                       }
@@ -3404,7 +3404,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
               <div className="flex-1 px-5 py-5">
                 {!hasSupabase ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                  <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                     Connect Supabase to load stock videos.
                   </div>
                 ) : stockVideoStatus === "loading" ||
@@ -3415,23 +3415,23 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     }).map((_, index) => (
                       <div
                         key={`stock-video-expanded-skeleton-${index}`}
-                        className="h-24 rounded-2xl bg-gray-100/80 animate-pulse"
+                        className="h-24 rounded-2xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                       />
                     ))}
                   </div>
                 ) : stockVideoStatus === "error" ? (
-                  <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                  <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                     <p>{stockVideoError ?? "Unable to load stock videos."}</p>
                     <button
                       type="button"
-                      className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                      className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                       onClick={handleStockVideoRetry}
                     >
                       Retry
                     </button>
                   </div>
                 ) : groupedStockVideos.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                  <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                     {stockVideoSearch.trim()
                       ? "No videos match your search."
                       : stockVideoRootPrefix
@@ -3444,7 +3444,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       (group: { category: string; videos: StockVideoItem[] }) => (
                       <div key={group.category} className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-semibold text-gray-900">
+                          <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                             {group.category}
                           </h3>
                         </div>
@@ -3475,17 +3475,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
             </div>
           ) : activeTool === "settings" ? (
-            <div className="flex min-h-full flex-col bg-white">
+            <div className="flex min-h-full flex-col bg-[#1a1c1e]">
               <div className="flex-1 px-6">
-                <div className="border-b border-gray-100 py-6">
-                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                <div className="border-b border-[rgba(255,255,255,0.06)] py-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                     Size
                   </h4>
                   <div className="relative mt-3" data-testid="@editor/settings/size">
                     <button
                       ref={settingsSizeButtonRef}
                       type="button"
-                      className="flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30"
+                      className="flex h-11 w-full items-center justify-between rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 text-sm font-semibold text-[#f7f7f8] shadow-sm transition hover:border-[rgba(255,255,255,0.14)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)]"
                       onClick={() => setSettingsSizeOpen((prev) => !prev)}
                       aria-expanded={settingsSizeOpen}
                     >
@@ -3499,7 +3499,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           height="16"
                           fill="none"
                           viewBox="0 0 16 16"
-                          className="overflow-visible text-gray-500"
+                          className="overflow-visible text-[#898a8b]"
                         >
                           <rect
                             width="8"
@@ -3514,11 +3514,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         <span className="truncate">
                           {resolvedProjectSize?.label ?? "Original"}
                         </span>
-                        <span className="text-xs font-semibold text-gray-400">
+                        <span className="text-xs font-semibold text-[#5e636e]">
                           ({selectedSizeRatioLabel})
                         </span>
                       </div>
-                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                      <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                         <path
                           d="m4 6 4 4 4-4"
                           fill="none"
@@ -3532,7 +3532,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     {settingsSizeOpen && (
                       <div
                         ref={settingsSizeMenuRef}
-                        className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-gray-100 bg-white p-1 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
+                        className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] p-1 shadow-[0_16px_30px_rgba(15,23,42,0.12)]"
                       >
                         {(projectSizeOptions ?? []).map((option: any) => {
                           const ratioLabel =
@@ -3548,8 +3548,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               type="button"
                               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-semibold transition ${
                                 isSelected
-                                  ? "bg-[#EEF2FF] text-[#335CFF]"
-                                  : "text-gray-700 hover:bg-gray-50"
+                                  ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                  : "text-[#f7f7f8] hover:bg-[rgba(255,255,255,0.03)]"
                               }`}
                               onClick={() => {
                                 setProjectSizeId(option.id);
@@ -3558,12 +3558,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             >
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className="truncate">{option.label}</span>
-                                <span className="text-xs text-gray-400">
+                                <span className="text-xs text-[#5e636e]">
                                   ({ratioLabel})
                                 </span>
                               </div>
                               {option.width && option.height && (
-                                <span className="text-[11px] font-semibold text-gray-400">
+                                <span className="text-[11px] font-semibold text-[#5e636e]">
                                   {option.width}x{option.height}
                                 </span>
                               )}
@@ -3573,18 +3573,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                     )}
                   </div>
-                  <p className="mt-2 text-xs text-gray-400">
+                  <p className="mt-2 text-xs text-[#5e636e]">
                     Pick the frame size you want to export.
                   </p>
                 </div>
 
-                <div className="border-b border-gray-100 py-6">
-                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                <div className="border-b border-[rgba(255,255,255,0.06)] py-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                     Background
                   </h4>
                   <div className="mt-4 space-y-4">
                     <div className="flex items-center justify-between gap-3">
-                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-[#f7f7f8]">
                         <input
                           type="radio"
                           name="project-background"
@@ -3617,7 +3617,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             }
                             setBackgroundHexDraft(videoBackground);
                           }}
-                          className="h-10 w-28 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                          className="h-10 w-28 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 text-xs font-semibold text-[#f7f7f8] disabled:cursor-not-allowed disabled:bg-[rgba(255,255,255,0.03)]"
                         />
                         <input
                           data-testid="@editor/color-picker-btn"
@@ -3628,13 +3628,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             setVideoBackground(event.target.value);
                             setBackgroundHexDraft(event.target.value);
                           }}
-                          className="h-10 w-10 cursor-pointer rounded-lg border border-gray-200 bg-white"
+                          className="h-10 w-10 cursor-pointer rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                         />
                       </div>
                     </div>
-                    <div className="h-px bg-gray-100" />
+                    <div className="h-px bg-[rgba(255,255,255,0.05)]" />
                     <div className="space-y-3">
-                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-[#f7f7f8]">
                         <input
                           type="radio"
                           name="project-background"
@@ -3647,8 +3647,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       <div
                         className={`rounded-xl border px-3 py-3 ${
                           isBackgroundImageMode
-                            ? "border-gray-200 bg-gray-50"
-                            : "border-gray-100 bg-gray-50/70 opacity-70"
+                            ? "border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]"
+                            : "border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)]/70 opacity-70"
                         }`}
                       >
                         {projectBackgroundImage ? (
@@ -3660,16 +3660,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               }}
                             />
                             <div className="min-w-0 flex-1">
-                              <div className="truncate text-xs font-semibold text-gray-700">
+                              <div className="truncate text-xs font-semibold text-[#f7f7f8]">
                                 {projectBackgroundImage.name}
                               </div>
-                              <div className="text-[11px] text-gray-400">
+                              <div className="text-[11px] text-[#5e636e]">
                                 {formatSize(projectBackgroundImage.size)}
                               </div>
                             </div>
                             <button
                               type="button"
-                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-1.5 text-xs font-semibold text-[#898a8b] transition hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.05)] disabled:cursor-not-allowed disabled:opacity-60"
                               onClick={() => backgroundImageInputRef.current?.click()}
                               disabled={!isBackgroundImageMode}
                             >
@@ -3677,7 +3677,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </button>
                             <button
                               type="button"
-                              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-gray-300 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-1.5 text-xs font-semibold text-[#898a8b] transition hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.05)] disabled:cursor-not-allowed disabled:opacity-60"
                               onClick={handleProjectBackgroundImageClear}
                               disabled={!isBackgroundImageMode}
                             >
@@ -3687,7 +3687,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         ) : (
                           <button
                             type="button"
-                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:border-gray-400"
+                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[rgba(255,255,255,0.14)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#898a8b] transition hover:border-[rgba(255,255,255,0.18)]"
                             onClick={() => {
                               setProjectBackgroundMode("image");
                               backgroundImageInputRef.current?.click();
@@ -3731,14 +3731,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 </div>
 
-                <div className="border-b border-gray-100 py-6">
-                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
+                <div className="border-b border-[rgba(255,255,255,0.06)] py-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                     Duration
                   </h4>
                   <div className="mt-4 space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <label
-                        className="flex items-center gap-2 text-sm font-semibold text-gray-700"
+                        className="flex items-center gap-2 text-sm font-semibold text-[#f7f7f8]"
                         data-testid="@project-settings/automatic-project-duration-button"
                       >
                         <input
@@ -3750,13 +3750,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         />
                         <span>Automatic</span>
                       </label>
-                      <span className="text-xs font-semibold text-gray-400">
+                      <span className="text-xs font-semibold text-[#5e636e]">
                         {formatTimeWithTenths(contentTimelineTotal ?? 0)}
                       </span>
                     </div>
-                    <div className="h-px bg-gray-100" />
+                    <div className="h-px bg-[rgba(255,255,255,0.05)]" />
                     <div className="flex items-center justify-between gap-3">
-                      <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-[#f7f7f8]">
                         <input
                           type="radio"
                           name="project-duration"
@@ -3783,7 +3783,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             commitDurationDraft(durationDraft);
                           }
                         }}
-                        className="h-10 w-24 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                        className="h-10 w-24 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 text-xs font-semibold text-[#f7f7f8] disabled:cursor-not-allowed disabled:bg-[rgba(255,255,255,0.03)]"
                       />
                     </div>
                     {isFixedDurationShort && (
@@ -3809,19 +3809,19 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               </div>
             </div>
           ) : activeTool === "subtitles" ? (
-            <div className="flex min-h-full flex-col bg-white">
+            <div className="flex min-h-full flex-col bg-[#1a1c1e]">
               {subtitleStatus === "loading" ? (
                 <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-                  <div className="h-2 w-44 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-2 w-44 overflow-hidden rounded-full bg-[rgba(255,255,255,0.05)]">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#5B6CFF] via-[#7B89FF] to-[#5B6CFF] transition-[width] duration-300 ease-out"
+                      className="h-full rounded-full bg-gradient-to-r from-[#9aed00] via-[#b8f44d] to-[#9aed00] transition-[width] duration-300 ease-out"
                       style={{ width: `${Math.max(8, subtitleProgress * 100)}%` }}
                     />
                   </div>
-                  <h3 className="mt-6 text-lg font-semibold text-gray-900">
+                  <h3 className="mt-6 font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                     Generating Subtitles...
                   </h3>
-                  <p className="mt-2 text-sm text-gray-500">
+                  <p className="mt-2 text-sm text-[#898a8b]">
                     ...go and grab yourself a snack, this could take a minute or two.
                   </p>
                 </div>
@@ -3829,13 +3829,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 <div className="flex flex-1 flex-col px-6 py-6">
                   <div className="flex flex-col gap-6">
                     <div className="flex flex-col gap-2">
-                      <div className="text-sm font-semibold text-gray-900">
+                      <div className="text-sm font-semibold text-[#f7f7f8]">
                         What do you want to transcribe?
                       </div>
                       <div className="relative">
                         <button
                           type="button"
-                          className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-gray-50 px-3 text-sm font-semibold text-gray-800 shadow-sm transition focus:border-[#5B6CFF] focus:outline-none"
+                          className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-[rgba(255,255,255,0.03)] px-3 text-sm font-semibold text-[#f7f7f8] shadow-sm transition focus:border-[#9aed00] focus:outline-none"
                           onClick={() =>
                             setIsSubtitleSourceOpen((prev) => !prev)
                           }
@@ -3845,13 +3845,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             <span className="truncate">
                               {resolvedSubtitleSource.label}
                             </span>
-                            <span className="text-xs font-semibold text-gray-400">
+                            <span className="text-xs font-semibold text-[#5e636e]">
                               {resolvedSubtitleSource.duration
                                 ? formatDuration(resolvedSubtitleSource.duration)
                                 : "--:--"}
                             </span>
                           </div>
-                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                             <path
                               d="M5 10.936 8 14l3-3.064m0-5.872L8 2 5 5.064"
                               fill="none"
@@ -3863,19 +3863,19 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </svg>
                         </button>
                         {isSubtitleSourceOpen && (
-                          <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-100 bg-white py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                          <div className="absolute z-20 mt-2 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
                             {subtitleSourceOptions.map((option: any) => (
                               <button
                                 key={option.id}
                                 type="button"
-                                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                                 onClick={() => {
                                   setSubtitleSource(option.id);
                                   setIsSubtitleSourceOpen(false);
                                 }}
                               >
                                 <span className="truncate">{option.label}</span>
-                                <span className="text-xs text-gray-400">
+                                <span className="text-xs text-[#5e636e]">
                                   {option.duration
                                     ? formatDuration(option.duration)
                                     : "--:--"}
@@ -3888,13 +3888,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </div>
 
                     <div className="flex flex-col gap-2">
-                      <div className="text-sm font-semibold text-gray-900">
+                      <div className="text-sm font-semibold text-[#f7f7f8]">
                         What language is being spoken?
                       </div>
                       <div className="relative">
                         <button
                           type="button"
-                          className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-gray-50 px-3 text-sm font-semibold text-gray-800 shadow-sm transition focus:border-[#5B6CFF] focus:outline-none"
+                          className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-[rgba(255,255,255,0.03)] px-3 text-sm font-semibold text-[#f7f7f8] shadow-sm transition focus:border-[#9aed00] focus:outline-none"
                           onClick={() =>
                             setIsSubtitleLanguageOpen((prev) => !prev)
                           }
@@ -3904,14 +3904,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             <span className="truncate">
                               {subtitleLanguage?.label ?? "English"}
                             </span>
-                            <span className="text-xs font-semibold text-gray-400">
+                            <span className="text-xs font-semibold text-[#5e636e]">
                               {subtitleLanguage?.detail ?? "English (US)"}
                             </span>
-                            <span className="flex h-6 w-8 items-center justify-center rounded-md bg-gray-200 text-[11px] font-semibold text-gray-700">
+                            <span className="flex h-6 w-8 items-center justify-center rounded-md bg-[rgba(255,255,255,0.08)] text-[11px] font-semibold text-[#f7f7f8]">
                               {subtitleLanguage?.region ?? "US"}
                             </span>
                           </div>
-                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-gray-500">
+                          <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#898a8b]">
                             <path
                               d="M5 10.936 8 14l3-3.064m0-5.872L8 2 5 5.064"
                               fill="none"
@@ -3923,22 +3923,22 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </svg>
                         </button>
                         {isSubtitleLanguageOpen && (
-                          <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-100 bg-white py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                          <div className="absolute z-20 mt-2 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
                             {subtitleLanguageOptions.map((option: any) => (
                               <button
                                 key={option.code}
                                 type="button"
-                                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                                 onClick={() => {
                                   setSubtitleLanguage(option);
                                   setIsSubtitleLanguageOpen(false);
                                 }}
                               >
                                 <span className="truncate">{option.label}</span>
-                                <span className="text-xs text-gray-400">
+                                <span className="text-xs text-[#5e636e]">
                                   {option.detail}
                                 </span>
-                                <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                                <span className="ml-2 rounded bg-[rgba(255,255,255,0.05)] px-2 py-0.5 text-[10px] font-semibold text-[#898a8b]">
                                   {option.region}
                                 </span>
                               </button>
@@ -3949,14 +3949,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </div>
 
                     {subtitleError && (
-                      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                      <div className="rounded-lg border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.08)] px-3 py-2 text-xs font-medium text-[#e72930]">
                         {subtitleError}
                       </div>
                     )}
 
                     <button
                       type="button"
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#5B6CFF] px-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(91,108,255,0.28)] transition hover:bg-[#4B5BEE]"
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#9aed00] px-3 text-sm font-semibold text-[#0e1012] shadow-[0_10px_24px_rgba(154,237,0,0.28)] transition hover:bg-[#7ac700]"
                       onClick={handleGenerateSubtitles}
                     >
                       <svg viewBox="0 0 17 16" className="h-4 w-4">
@@ -3972,15 +3972,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       Add Subtitles with AI
                     </button>
 
-                    <div className="-mx-6 border-b border-gray-100" />
+                    <div className="-mx-6 border-b border-[rgba(255,255,255,0.06)]" />
 
                     <div className="flex flex-col gap-3">
-                      <div className="text-sm font-semibold text-gray-900">
+                      <div className="text-sm font-semibold text-[#f7f7f8]">
                         More Options
                       </div>
                       <button
                         type="button"
-                        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 text-sm font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.05)]"
                         onClick={handleSubtitleAddLine}
                       >
                         <svg viewBox="0 0 16 16" className="h-4 w-4">
@@ -4001,7 +4001,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col">
                   {subtitleActiveTab === "style" && !subtitleStyleEditorOpen && (
-                    <div className="border-b border-gray-100 px-6 py-3">
+                    <div className="border-b border-[rgba(255,255,255,0.06)] px-6 py-3">
                       <div className="flex items-center gap-2 overflow-x-auto pb-1">
                         {subtitleStyleFilters.map((filter) => (
                           <button
@@ -4009,8 +4009,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             type="button"
                             className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold transition ${
                               subtitleStyleFilter === filter
-                                ? "bg-gray-100 text-gray-900"
-                                : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                                ? "bg-[rgba(255,255,255,0.05)] text-[#f7f7f8]"
+                                : "bg-[rgba(255,255,255,0.03)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)]"
                             }`}
                             onClick={() => setSubtitleStyleFilter(filter)}
                           >
@@ -4023,11 +4023,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   {subtitleActiveTab === "style" ? (
                     subtitleStyleEditorOpen && subtitleStyleDraft ? (
                       <div className="flex min-h-0 flex-1 flex-col">
-                        <div className="sticky top-0 z-10 border-b border-gray-100 bg-white px-6 py-4">
+                        <div className="sticky top-0 z-10 border-b border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-6 py-4">
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
                               aria-label="Back to styles"
                               onClick={closeSubtitleStyleEditor}
                             >
@@ -4043,18 +4043,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </svg>
                             </button>
                             <div>
-                              <h3 className="text-base font-semibold text-gray-900">
+                              <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                                 Edit style
                               </h3>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-[#898a8b]">
                                 {subtitleStyleEditorPreset?.name ?? "Style"}
                               </p>
                             </div>
                           </div>
                         </div>
                         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
-                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                          <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] p-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                               Preview
                             </div>
                             <div className="mt-2 flex h-20 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500/70 via-slate-600/70 to-slate-700/70 px-2 text-center">
@@ -4069,7 +4069,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
                           <div className="grid gap-4">
                             <div className="space-y-2">
-                              <label className="text-xs font-semibold text-gray-600">
+                              <label className="text-xs font-semibold text-[#898a8b]">
                                 Font
                               </label>
                               <select
@@ -4080,7 +4080,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     fontFamily: event.target.value,
                                   })
                                 }
-                                className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-800 shadow-sm focus:border-[#5B6CFF] focus:outline-none"
+                                className="h-10 w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 text-sm font-semibold text-[#f7f7f8] shadow-sm focus:border-[#9aed00] focus:outline-none"
                               >
                                 {textFontFamilies.map((family) => (
                                   <option key={family} value={family}>
@@ -4110,8 +4110,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 aria-pressed={subtitleStyleDraft.bold}
                                 className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition ${
                                   subtitleStyleDraft.bold
-                                    ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                                    ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                    : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                 }`}
                                 onClick={() =>
                                   updateSubtitleStyleDraft({
@@ -4127,8 +4127,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 aria-pressed={subtitleStyleDraft.italic}
                                 className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold italic transition ${
                                   subtitleStyleDraft.italic
-                                    ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                                    ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                    : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                 }`}
                                 onClick={() =>
                                   updateSubtitleStyleDraft({
@@ -4140,7 +4140,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 I
                               </button>
                               <div className="ml-auto flex items-center gap-2">
-                                <span className="text-xs font-semibold text-gray-600">
+                                <span className="text-xs font-semibold text-[#898a8b]">
                                   Text color
                                 </span>
                                 <input
@@ -4152,14 +4152,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       color: event.target.value,
                                     })
                                   }
-                                  className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                  className="h-8 w-12 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                                 />
                               </div>
                             </div>
 
-                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] p-3">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-gray-700">
+                                <span className="text-xs font-semibold text-[#f7f7f8]">
                                   Outline
                                 </span>
                                 <ToggleSwitch
@@ -4189,7 +4189,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     }
                                   />
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-600">
+                                    <span className="text-xs font-semibold text-[#898a8b]">
                                       Outline color
                                     </span>
                                     <input
@@ -4201,16 +4201,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           outlineColor: event.target.value,
                                         })
                                       }
-                                      className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                      className="h-8 w-12 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                                     />
                                   </div>
                                 </div>
                               )}
                             </div>
 
-                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] p-3">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-gray-700">
+                                <span className="text-xs font-semibold text-[#f7f7f8]">
                                   Shadow
                                 </span>
                                 <ToggleSwitch
@@ -4254,7 +4254,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     }
                                   />
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-600">
+                                    <span className="text-xs font-semibold text-[#898a8b]">
                                       Shadow color
                                     </span>
                                     <input
@@ -4266,20 +4266,20 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           shadowColor: event.target.value,
                                         })
                                       }
-                                      className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                      className="h-8 w-12 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                                     />
                                   </div>
                                 </div>
                               )}
                             </div>
 
-                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] p-3">
                               <div className="flex items-center justify-between gap-4">
                                 <div>
-                                  <span className="text-xs font-semibold text-gray-700">
+                                  <span className="text-xs font-semibold text-[#f7f7f8]">
                                     Beat mode
                                   </span>
-                                  <p className="mt-0.5 text-[11px] text-gray-500">
+                                  <p className="mt-0.5 text-[11px] text-[#898a8b]">
                                     Defaults to 2-word beats with export-safe pop animation.
                                   </p>
                                 </div>
@@ -4434,7 +4434,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   />
 
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-600">
+                                    <span className="text-xs font-semibold text-[#898a8b]">
                                       Pop animation
                                     </span>
                                     <ToggleSwitch
@@ -4479,13 +4479,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               )}
                             </div>
 
-                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] p-3">
                               <div className="flex items-center justify-between gap-4">
                                 <div>
-                                  <span className="text-xs font-semibold text-gray-700">
+                                  <span className="text-xs font-semibold text-[#f7f7f8]">
                                     Word highlight
                                   </span>
-                                  <p className="mt-0.5 text-[11px] text-gray-500">
+                                  <p className="mt-0.5 text-[11px] text-[#898a8b]">
                                     Highlight spoken words in real-time for any font.
                                   </p>
                                 </div>
@@ -4504,7 +4504,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </div>
                               {subtitleStyleDraft.wordHighlightEnabled && (
                                 <div className="mt-3 flex items-center justify-between">
-                                  <span className="text-xs font-semibold text-gray-600">
+                                  <span className="text-xs font-semibold text-[#898a8b]">
                                     Highlight color
                                   </span>
                                   <input
@@ -4516,15 +4516,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                         wordHighlightColor: event.target.value,
                                       })
                                     }
-                                    className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                    className="h-8 w-12 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                                   />
                                 </div>
                               )}
                             </div>
 
-                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] p-3">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-gray-700">
+                                <span className="text-xs font-semibold text-[#f7f7f8]">
                                   Background
                                 </span>
                                 <ToggleSwitch
@@ -4546,8 +4546,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                                         subtitleStyleDraft.backgroundStyle ===
                                         "line-block-round"
-                                          ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                          ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                          : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                       }`}
                                       onClick={() =>
                                         updateSubtitleStyleDraft({
@@ -4563,8 +4563,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                                         subtitleStyleDraft.backgroundStyle ===
                                         "block-rounded"
-                                          ? "border-[#5B6CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                          ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                          : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                       }`}
                                       onClick={() =>
                                         updateSubtitleStyleDraft({
@@ -4577,7 +4577,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     </button>
                                   </div>
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-600">
+                                    <span className="text-xs font-semibold text-[#898a8b]">
                                       Background color
                                     </span>
                                     <input
@@ -4589,11 +4589,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           backgroundColor: event.target.value,
                                         })
                                       }
-                                      className="h-8 w-12 rounded-md border border-gray-200 bg-white"
+                                      className="h-8 w-12 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#898a8b]">
                                       TikTok colors
                                     </span>
                                     <div className="flex flex-wrap gap-2">
@@ -4603,8 +4603,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           type="button"
                                           className={`h-6 w-6 rounded-full border transition ${
                                             subtitleStyleDraft.backgroundColor.toLowerCase() === swatch.toLowerCase()
-                                              ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
-                                              : "border-gray-200"
+                                              ? "border-[#9aed00] ring-2 ring-[rgba(154,237,0,0.2)]"
+                                              : "border-[rgba(255,255,255,0.08)]"
                                           }`}
                                           style={{ backgroundColor: swatch }}
                                           onClick={() =>
@@ -4628,19 +4628,19 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     ) : (
                       <div className="flex-1 overflow-y-auto px-6 py-4">
                         <div className="space-y-4">
-                          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-                            <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                          <div className="overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                            <div className="flex items-center justify-between gap-3 border-b border-[rgba(255,255,255,0.06)] px-4 py-3">
                               <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                   Selected style
                                 </div>
-                                <div className="text-sm font-semibold text-gray-900">
+                                <div className="text-sm font-semibold text-[#f7f7f8]">
                                   {recentStylePreset?.name ?? "Style"}
                                 </div>
                               </div>
                               <button
                                 type="button"
-                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-50"
+                                className="rounded-lg border border-[rgba(255,255,255,0.08)] px-3 py-1.5 text-[11px] font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                                 onClick={() => {
                                   if (recentStylePreset) {
                                     openSubtitleStyleEditor(recentStylePreset);
@@ -4661,12 +4661,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </span>
                               </div>
                             </div>
-                            <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3">
+                            <div className="flex items-center justify-between gap-3 border-t border-[rgba(255,255,255,0.06)] px-4 py-3">
                               <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                   Beat mode
                                 </div>
-                                <div className="text-xs font-semibold text-gray-700">
+                                <div className="text-xs font-semibold text-[#f7f7f8]">
                                   {currentBeatMinWords}–{currentBeatMaxWords} words per beat
                                 </div>
                               </div>
@@ -4718,10 +4718,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   key={preset.id}
                                   role="button"
                                   tabIndex={0}
-                                  className={`group cursor-pointer overflow-hidden rounded-xl border text-left shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 ${
+                                  className={`group cursor-pointer overflow-hidden rounded-xl border text-left shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] ${
                                     isSelected
-                                      ? "border-[#5B6CFF] ring-1 ring-[#5B6CFF]/30"
-                                      : "border-gray-200 hover:border-gray-300"
+                                      ? "border-[#9aed00] ring-1 ring-[rgba(154,237,0,0.24)]"
+                                      : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.14)]"
                                   }`}
                                   onClick={() => handleSubtitleStyleSelect(preset)}
                                   onKeyDown={(event) =>
@@ -4739,14 +4739,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   <div className="flex items-center justify-between px-3 py-2">
                                     <span
                                       className={`text-sm font-medium ${
-                                        isSelected ? "text-[#5B6CFF]" : "text-gray-700"
+                                        isSelected ? "text-[#6a47ff]" : "text-[#f7f7f8]"
                                       }`}
                                     >
                                       {preset.name}
                                     </span>
                                     <button
                                       type="button"
-                                      className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-600 opacity-0 transition group-hover:opacity-100"
+                                      className="rounded-md bg-[rgba(255,255,255,0.05)] px-2 py-1 text-[11px] font-semibold text-[#898a8b] opacity-0 transition group-hover:opacity-100"
                                       onClick={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
@@ -4780,11 +4780,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           const isSelected = selectedClipId === segment.clipId;
                           const rowBaseClass = isDetached
                             ? "border-amber-200 bg-amber-50/50"
-                            : "border-gray-100 bg-white";
+                            : "border-[rgba(255,255,255,0.06)] bg-[#1a1c1e]";
                           const rowSelectedClass = isSelected
                             ? isDetached
-                              ? "border-[#5B6CFF] ring-2 ring-[#5B6CFF]/10"
-                              : "border-[#5B6CFF] bg-[#EEF2FF]/60 shadow-[0_12px_24px_rgba(91,108,255,0.12)]"
+                              ? "border-[#9aed00] ring-2 ring-[rgba(154,237,0,0.1)]"
+                              : "border-[#9aed00] bg-[rgba(154,237,0,0.1)]/60 shadow-[0_12px_24px_rgba(91,108,255,0.12)]"
                             : "";
                           const handlePreview = () => {
                             handleSubtitlePreview(segment);
@@ -4806,15 +4806,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   }
                                   onFocus={handlePreview}
                                   rows={2}
-                                  className="min-h-[52px] w-full resize-none rounded-lg border border-transparent bg-transparent text-sm font-medium text-gray-700 outline-none focus:border-[#5B6CFF] focus:bg-white"
+                                  className="min-h-[52px] w-full resize-none rounded-lg border border-transparent bg-transparent text-sm font-medium text-[#f7f7f8] outline-none focus:border-[#9aed00] focus:bg-[#1a1c1e]"
                                 />
                                 <div className="flex flex-col items-end gap-2">
                                   {showSubtitleTimings && clip && (
-                                    <div className="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50/70 p-2">
+                                    <div className="flex flex-col gap-2 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)]/70 p-2">
                                       <div className="flex items-center gap-2">
                                         <button
                                           type="button"
-                                          className="flex h-7 items-center gap-1 rounded-md bg-white px-2 text-[10px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                                          className="flex h-7 items-center gap-1 rounded-md bg-[#1a1c1e] px-2 text-[10px] font-semibold text-[#898a8b] shadow-sm transition hover:bg-[rgba(255,255,255,0.03)]"
                                           onClick={() =>
                                             handleSetStartAtPlayhead(clip)
                                           }
@@ -4843,13 +4843,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               event.target.value
                                             )
                                           }
-                                          className="h-7 w-24 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
+                                          className="h-7 w-24 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2 text-right text-[11px] font-semibold text-[#f7f7f8] shadow-sm"
                                         />
                                       </div>
                                       <div className="flex items-center gap-2">
                                         <button
                                           type="button"
-                                          className="flex h-7 items-center gap-1 rounded-md bg-white px-2 text-[10px] font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50"
+                                          className="flex h-7 items-center gap-1 rounded-md bg-[#1a1c1e] px-2 text-[10px] font-semibold text-[#898a8b] shadow-sm transition hover:bg-[rgba(255,255,255,0.03)]"
                                           onClick={() =>
                                             handleSetEndAtPlayhead(clip)
                                           }
@@ -4878,14 +4878,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               event.target.value
                                             )
                                           }
-                                          className="h-7 w-24 rounded-md border border-gray-200 bg-white px-2 text-right text-[11px] font-semibold text-gray-700 shadow-sm"
+                                          className="h-7 w-24 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2 text-right text-[11px] font-semibold text-[#f7f7f8] shadow-sm"
                                         />
                                       </div>
                                     </div>
                                   )}
                                   <button
                                     type="button"
-                                    className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-100 bg-white text-gray-400 shadow-sm transition hover:text-gray-600"
+                                    className="flex h-7 w-7 items-center justify-center rounded-md border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] text-[#5e636e] shadow-sm transition hover:text-[#898a8b]"
                                     onClick={(event) =>
                                       openSubtitleRowMenu(
                                         event,
@@ -4908,7 +4908,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                       <button
                         type="button"
-                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-100"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.05)]"
                         onClick={handleSubtitleAddLine}
                       >
                         <svg viewBox="0 0 16 16" className="h-4 w-4">
@@ -4937,11 +4937,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     top: `${subtitleRowMenu.y}px`,
                   }}
                 >
-                  <div className="w-48 rounded-xl border border-gray-100 bg-white p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]">
+                  <div className="w-48 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] p-2 shadow-[0_16px_30px_rgba(15,23,42,0.12)]">
                     <button
                       type="button"
                       data-testid="@editor/subtitles/subtitles-editor/row/options/delete"
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                       onClick={() => {
                         handleSubtitleDelete(activeSubtitleMenuSegment.id);
                         setSubtitleRowMenu((prev) => ({
@@ -4967,7 +4967,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     <button
                       type="button"
                       data-testid="@editor/subtitles/settings-cog/timings"
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                       onClick={() => {
                         setShowSubtitleTimings((prev) => !prev);
                         setSubtitleActiveTab("edit");
@@ -5000,14 +5000,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   onClick={() => setShiftTimingsOpen(false)}
                 >
                   <div
-                    className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.25)]"
+                    className="w-full max-w-sm rounded-2xl bg-[#1a1c1e] p-5 shadow-[0_24px_60px_rgba(15,23,42,0.25)]"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <h2 className="text-lg font-semibold text-gray-900">
+                    <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                       Shift all subtitles
                     </h2>
                     <div className="mt-4 space-y-2">
-                      <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                      <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                         Seconds
                       </label>
                       <input
@@ -5015,9 +5015,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         step="0.1"
                         value={shiftSeconds}
                         onChange={(event) => setShiftSeconds(event.target.value)}
-                        className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-800 shadow-sm focus:border-[#5B6CFF] focus:outline-none"
+                        className="h-10 w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 text-sm font-semibold text-[#f7f7f8] shadow-sm focus:border-[#9aed00] focus:outline-none"
                       />
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-[#898a8b]">
                         Enter a negative number to shift subtitles forward
                         (eg. -0.5).
                       </p>
@@ -5025,14 +5025,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     <div className="mt-5 flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        className="rounded-lg bg-[#5B6CFF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#4B5BEE]"
+                        className="rounded-lg bg-[#9aed00] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#4B5BEE]"
                         onClick={handleShiftSubmit}
                       >
                         Shift
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+                        className="rounded-lg border border-[rgba(255,255,255,0.08)] px-4 py-2 text-sm font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                         onClick={() => setShiftTimingsOpen(false)}
                       >
                         Cancel
@@ -5065,13 +5065,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       return (
                         <div key={group.id}>
                           <div className="mb-3 flex items-center justify-between">
-                            <h3 className="text-md font-semibold text-gray-900">
+                            <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                               {group.label}
                             </h3>
                             {canExpand && (
                               <button
                                 type="button"
-                                className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                                className="flex items-center gap-1 text-xs font-semibold text-[#898a8b] transition hover:text-[#f7f7f8]"
                                 onClick={() => {
                                   if (isExpanded) {
                                     setExpandedTextGroupId(null);
@@ -5106,7 +5106,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 className="h-full text-left"
                                 onClick={() => handleTextPresetSelect(preset)}
                               >
-                                <div className="flex h-full flex-col items-center justify-center gap-1 overflow-hidden rounded-[10px] bg-[#F7F7F8] px-3 text-center text-gray-900 transition hover:bg-[#EFF0F2] hover:text-gray-700">
+                                <div className="flex h-full flex-col items-center justify-center gap-1 overflow-hidden rounded-[10px] bg-[#252729] px-3 text-center text-[#f7f7f8] transition hover:bg-[#2f3133]">
                                   {preset.preview.map((line, lineIndex) => (
                                     <span
                                       key={`${preset.id}-${lineIndex}`}
@@ -5131,10 +5131,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 ) : (
                   <div className="space-y-6">
                     <div>
-                      <div className="rounded-lg border border-transparent bg-gray-50 p-4">
+                      <div className="rounded-lg border border-transparent bg-[rgba(255,255,255,0.03)] p-4">
                         <textarea
                           ref={textPanelTextAreaRef}
-                          className="w-full resize-none bg-transparent text-sm font-medium text-gray-900 focus-visible:outline-none"
+                          className="w-full resize-none bg-transparent text-sm font-medium text-[#f7f7f8] focus-visible:outline-none"
                           rows={4}
                           value={textPanelDraft}
                           onChange={(event) => {
@@ -5165,7 +5165,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-gray-700">
+                      <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                         Style
                       </h3>
                     </div>
@@ -5173,7 +5173,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1">
                           <select
-                            className="h-10 w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 focus:border-[#335CFF] focus:outline-none"
+                            className="h-10 w-full appearance-none rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
                             value={textPanelFontFamily}
                             onChange={(event) => {
                               const value = event.target.value;
@@ -5200,7 +5200,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </select>
                           <svg
                             viewBox="0 0 16 16"
-                            className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400"
+                            className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#5e636e]"
                           >
                             <path
                               d="m4 6 4 4 4-4"
@@ -5214,7 +5214,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                         <div className="relative w-24">
                           <select
-                            className="h-10 w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 focus:border-[#335CFF] focus:outline-none"
+                            className="h-10 w-full appearance-none rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
                             value={textFontSizeDisplay}
                             onChange={(event) => {
                               const value = Number(event.target.value);
@@ -5239,7 +5239,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </select>
                           <svg
                             viewBox="0 0 16 16"
-                            className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400"
+                            className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#5e636e]"
                           >
                             <path
                               d="m4 6 4 4 4-4"
@@ -5253,13 +5253,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+                        <div className="flex items-center gap-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 shadow-sm">
                           <button
                             type="button"
                             aria-pressed={textPanelBold}
-                            className={`flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition ${textPanelBold
-                              ? "bg-[#EEF2FF] text-[#335CFF]"
-                              : "hover:bg-gray-50"
+                            className={`flex h-8 w-8 items-center justify-center rounded-md text-[#898a8b] transition ${textPanelBold
+                              ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                              : "hover:bg-[rgba(255,255,255,0.03)]"
                               }`}
                             onClick={() => {
                               setTextPanelBold((prev: boolean) => {
@@ -5291,9 +5291,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <button
                             type="button"
                             aria-pressed={textPanelItalic}
-                            className={`flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition ${textPanelItalic
-                              ? "bg-[#EEF2FF] text-[#335CFF]"
-                              : "hover:bg-gray-50"
+                            className={`flex h-8 w-8 items-center justify-center rounded-md text-[#898a8b] transition ${textPanelItalic
+                              ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                              : "hover:bg-[rgba(255,255,255,0.03)]"
                               }`}
                             onClick={() => {
                               setTextPanelItalic((prev: boolean) => {
@@ -5322,13 +5322,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </svg>
                           </button>
                         </div>
-                        <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+                        <div className="flex items-center gap-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 shadow-sm">
                           <button
                             type="button"
                             aria-pressed={textPanelAlign === "left"}
-                            className={`flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition ${textPanelAlign === "left"
-                              ? "bg-[#EEF2FF] text-[#335CFF]"
-                              : "hover:bg-gray-50"
+                            className={`flex h-8 w-8 items-center justify-center rounded-md text-[#898a8b] transition ${textPanelAlign === "left"
+                              ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                              : "hover:bg-[rgba(255,255,255,0.03)]"
                               }`}
                             onClick={() => {
                               setTextPanelAlign("left");
@@ -5357,9 +5357,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <button
                             type="button"
                             aria-pressed={textPanelAlign === "center"}
-                            className={`flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition ${textPanelAlign === "center"
-                              ? "bg-[#EEF2FF] text-[#335CFF]"
-                              : "hover:bg-gray-50"
+                            className={`flex h-8 w-8 items-center justify-center rounded-md text-[#898a8b] transition ${textPanelAlign === "center"
+                              ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                              : "hover:bg-[rgba(255,255,255,0.03)]"
                               }`}
                             onClick={() => {
                               setTextPanelAlign("center");
@@ -5388,9 +5388,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <button
                             type="button"
                             aria-pressed={textPanelAlign === "right"}
-                            className={`flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition ${textPanelAlign === "right"
-                              ? "bg-[#EEF2FF] text-[#335CFF]"
-                              : "hover:bg-gray-50"
+                            className={`flex h-8 w-8 items-center justify-center rounded-md text-[#898a8b] transition ${textPanelAlign === "right"
+                              ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                              : "hover:bg-[rgba(255,255,255,0.03)]"
                               }`}
                             onClick={() => {
                               setTextPanelAlign("right");
@@ -5419,7 +5419,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                         <button
                           type="button"
-                          className="ml-auto flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                          className="ml-auto flex items-center gap-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2.5 py-2 text-xs font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                           aria-expanded={textPanelSpacingOpen}
                           onClick={() =>
                             setTextPanelSpacingOpen((prev: boolean) => !prev)
@@ -5448,13 +5448,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </button>
                       </div>
                       {textPanelSpacingOpen && (
-                        <div className="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600 shadow-sm">
+                        <div className="grid grid-cols-2 gap-2 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 text-xs text-[#898a8b] shadow-sm">
                           <label className="flex flex-col gap-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                               Letter Spacing
                             </span>
                             <select
-                              className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs font-semibold text-gray-700 focus:border-[#335CFF] focus:outline-none"
+                              className="h-8 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
                               value={textPanelLetterSpacing}
                               onChange={(event) => {
                                 const value = Number(event.target.value);
@@ -5478,11 +5478,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </select>
                           </label>
                           <label className="flex flex-col gap-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                               Line Height
                             </span>
                             <select
-                              className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs font-semibold text-gray-700 focus:border-[#335CFF] focus:outline-none"
+                              className="h-8 rounded-md border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-2 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
                               value={textPanelLineHeight}
                               onChange={(event) => {
                                 const value = Number(event.target.value);
@@ -5509,7 +5509,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       )}
                     </div>
 
-                    <div className="rounded-2xl border border-gray-200/70 bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                       <button
                         type="button"
                         className="flex w-full items-center justify-between text-left"
@@ -5518,7 +5518,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         }
                         aria-expanded={textPanelStylesOpen}
                       >
-                        <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                        <span className="flex items-center gap-2 text-sm font-semibold text-[#f7f7f8]">
                           <svg viewBox="0 0 16 16" className="h-4 w-4">
                             <path
                               d="M8 2.91V1M2.91 8H1m2.95-4.05-.9-.9m9 .9.9-.9M8 15v-1.91M15 8h-1.91m-.14 4.95-.9-.9m-9 .9.9-.9M11.182 8a3.182 3.182 0 1 1-6.364 0 3.182 3.182 0 0 1 6.364 0"
@@ -5533,7 +5533,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </span>
                         <svg
                           viewBox="0 0 16 16"
-                          className={`h-4 w-4 text-gray-400 transition ${textPanelStylesOpen ? "rotate-180" : ""}`}
+                          className={`h-4 w-4 text-[#5e636e] transition ${textPanelStylesOpen ? "rotate-180" : ""}`}
                         >
                           <path
                             d="m4 6 4 4 4-4"
@@ -5548,7 +5548,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       {textPanelStylesOpen && (
                         <div className="mt-4 space-y-6">
                           <div>
-                            <h3 className="text-md font-semibold text-gray-900">
+                            <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                               Presets
                             </h3>
                             <div className="mt-3 grid grid-cols-3 gap-3 auto-rows-[96px]">
@@ -5640,8 +5640,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     aria-pressed={isActive}
                                   >
                                     <div
-                                      className={`group relative flex h-full flex-col items-center justify-center overflow-hidden rounded-[14px] border border-[#EEF1F6] bg-white text-gray-900 shadow-[0_14px_30px_rgba(15,23,42,0.08)] transition hover:border-[#E2E8F0] hover:shadow-[0_18px_36px_rgba(15,23,42,0.12)] hover:text-gray-700 ${isActive
-                                        ? "ring-2 ring-[#5B6CFF]/30"
+                                      className={`group relative flex h-full flex-col items-center justify-center overflow-hidden rounded-[14px] border border-[rgba(255,255,255,0.08)] bg-[#252729] text-[#f7f7f8] shadow-[0_14px_30px_rgba(0,0,0,0.35)] transition hover:border-[rgba(255,255,255,0.14)] hover:shadow-[0_18px_36px_rgba(0,0,0,0.4)] ${isActive
+                                        ? "ring-2 ring-[#6a47ff]"
                                         : ""
                                         }`}
                                     >
@@ -5712,15 +5712,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </div>
                           </div>
                           <div>
-                            <h3 className="text-md font-semibold text-gray-900">
+                            <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                               Customize
                             </h3>
                             <div className="mt-3 space-y-4">
-                              <div className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-white px-3 py-2.5 shadow-sm">
-                                <span className="text-xs font-semibold text-gray-600">
+                              <div className="flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-3 py-2.5 shadow-sm">
+                                <span className="text-xs font-semibold text-[#898a8b]">
                                   Text Color
                                 </span>
-                                <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                <label className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-sm">
                                   <input
                                     type="color"
                                     aria-label="Text color"
@@ -5739,18 +5739,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                         );
                                       }
                                     }}
-                                    className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                    className="h-5 w-5 cursor-pointer rounded-full border border-[rgba(255,255,255,0.08)]"
                                   />
                                 </label>
                               </div>
 
-                              <div className="rounded-xl border border-gray-200/70 bg-white px-3 py-3 shadow-sm">
+                              <div className="rounded-xl border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-3 py-3 shadow-sm">
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <div className="text-xs font-semibold text-gray-600">
+                                    <div className="text-xs font-semibold text-[#898a8b]">
                                       Background
                                     </div>
-                                    <div className="text-[10px] text-gray-400">
+                                    <div className="text-[10px] text-[#5e636e]">
                                       Highlight blocks behind text
                                     </div>
                                   </div>
@@ -5802,8 +5802,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       }}
                                       className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle ===
                                         "line-block-hard"
-                                        ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                        ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                        : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                         }`}
                                     >
                                       <svg
@@ -5843,8 +5843,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       }}
                                       className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle ===
                                         "line-block-round"
-                                        ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                        ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                        : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                         }`}
                                     >
                                       <svg
@@ -5880,8 +5880,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                         }
                                       }}
                                       className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle === "block"
-                                        ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                        ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                        : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                         }`}
                                     >
                                       <svg
@@ -5921,8 +5921,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       }}
                                       className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${textPanelBackgroundStyle ===
                                         "block-rounded"
-                                        ? "border-[#335CFF] bg-[#EEF2FF] text-[#335CFF]"
-                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                        ? "border-[#6a47ff] bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                                        : "border-[rgba(255,255,255,0.08)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.03)]"
                                         }`}
                                     >
                                       <svg
@@ -5940,7 +5940,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       </svg>
                                     </button>
                                   </div>
-                                  <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                  <label className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-sm">
                                     <input
                                       type="color"
                                       aria-label="Background color"
@@ -5959,12 +5959,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           );
                                         }
                                       }}
-                                      className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                      className="h-5 w-5 cursor-pointer rounded-full border border-[rgba(255,255,255,0.08)]"
                                     />
                                   </label>
                                 </div>
                                 <div className="mt-3">
-                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#898a8b]">
                                     TikTok background colors
                                   </div>
                                   <div className="mt-2 flex flex-wrap gap-2">
@@ -5974,8 +5974,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                         type="button"
                                         className={`h-6 w-6 rounded-full border transition ${
                                           textPanelBackgroundColor.toLowerCase() === swatch.toLowerCase()
-                                            ? "border-[#335CFF] ring-2 ring-[#335CFF]/20"
-                                            : "border-gray-200"
+                                            ? "border-[#9aed00] ring-2 ring-[rgba(154,237,0,0.2)]"
+                                            : "border-[rgba(255,255,255,0.08)]"
                                         }`}
                                         style={{ backgroundColor: swatch }}
                                         onClick={() => {
@@ -5998,13 +5998,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </div>
                               </div>
 
-                              <div className="rounded-xl border border-gray-200/70 bg-white px-3 py-3 shadow-sm">
+                              <div className="rounded-xl border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-3 py-3 shadow-sm">
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <div className="text-xs font-semibold text-gray-600">
+                                    <div className="text-xs font-semibold text-[#898a8b]">
                                       Text Outline
                                     </div>
-                                    <div className="text-[10px] text-gray-400">
+                                    <div className="text-[10px] text-[#5e636e]">
                                       Add stroke for contrast
                                     </div>
                                   </div>
@@ -6037,7 +6037,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     width="14"
                                     height="13"
                                     fill="none"
-                                    className="text-gray-500"
+                                    className="text-[#898a8b]"
                                   >
                                     <path
                                       fill="currentColor"
@@ -6045,9 +6045,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     />
                                   </svg>
                                   <div className="relative flex-1">
-                                    <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+                                    <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.08)]/80" />
                                     <div
-                                      className="pointer-events-none absolute left-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                                      className="pointer-events-none absolute left-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[#9aed00]"
                                       style={{
                                         width: `${(textPanelOutlineWidth / 20) * 100}%`,
                                       }}
@@ -6083,7 +6083,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     width="16"
                                     height="16"
                                     fill="none"
-                                    className="text-gray-500"
+                                    className="text-[#898a8b]"
                                   >
                                     <path
                                       fill="currentColor"
@@ -6093,9 +6093,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   <input
                                     readOnly
                                     value={textPanelOutlineWidth}
-                                    className="h-7 w-12 rounded-lg border border-transparent bg-gray-50 px-2 text-right text-xs font-semibold text-gray-600"
+                                    className="h-7 w-12 rounded-lg border border-transparent bg-[rgba(255,255,255,0.03)] px-2 text-right text-xs font-semibold text-[#898a8b]"
                                   />
-                                  <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                  <label className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-sm">
                                     <input
                                       type="color"
                                       aria-label="Outline color"
@@ -6114,19 +6114,19 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           );
                                         }
                                       }}
-                                      className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                      className="h-5 w-5 cursor-pointer rounded-full border border-[rgba(255,255,255,0.08)]"
                                     />
                                   </label>
                                 </div>
                               </div>
 
-                              <div className="rounded-xl border border-gray-200/70 bg-white px-3 py-3 shadow-sm">
+                              <div className="rounded-xl border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-3 py-3 shadow-sm">
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <div className="text-xs font-semibold text-gray-600">
+                                    <div className="text-xs font-semibold text-[#898a8b]">
                                       Text Shadow
                                     </div>
-                                    <div className="text-[10px] text-gray-400">
+                                    <div className="text-[10px] text-[#5e636e]">
                                       Soft depth for readability
                                     </div>
                                   </div>
@@ -6162,15 +6162,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     width="13"
                                     height="13"
                                     fill="none"
-                                    className="text-gray-500"
+                                    className="text-[#898a8b]"
                                   >
                                     <circle cx="6" cy="7" r="6" fill="currentColor" />
                                     <circle cx="7" cy="6" r="5.5" fill="#fff" stroke="currentColor" />
                                   </svg>
                                   <div className="relative flex-1">
-                                    <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+                                    <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.08)]/80" />
                                     <div
-                                      className="pointer-events-none absolute left-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+                                      className="pointer-events-none absolute left-0 top-1/2 h-[4px] -translate-y-1/2 rounded-full bg-[#9aed00]"
                                       style={{
                                         width: `${(textPanelShadowBlur / 30) * 100}%`,
                                       }}
@@ -6206,7 +6206,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     width="16"
                                     height="16"
                                     fill="none"
-                                    className="text-gray-500"
+                                    className="text-[#898a8b]"
                                   >
                                     <circle cx="6" cy="10" r="5.5" fill="#fff" stroke="currentColor" />
                                     <path
@@ -6223,7 +6223,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                         (prev: boolean) => !prev
                                       )
                                     }
-                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50"
+                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                                   >
                                     <svg
                                       xmlns="http://www.w3.org/2000/svg"
@@ -6239,7 +6239,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       />
                                     </svg>
                                   </button>
-                                  <label className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                                  <label className="flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-sm">
                                     <input
                                       type="color"
                                       aria-label="Shadow color"
@@ -6258,7 +6258,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           );
                                         }
                                       }}
-                                      className="h-5 w-5 cursor-pointer rounded-full border border-gray-200"
+                                      className="h-5 w-5 cursor-pointer rounded-full border border-[rgba(255,255,255,0.08)]"
                                     />
                                   </label>
                                 </div>
@@ -6295,15 +6295,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       )}
                     </div>
 
-                    <div className="rounded-xl border border-gray-200/70 bg-white p-3">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                    <div className="rounded-xl border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] p-3">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                         Timing
                       </span>
                       <div className="mt-3 space-y-3">
                         <div className="flex items-center gap-3">
                           <button
                             type="button"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
                             aria-label="Set start time"
                             onClick={() => {
                               if (!selectedTextEntry) {
@@ -6324,7 +6324,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </svg>
                           </button>
                           <div className="flex flex-1 flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                               Start
                             </span>
                             <input
@@ -6340,13 +6340,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   );
                                 }
                               }}
-                              className="rounded-lg border border-gray-200/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
+                              className="rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-2.5 py-1.5 text-xs font-semibold text-[#f7f7f8]"
                             />
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="flex flex-1 flex-col">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e636e]">
                               End
                             </span>
                             <input
@@ -6362,12 +6362,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   );
                                 }
                               }}
-                              className="rounded-lg border border-gray-200/70 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
+                              className="rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] px-2.5 py-1.5 text-xs font-semibold text-[#f7f7f8]"
                             />
                           </div>
                           <button
                             type="button"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200/70 bg-white text-gray-500 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)]/70 bg-[#1a1c1e] text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
                             aria-label="Set end time"
                             onClick={() => {
                               if (!selectedTextEntry) {
@@ -6393,7 +6393,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
                     <button
                       type="button"
-                      className="flex w-full items-center justify-center rounded-xl border border-red-200/80 bg-white px-4 py-3 text-sm font-semibold text-red-600 shadow-[0_6px_16px_rgba(239,68,68,0.12)] transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2"
+                      className="flex w-full items-center justify-center rounded-xl border border-[rgba(231,41,48,0.3)]/80 bg-[#1a1c1e] px-4 py-3 text-sm font-semibold text-[#e72930] shadow-[0_6px_16px_rgba(239,68,68,0.12)] transition hover:bg-[rgba(231,41,48,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(231,41,48,0.4)] focus-visible:ring-offset-2"
                       onClick={() => {
                         handleDeleteSelected();
                         setTextPanelPreset(null);
@@ -6404,7 +6404,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </button>
                     <button
                       type="button"
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#EEF2FF] px-3 py-2.5 text-sm font-semibold text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[rgba(106,71,255,0.12)] px-3 py-2.5 text-sm font-semibold text-[#6a47ff] transition hover:bg-[rgba(106,71,255,0.2)]"
                       onClick={() => {
                         const nextSettings: TextClipSettings = {
                           text: "New Text",
@@ -6448,15 +6448,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 )
               ) : ["video", "audio", "image"].includes(activeTool) ? (
                 <>
-                  <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-gray-900">
+                        <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                           Asset Library
                         </h3>
                         <button
                           type="button"
-                          className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EEF2FF] text-[#335CFF]"
+                          className="flex h-6 w-6 items-center justify-center rounded-md bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
                           onClick={handleUploadClick}
                           aria-label="Upload media"
                         >
@@ -6473,7 +6473,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </button>
                       </div>
                       <button
-                        className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                        className="flex items-center gap-1 text-xs font-semibold text-[#898a8b] transition hover:text-[#f7f7f8]"
                         type="button"
                         onClick={() => {
                           setIsStockVideoExpanded(false);
@@ -6499,8 +6499,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           key={filter}
                           type="button"
                           className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${assetFilter === filter
-                            ? "bg-[#EEF2FF] text-[#335CFF]"
-                            : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                            ? "bg-[rgba(106,71,255,0.12)] text-[#6a47ff]"
+                            : "bg-[rgba(255,255,255,0.03)] text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)]"
                             }`}
                           onClick={() => setAssetFilter(filter)}
                         >
@@ -6509,7 +6509,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       ))}
                     </div>
                     {filteredAssets.length === 0 ? (
-                      <div className="mt-6 rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                      <div className="mt-6 rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                         Upload media to build your library.
                       </div>
                     ) : (
@@ -6522,8 +6522,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             <button
                               type="button"
                               className={`relative h-24 w-full overflow-hidden rounded-2xl border transition ${asset.id === activeAssetId
-                                ? "border-[#335CFF] shadow-[0_10px_22px_rgba(51,92,255,0.2)]"
-                                : "border-gray-200 hover:border-gray-300"
+                                ? "border-[#9aed00] shadow-[0_10px_22px_rgba(154,237,0,0.2)]"
+                                : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.14)]"
                                 }`}
                               onClick={() => addToTimeline(asset.id)}
                               draggable
@@ -6547,7 +6547,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 />
                               )}
                               {asset.kind === "audio" && (
-                              <div className="flex h-full w-full items-center justify-center bg-[#EEF2FF] text-[#335CFF]">
+                              <div className="flex h-full w-full items-center justify-center bg-[rgba(106,71,255,0.12)] text-[#6a47ff]">
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
                                   width="24"
@@ -6641,7 +6641,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             </button>
                             <button
                               type="button"
-                              className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-gray-500 opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-white hover:text-gray-700"
+                              className="pointer-events-none absolute right-2 top-2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#1a1c1e]/90 text-[#898a8b] opacity-0 shadow-sm transition group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-[#1a1c1e] hover:text-[#f7f7f8]"
                               onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
@@ -6660,8 +6660,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 />
                               </svg>
                             </button>
-                            <div className="flex items-center justify-between text-[11px] text-gray-500">
-                              <span className="truncate font-medium text-gray-700">
+                            <div className="flex items-center justify-between text-[11px] text-[#898a8b]">
+                              <span className="truncate font-medium text-[#f7f7f8]">
                                 {asset.name}
                               </span>
                               <span>{formatSize(asset.size)}</span>
@@ -6674,15 +6674,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
 
                   {activeTool === "audio" && (
                     <div className="space-y-6">
-                      <div className="flex flex-col rounded-2xl border border-gray-100 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
-                        <div className="rounded-t-2xl border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
+                      <div className="flex flex-col rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
+                        <div className="rounded-t-2xl border-b border-[rgba(255,255,255,0.04)] bg-[#1a1c1e] px-6 py-6 transition-shadow duration-200">
                           <div className="flex flex-col gap-6">
                             <div className="flex items-center gap-2">
-                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EEF2FF]">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(154,237,0,0.1)]">
                                 <svg viewBox="0 0 24 24" className="h-4 w-4">
                                   <path
                                     d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                                    fill="#335CFF"
+                                    fill="#9aed00"
                                   />
                                   <path
                                     fill="url(#sound_fx_header_b)"
@@ -6708,13 +6708,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   </defs>
                                 </svg>
                               </div>
-                              <h2 className="text-lg font-semibold text-gray-900">
+                              <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                                 Sound Effects
                               </h2>
                             </div>
                             <div className="flex w-full flex-col gap-2">
                               <div className="relative">
-                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5e636e]">
                                   <svg viewBox="0 0 16 16" className="h-4 w-4">
                                     <path
                                       d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
@@ -6727,7 +6727,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   </svg>
                                 </span>
                                 <input
-                                  className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                                  className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] pl-9 pr-3 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                                   placeholder="Search..."
                                   value={soundFxSearch}
                                   onChange={(event) =>
@@ -6740,8 +6740,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               <button
                                 type="button"
                                 className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${soundFxCategory === "All"
-                                  ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                                  : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                  ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                  : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                                   }`}
                                 onClick={() => setSoundFxCategory("All")}
                               >
@@ -6752,8 +6752,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   key={category}
                                   type="button"
                                   className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${soundFxCategory === category
-                                    ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                                    : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                    ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                    : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                                     }`}
                                   onClick={() => setSoundFxCategory(category)}
                                 >
@@ -6763,7 +6763,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               {hasMoreSoundFxTags && (
                                 <button
                                   type="button"
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(106,71,255,0.12)] text-[#6a47ff] transition hover:bg-[rgba(106,71,255,0.2)]"
                                   onClick={() =>
                                     setShowAllSoundFxTags((prev: boolean) => !prev)
                                   }
@@ -6786,7 +6786,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                         <div className="px-6 pb-6 pt-5">
                           {!hasSupabase ? (
-                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                            <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                               Connect Supabase to load sound effects.
                             </div>
                           ) : soundFxStatus === "loading" ||
@@ -6795,23 +6795,23 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               {Array.from({ length: 4 }).map((_, index) => (
                                 <div
                                   key={`sound-fx-skeleton-${index}`}
-                                  className="h-16 rounded-2xl bg-gray-100/80 animate-pulse"
+                                  className="h-16 rounded-2xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                                 />
                               ))}
                             </div>
                           ) : soundFxStatus === "error" ? (
-                            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                            <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                               <p>{soundFxError ?? "Unable to load sound effects."}</p>
                               <button
                                 type="button"
-                                className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                                className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                                 onClick={handleSoundFxRetry}
                               >
                                 Retry
                               </button>
                             </div>
                           ) : groupedSoundFx.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                            <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                               {soundFxSearch.trim()
                                 ? "No tracks match your search."
                                 : soundFxRootPrefix
@@ -6823,11 +6823,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               {groupedSoundFx.map(
                                 (group: { category: string; tracks: StockAudioTrack[] }) => (
                                 <div key={group.category} className="space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-semibold text-gray-900">
-                                      {group.category}
-                                    </h3>
-                                  </div>
+                                  {groupedSoundFx.length > 1 && (
+                                    <div className="flex items-center justify-between">
+                                      <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
+                                        {group.category}
+                                      </h3>
+                                    </div>
+                                  )}
                                   <div className="space-y-3">
                                     {group.tracks.map((track) => {
                                       const isActive =
@@ -6841,7 +6843,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       return (
                                         <div
                                           key={track.id}
-                                          className="group flex cursor-grab items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:cursor-grabbing"
+                                          className="group flex cursor-grab items-center justify-between rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[rgba(255,255,255,0.14)] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:cursor-grabbing"
                                           onMouseEnter={() =>
                                             requestStockAudioDuration(track)
                                           }
@@ -6853,8 +6855,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           <div className="flex min-w-0 flex-1 items-center gap-3">
                                             <button
                                               type="button"
-                                              className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-white text-[#335CFF] shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition ${isPlaying
-                                                ? "ring-2 ring-[#335CFF]/30"
+                                              className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[#1a1c1e] text-[#6a47ff] shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px] transition ${isPlaying
+                                                ? "ring-2 ring-[rgba(106,71,255,0.4)]"
                                                 : "hover:shadow-[0_10px_18px_rgba(15,23,42,0.16)]"
                                                 }`}
                                               onClick={() =>
@@ -6870,13 +6872,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               }
                                             >
                                               <span
-                                                className={`absolute inset-0 rounded-full bg-gradient-to-br from-white via-[#E0E7FF] to-[#C7D2FE] transition ${isPlaying ? "opacity-100" : "opacity-80"
+                                                className={`absolute inset-0 rounded-full bg-gradient-to-br from-[#6a47ff] via-[#5c24f7] to-[#4f18e3] transition ${isPlaying ? "opacity-100" : "opacity-80"
                                                   }`}
                                               />
                                               <span
                                                 className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition ${isPlaying
-                                                  ? "bg-[#335CFF] text-white"
-                                                  : "bg-white text-gray-700"
+                                                  ? "bg-[#9aed00] text-white"
+                                                  : "bg-[#1a1c1e] text-[#f7f7f8]"
                                                   }`}
                                               >
                                                 {isPlaying ? (
@@ -6897,17 +6899,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               </span>
                                             </button>
                                             <div className="min-w-0 flex-1">
-                                              <div className="truncate text-sm font-semibold text-gray-900">
+                                              <div className="truncate text-sm font-semibold text-[#f7f7f8]">
                                                 {track.name}
                                               </div>
-                                              <div className="text-xs font-medium text-gray-400">
+                                              <div className="text-xs font-medium text-[#5e636e]">
                                                 {durationLabel}
                                               </div>
                                             </div>
                                           </div>
                                           <button
                                             type="button"
-                                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#335CFF] text-white shadow-[0_8px_18px_rgba(51,92,255,0.25)] transition hover:bg-[#2E52E6]"
+                                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6a47ff] text-white shadow-[0_8px_18px_rgba(106,71,255,0.25)] transition hover:bg-[#5c24f7]"
                                             onClick={() =>
                                               handleAddStockAudio(track)
                                             }
@@ -6935,15 +6937,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       </div>
 
-                      <div className="flex flex-col rounded-2xl border border-gray-100 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
-                        <div className="rounded-t-2xl border-b border-gray-50 bg-white px-6 py-6 transition-shadow duration-200">
+                      <div className="flex flex-col rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] shadow-[0_12px_26px_rgba(15,23,42,0.08)]">
+                        <div className="rounded-t-2xl border-b border-[rgba(255,255,255,0.04)] bg-[#1a1c1e] px-6 py-6 transition-shadow duration-200">
                           <div className="flex flex-col gap-6">
                             <div className="flex items-center gap-2">
-                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EEF2FF]">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(154,237,0,0.1)]">
                                 <svg viewBox="0 0 24 24" className="h-4 w-4">
                                   <path
                                     d="M0 9.6c0-3.36 0-5.04.654-6.324A6 6 0 0 1 3.276.654C4.56 0 6.24 0 9.6 0h4.8c3.36 0 5.04 0 6.324.654a6 6 0 0 1 2.622 2.622C24 4.56 24 6.24 24 9.6v4.8c0 3.36 0 5.04-.654 6.324a6 6 0 0 1-2.622 2.622C19.44 24 17.76 24 14.4 24H9.6c-3.36 0-5.04 0-6.324-.654a6 6 0 0 1-2.622-2.622C0 19.44 0 17.76 0 14.4z"
-                                    fill="#335CFF"
+                                    fill="#9aed00"
                                   />
                                   <path
                                     fill="url(#audio_header_b)"
@@ -6969,13 +6971,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   </defs>
                                 </svg>
                               </div>
-                              <h2 className="text-lg font-semibold text-gray-900">
+                              <h2 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                                 Stock Music
                               </h2>
                             </div>
                             <div className="flex w-full flex-col gap-2">
                               <div className="relative">
-                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5e636e]">
                                   <svg viewBox="0 0 16 16" className="h-4 w-4">
                                     <path
                                       d="m14 14-2.9-2.9m1.567-3.767A5.333 5.333 0 1 1 2 7.333a5.333 5.333 0 0 1 10.667 0"
@@ -6988,7 +6990,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   </svg>
                                 </span>
                                 <input
-                                  className="h-10 w-full rounded-lg border border-gray-100 bg-white pl-9 pr-3 text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:border-[#335CFF] focus:outline-none"
+                                  className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] pl-9 pr-3 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                                   placeholder="Search..."
                                   value={stockSearch}
                                   onChange={(event) =>
@@ -7001,8 +7003,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               <button
                                 type="button"
                                 className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === "All"
-                                  ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                                  : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                  ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                  : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                                   }`}
                                 onClick={() => setStockCategory("All")}
                               >
@@ -7013,8 +7015,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   key={category}
                                   type="button"
                                   className={`inline-flex h-8 items-center rounded-full px-3 text-sm font-semibold transition ${stockCategory === category
-                                    ? "bg-[#335CFF] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
-                                    : "bg-[#EEF2FF] text-[#335CFF] hover:bg-[#E0E7FF]"
+                                    ? "bg-[#9aed00] text-white shadow-[0_6px_16px_rgba(51,92,255,0.25)]"
+                                    : "bg-[rgba(106,71,255,0.12)] text-[#6a47ff] hover:bg-[rgba(106,71,255,0.2)]"
                                     }`}
                                   onClick={() => setStockCategory(category)}
                                 >
@@ -7024,7 +7026,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               {hasMoreStockTags && (
                                 <button
                                   type="button"
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2FF] text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(106,71,255,0.12)] text-[#6a47ff] transition hover:bg-[rgba(106,71,255,0.2)]"
                                   onClick={() =>
                                     setShowAllStockTags((prev: boolean) => !prev)
                                   }
@@ -7047,7 +7049,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                         <div className="px-6 pb-6 pt-5">
                           {!hasSupabase ? (
-                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                            <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                               Connect Supabase to load stock music.
                             </div>
                           ) : stockMusicStatus === "loading" ||
@@ -7056,23 +7058,23 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               {Array.from({ length: 4 }).map((_, index) => (
                                 <div
                                   key={`stock-skeleton-${index}`}
-                                  className="h-16 rounded-2xl bg-gray-100/80 animate-pulse"
+                                  className="h-16 rounded-2xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                                 />
                               ))}
                             </div>
                           ) : stockMusicStatus === "error" ? (
-                            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                            <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                               <p>{stockMusicError ?? "Unable to load stock music."}</p>
                               <button
                                 type="button"
-                                className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                                className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                                 onClick={handleStockMusicRetry}
                               >
                                 Retry
                               </button>
                             </div>
                           ) : groupedStockMusic.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                            <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                               {stockSearch.trim()
                                 ? "No tracks match your search."
                                 : stockMusicRootPrefix
@@ -7085,7 +7087,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 (group: { category: string; tracks: StockAudioTrack[] }) => (
                                 <div key={group.category} className="space-y-3">
                                   <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-semibold text-gray-900">
+                                    <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                                       {group.category}
                                     </h3>
                                   </div>
@@ -7102,7 +7104,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       return (
                                         <div
                                           key={track.id}
-                                          className="group flex cursor-grab items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[#DDE3FF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:cursor-grabbing"
+                                          className="group flex cursor-grab items-center justify-between rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition hover:border-[rgba(255,255,255,0.14)] hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:cursor-grabbing"
                                           onMouseEnter={() =>
                                             requestStockAudioDuration(track)
                                           }
@@ -7114,8 +7116,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           <div className="flex min-w-0 flex-1 items-center gap-3">
                                             <button
                                               type="button"
-                                              className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-white text-[#335CFF] shadow-[0_8px_16px_rgba(15,23,42,0.12)] transition ${isPlaying
-                                                ? "ring-2 ring-[#335CFF]/30"
+                                              className={`relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[#1a1c1e] text-[#6a47ff] shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px] transition ${isPlaying
+                                                ? "ring-2 ring-[rgba(106,71,255,0.4)]"
                                                 : "hover:shadow-[0_10px_18px_rgba(15,23,42,0.16)]"
                                                 }`}
                                               onClick={() =>
@@ -7131,13 +7133,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               }
                                             >
                                               <span
-                                                className={`absolute inset-0 rounded-full bg-gradient-to-br from-white via-[#E0E7FF] to-[#C7D2FE] transition ${isPlaying ? "opacity-100" : "opacity-80"
+                                                className={`absolute inset-0 rounded-full bg-gradient-to-br from-[#6a47ff] via-[#5c24f7] to-[#4f18e3] transition ${isPlaying ? "opacity-100" : "opacity-80"
                                                   }`}
                                               />
                                               <span
                                                 className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition ${isPlaying
-                                                  ? "bg-[#335CFF] text-white"
-                                                  : "bg-white text-gray-700"
+                                                  ? "bg-[#9aed00] text-white"
+                                                  : "bg-[#1a1c1e] text-[#f7f7f8]"
                                                   }`}
                                               >
                                                 {isPlaying ? (
@@ -7158,17 +7160,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                               </span>
                                             </button>
                                             <div className="min-w-0 flex-1">
-                                              <div className="truncate text-sm font-semibold text-gray-900">
+                                              <div className="truncate text-sm font-semibold text-[#f7f7f8]">
                                                 {track.name}
                                               </div>
-                                              <div className="text-xs font-medium text-gray-400">
+                                              <div className="text-xs font-medium text-[#5e636e]">
                                                 {durationLabel}
                                               </div>
                                             </div>
                                           </div>
                                           <button
                                             type="button"
-                                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#335CFF] text-white shadow-[0_8px_18px_rgba(51,92,255,0.25)] transition hover:bg-[#2E52E6]"
+                                            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6a47ff] text-white shadow-[0_8px_18px_rgba(106,71,255,0.25)] transition hover:bg-[#5c24f7]"
                                             onClick={() =>
                                               handleAddStockAudio(track)
                                             }
@@ -7199,16 +7201,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   )}
 
                   {activeTool === "image" && (
-                    <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <GiphyLogo className="h-4 w-auto" />
-                          <h3 className="text-sm font-semibold text-gray-900">
+                          <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                             GIFs
                           </h3>
                         </div>
                         <button
-                          className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                          className="flex items-center gap-1 text-xs font-semibold text-[#898a8b] transition hover:text-[#f7f7f8]"
                           type="button"
                           onClick={() => {
                             setIsAssetLibraryExpanded(false);
@@ -7230,7 +7232,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                       <div className="mt-3">
                         {!hasGiphy ? (
-                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                          <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                             Add a GIPHY API key to enable GIFs.
                           </div>
                         ) : (gifTrendingStatus === "idle" ||
@@ -7241,24 +7243,24 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               (_, index) => (
                                 <div
                                   key={`gif-preview-skeleton-${index}`}
-                                  className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                                  className="h-24 rounded-xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                                 />
                               )
                             )}
                           </div>
                         ) : gifTrendingStatus === "error" ? (
-                          <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                          <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                             <p>{gifTrendingError ?? "Unable to load GIFs."}</p>
                             <button
                               type="button"
-                              className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                              className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                               onClick={handleGifTrendingRetry}
                             >
                               Retry
                             </button>
                           </div>
                         ) : gifPreviewItems.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                          <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                             No GIFs available right now.
                           </div>
                         ) : (
@@ -7270,7 +7272,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 <button
                                   key={gif.id}
                                   type="button"
-                                  className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                                  className="group relative h-full w-full overflow-hidden rounded-xl border border-[rgba(255,255,255,0.08)] transition hover:border-[rgba(255,255,255,0.14)]"
                                   onClick={() => handleAddGif(gif)}
                                   draggable
                                   onDragStart={(event) =>
@@ -7286,7 +7288,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       loading="lazy"
                                     />
                                   ) : (
-                                    <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                    <div className="flex h-full w-full items-center justify-center bg-[rgba(255,255,255,0.05)] text-xs font-semibold text-[#5e636e]">
                                       GIF
                                     </div>
                                   )}
@@ -7300,17 +7302,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   )}
 
                   {activeTool === "video" && (
-                    <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
                       {youtubeLoading ? (
                         downloadLoader
                       ) : (
                         <>
                           <div className="flex items-start gap-3">
                             <div>
-                              <h3 className="text-sm font-semibold text-[#2E3440]">
+                              <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                                 YouTube Downloader
                               </h3>
-                              <p className="mt-1 text-xs text-[#7A8699]">
+                              <p className="mt-1 text-xs text-[#898a8b]">
                                 Paste a link to download.
                               </p>
                             </div>
@@ -7318,7 +7320,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <div className="mt-3 space-y-3">
                             <div className="relative">
                               <input
-                                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                                className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#252729] px-3 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#6a47ff] focus:outline-none focus:ring-1 focus:ring-[rgba(106,71,255,0.3)]"
                                 placeholder="https://youtube.com/watch?v=..."
                                 value={youtubeUrl}
                                 onChange={(event) => {
@@ -7339,8 +7341,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               <button
                                 type="button"
                                 className={`rounded-full px-4 py-2 text-xs font-semibold transition ${youtubeLoading
-                                  ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
-                                  : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
+                                  ? "cursor-not-allowed bg-[#3a3c3e] text-[#5e636e]"
+                                  : "bg-[#6a47ff] text-white hover:bg-[#5c24f7]"
                                   }`}
                                 onClick={handleYoutubeSubmit}
                                 disabled={youtubeLoading}
@@ -7349,7 +7351,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </button>
                             </div>
                             {youtubeError && (
-                              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                              <div className="rounded-lg border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] px-3 py-2 text-xs font-medium text-[#e72930]">
                                 {youtubeError}
                               </div>
                             )}
@@ -7360,17 +7362,17 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   )}
 
                   {activeTool === "video" && (
-                    <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(0,0,0,0.35)]">
                       {tiktokLoading ? (
                         downloadLoader
                       ) : (
                         <>
                           <div className="flex items-start gap-3">
                             <div>
-                              <h3 className="text-sm font-semibold text-[#2E3440]">
+                              <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                                 TikTok Downloader
                               </h3>
-                              <p className="mt-1 text-xs text-[#7A8699]">
+                              <p className="mt-1 text-xs text-[#898a8b]">
                                 Paste a link to download.
                               </p>
                             </div>
@@ -7378,7 +7380,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           <div className="mt-3 space-y-3">
                             <div className="relative">
                               <input
-                                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-white px-3 text-sm font-medium text-[#2E3440] placeholder:text-[#94A3B8] focus:border-[#5E81AC] focus:outline-none focus:ring-1 focus:ring-[#5E81AC]/30"
+                                className="h-10 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#252729] px-3 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#6a47ff] focus:outline-none focus:ring-1 focus:ring-[rgba(106,71,255,0.3)]"
                                 placeholder="https://www.tiktok.com/@..."
                                 value={tiktokUrl}
                                 onChange={(event) => {
@@ -7399,8 +7401,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               <button
                                 type="button"
                                 className={`rounded-full px-4 py-2 text-xs font-semibold transition ${tiktokLoading
-                                  ? "cursor-not-allowed bg-[#D8DEE9] text-[#64748B]"
-                                  : "bg-[#5E81AC] text-white hover:bg-[#4E74A0]"
+                                  ? "cursor-not-allowed bg-[#3a3c3e] text-[#5e636e]"
+                                  : "bg-[#6a47ff] text-white hover:bg-[#5c24f7]"
                                   }`}
                                 onClick={handleTiktokSubmit}
                                 disabled={tiktokLoading}
@@ -7409,7 +7411,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </button>
                             </div>
                             {tiktokError && (
-                              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                              <div className="rounded-lg border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] px-3 py-2 text-xs font-medium text-[#e72930]">
                                 {tiktokError}
                               </div>
                             )}
@@ -7420,13 +7422,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   )}
 
                   {activeTool === "video" && (
-                    <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-gray-900">
+                        <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                           Stock Videos
                         </h3>
                         <button
-                          className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                          className="flex items-center gap-1 text-xs font-semibold text-[#898a8b] transition hover:text-[#f7f7f8]"
                           type="button"
                           aria-label={
                             hasMoreStockVideos
@@ -7453,7 +7455,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                       <div className="mt-3">
                         {!hasSupabase ? (
-                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                          <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                             Connect Supabase to load stock videos.
                           </div>
                         ) : stockVideoStatus === "loading" ||
@@ -7464,23 +7466,23 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             }).map((_, index) => (
                               <div
                                 key={`stock-video-skeleton-${index}`}
-                                className="h-24 rounded-2xl bg-gray-100/80 animate-pulse"
+                                className="h-24 rounded-2xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                               />
                             ))}
                           </div>
                         ) : stockVideoStatus === "error" ? (
-                          <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                          <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                             <p>{stockVideoError ?? "Unable to load stock videos."}</p>
                             <button
                               type="button"
-                              className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                              className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                               onClick={handleStockVideoRetry}
                             >
                               Retry
                             </button>
                           </div>
                         ) : filteredStockVideos.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                          <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                             {stockVideoSearch.trim()
                               ? "No videos match your search."
                               : stockVideoRootPrefix
@@ -7516,16 +7518,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                 </>
               ) : activeTool === "elements" ? (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <GiphyLogo className="h-4 w-auto" />
-                        <h3 className="text-sm font-semibold text-gray-900">
+                        <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                           GIFs
                         </h3>
                       </div>
                       <button
-                        className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                        className="flex items-center gap-1 text-xs font-semibold text-[#898a8b] transition hover:text-[#f7f7f8]"
                         type="button"
                         onClick={() => {
                           setIsAssetLibraryExpanded(false);
@@ -7547,7 +7549,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </div>
                     <div className="mt-3">
                       {!hasGiphy ? (
-                        <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                        <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                           Add a GIPHY API key to enable GIFs.
                         </div>
                       ) : (gifTrendingStatus === "idle" ||
@@ -7558,24 +7560,24 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             (_, index) => (
                               <div
                                 key={`gif-preview-skeleton-${index}`}
-                                className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                                className="h-24 rounded-xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                               />
                             )
                           )}
                         </div>
                       ) : gifTrendingStatus === "error" ? (
-                        <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                        <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                           <p>{gifTrendingError ?? "Unable to load GIFs."}</p>
                           <button
                             type="button"
-                            className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                            className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                             onClick={handleGifTrendingRetry}
                           >
                             Retry
                           </button>
                         </div>
                       ) : gifPreviewItems.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                        <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                           No GIFs available right now.
                         </div>
                       ) : (
@@ -7587,7 +7589,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               <button
                                 key={gif.id}
                                 type="button"
-                                className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                                className="group relative h-full w-full overflow-hidden rounded-xl border border-[rgba(255,255,255,0.08)] transition hover:border-[rgba(255,255,255,0.14)]"
                                 onClick={() => handleAddGif(gif)}
                                 draggable
                                 onDragStart={(event) =>
@@ -7603,7 +7605,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     loading="lazy"
                                   />
                                 ) : (
-                                  <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                  <div className="flex h-full w-full items-center justify-center bg-[rgba(255,255,255,0.05)] text-xs font-semibold text-[#5e636e]">
                                     GIF
                                   </div>
                                 )}
@@ -7614,16 +7616,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       )}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <GiphyLogo className="h-4 w-auto" />
-                        <h3 className="text-sm font-semibold text-gray-900">
+                        <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                           Stickers
                         </h3>
                       </div>
                       <button
-                        className="flex items-center gap-1 text-xs font-semibold text-gray-500 transition hover:text-gray-700"
+                        className="flex items-center gap-1 text-xs font-semibold text-[#898a8b] transition hover:text-[#f7f7f8]"
                         type="button"
                         onClick={() => setIsStickerLibraryExpanded(true)}
                       >
@@ -7642,7 +7644,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     </div>
                     <div className="mt-3">
                       {!hasGiphy ? (
-                        <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                        <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                           Add a GIPHY API key to enable stickers.
                         </div>
                       ) : (stickerTrendingStatus === "idle" ||
@@ -7653,27 +7655,27 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             (_, index) => (
                               <div
                                 key={`sticker-preview-skeleton-${index}`}
-                                className="h-24 rounded-xl bg-gray-100/80 animate-pulse"
+                                className="h-24 rounded-xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                               />
                             )
                           )}
                         </div>
                       ) : stickerTrendingStatus === "error" ? (
-                        <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/40 px-4 py-5 text-center text-sm text-red-600">
+                        <div className="rounded-2xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-5 text-center text-sm text-[#e72930]">
                           <p>
                             {stickerTrendingError ??
                               "Unable to load stickers."}
                           </p>
                           <button
                             type="button"
-                            className="mt-3 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-200"
+                            className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-xs font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                             onClick={handleStickerTrendingRetry}
                           >
                             Retry
                           </button>
                         </div>
                       ) : stickerPreviewItems.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                        <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                           No stickers available right now.
                         </div>
                       ) : (
@@ -7685,7 +7687,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               <button
                                 key={sticker.id}
                                 type="button"
-                                className="group relative h-full w-full overflow-hidden rounded-xl border border-gray-200 transition hover:border-gray-300"
+                                className="group relative h-full w-full overflow-hidden rounded-xl border border-[rgba(255,255,255,0.08)] transition hover:border-[rgba(255,255,255,0.14)]"
                                 onClick={() => handleAddSticker(sticker)}
                                 draggable
                                 onDragStart={(event) =>
@@ -7701,7 +7703,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     loading="lazy"
                                   />
                                 ) : (
-                                  <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400">
+                                  <div className="flex h-full w-full items-center justify-center bg-[rgba(255,255,255,0.05)] text-xs font-semibold text-[#5e636e]">
                                     Sticker
                                   </div>
                                 )}
@@ -7719,7 +7721,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                     <div className="space-y-4">
                       <div className="flex items-start gap-3">
                         <button
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2"
                           type="button"
                           aria-label="Back to AI tools"
                           onClick={() => setActiveAiToolId(null)}
@@ -7736,10 +7738,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </svg>
                         </button>
                         <div className="flex-1 space-y-1">
-                          <h3 className="text-lg font-semibold text-gray-900">
+                          <h3 className="font-[family-name:var(--font-geist-sans)] text-xs font-semibold uppercase tracking-[0.1em] text-[#f7f7f8]">
                             {activeAiTool.title}
                           </h3>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-[#898a8b]">
                             {activeAiTool.description}
                           </p>
                         </div>
@@ -7747,14 +7749,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           className={`relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${activeAiTool.gradient}`}
                         >
                           <div
-                            className={`flex h-8 w-8 items-center justify-center rounded-lg shadow-[0_8px_16px_rgba(15,23,42,0.12)] ${
-                              isAiDevenActive ? "bg-[#FF0033]" : "bg-white"
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px] ${
+                              isAiDevenActive ? "bg-[#FF0033]" : "bg-[#1a1c1e]"
                             }`}
                           >
                             {ActiveAiToolIcon && (
                               <ActiveAiToolIcon
                                 className={`h-4 w-4 ${
-                                  isAiDevenActive ? "text-white" : "text-[#1a1240]"
+                                  isAiDevenActive ? "text-white" : "text-[#9aed00]"
                                 }`}
                                 {...(isAiDevenActive
                                   ? { fill: "currentColor", stroke: "none" }
@@ -7766,9 +7768,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                       {activeAiTool.id === "ai-deven" ? (
                         <div className="space-y-4">
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                 AI Deven
                               </p>
                               {aiDevenStatus === "error" ? (
@@ -7785,7 +7787,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </span>
                               )}
                             </div>
-                            <div className="relative mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                            <div className="relative mt-3 rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]/70 px-3 py-3">
                               <div
                                 className={`flex min-h-[480px] items-center justify-center ${
                                   aiDevenStatus === "error" ? "hidden" : ""
@@ -7806,8 +7808,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </div>
                               {aiDevenStatus !== "ready" &&
                                 aiDevenStatus !== "error" && (
-                                  <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-white/70 text-xs font-semibold text-gray-500">
-                                    <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                  <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-[#1a1c1e]/70 text-xs font-semibold text-[#898a8b]">
+                                    <span className="h-2 w-2 animate-pulse rounded-full bg-[#898a8b]" />
                                     Connecting AI Deven...
                                   </div>
                                 )}
@@ -7824,22 +7826,22 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </div>
                               )}
                             </div>
-                            <p className="mt-2 text-[11px] text-gray-400">
+                            <p className="mt-2 text-[11px] text-[#5e636e]">
                               Ask about hooks, titles, retention, thumbnails, or script polish.
                             </p>
                           </div>
                         </div>
                       ) : activeAiTool.id === "transcription" ? (
                         <div className="space-y-4">
-                          <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-4 py-4 shadow-sm">
                             <div className="flex flex-col gap-2">
-                              <div className="text-sm font-semibold text-gray-900">
+                              <div className="text-sm font-semibold text-[#f7f7f8]">
                                 What do you want to transcribe?
                               </div>
                               <div className="relative">
                                 <button
                                   type="button"
-                                  className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-gray-50 px-3 text-sm font-semibold text-gray-800 shadow-sm transition focus:border-[#5B6CFF] focus:outline-none"
+                                  className="flex h-10 w-full items-center justify-between rounded-lg border border-transparent bg-[rgba(255,255,255,0.03)] px-3 text-sm font-semibold text-[#f7f7f8] shadow-sm transition focus:border-[#9aed00] focus:outline-none"
                                   onClick={() =>
                                     setIsAiTranscriptSourceOpen((prev) => !prev)
                                   }
@@ -7849,7 +7851,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     <span className="truncate">
                                       {resolvedTranscriptSource.label}
                                     </span>
-                                    <span className="text-xs font-semibold text-gray-400">
+                                    <span className="text-xs font-semibold text-[#5e636e]">
                                       {resolvedTranscriptSource.duration
                                         ? formatDuration(
                                             resolvedTranscriptSource.duration
@@ -7859,7 +7861,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   </div>
                                   <svg
                                     viewBox="0 0 16 16"
-                                    className="h-4 w-4 text-gray-500"
+                                    className="h-4 w-4 text-[#898a8b]"
                                   >
                                     <path
                                       d="M5 10.936 8 14l3-3.064m0-5.872L8 2 5 5.064"
@@ -7872,12 +7874,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   </svg>
                                 </button>
                                 {isAiTranscriptSourceOpen && (
-                                  <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-100 bg-white py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
+                                  <div className="absolute z-20 mt-2 w-full rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] py-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]">
                                     {transcriptSourceOptions.map((option: any) => (
                                       <button
                                         key={option.id}
                                         type="button"
-                                        className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                        className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                                         onClick={() => {
                                           setTranscriptSource(option.id);
                                           setIsAiTranscriptSourceOpen(false);
@@ -7886,7 +7888,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                         <span className="truncate">
                                           {option.label}
                                         </span>
-                                        <span className="text-xs text-gray-400">
+                                        <span className="text-xs text-[#5e636e]">
                                           {option.duration
                                             ? formatDuration(option.duration)
                                             : "--:--"}
@@ -7897,12 +7899,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 )}
                               </div>
                             </div>
-                            <div className="mt-4 flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                            <div className="mt-4 flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
                               <div>
-                                <p className="text-sm font-semibold text-gray-900">
+                                <p className="text-sm font-semibold text-[#f7f7f8]">
                                   Include timestamps
                                 </p>
-                                <p className="text-xs text-gray-400">
+                                <p className="text-xs text-[#5e636e]">
                                   Add timecodes to each line.
                                 </p>
                               </div>
@@ -7913,7 +7915,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               />
                             </div>
                             {transcriptError && (
-                              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                              <div className="mt-3 rounded-lg border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)] px-3 py-2 text-xs font-medium text-[#e72930]">
                                 {transcriptError}
                               </div>
                             )}
@@ -7921,8 +7923,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               type="button"
                               className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
                                 transcriptStatus === "loading"
-                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
-                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                                  ? "cursor-not-allowed bg-[#5e636e] shadow-none"
+                                  : "bg-[#9aed00] hover:bg-[#274BFF]"
                               }`}
                               onClick={handleGenerateTranscriptClick}
                               disabled={transcriptStatus === "loading"}
@@ -7932,11 +7934,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 : "Generate Transcript"}
                             </button>
                           </div>
-                          <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-sm">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-4 py-4 shadow-sm">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <p className="text-sm font-semibold text-gray-900">
+                                  <p className="text-sm font-semibold text-[#f7f7f8]">
                                     Transcript
                                   </p>
                                   {transcriptHasEdits && (
@@ -7945,7 +7947,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-gray-400">
+                                <p className="text-xs text-[#5e636e]">
                                   {aiTranscriptSegments.length} lines
                                 </p>
                               </div>
@@ -7953,7 +7955,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 {transcriptHasEdits && (
                                   <button
                                     type="button"
-                                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+                                    className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-1.5 text-xs font-semibold text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.03)]"
                                     onClick={handleResetTranscriptDraft}
                                   >
                                     Reset
@@ -7963,8 +7965,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   type="button"
                                   className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                                     transcriptDraft.trim()
-                                      ? "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                      : "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-400"
+                                      ? "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#f7f7f8] hover:bg-[rgba(255,255,255,0.03)]"
+                                      : "cursor-not-allowed border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
                                   }`}
                                   onClick={handleCopyTranscript}
                                   disabled={!transcriptDraft.trim()}
@@ -7975,8 +7977,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   type="button"
                                   className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                                     transcriptDraft.trim()
-                                      ? "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                      : "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-400"
+                                      ? "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#f7f7f8] hover:bg-[rgba(255,255,255,0.03)]"
+                                      : "cursor-not-allowed border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
                                   }`}
                                   onClick={handleDownloadTranscript}
                                   disabled={!transcriptDraft.trim()}
@@ -7988,8 +7990,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                                     aiTranscriptSegments.length > 0 ||
                                     transcriptDraft.trim()
-                                      ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                                      : "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-400"
+                                      ? "border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)] text-[#e72930] hover:bg-[rgba(231,41,48,0.15)]"
+                                      : "cursor-not-allowed border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
                                   }`}
                                   onClick={() =>
                                     handleClearTranscript(transcriptSource)
@@ -8003,10 +8005,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </button>
                               </div>
                             </div>
-                            <div className="mt-3 max-h-[280px] overflow-y-auto rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3">
+                            <div className="mt-3 max-h-[280px] overflow-y-auto rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-3">
                               {transcriptStatus === "loading" ? (
-                                <div className="flex items-center justify-center gap-2 py-8 text-sm font-medium text-gray-500">
-                                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                <div className="flex items-center justify-center gap-2 py-8 text-sm font-medium text-[#898a8b]">
+                                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#898a8b]" />
                                   Generating transcript...
                                 </div>
                               ) : aiTranscriptSegments.length > 0 || transcriptHasEdits ? (
@@ -8019,10 +8021,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   rows={10}
                                   disabled={transcriptStatus === "loading"}
                                   placeholder="Edit transcript..."
-                                  className="min-h-[220px] w-full resize-none bg-transparent text-xs leading-relaxed text-gray-700 placeholder:text-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                                  className="min-h-[220px] w-full resize-none bg-transparent text-xs leading-relaxed text-[#f7f7f8] placeholder:text-[#5e636e] focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
                                 />
                               ) : (
-                                <p className="text-xs text-gray-400">
+                                <p className="text-xs text-[#5e636e]">
                                   Generate a transcript to see the text here.
                                 </p>
                               )}
@@ -8031,18 +8033,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       ) : activeAiTool.id === "ai-image" ? (
                         <div className="space-y-4">
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
                               <label
                                 htmlFor={activeAiToolInputId ?? undefined}
-                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400"
+                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]"
                               >
                                 {activeAiTool.inputLabel}
                               </label>
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  className={`flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-semibold transition ${aiImageMagicButtonClass}`}
+                                  className={`flex items-center gap-1 rounded-full border border-[rgba(255,255,255,0.08)] px-2.5 py-1 text-[10px] font-semibold transition ${aiImageMagicButtonClass}`}
                                   onClick={() => {
                                     if (typeof handleAiImageImprovePrompt === "function") {
                                       handleAiImageImprovePrompt();
@@ -8065,7 +8067,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   setAiImagePrompt(event.target.value);
                                 }
                               }}
-                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:border-[#5B6CFF] focus:outline-none"
+                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2.5 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                             />
                             {aiImageMagicError && (
                               <p className="mt-2 text-[11px] font-semibold text-rose-500">
@@ -8073,10 +8075,10 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </p>
                             )}
                             <div className="mt-4">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                 Aspect Ratio
                               </p>
-                              <p className="mt-1 text-[11px] text-gray-400">
+                              <p className="mt-1 text-[11px] text-[#5e636e]">
                                 Choose the format that matches where you'll use it.
                               </p>
                               <div className="mt-2">
@@ -8091,7 +8093,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       setAiImageAspectRatio(event.target.value);
                                     }
                                   }}
-                                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 focus:border-[#5B6CFF] focus:outline-none"
+                                  className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
                                 >
                                   {aiImageAspectRatioOptions.map((option) => (
                                     <option key={option.value} value={option.value}>
@@ -8105,8 +8107,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               type="button"
                               className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
                                 resolvedAiImageStatus === "loading" || !canGenerateAiImage
-                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
-                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                                  ? "cursor-not-allowed bg-[#5e636e] shadow-none"
+                                  : "bg-[#9aed00] hover:bg-[#274BFF]"
                               }`}
                               onClick={() => {
                                 if (typeof handleAiImageGenerate === "function") {
@@ -8120,9 +8122,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 : activeAiTool.actionLabel}
                             </button>
                           </div>
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                 {activeAiTool.outputLabel}
                               </p>
                               {aiImageSaving ? (
@@ -8135,15 +8137,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </span>
                               ) : null}
                             </div>
-                            <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                            <div className="mt-3 rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]/70 px-3 py-3">
                               {resolvedAiImageStatus === "loading" ? (
-                                <div className="flex min-h-[140px] items-center justify-center gap-2 text-xs font-semibold text-gray-400">
-                                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                <div className="flex min-h-[140px] items-center justify-center gap-2 text-xs font-semibold text-[#5e636e]">
+                                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#898a8b]" />
                                   Generating image...
                                 </div>
                               ) : resolvedAiImagePreviewUrl ? (
                                 <div
-                                  className="group flex w-full items-center justify-center overflow-hidden rounded-lg border border-gray-100 bg-white p-2 shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
+                                  className="group flex w-full items-center justify-center overflow-hidden rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] p-2 shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
                                   draggable={Boolean(resolvedAiImageAssetId)}
                                   onDragStart={(event) => {
                                     if (
@@ -8161,7 +8163,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   />
                                 </div>
                               ) : (
-                                <div className="flex min-h-[140px] items-center justify-center text-xs font-semibold text-gray-400">
+                                <div className="flex min-h-[140px] items-center justify-center text-xs font-semibold text-[#5e636e]">
                                   Generate an image to see it here.
                                 </div>
                               )}
@@ -8177,8 +8179,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   type="button"
                                   className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
                                     resolvedAiImageAssetId
-                                      ? "bg-[#335CFF] text-white hover:bg-[#274BFF]"
-                                      : "cursor-not-allowed bg-gray-200 text-gray-500"
+                                      ? "bg-[#9aed00] text-white hover:bg-[#274BFF]"
+                                      : "cursor-not-allowed bg-[rgba(255,255,255,0.08)] text-[#898a8b]"
                                   }`}
                                   onClick={() => {
                                     if (typeof handleAiImageAddToTimeline === "function") {
@@ -8191,7 +8193,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </button>
                                 <button
                                   type="button"
-                                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                                  className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                                   onClick={() => {
                                     if (typeof handleAiImageClear === "function") {
                                       handleAiImageClear();
@@ -8203,12 +8205,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </div>
                             )}
                             {resolvedAiImagePreviewUrl ? (
-                              <p className="mt-2 text-[11px] text-gray-400">
+                              <p className="mt-2 text-[11px] text-[#5e636e]">
                                 Drag onto the timeline or click Add to timeline. Clear removes it from Assets.
                               </p>
                             ) : null}
                             {aiImageLastPrompt && (
-                              <p className="mt-2 text-[10px] text-gray-400">
+                              <p className="mt-2 text-[10px] text-[#5e636e]">
                                 Last prompt: {aiImageLastPrompt}
                                 {aiImageLastAspectRatio
                                   ? ` · ${aiImageLastAspectRatio}`
@@ -8219,18 +8221,18 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       ) : activeAiTool.id === "ai-video" ? (
                         <div className="space-y-4">
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
                               <label
                                 htmlFor={activeAiToolInputId ?? undefined}
-                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400"
+                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]"
                               >
                                 {activeAiTool.inputLabel}
                               </label>
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  className={`flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-semibold transition ${aiVideoMagicButtonClass}`}
+                                  className={`flex items-center gap-1 rounded-full border border-[rgba(255,255,255,0.08)] px-2.5 py-1 text-[10px] font-semibold transition ${aiVideoMagicButtonClass}`}
                                   onClick={() => {
                                     if (typeof handleAiVideoImprovePrompt === "function") {
                                       handleAiVideoImprovePrompt();
@@ -8253,7 +8255,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   setAiVideoPrompt(event.target.value);
                                 }
                               }}
-                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:border-[#5B6CFF] focus:outline-none"
+                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2.5 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                             />
                             {aiVideoMagicError && (
                               <p className="mt-2 text-[11px] font-semibold text-rose-500">
@@ -8262,7 +8264,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             )}
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                               <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                   Aspect Ratio
                                 </p>
                                 <label className="sr-only" htmlFor="ai-video-aspect">
@@ -8276,7 +8278,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       setAiVideoAspectRatio(event.target.value);
                                     }
                                   }}
-                                  className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 focus:border-[#5B6CFF] focus:outline-none"
+                                  className="mt-2 w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
                                 >
                                   {aiVideoAspectRatioOptions.map((option) => (
                                     <option key={option.value} value={option.value}>
@@ -8286,7 +8288,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </select>
                               </div>
                               <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                   Duration
                                 </p>
                                 <label className="sr-only" htmlFor="ai-video-duration">
@@ -8304,7 +8306,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                       setAiVideoDuration(nextValue);
                                     }
                                   }}
-                                  className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 focus:border-[#5B6CFF] focus:outline-none"
+                                  className="mt-2 w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
                                 >
                                   {aiVideoDurationOptions.map((option) => (
                                     <option key={option.value} value={option.value}>
@@ -8315,12 +8317,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </div>
                             </div>
                             <div className="mt-4 space-y-3">
-                              <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                              <div className="flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
                                 <div>
-                                  <p className="text-sm font-semibold text-gray-900">
+                                  <p className="text-sm font-semibold text-[#f7f7f8]">
                                     Generate audio
                                   </p>
-                                  <p className="text-xs text-gray-400">
+                                  <p className="text-xs text-[#5e636e]">
                                     Include audio with the clip.
                                   </p>
                                 </div>
@@ -8342,8 +8344,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               type="button"
                               className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
                                 resolvedAiVideoStatus === "loading" || !canGenerateAiVideo
-                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
-                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                                  ? "cursor-not-allowed bg-[#5e636e] shadow-none"
+                                  : "bg-[#9aed00] hover:bg-[#274BFF]"
                               }`}
                               onClick={() => {
                                 if (typeof handleAiVideoGenerate === "function") {
@@ -8362,7 +8364,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </p>
                             )}
                             {resolvedAiVideoStatus === "loading" && (
-                              <p className="mt-2 text-[11px] font-semibold text-gray-400">
+                              <p className="mt-2 text-[11px] font-semibold text-[#5e636e]">
                                 This can take 2-5 minutes to generate.
                               </p>
                             )}
@@ -8370,7 +8372,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               <div className="mt-3 flex items-center gap-2">
                                 <button
                                   type="button"
-                                  className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                                  className="flex-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                                   onClick={() => {
                                     if (typeof handleAiVideoClear === "function") {
                                       handleAiVideoClear();
@@ -8385,9 +8387,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       ) : activeAiTool.id === "ai-background-removal" ? (
                         <div className="space-y-3">
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                 Clip
                               </p>
                               {resolvedAiBackgroundRemovalStatus === "loading" ? (
@@ -8401,23 +8403,23 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               ) : null}
                             </div>
                             {resolvedAiBackgroundRemovalSelection.state === "ready" ? (
-                              <div className="mt-3 rounded-xl border border-gray-100 bg-white px-3 py-2">
-                                <p className="truncate text-xs font-semibold text-gray-900">
+                              <div className="mt-3 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] px-3 py-2">
+                                <p className="truncate text-xs font-semibold text-[#f7f7f8]">
                                   {resolvedAiBackgroundRemovalSelection.label ?? "Selected clip"}
                                 </p>
                                 {backgroundRemovalDuration !== null && (
-                                  <p className="text-[10px] text-gray-400">
+                                  <p className="text-[10px] text-[#5e636e]">
                                     {formatDuration(backgroundRemovalDuration)}
                                   </p>
                                 )}
                               </div>
                             ) : (
-                              <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-xs font-semibold text-gray-400">
+                              <div className="mt-3 rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-3 text-xs font-semibold text-[#5e636e]">
                                 {backgroundRemovalSelectionMessage}
                               </div>
                             )}
-                            <div className="mt-4 flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
-                              <p className="text-sm font-semibold text-gray-900">
+                            <div className="mt-4 flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                              <p className="text-sm font-semibold text-[#f7f7f8]">
                                 Subject is person
                               </p>
                               <ToggleSwitch
@@ -8443,8 +8445,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
                                 resolvedAiBackgroundRemovalStatus === "loading" ||
                                 !canRemoveBackground
-                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
-                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                                  ? "cursor-not-allowed bg-[#5e636e] shadow-none"
+                                  : "bg-[#9aed00] hover:bg-[#274BFF]"
                               }`}
                               onClick={() => {
                                 if (typeof handleAiBackgroundRemoval === "function") {
@@ -8464,15 +8466,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       ) : activeAiTool.id === "ai-voiceover" ? (
                         <div className="space-y-4">
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
                               <label
                                 htmlFor={activeAiToolInputId ?? undefined}
-                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400"
+                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]"
                               >
                                 {activeAiTool.inputLabel}
                               </label>
-                              <span className="text-[10px] font-semibold text-gray-400">
+                              <span className="text-[10px] font-semibold text-[#5e636e]">
                                 Input
                               </span>
                             </div>
@@ -8486,14 +8488,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   setAiVoiceoverScript(event.target.value);
                                 }
                               }}
-                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:border-[#5B6CFF] focus:outline-none"
+                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2.5 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                             />
                             <div className="mt-4">
                               <div className="flex items-center justify-between">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                   Voice
                                 </p>
-                                <span className="text-[10px] font-semibold text-gray-400">
+                                <span className="text-[10px] font-semibold text-[#5e636e]">
                                   {resolvedAiVoiceoverSelectedVoice
                                     ? `Selected: ${resolvedAiVoiceoverSelectedVoice}`
                                     : "Select a voice"}
@@ -8501,7 +8503,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </div>
                               <div className="mt-2">
                                 {!hasSupabase ? (
-                                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-4 text-center text-xs text-gray-400">
+                                  <div className="rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-4 text-center text-xs text-[#5e636e]">
                                     Connect Supabase to load voice previews.
                                   </div>
                                 ) : aiVoiceoverVoicesStatus === "loading" ||
@@ -8510,19 +8512,19 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     {Array.from({ length: 4 }).map((_, index) => (
                                       <div
                                         key={`voice-skeleton-${index}`}
-                                        className="h-12 rounded-xl bg-gray-100/80 animate-pulse"
+                                        className="h-12 rounded-xl bg-[rgba(255,255,255,0.05)]/80 animate-pulse"
                                       />
                                     ))}
                                   </div>
                                 ) : aiVoiceoverVoicesStatus === "error" ? (
-                                  <div className="rounded-xl border border-dashed border-red-200 bg-red-50/40 px-4 py-4 text-center text-xs text-red-600">
+                                  <div className="rounded-xl border border-dashed border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.08)]/40 px-4 py-4 text-center text-xs text-[#e72930]">
                                     <p>
                                       {aiVoiceoverVoicesError ??
                                         "Unable to load voice previews."}
                                     </p>
                                     <button
                                       type="button"
-                                      className="mt-3 rounded-full bg-red-100 px-3 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-200"
+                                      className="mt-3 rounded-full bg-[rgba(231,41,48,0.15)] px-3 py-1 text-[11px] font-semibold text-[#e72930] transition hover:bg-[rgba(231,41,48,0.25)]"
                                       onClick={() => {
                                         if (typeof handleAiVoiceoverVoicesRetry === "function") {
                                           handleAiVoiceoverVoicesRetry();
@@ -8533,7 +8535,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     </button>
                                   </div>
                                 ) : resolvedAiVoiceoverVoices.length === 0 ? (
-                                  <div className="rounded-xl border border-dashed border-gray-200 px-4 py-4 text-center text-xs text-gray-400">
+                                  <div className="rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-4 text-center text-xs text-[#5e636e]">
                                     No voice previews found.
                                   </div>
                                 ) : (
@@ -8548,8 +8550,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                           key={voice.id}
                                           className={`group flex items-center justify-between rounded-xl border px-3 py-2 transition ${
                                             isSelected
-                                              ? "border-[#335CFF] bg-[#EEF2FF]"
-                                              : "border-gray-200 bg-white hover:border-[#DDE3FF]"
+                                              ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)]"
+                                              : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] hover:border-[rgba(255,255,255,0.14)]"
                                           }`}
                                         >
                                           <button
@@ -8565,16 +8567,16 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                             }}
                                             aria-pressed={isSelected}
                                           >
-                                            <div className="truncate text-sm font-semibold text-gray-900">
+                                            <div className="truncate text-sm font-semibold text-[#f7f7f8]">
                                               {voice.name}
                                             </div>
                                           </button>
                                           <button
                                             type="button"
-                                            className={`ml-3 flex h-9 w-9 items-center justify-center rounded-full border text-[#335CFF] transition ${
+                                            className={`ml-3 flex h-9 w-9 items-center justify-center rounded-full border text-[#6a47ff] transition ${
                                               isPlaying
-                                                ? "border-[#335CFF] bg-white shadow-[0_6px_14px_rgba(51,92,255,0.2)]"
-                                                : "border-gray-200 bg-white hover:border-[#C7D2FE]"
+                                                ? "border-[#9aed00] bg-[#1a1c1e] shadow-[0_6px_14px_rgba(154,237,0,0.2)]"
+                                                : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] hover:border-[rgba(106,71,255,0.4)]"
                                             }`}
                                             onClick={(event) => {
                                               event.stopPropagation();
@@ -8618,8 +8620,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               type="button"
                               className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
                                 resolvedAiVoiceoverStatus === "loading" || !canGenerateAiVoiceover
-                                  ? "cursor-not-allowed bg-gray-300 shadow-none"
-                                  : "bg-[#335CFF] hover:bg-[#274BFF]"
+                                  ? "cursor-not-allowed bg-[#5e636e] shadow-none"
+                                  : "bg-[#9aed00] hover:bg-[#274BFF]"
                               }`}
                               onClick={() => {
                                 if (typeof handleAiVoiceoverGenerate === "function") {
@@ -8636,9 +8638,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 : activeAiTool.actionLabel}
                             </button>
                           </div>
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                 {activeAiTool.outputLabel}
                               </p>
                               {aiVoiceoverSaving ? (
@@ -8651,15 +8653,15 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </span>
                               ) : null}
                             </div>
-                            <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                            <div className="mt-3 rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]/70 px-3 py-3">
                               {resolvedAiVoiceoverStatus === "loading" ? (
-                                <div className="flex min-h-[140px] items-center justify-center gap-2 text-xs font-semibold text-gray-400">
-                                  <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                                <div className="flex min-h-[140px] items-center justify-center gap-2 text-xs font-semibold text-[#5e636e]">
+                                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#898a8b]" />
                                   Generating voiceover...
                                 </div>
                               ) : resolvedAiVoiceoverPreviewUrl ? (
                                 <div
-                                  className="rounded-lg border border-gray-100 bg-white p-3 shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
+                                  className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] p-3 shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
                                   draggable={Boolean(resolvedAiVoiceoverAssetId)}
                                   onDragStart={(event) => {
                                     if (
@@ -8675,11 +8677,11 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="min-w-0">
-                                      <p className="truncate text-xs font-semibold text-gray-700">
+                                      <p className="truncate text-xs font-semibold text-[#f7f7f8]">
                                         {resolvedAiVoiceoverPreview?.name ??
                                           "Generated voiceover"}
                                       </p>
-                                      <p className="text-[10px] text-gray-400">
+                                      <p className="text-[10px] text-[#5e636e]">
                                         {resolvedAiVoiceoverPreview?.voice
                                           ? `Voice: ${resolvedAiVoiceoverPreview.voice}`
                                           : "Voiceover"}
@@ -8700,7 +8702,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   />
                                 </div>
                               ) : (
-                                <div className="flex min-h-[140px] items-center justify-center text-xs font-semibold text-gray-400">
+                                <div className="flex min-h-[140px] items-center justify-center text-xs font-semibold text-[#5e636e]">
                                   Generate a voiceover to hear it here.
                                 </div>
                               )}
@@ -8716,8 +8718,8 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   type="button"
                                   className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
                                     resolvedAiVoiceoverAssetId
-                                      ? "bg-[#335CFF] text-white hover:bg-[#274BFF]"
-                                      : "cursor-not-allowed bg-gray-200 text-gray-500"
+                                      ? "bg-[#9aed00] text-white hover:bg-[#274BFF]"
+                                      : "cursor-not-allowed bg-[rgba(255,255,255,0.08)] text-[#898a8b]"
                                   }`}
                                   onClick={() => {
                                     if (
@@ -8732,7 +8734,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 </button>
                                 <button
                                   type="button"
-                                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                                  className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
                                   onClick={() => {
                                     if (typeof handleAiVoiceoverClear === "function") {
                                       handleAiVoiceoverClear();
@@ -8744,13 +8746,13 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               </div>
                             )}
                             {resolvedAiVoiceoverPreviewUrl ? (
-                              <p className="mt-2 text-[11px] text-gray-400">
+                              <p className="mt-2 text-[11px] text-[#5e636e]">
                                 Drag onto the timeline or click Add to timeline. Clear removes it
                                 from Assets.
                               </p>
                             ) : null}
                             {aiVoiceoverLastScript && (
-                              <p className="mt-2 text-[10px] text-gray-400">
+                              <p className="mt-2 text-[10px] text-[#5e636e]">
                                 Last script: {aiVoiceoverLastScript}
                                 {aiVoiceoverLastVoice ? ` · ${aiVoiceoverLastVoice}` : ""}
                               </p>
@@ -8759,7 +8761,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                         </div>
                       ) : (
                         <>
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
                               <label
                                 htmlFor={
@@ -8767,27 +8769,27 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     ? activeAiToolInputId ?? undefined
                                     : undefined
                                 }
-                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400"
+                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]"
                               >
                                 {activeAiTool.inputLabel}
                               </label>
-                              <span className="text-[10px] font-semibold text-gray-400">
+                              <span className="text-[10px] font-semibold text-[#5e636e]">
                                 Input
                               </span>
                             </div>
                             {activeAiTool.inputKind === "dropzone" ? (
                               <button
                                 type="button"
-                                className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-6 text-center transition hover:border-gray-300 hover:bg-gray-50"
+                                className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]/70 px-3 py-6 text-center transition hover:border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.03)]"
                                 aria-label={activeAiTool.inputPlaceholder}
                               >
-                                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
-                                  <Upload className="h-5 w-5 text-[#1a1240]" />
+                                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1a1c1e] shadow-sm">
+                                  <Upload className="h-5 w-5 text-[#6a47ff]" />
                                 </span>
-                                <span className="text-xs font-semibold text-gray-700">
+                                <span className="text-xs font-semibold text-[#f7f7f8]">
                                   Drop files to upload
                                 </span>
-                                <span className="text-[11px] text-gray-400">
+                                <span className="text-[11px] text-[#5e636e]">
                                   {activeAiTool.inputPlaceholder}
                                 </span>
                               </button>
@@ -8796,12 +8798,12 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                 id={activeAiToolInputId ?? undefined}
                                 placeholder={activeAiTool.inputPlaceholder}
                                 rows={4}
-                                className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:border-[#5B6CFF] focus:outline-none"
+                                className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2.5 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
                               />
                             )}
                             {activeAiTool.chips && (
                               <div className="mt-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                   {activeAiTool.chipLabel}
                                 </p>
                                 <div className="mt-2 flex flex-wrap gap-2">
@@ -8809,7 +8811,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                     <button
                                       key={chip}
                                       type="button"
-                                      className="rounded-full bg-[#EEF2FF] px-3 py-1.5 text-[11px] font-semibold text-[#335CFF] transition hover:bg-[#E0E7FF]"
+                                      className="rounded-full bg-[rgba(106,71,255,0.12)] px-3 py-1.5 text-[11px] font-semibold text-[#6a47ff] transition hover:bg-[rgba(106,71,255,0.2)]"
                                     >
                                       {chip}
                                     </button>
@@ -8819,33 +8821,33 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                             )}
                             <button
                               type="button"
-                              className="mt-4 w-full rounded-xl bg-[#335CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition hover:bg-[#274BFF]"
+                              className="mt-4 w-full rounded-xl bg-[#9aed00] px-4 py-2.5 text-sm font-semibold text-[#0e1012] shadow-[0_10px_24px_rgba(154,237,0,0.28)] transition hover:bg-[#7ac700]"
                             >
                               {activeAiTool.actionLabel}
                             </button>
                           </div>
-                          <div className="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                             <div className="flex items-center justify-between">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
                                 {activeAiTool.outputLabel}
                               </p>
-                              <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-semibold text-gray-500">
+                              <span className="rounded-full bg-[rgba(255,255,255,0.05)] px-2 py-1 text-[10px] font-semibold text-[#898a8b]">
                                 Preview
                               </span>
                             </div>
-                            <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-3 py-3">
+                            <div className="mt-3 rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]/70 px-3 py-3">
                               {activeAiTool.outputKind === "grid" ? (
                                 <div className="grid grid-cols-2 gap-2">
                                   {Array.from({ length: 4 }).map((_, index) => (
                                     <div
                                       key={`ai-grid-${index}`}
-                                      className="aspect-[4/3] rounded-lg border border-gray-100 bg-white shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
+                                      className="aspect-[4/3] rounded-lg border border-[rgba(255,255,255,0.06)] bg-[#1a1c1e] shadow-[0_6px_12px_rgba(15,23,42,0.06)]"
                                     />
                                   ))}
                                 </div>
                               ) : activeAiTool.outputKind === "preview" ? (
-                                <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-gradient-to-br from-gray-100 to-gray-200">
-                                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-400">
+                                <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-gradient-to-br from-[#1a1c1e] to-[#252729]">
+                                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-[#5e636e]">
                                     Preview
                                   </div>
                                 </div>
@@ -8854,7 +8856,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   {aiWaveformHeights.map((height, index) => (
                                     <div
                                       key={`ai-wave-${index}`}
-                                      className="w-2 rounded-full bg-[#CBD5F5]"
+                                      className="w-2 rounded-full bg-[#6a47ff]"
                                       style={{ height: `${height}px` }}
                                     />
                                   ))}
@@ -8864,14 +8866,14 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   {aiListWidths.map((width, index) => (
                                     <div
                                       key={`ai-line-${index}`}
-                                      className="h-2 rounded-full bg-[#E2E8F0]"
+                                      className="h-2 rounded-full bg-[#3a3c3e]"
                                       style={{ width: `${width}%` }}
                                     />
                                   ))}
                                 </div>
                               )}
                             </div>
-                            <p className="mt-2 text-[11px] text-gray-400">
+                            <p className="mt-2 text-[11px] text-[#5e636e]">
                               {activeAiTool.outputHint}
                             </p>
                           </div>
@@ -8879,39 +8881,88 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       )}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3">
                       {aiToolConfigs.map((tool) => {
                         const Icon = tool.icon;
                         const isAiDevenCard = tool.id === "ai-deven";
+                        const isPrimaryBrand = tool.id === "transcription" || tool.id === "ai-background-removal";
                         return (
                           <button
                             key={tool.id}
                             type="button"
-                            className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2"
+                            className={`
+                              group relative flex flex-col overflow-hidden rounded-2xl 
+                              border border-[var(--satura-separator-card)] 
+                              bg-[var(--satura-surface-secondary)] 
+                              p-3.5 text-left
+                              transition-all duration-200 ease-out
+                              hover:border-[var(--satura-brand-primary-20)] 
+                              hover:bg-[var(--satura-surface-tertiary)]
+                              hover:-translate-y-0.5
+                              hover:shadow-[0_8px_24px_-8px_rgba(154,237,0,0.15)]
+                              active:translate-y-0 active:scale-[0.98]
+                              focus-visible:outline-none 
+                              focus-visible:ring-2 
+                              focus-visible:ring-[var(--satura-brand-primary-24)] 
+                              focus-visible:ring-offset-2 
+                              focus-visible:ring-offset-[var(--satura-surface-primary)]
+                            `}
                             onClick={() => setActiveAiToolId(tool.id)}
                             aria-label={`Open ${tool.title}`}
                           >
+                            {/* Subtle gradient overlay on hover */}
+                            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--satura-brand-primary-5)] to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                            
+                            {/* Icon container area */}
                             <div
-                              className={`relative flex h-24 items-center justify-center rounded-xl bg-gradient-to-br ${tool.gradient}`}
+                              className={`
+                                relative flex h-20 items-center justify-center rounded-xl 
+                                bg-gradient-to-br transition-all duration-200
+                                ${isAiDevenCard 
+                                  ? "from-[rgba(231,41,48,0.08)] to-[rgba(231,41,48,0.16)]" 
+                                  : isPrimaryBrand
+                                    ? "from-[var(--satura-brand-primary-5)] to-[var(--satura-brand-primary-10)]"
+                                    : "from-[rgba(106,71,255,0.06)] to-[rgba(130,112,255,0.14)]"
+                                }
+                                group-hover:scale-[1.02]
+                              `}
                             >
+                              {/* Icon badge */}
                               <div
-                                className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-lg ${
-                                  isAiDevenCard ? "bg-[#FF0033]" : "bg-white"
-                                }`}
+                                className={`
+                                  flex h-12 w-12 items-center justify-center rounded-xl
+                                  transition-all duration-200
+                                  ${isAiDevenCard 
+                                    ? "bg-[#FF0033] shadow-[0_4px_12px_-2px_rgba(255,0,51,0.4)]" 
+                                    : `bg-[var(--satura-surface-secondary)] 
+                                       border border-[var(--satura-divider-secondary)]
+                                       shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.04)]
+                                       group-hover:border-[var(--satura-brand-primary-10)]
+                                       group-hover:shadow-[0_4px_12px_-2px_rgba(154,237,0,0.12),inset_0_1px_0_0_rgba(255,255,255,0.06)]`
+                                  }
+                                `}
                               >
                                 <Icon
-                                  className={`h-5 w-5 ${
-                                    isAiDevenCard ? "text-white" : "text-[#1a1240]"
-                                  }`}
+                                  className={`
+                                    h-5 w-5 transition-transform duration-200 group-hover:scale-110
+                                    ${isAiDevenCard ? "text-white" : "text-[var(--satura-brand-primary)]"}
+                                  `}
                                   {...(isAiDevenCard
                                     ? { fill: "currentColor", stroke: "none" }
                                     : {})}
                                 />
                               </div>
                             </div>
-                            <p className="mt-3 text-sm font-semibold text-gray-900">
-                              {tool.title}
-                            </p>
+                            
+                            {/* Text content */}
+                            <div className="relative mt-3 space-y-0.5">
+                              <p className="text-[13px] font-semibold tracking-[-0.01em] text-[var(--satura-font-primary)]">
+                                {tool.title}
+                              </p>
+                              <p className="line-clamp-1 text-[11px] text-[var(--satura-font-secondary)] opacity-70">
+                                {tool.description}
+                              </p>
+                            </div>
                           </button>
                         );
                       })}
@@ -8919,7 +8970,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   )}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
+                <div className="rounded-2xl border border-dashed border-[rgba(255,255,255,0.08)] px-4 py-6 text-center text-sm text-[#5e636e]">
                   {activeToolLabel} tools are coming next.
                 </div>
               )}

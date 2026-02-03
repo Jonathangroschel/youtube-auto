@@ -1,6 +1,7 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
+import { SaturaLogo } from "@/components/satura-logo";
 import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -21,7 +22,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -40,7 +41,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -58,7 +59,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -78,7 +79,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -103,7 +104,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.8"
@@ -125,7 +126,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#335CFF]"
+        className="h-5 w-5 text-[#9aed00] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -154,7 +155,7 @@ const mobileSections: MobileSection[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-4 w-4 text-gray-600"
+        className="h-4 w-4 text-[#9aed00]"
         fill="currentColor"
       >
         <path fill="none" d="M0 0h24v24H0V0z" />
@@ -189,7 +190,7 @@ const mobileSections: MobileSection[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-4 w-4 text-gray-600"
+        className="h-4 w-4 text-[#9aed00]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -999,34 +1000,25 @@ export default function TrustScorePage() {
     : null;
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
+    <div className="min-h-screen overflow-x-hidden bg-[#0e1012] font-sans text-[#f7f7f8]">
       <div className="mx-auto flex w-full md:max-w-[90rem]">
-        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
+        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-3 md:flex">
           <div
             ref={navContainerRef}
             className="relative flex w-full flex-1 flex-col items-center gap-4"
           >
             <div
-              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#6a47ff] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 transform: `translateY(${indicatorStyle.top}px)`,
                 height: `${indicatorStyle.height}px`,
                 opacity: indicatorStyle.opacity,
                 transition: indicatorReady ? undefined : "none",
+                boxShadow: "0px 0px 12px rgba(106, 71, 255, 0.5)",
               }}
             />
-            <a
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-7 w-7 scale-[1.5] origin-center"
-              />
-            </a>
-            <div className="h-px w-10 bg-gray-200" />
+            <SaturaLogo size="md" />
+            <div className="h-px w-10 bg-[rgba(255,255,255,0.08)]" />
             <nav
               className="flex flex-col gap-2"
               onMouseLeave={() => setHoveredNavIndex(null)}
@@ -1038,7 +1030,7 @@ export default function TrustScorePage() {
                   ref={(element) => {
                     navItemRefs.current[index] = element;
                   }}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-all duration-200 ${item.active ? "bg-[rgba(154,237,0,0.1)]" : "hover:bg-[rgba(255,255,255,0.05)]"
                     }`}
                   aria-label={item.label}
                   onMouseEnter={() => setHoveredNavIndex(index)}
@@ -1049,7 +1041,7 @@ export default function TrustScorePage() {
             </nav>
             <div className="mt-auto pb-6">
               <button
-                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100 xl:h-14 xl:w-14"
+                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-all duration-200 hover:border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)] xl:h-14 xl:w-14"
                 type="button"
                 aria-label="Search"
                 onClick={() => setSearchOpen(true)}
@@ -1057,7 +1049,7 @@ export default function TrustScorePage() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-400 group-hover:text-gray-600"
+                  className="h-5 w-5 text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1067,7 +1059,7 @@ export default function TrustScorePage() {
                   <circle cx="11" cy="11" r="7" />
                   <path d="m20 20-3.5-3.5" />
                 </svg>
-                <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600">
+                <span className="text-[10px] font-medium text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]">
                   Cmd+K
                 </span>
               </button>
@@ -1076,20 +1068,10 @@ export default function TrustScorePage() {
         </aside>
 
         <main className="flex min-h-[100dvh] w-full flex-1 flex-col px-4 pb-16 pt-3 md:px-6 md:py-6">
-          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
-            <a
-              className="flex h-10 w-10 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-6 w-6 scale-[1.5] origin-center"
-              />
-            </a>
+          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#0e1012]/90 px-4 py-3 backdrop-blur-xl md:hidden">
+            <SaturaLogo size="sm" />
             <button
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white transition-colors hover:bg-gray-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] transition-colors hover:bg-[#252729]"
               type="button"
               aria-label="Open menu"
               aria-expanded={mobileMenuOpen}
@@ -1098,7 +1080,7 @@ export default function TrustScorePage() {
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-4 w-4 text-gray-700"
+                className="h-4 w-4 text-[#f7f7f8]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -1117,12 +1099,12 @@ export default function TrustScorePage() {
               }`}
           >
             <div
-              className={`absolute inset-0 bg-black/20 transition-opacity ${mobileMenuOpen ? "opacity-100" : "opacity-0"
+              className={`absolute inset-0 bg-black/50 transition-opacity ${mobileMenuOpen ? "opacity-100" : "opacity-0"
                 }`}
               onClick={() => setMobileMenuOpen(false)}
             />
             <div
-              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-white shadow-xl transition-transform ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-[#0e1012] shadow-xl transition-transform ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
                 }`}
             >
               <div className="p-3">
@@ -1135,15 +1117,15 @@ export default function TrustScorePage() {
                       draggable="false"
                     />
                   ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-sm font-semibold text-white">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9aed00] text-sm font-semibold text-black">
                       {userInitials}
                     </div>
                   )}
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-[#f7f7f8]">
                       {userName}
                     </p>
-                    <p className="text-xs text-gray-500">{userEmail}</p>
+                    <p className="text-xs text-[#898a8b]">{userEmail}</p>
                   </div>
                 </div>
               </div>
@@ -1158,10 +1140,10 @@ export default function TrustScorePage() {
                   return (
                     <div
                       key={section.label}
-                      className="border-b border-gray-100 last:border-0"
+                      className="border-b border-[rgba(255,255,255,0.08)] last:border-0"
                     >
                       <button
-                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-gray-50 focus:outline-none"
+                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.05)] focus:outline-none"
                         type="button"
                         aria-expanded={isOpen}
                         aria-controls={`section-${sectionId}`}
@@ -1169,14 +1151,14 @@ export default function TrustScorePage() {
                       >
                         <div className="flex items-center space-x-2">
                           {section.icon}
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-[#f7f7f8]">
                             {section.label}
                           </span>
                         </div>
                         <svg
                           aria-hidden="true"
                           viewBox="0 0 24 24"
-                          className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${isOpen ? "rotate-90" : ""
+                          className={`h-4 w-4 text-[#898a8b] transition-transform duration-200 ${isOpen ? "rotate-90" : ""
                             }`}
                           fill="none"
                           stroke="currentColor"
@@ -1197,7 +1179,7 @@ export default function TrustScorePage() {
                             <a
                               key={item.label}
                               href={item.href}
-                              className="flex w-full items-center px-10 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none"
+                              className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
@@ -1216,8 +1198,8 @@ export default function TrustScorePage() {
                     key={action.label}
                     href={action.href}
                     className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${action.tone === "danger"
-                        ? "text-red-600 hover:bg-red-50"
-                        : "text-gray-700 hover:bg-gray-100"
+                        ? "text-[#e72930] hover:bg-[rgba(231,41,48,0.1)]"
+                        : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                       }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
@@ -1228,13 +1210,13 @@ export default function TrustScorePage() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
+          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#0e1012]/95 py-3 backdrop-blur-xl md:flex">
             <div className="flex items-center gap-2">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-700"
+                  className="h-5 w-5 text-[#9aed00]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1246,14 +1228,14 @@ export default function TrustScorePage() {
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-medium text-black">
+                <h2 className="font-[family-name:var(--font-geist-sans)] text-lg font-semibold uppercase tracking-tight text-[#f7f7f8]">
                   Trust Score
                 </h2>
               </div>
             </div>
             <div className="relative" ref={profileMenuRef}>
               <button
-                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
+                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 px-2 transition-colors hover:bg-[#252729] focus:outline-none"
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={profileMenuOpen}
@@ -1268,14 +1250,14 @@ export default function TrustScorePage() {
                     draggable="false"
                   />
                 ) : (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-xs font-semibold text-black md:h-8 md:w-8 md:text-sm">
                     {userInitials}
                   </div>
                 )}
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-4 w-4 text-gray-600"
+                  className="h-4 w-4 text-[#898a8b]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1287,7 +1269,7 @@ export default function TrustScorePage() {
               </button>
               <div
                 id="trust-score-profile-menu"
-                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${profileMenuOpen
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg transition-all duration-150 ${profileMenuOpen
                     ? "pointer-events-auto translate-y-0 opacity-100"
                     : "pointer-events-none translate-y-1 opacity-0"
                   }`}
@@ -1301,31 +1283,31 @@ export default function TrustScorePage() {
                       draggable="false"
                     />
                   ) : (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-xs font-semibold text-black md:h-8 md:w-8 md:text-sm">
                       {userInitials}
                     </div>
                   )}
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium">{userName}</p>
-                    <p className="text-xs text-gray-500">{userEmail}</p>
+                    <p className="text-base font-medium text-[#f7f7f8]">{userName}</p>
+                    <p className="text-xs text-[#898a8b]">{userEmail}</p>
                   </div>
                 </div>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Settings
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Upgrade
                 </button>
                 <button
-                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={handleSignOut}
                   disabled={isLoggingOut}
@@ -1342,7 +1324,7 @@ export default function TrustScorePage() {
             <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.8fr]">
               {/* Score Card */}
               <div className="flex flex-col gap-6">
-                <div className="rounded-[2rem] bg-[#2A2F3C] p-8 text-white">
+                <div className="rounded-[2rem] bg-[#1a1c1e] p-8 text-white border border-[rgba(255,255,255,0.08)]">
                   <div className="flex items-start justify-between">
                     {selectedChannel ? (
                       <p className="text-sm text-white/60">{selectedChannel.title}</p>
@@ -1351,7 +1333,7 @@ export default function TrustScorePage() {
                     )}
                     {analysisActive ? (
                       <span className="flex h-6 w-6 items-center justify-center">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-[#335CFF]" />
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-[#9aed00]" />
                       </span>
                     ) : null}
                   </div>
@@ -1382,7 +1364,7 @@ export default function TrustScorePage() {
                         cx="60"
                         cy="60"
                         r="52"
-                        stroke="#335CFF"
+                        stroke="#9aed00"
                         strokeWidth="8"
                         fill="none"
                         strokeLinecap="round"
@@ -1397,7 +1379,7 @@ export default function TrustScorePage() {
                   <div className="mt-8 flex gap-2">
                     {selectedChannel ? (
                       <button
-                        className="flex-1 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#2A2F3C] transition-all hover:bg-white/90"
+                        className="flex-1 rounded-xl bg-[#f7f7f8] px-4 py-3 text-sm font-semibold text-[#1c1e20] transition-all hover:bg-white/90"
                         type="button"
                         onClick={() => handleAnalyze(selectedChannel.id)}
                         disabled={analysisActive}
@@ -1406,7 +1388,7 @@ export default function TrustScorePage() {
                       </button>
                     ) : null}
                     <a
-                      className="flex items-center justify-center gap-2 rounded-xl bg-[#335CFF] px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-[#2B4FE0]"
+                      className="flex items-center justify-center gap-2 rounded-xl bg-[#9aed00] px-4 py-3 text-sm font-semibold text-black transition-all hover:bg-[#8ad600]"
                       href="/api/trust-score/oauth/start?returnTo=/tools/trust-score"
                     >
                       <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1418,39 +1400,39 @@ export default function TrustScorePage() {
                 </div>
 
                 {/* Channels - simplified */}
-                <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
+                <div className="rounded-[2rem] border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">Channels</p>
-                    <span className="text-xs text-gray-400">{channels.length}</span>
+                    <p className="text-sm font-semibold text-[#f7f7f8]">Channels</p>
+                    <span className="text-xs text-[#898a8b]">{channels.length}</span>
                   </div>
                   {disconnectError ? (
-                    <p className="mt-3 text-xs text-rose-500">{disconnectError}</p>
+                    <p className="mt-3 text-xs text-[#e72930]">{disconnectError}</p>
                   ) : null}
                   <div className="mt-4 space-y-2">
                     {loadingChannels ? (
-                      <div className="py-8 text-center text-sm text-gray-400">Loading...</div>
+                      <div className="py-8 text-center text-sm text-[#898a8b]">Loading...</div>
                     ) : channels.length === 0 ? (
-                      <div className="py-8 text-center text-sm text-gray-400">No channels connected</div>
+                      <div className="py-8 text-center text-sm text-[#898a8b]">No channels connected</div>
                     ) : (
                       channels.map((channel) => (
                         <div
                           key={channel.id}
                           className={`group relative flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer ${selectedChannelId === channel.id
-                              ? "bg-[#F3F6FF] ring-1 ring-[#335CFF]/20"
-                              : "hover:bg-gray-50"
+                              ? "bg-[rgba(154,237,0,0.1)] ring-1 ring-[#9aed00]/20"
+                              : "hover:bg-[rgba(255,255,255,0.05)]"
                             }`}
                           onClick={() => setSelectedChannelId(channel.id)}
                         >
                           {channel.thumbnailUrl ? (
                             <img src={channel.thumbnailUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
                           ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0e1012] text-xs font-semibold text-[#898a8b]">
                               {channel.title?.slice(0, 2).toUpperCase()}
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="truncate text-sm font-medium text-gray-900">{channel.title}</p>
-                            <p className="text-xs text-gray-400">{formatHandle(channel.handle)}</p>
+                            <p className="truncate text-sm font-medium text-[#f7f7f8]">{channel.title}</p>
+                            <p className="text-xs text-[#898a8b]">{formatHandle(channel.handle)}</p>
                           </div>
                           <div className="text-right">
                             <p className={`text-lg font-semibold ${getScoreTone(channel.lastScore ?? null)}`}>
@@ -1462,7 +1444,7 @@ export default function TrustScorePage() {
                             type="button"
                             onClick={(e) => handleDisconnect(e, channel.id, channel.title)}
                             disabled={disconnectingChannelId === channel.id}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-rose-600 shadow-sm border border-gray-200 hover:bg-rose-50 hover:border-rose-200 disabled:opacity-50"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg bg-[#1a1c1e] px-2.5 py-1.5 text-xs font-medium text-[#e72930] shadow-sm border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(231,41,48,0.1)] hover:border-[rgba(231,41,48,0.2)] disabled:opacity-50"
                           >
                             {disconnectingChannelId === channel.id ? "..." : "Disconnect"}
                           </button>
@@ -1476,25 +1458,25 @@ export default function TrustScorePage() {
               {/* Insights Panel */}
               <div className="flex flex-col gap-6">
                 {analysisError ? (
-                  <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm text-rose-600">
+                  <div className="rounded-2xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] px-5 py-4 text-sm text-[#e72930]">
                     {analysisError}
                   </div>
                 ) : null}
 
                 {/* Quick Stats Row */}
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                    <p className="text-xs font-medium text-gray-400">Trend</p>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-5">
+                    <p className="text-xs font-medium text-[#898a8b]">Trend</p>
+                    <p className="mt-2 text-2xl font-semibold text-[#f7f7f8]">
                       {history.length > 1 && latestSnapshot && previousSnapshot
                         ? `${latestSnapshot.score - previousSnapshot.score >= 0 ? "+" : ""}${(latestSnapshot.score - previousSnapshot.score).toFixed(0)}`
                         : "—"}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">{history.length} runs</p>
+                    <p className="mt-1 text-xs text-[#898a8b]">{history.length} runs</p>
                   </div>
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                    <p className="text-xs font-medium text-gray-400">Swipe rate</p>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-5">
+                    <p className="text-xs font-medium text-[#898a8b]">Swipe rate</p>
+                    <p className="mt-2 text-2xl font-semibold text-[#f7f7f8]">
                       {(() => {
                         const manualSwipe = currentComponents?.studioSwipeRate;
                         const hookRate =
@@ -1511,48 +1493,48 @@ export default function TrustScorePage() {
                         return `${String(percent).replace(/\\.0$/, "")}%`;
                       })()}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">
+                    <p className="mt-1 text-xs text-[#898a8b]">
                       {typeof currentComponents?.studioSwipeRate === "number"
                         ? "from YouTube Studio"
                         : "est. from engaged views"}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                    <p className="text-xs font-medium text-gray-400">Retention</p>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-5">
+                    <p className="text-xs font-medium text-[#898a8b]">Retention</p>
+                    <p className="mt-2 text-2xl font-semibold text-[#f7f7f8]">
                       {analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg
                         ? Math.min(100, Math.round(((analysisResult?.retentionAvg ?? latestSnapshot?.retention_avg ?? 0) / 40) * 100))
                         : "—"}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">score</p>
+                    <p className="mt-1 text-xs text-[#898a8b]">score</p>
                   </div>
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                    <p className="text-xs font-medium text-gray-400">Last run</p>
-                    <p className="mt-2 text-2xl font-semibold text-gray-900">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-5">
+                    <p className="text-xs font-medium text-[#898a8b]">Last run</p>
+                    <p className="mt-2 text-2xl font-semibold text-[#f7f7f8]">
                       {latestSnapshot?.created_at
                         ? new Date(latestSnapshot.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
                         : "—"}
                     </p>
-                    <p className="mt-1 text-xs text-gray-400">{latestSnapshot ? new Date(latestSnapshot.created_at).toLocaleDateString(undefined, { year: "numeric" }) : "never"}</p>
+                    <p className="mt-1 text-xs text-[#898a8b]">{latestSnapshot ? new Date(latestSnapshot.created_at).toLocaleDateString(undefined, { year: "numeric" }) : "never"}</p>
                   </div>
                 </div>
 
                 {/* Actions - clean cards */}
-                <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
+                <div className="rounded-[2rem] border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">How to improve</p>
-                    <span className="text-xs text-gray-400">{topLifts.length}</span>
+                    <p className="text-sm font-semibold text-[#f7f7f8]">How to improve</p>
+                    <span className="text-xs text-[#898a8b]">{topLifts.length}</span>
                   </div>
                   <div className="mt-5 space-y-3">
                     {analysisActive ? (
                       Array.from({ length: 3 }, (_, index) => (
-                        <div key={`skeleton-${index}`} className="animate-pulse rounded-xl bg-gray-50 p-4">
-                          <div className="h-4 w-3/4 rounded bg-gray-200" />
-                          <div className="mt-2 h-3 w-1/2 rounded bg-gray-100" />
+                        <div key={`skeleton-${index}`} className="animate-pulse rounded-xl bg-[#0e1012] p-4">
+                          <div className="h-4 w-3/4 rounded bg-[#252729]" />
+                          <div className="mt-2 h-3 w-1/2 rounded bg-[#252729]" />
                         </div>
                       ))
                     ) : topLifts.length === 0 ? (
-                      <div className="py-8 text-center text-sm text-gray-400">
+                      <div className="py-8 text-center text-sm text-[#898a8b]">
                         Run analysis to get recommendations
                       </div>
                     ) : (
@@ -1564,20 +1546,20 @@ export default function TrustScorePage() {
                             key={item.title}
                             className={`flex items-start gap-4 rounded-xl p-4 transition-colors ${
                               isWin 
-                                ? "bg-emerald-50/50 hover:bg-emerald-50" 
-                                : "bg-gray-50 hover:bg-gray-100"
+                                ? "bg-[rgba(76,175,80,0.1)] hover:bg-[rgba(76,175,80,0.15)]" 
+                                : "bg-[#0e1012] hover:bg-[#252729]"
                             }`}
                           >
                             <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold shadow-sm ${
                               isWin
-                                ? "bg-emerald-500 text-white"
-                                : "bg-white text-gray-500"
+                                ? "bg-[#4caf50] text-white"
+                                : "bg-[#1a1c1e] text-[#898a8b]"
                             }`}>
                               {isWin ? "✓" : idx + 1}
                             </span>
                             <div className="flex-1 min-w-0">
-                              <p className={`font-medium ${isWin ? "text-emerald-900" : "text-gray-900"}`}>{item.title}</p>
-                              <p className={`mt-1 text-sm ${isWin ? "text-emerald-700" : "text-gray-500"}`}>{item.detail}</p>
+                              <p className={`font-medium ${isWin ? "text-[#4caf50]" : "text-[#f7f7f8]"}`}>{item.title}</p>
+                              <p className={`mt-1 text-sm ${isWin ? "text-[#4caf50]/80" : "text-[#898a8b]"}`}>{item.detail}</p>
                             </div>
                             <span className={`flex-shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${impact.tone}`}>
                               {impact.label}
@@ -1590,30 +1572,30 @@ export default function TrustScorePage() {
                 </div>
 
                 {/* Weakest areas - simplified */}
-                <div className="rounded-[2rem] border border-gray-100 bg-white p-6">
-                  <p className="text-sm font-semibold text-gray-900">Weakest areas</p>
+                <div className="rounded-[2rem] border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6">
+                  <p className="text-sm font-semibold text-[#f7f7f8]">Weakest areas</p>
                   <div className="mt-5 space-y-4">
                     {analysisActive ? (
                       Array.from({ length: 3 }, (_, index) => (
                         <div key={`drag-skeleton-${index}`} className="animate-pulse">
-                          <div className="h-3 w-24 rounded bg-gray-200" />
-                          <div className="mt-2 h-2 w-full rounded-full bg-gray-100" />
+                          <div className="h-3 w-24 rounded bg-[#252729]" />
+                          <div className="mt-2 h-2 w-full rounded-full bg-[#0e1012]" />
                         </div>
                       ))
                     ) : topDrags.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-gray-400">
+                      <div className="py-6 text-center text-sm text-[#898a8b]">
                         Run analysis to identify weak spots
                       </div>
                     ) : (
                       topDrags.map((item) => (
                         <div key={item.key}>
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-900">{item.label}</span>
+                            <span className="text-sm font-medium text-[#f7f7f8]">{item.label}</span>
                             <span className={`text-sm font-semibold ${getScoreTone(item.score)}`}>{item.score}</span>
                           </div>
-                          <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                          <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-[#0e1012]">
                             <div
-                              className={`h-full rounded-full transition-all duration-500 ${item.score >= 70 ? "bg-emerald-500" : item.score >= 50 ? "bg-amber-500" : "bg-rose-500"
+                              className={`h-full rounded-full transition-all duration-500 ${item.score >= 70 ? "bg-[#4caf50]" : item.score >= 50 ? "bg-[#ffa726]" : "bg-[#e72930]"
                                 }`}
                               style={{ width: `${item.score}%` }}
                             />
@@ -1627,64 +1609,64 @@ export default function TrustScorePage() {
                 {/* Score breakdown - collapsible */}
                 {breakdownItems.length > 0 ? (
                   <details 
-                    className="group/details rounded-[2rem] border border-gray-100 bg-white"
+                    className="group/details rounded-[2rem] border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                     onToggle={() => setDetailsAnimKey(prev => prev + 1)}
                   >
-                    <summary className="flex cursor-pointer items-center justify-between p-6 text-sm font-semibold text-gray-900 [&::-webkit-details-marker]:hidden transition-colors hover:bg-gray-50/50">
+                    <summary className="flex cursor-pointer items-center justify-between p-6 text-sm font-semibold text-[#f7f7f8] [&::-webkit-details-marker]:hidden transition-colors hover:bg-[rgba(255,255,255,0.02)]">
                       Full breakdown
-                      <svg className="h-4 w-4 text-gray-400 transition-transform duration-300 ease-in-out group-open/details:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-4 w-4 text-[#898a8b] transition-transform duration-300 ease-in-out group-open/details:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </summary>
                     <div className="overflow-hidden">
-                      <div key={detailsAnimKey} className="animate-details-content border-t border-gray-100 p-6 pt-4 overflow-visible">
-                        <div className="mb-6 rounded-2xl border border-gray-100 bg-gray-50/50 p-5">
+                      <div key={detailsAnimKey} className="animate-details-content border-t border-[rgba(255,255,255,0.08)] p-6 pt-4 overflow-visible">
+                        <div className="mb-6 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#0e1012] p-5">
                           <div className="flex items-center justify-between gap-4">
                             <div>
-                              <p className="text-sm font-medium text-gray-900">YouTube Studio data</p>
-                              <p className="mt-0.5 text-xs text-gray-400">For the most accurate score, add data YouTube doesn&apos;t share via API.</p>
+                              <p className="text-sm font-medium text-[#f7f7f8]">YouTube Studio data</p>
+                              <p className="mt-0.5 text-xs text-[#898a8b]">For the most accurate score, add data YouTube doesn&apos;t share via API.</p>
                             </div>
                             <button
                               type="button"
                               onClick={handleApplyStudioData}
                               disabled={!selectedChannelId || analysisActive || studioApplyActive}
-                              className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="rounded-lg bg-[#9aed00] px-3 py-1.5 text-xs font-medium text-black transition-all hover:bg-[#8ad600] disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {studioApplyActive ? "Saving..." : "Save"}
                             </button>
                           </div>
 
                           {studioApplyError ? (
-                            <p className="mt-2 text-xs text-rose-600">{studioApplyError}</p>
+                            <p className="mt-2 text-xs text-[#e72930]">{studioApplyError}</p>
                           ) : null}
 
                           <div className="mt-4 grid gap-3 sm:grid-cols-2">
                             <div>
-                              <label className="text-xs text-gray-500">Swipe rate</label>
+                              <label className="text-xs text-[#898a8b]">Swipe rate</label>
                               <div className="mt-1.5 flex items-center gap-2">
                                 <input
                                   inputMode="decimal"
                                   placeholder="—"
                                   value={studioSwipeRateInput}
                                   onChange={(event) => setStudioSwipeRateInput(event.target.value)}
-                                  className={`w-full rounded-lg border px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200 ${
+                                  className={`w-full rounded-lg border px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20 ${
                                     studioSwipeRateInput.trim().length > 0 && studioSwipeRateParsed === null
-                                      ? "border-rose-200 bg-rose-50/50"
-                                      : "border-gray-200 bg-white"
+                                      ? "border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)]"
+                                      : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
                                   }`}
                                 />
-                                <span className="text-sm text-gray-400">%</span>
+                                <span className="text-sm text-[#898a8b]">%</span>
                               </div>
                             </div>
 
                             <div>
-                              <label className="text-xs text-gray-500">Community strikes</label>
+                              <label className="text-xs text-[#898a8b]">Community strikes</label>
                               <select
                                 value={studioCommunityStrikesInput}
                                 onChange={(event) =>
                                   setStudioCommunityStrikesInput(event.target.value as "" | "0" | "1" | "2+")
                                 }
-                                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200"
+                                className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
                               >
                                 <option value="">—</option>
                                 <option value="0">None</option>
@@ -1694,13 +1676,13 @@ export default function TrustScorePage() {
                             </div>
 
                             <div>
-                              <label className="text-xs text-gray-500">Copyright strikes</label>
+                              <label className="text-xs text-[#898a8b]">Copyright strikes</label>
                               <select
                                 value={studioCopyrightStrikeInput}
                                 onChange={(event) =>
                                   setStudioCopyrightStrikeInput(event.target.value as "" | "yes" | "no")
                                 }
-                                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200"
+                                className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
                               >
                                 <option value="">—</option>
                                 <option value="no">None</option>
@@ -1709,7 +1691,7 @@ export default function TrustScorePage() {
                             </div>
 
                             <div>
-                              <label className="text-xs text-gray-500">Content type</label>
+                              <label className="text-xs text-[#898a8b]">Content type</label>
                               <select
                                 value={studioOriginalityInput}
                                 onChange={(event) =>
@@ -1717,7 +1699,7 @@ export default function TrustScorePage() {
                                     event.target.value as "" | "mostly_original" | "mix" | "mostly_reused"
                                   )
                                 }
-                                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-gray-300 focus:ring-1 focus:ring-gray-200"
+                                className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
                               >
                                 <option value="">—</option>
                                 <option value="mostly_original">Original</option>
@@ -1738,34 +1720,34 @@ export default function TrustScorePage() {
                             <div
                               key={item.key}
                               tabIndex={0}
-                              className="group/item relative rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                              className="group/item relative rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9aed00]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222222]"
                             >
-                              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 transition-shadow group-hover/item:shadow-sm">
-                                <span className="text-sm text-gray-600">{item.label}</span>
+                              <div className="flex items-center justify-between rounded-lg bg-[#0e1012] px-4 py-3 transition-shadow group-hover/item:shadow-sm">
+                                <span className="text-sm text-[#898a8b]">{item.label}</span>
                                 <span className={`text-sm font-semibold ${getScoreTone(item.score)}`}>{item.score}</span>
                               </div>
                               {tooltip ? (
                                 showTooltipBelow ? (
                                   <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-3 w-72 max-w-[80vw] -translate-x-1/2 -translate-y-1 opacity-0 transition-all duration-300 ease-in-out group-hover/item:translate-y-0 group-hover/item:opacity-100 group-focus-within/item:translate-y-0 group-focus-within/item:opacity-100">
-                                    <div className="mx-auto mb-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-white/95 ring-1 ring-slate-200/80 shadow-[0_-3px_8px_rgba(15,23,42,0.08)]" />
-                                    <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.15)] backdrop-blur">
-                                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                                        <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-rose-500" : "bg-[#335CFF]"}`} />
+                                    <div className="mx-auto mb-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-[#252729] ring-1 ring-[rgba(255,255,255,0.08)] shadow-lg" />
+                                    <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#252729] px-4 py-3 text-xs leading-relaxed text-[#898a8b] shadow-lg backdrop-blur">
+                                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-[#898a8b]">
+                                        <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-[#e72930]" : "bg-[#9aed00]"}`} />
                                         {isZero ? "Why it's 0" : "What this means"}
                                       </div>
-                                      <div className="mt-2 text-sm text-slate-700">{tooltip}</div>
+                                      <div className="mt-2 text-sm text-[#f7f7f8]">{tooltip}</div>
                                     </div>
                                   </div>
                                 ) : (
                                   <div className="pointer-events-none absolute left-1/2 bottom-full z-50 mb-3 w-72 max-w-[80vw] -translate-x-1/2 translate-y-1 opacity-0 transition-all duration-300 ease-in-out group-hover/item:translate-y-0 group-hover/item:opacity-100 group-focus-within/item:translate-y-0 group-focus-within/item:opacity-100">
-                                    <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.15)] backdrop-blur">
-                                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                                        <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-rose-500" : "bg-[#335CFF]"}`} />
+                                    <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#252729] px-4 py-3 text-xs leading-relaxed text-[#898a8b] shadow-lg backdrop-blur">
+                                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-[#898a8b]">
+                                        <span className={`h-1.5 w-1.5 rounded-full ${isZero ? "bg-[#e72930]" : "bg-[#9aed00]"}`} />
                                         {isZero ? "Why it's 0" : "What this means"}
                                       </div>
-                                      <div className="mt-2 text-sm text-slate-700">{tooltip}</div>
+                                      <div className="mt-2 text-sm text-[#f7f7f8]">{tooltip}</div>
                                     </div>
-                                    <div className="mx-auto mt-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-white/95 ring-1 ring-slate-200/80 shadow-[0_6px_14px_rgba(15,23,42,0.12)]" />
+                                    <div className="mx-auto mt-2 h-2.5 w-2.5 rotate-45 rounded-[2px] bg-[#252729] ring-1 ring-[rgba(255,255,255,0.08)] shadow-lg" />
                                   </div>
                                 )
                               ) : null}
@@ -1782,22 +1764,22 @@ export default function TrustScorePage() {
 
             {/* History - minimal */}
             {history.length > 0 ? (
-              <section className="rounded-[2rem] border border-gray-100 bg-white p-6">
+              <section className="rounded-[2rem] border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-gray-900">History</p>
-                  <p className="text-xs text-gray-400">{history.length} runs</p>
+                  <p className="text-sm font-semibold text-[#f7f7f8]">History</p>
+                  <p className="text-xs text-[#898a8b]">{history.length} runs</p>
                 </div>
                 <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
                   {history.slice(0, 10).map((entry, idx) => (
                     <div
                       key={entry.id}
-                      className={`flex flex-shrink-0 flex-col items-center rounded-xl px-5 py-4 ${idx === 0 ? "bg-[#2A2F3C] text-white" : "bg-gray-50"
+                      className={`flex flex-shrink-0 flex-col items-center rounded-xl px-5 py-4 ${idx === 0 ? "bg-[#9aed00] text-black" : "bg-[#0e1012]"
                         }`}
                     >
                       <span className={`text-2xl font-semibold ${idx === 0 ? "" : getScoreTone(entry.score)}`}>
                         {entry.score}
                       </span>
-                      <span className={`mt-1 text-xs ${idx === 0 ? "text-white/60" : "text-gray-400"}`}>
+                      <span className={`mt-1 text-xs ${idx === 0 ? "text-black/60" : "text-[#898a8b]"}`}>
                         {new Date(entry.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                       </span>
                     </div>
@@ -1810,8 +1792,8 @@ export default function TrustScorePage() {
       </div>
 
       {analysisActive ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0F1A]/70 px-4">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-[#1a1c1e] border border-[rgba(255,255,255,0.08)] p-6 shadow-2xl">
             <div className="flex items-center gap-3">
               {selectedChannel?.thumbnailUrl ? (
                 <img
@@ -1820,28 +1802,28 @@ export default function TrustScorePage() {
                   className="h-12 w-12 rounded-full object-cover"
                 />
               ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-600">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0e1012] text-sm font-semibold text-[#898a8b]">
                   {selectedChannel?.title?.slice(0, 2).toUpperCase() ?? "YT"}
                 </div>
               )}
               <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-gray-400">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-[#898a8b]">
                   {channelHandle ? `Analyzing ${channelHandle}` : "Analyzing"}
                 </p>
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className="text-lg font-semibold text-[#f7f7f8]">
                   {selectedChannel?.title ?? "Your channel"}
                 </h3>
               </div>
             </div>
-            <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+            <div className="mt-4 flex items-center justify-between text-xs text-[#898a8b]">
               <span>Estimated time: ~45s</span>
-              <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#335CFF]">
+              <span className="rounded-full bg-[rgba(154,237,0,0.1)] px-3 py-1 text-xs font-semibold text-[#9aed00]">
                 {Math.min(100, Math.round(analysisProgress))}%
               </span>
             </div>
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#0e1012]">
               <div
-                className="h-full rounded-full bg-[#335CFF] transition-all duration-1000"
+                className="h-full rounded-full bg-[#9aed00] transition-all duration-1000"
                 style={{ width: `${analysisProgress}%` }}
               />
             </div>
@@ -1853,17 +1835,17 @@ export default function TrustScorePage() {
                   <div key={step.title} className="flex items-start gap-3">
                     <div
                       className={`flex h-6 w-6 items-center justify-center rounded-full border ${isComplete
-                          ? "border-emerald-500 bg-emerald-50"
+                          ? "border-[#4caf50] bg-[rgba(76,175,80,0.1)]"
                           : isActive
-                            ? "border-[#335CFF] bg-[#EEF2FF]"
-                            : "border-gray-200 bg-white"
+                            ? "border-[#9aed00] bg-[rgba(154,237,0,0.1)]"
+                            : "border-[rgba(255,255,255,0.08)] bg-[#0e1012]"
                         }`}
                     >
                       {isComplete ? (
                         <svg
                           aria-hidden="true"
                           viewBox="0 0 24 24"
-                          className="h-3 w-3 text-emerald-600"
+                          className="h-3 w-3 text-[#4caf50]"
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="3"
@@ -1874,26 +1856,26 @@ export default function TrustScorePage() {
                         </svg>
                       ) : (
                         <span
-                          className={`h-2 w-2 rounded-full ${isActive ? "bg-[#335CFF]" : "bg-gray-300"
+                          className={`h-2 w-2 rounded-full ${isActive ? "bg-[#9aed00]" : "bg-[#898a8b]"
                             }`}
                         />
                       )}
                     </div>
                     <div>
                       <p
-                        className={`text-sm font-medium ${isActive ? "text-gray-900" : "text-gray-600"
+                        className={`text-sm font-medium ${isActive ? "text-[#f7f7f8]" : "text-[#898a8b]"
                           }`}
                       >
                         {step.title}
                       </p>
-                      <p className="text-xs text-gray-500">{step.detail}</p>
+                      <p className="text-xs text-[#898a8b]">{step.detail}</p>
                     </div>
                   </div>
                 );
               })}
             </div>
             {analysisError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-600">
+              <div className="mt-4 rounded-xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-3 text-sm text-[#e72930]">
                 {analysisError}
               </div>
             ) : null}

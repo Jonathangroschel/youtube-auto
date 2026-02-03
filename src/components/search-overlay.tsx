@@ -24,7 +24,7 @@ const arrowIcon = (
   <svg
     aria-hidden="true"
     viewBox="0 0 24 24"
-    className="h-3.5 w-3.5 text-gray-400"
+    className="h-3.5 w-3.5 text-[#898a8b]"
     fill="none"
     stroke="currentColor"
     strokeWidth="2"
@@ -47,7 +47,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-700"
+            className="h-4 w-4 text-[#9aed00]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -67,7 +67,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 512 512"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="currentColor"
           >
             <path d="M86.33 22.67C74.66 60.11 54.85 77.51 17.9 81.44c34.9 5.95 54.06 16.65 64.93 57.46 5.1-17.7-2.54-44.83 40.27-51.12C91.33 72.61 87.63 58.2 86.33 22.67zM399.8 37.35c-2.3 9.45-5 18.36-8.1 26.76 53 62.49 59 152.29 39.7 227.19-10.3 39.9-27.8 75.8-50.2 101.7-13.4 15.6-28.9 27.8-45.6 34.5 1.6 8.3 3.1 16.5 4.4 24.7 115.6-67.1 174.5-271 59.8-414.85zm-232.6 8.56l-4.1 62.59c33.9 10.4 70.3 26.4 95.4 45.2l23.1-71.26c-36.5-24.85-72.9-48.39-114.4-36.53zm216.6 37.03C358.6 135 316.2 164 265.4 177.7l-4.8 1.3-3.6-3.4c-23.6-21.8-75.9-44.1-117-54.8-9.6 33.1-19.2 77.6-17 108.8 77.7-2.1 129.8 29.1 162.7 74 22.9 31.1 36.9 68.5 45.9 106 12.6-5.6 24.7-15.2 36-28.3 20-23.2 36.7-56.9 46.4-94.5 17.4-67.7 12.4-147.4-30.2-203.86zM143.7 247.7L87.69 494.3h25.51l38.2-42.3-3.4-15-27.9 13.7-8-16.2 60.5-29.8 8 16.2-16 7.9c2.6 9.8 4.6 20.4 6.9 30-11.5 12.3-24.5 24.9-34.1 35.5h45.4l44.6-221.7c-22.2-14.1-49.5-23.1-83.7-24.9zm17.8 19.4l48.9 32.8-10 15-17.5-11.7-10.3 15.8 20.5 55.5-16.8 6.2-15.9-43-14.8 22.8-15-9.8 37.4-57.5-16.5-11.1zm-120.2.5c4.26 36.2 12.96 45.7-21.03 56.1 39.29 1.5 41.04 6.6 54.5 41.4-3.46-35.3-7.53-41.5 29.03-62.7-18.43-.2-36.47 11.8-62.5-34.8zm378.3 123.1c14.1 36.7 9.3 62.6-17.4 88.6 31.1-17 52.8-20.4 86.6 4.9-7-17-29.8-33.6 0-65-34.4 7.8-46.3-1.3-69.2-28.5z" />
@@ -86,7 +86,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -105,7 +105,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -123,7 +123,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -144,7 +144,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -164,7 +164,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -195,7 +195,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="currentColor"
           >
             <path d="M12.244 4c.534.003 1.87.016 3.29.073l.504.022c1.429.067 2.858.183 3.566.381.945.266 1.687 1.041 1.938 2.022.4 1.559.45 4.602.456 5.339l.001.152v.01l-.001.153c-.006.736-.056 3.779-.456 5.338-.254.986-.997 1.761-1.938 2.023-.708.197-2.137.313-3.566.381l-.504.022c-1.42.057-2.756.07-3.29.073l-.234.001h-.01l-.235-.001c-1.13-.006-5.856-.057-7.359-.475-.945-.266-1.688-1.041-1.939-2.023-.4-1.559-.45-4.602-.456-5.338v-.327c.006-.736.056-3.779.456-5.338.254-.986.997-1.761 1.939-2.023C5.898 4.006 10.624 3.955 11.755 3.949h.489ZM10 8.499v7l6-3.5-6-3.5Z" />
@@ -210,7 +210,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="currentColor"
           >
             <path d="M16 8.245V15.5C16 19.09 13.09 22 9.5 22S3 19.09 3 15.5 5.91 9 9.5 9c.516 0 1.018.06 1.5.174v3.163A3.5 3.5 0 0 0 9.5 12 3.5 3.5 0 0 0 6 15.5 3.5 3.5 0 0 0 9.5 19 3.5 3.5 0 0 0 13 15.5V2h3a5 5 0 0 0 5 5v3c-1.892 0-3.63-.657-5-1.755Z" />
@@ -225,7 +225,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -245,7 +245,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -266,7 +266,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -287,7 +287,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -306,7 +306,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -326,7 +326,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -347,7 +347,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -373,7 +373,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -395,7 +395,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -416,7 +416,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -438,7 +438,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -462,7 +462,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -491,7 +491,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -510,7 +510,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -530,7 +530,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 512 512"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="currentColor"
           >
             <path d="M86.33 22.67C74.66 60.11 54.85 77.51 17.9 81.44c34.9 5.95 54.06 16.65 64.93 57.46 5.1-17.7-2.54-44.83 40.27-51.12C91.33 72.61 87.63 58.2 86.33 22.67zM399.8 37.35c-2.3 9.45-5 18.36-8.1 26.76 53 62.49 59 152.29 39.7 227.19-10.3 39.9-27.8 75.8-50.2 101.7-13.4 15.6-28.9 27.8-45.6 34.5 1.6 8.3 3.1 16.5 4.4 24.7 115.6-67.1 174.5-271 59.8-414.85z" />
@@ -545,7 +545,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -565,7 +565,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -585,7 +585,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -608,7 +608,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -635,7 +635,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -655,7 +655,7 @@ const sections: SearchSection[] = [
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="h-4 w-4 text-gray-500"
+            className="h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -720,24 +720,24 @@ export default function SearchOverlay({
       aria-hidden={!open}
     >
       <div
-        className={`absolute inset-0 bg-background/60 backdrop-blur-sm transition-opacity ${
+        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity ${
           open ? "opacity-100" : "opacity-0"
         }`}
         onClick={handleClose}
       />
       <div
-        className={`absolute left-1/2 top-24 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-gray-200 bg-white shadow-xl transition-all ${
+        className={`absolute left-1/2 top-24 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-xl transition-all ${
           open
             ? "pointer-events-auto translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-2 opacity-0"
         }`}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center border-b border-gray-100 px-5 py-4">
+        <div className="flex items-center border-b border-[rgba(255,255,255,0.08)] px-5 py-4">
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
-            className="mr-3 h-4 w-4 text-gray-400"
+            className="mr-3 h-4 w-4 text-[#898a8b]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -750,7 +750,7 @@ export default function SearchOverlay({
           <input
             type="text"
             placeholder="Search..."
-            className="flex-1 bg-transparent text-[15px] font-normal text-gray-900 outline-none placeholder:text-gray-400"
+            className="flex-1 bg-transparent text-[15px] font-normal text-[#f7f7f8] outline-none placeholder:text-[#898a8b]"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -760,7 +760,7 @@ export default function SearchOverlay({
           {filteredSections.map((section, index) => (
             <div key={section.title} className="mb-2 last:mb-0">
               <div className="px-5 pb-1 pt-3">
-                <p className="text-xs font-medium text-gray-400">
+                <p className="text-xs font-medium text-[#898a8b]">
                   {section.title}
                 </p>
               </div>
@@ -773,8 +773,8 @@ export default function SearchOverlay({
                       href={item.href}
                       className={`group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-all ${
                         item.active
-                          ? "bg-gray-100"
-                          : "hover:bg-gray-50"
+                          ? "bg-[rgba(154,237,0,0.1)]"
+                          : "hover:bg-[rgba(255,255,255,0.05)]"
                       }`}
                       onClick={handleClose}
                     >
@@ -782,18 +782,18 @@ export default function SearchOverlay({
                         <div
                           className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
                             item.active
-                              ? "bg-gray-200"
-                              : "bg-gray-50 group-hover:bg-gray-100"
+                              ? "bg-[rgba(154,237,0,0.15)]"
+                              : "bg-[#0e1012] group-hover:bg-[#252729]"
                           }`}
                         >
                           {item.icon}
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-medium text-[#f7f7f8]">
                             {item.title}
                           </div>
                           {item.description ? (
-                            <div className="mt-0.5 text-xs text-gray-500">
+                            <div className="mt-0.5 text-xs text-[#898a8b]">
                               {item.description}
                             </div>
                           ) : null}
@@ -813,7 +813,7 @@ export default function SearchOverlay({
                 })}
               </div>
               {index !== filteredSections.length - 1 ? (
-                <div className="mx-5 my-2 border-t border-gray-100" />
+                <div className="mx-5 my-2 border-t border-[rgba(255,255,255,0.08)]" />
               ) : null}
             </div>
           ))}

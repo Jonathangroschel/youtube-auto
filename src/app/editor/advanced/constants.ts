@@ -87,19 +87,20 @@ export const transformHandles: Array<{
 // Speed presets
 export const speedPresets = [0.5, 1, 1.5, 2];
 
-// CSS class strings
+// CSS class strings - Satura Design System (Dark Theme)
+// Primary accent: #9aed00 (neon green), Secondary accent: #6a47ff (purple)
 export const panelCardClass =
-  "rounded-xl border border-gray-200/70 bg-white px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.06)]";
+  "rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px]";
 export const panelButtonClass =
-  "flex w-full items-center gap-2 rounded-xl border border-gray-200/70 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-[0_6px_14px_rgba(15,23,42,0.05)] transition hover:border-gray-300 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30 focus-visible:ring-offset-2";
+  "flex w-full items-center gap-2 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-3 text-sm font-semibold text-[#f7f7f8] shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px] transition hover:border-[rgba(255,255,255,0.14)] hover:bg-[#252729] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.4)]";
 export const floaterSurfaceClass =
-  "rounded-2xl border border-white/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.18)] backdrop-blur";
+  "rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-[rgba(0,0,0,0.35)_1px_2px_8px_0px]";
 export const floaterButtonClass =
-  "flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30";
+  "flex h-9 w-9 items-center justify-center rounded-lg text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.4)]";
 export const floaterPillClass =
-  "flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30";
+  "flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.4)]";
 export const floaterMenuItemClass =
-  "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B6CFF]/30";
+  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-[#f7f7f8] transition hover:bg-[rgba(255,255,255,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(106,71,255,0.4)]";
 
 // Floating menu dimensions
 export const floaterMenuWidth = 180;

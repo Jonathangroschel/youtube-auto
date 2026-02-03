@@ -1,6 +1,7 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
+import { SaturaLogo } from "@/components/satura-logo";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 type NavItem = {
@@ -18,7 +19,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -37,7 +38,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -55,7 +56,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -76,7 +77,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#335CFF]"
+        className="h-5 w-5 text-[#9aed00] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -101,7 +102,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.8"
@@ -122,7 +123,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -151,7 +152,7 @@ const mobileSections: MobileSection[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-4 w-4 text-gray-600"
+        className="h-4 w-4 text-[#9aed00]"
         fill="currentColor"
       >
         <path fill="none" d="M0 0h24v24H0V0z" />
@@ -186,7 +187,7 @@ const mobileSections: MobileSection[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-4 w-4 text-gray-600"
+        className="h-4 w-4 text-[#9aed00]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -235,7 +236,7 @@ const quickTools: QuickTool[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-blue-500"
+        className="h-5 w-5 text-[#9aed00]"
         fill="currentColor"
       >
         <g>
@@ -255,7 +256,7 @@ const quickTools: QuickTool[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-blue-500"
+        className="h-5 w-5 text-[#9aed00]"
         fill="currentColor"
       >
         <path d="M12.244 4c.534.003 1.87.016 3.29.073l.504.022c1.429.067 2.858.183 3.566.381.945.266 1.687 1.041 1.938 2.022.4 1.559.45 4.602.456 5.339l.001.152v.01l-.001.153c-.006.736-.056 3.779-.456 5.338-.254.986-.997 1.761-1.938 2.023-.708.197-2.137.313-3.566.381l-.504.022c-1.42.057-2.756.07-3.29.073l-.234.001h-.01l-.235-.001c-1.13-.006-5.856-.057-7.359-.475-.945-.266-1.688-1.041-1.939-2.023-.4-1.559-.45-4.602-.456-5.338v-.327c.006-.736.056-3.779.456-5.338.254-.986.997-1.761 1.939-2.023C5.898 4.006 10.624 3.955 11.755 3.949h.489ZM10 8.499v7l6-3.5-6-3.5Z" />
@@ -270,7 +271,7 @@ const quickTools: QuickTool[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-blue-500"
+        className="h-5 w-5 text-[#9aed00]"
         fill="currentColor"
       >
         <path d="M16 8.245V15.5C16 19.09 13.09 22 9.5 22S3 19.09 3 15.5 5.91 9 9.5 9c.516 0 1.018.06 1.5.174v3.163A3.5 3.5 0 0 0 9.5 12 3.5 3.5 0 0 0 6 15.5 3.5 3.5 0 0 0 9.5 19 3.5 3.5 0 0 0 13 15.5V2h3a5 5 0 0 0 5 5v3c-1.892 0-3.63-.657-5-1.755Z" />
@@ -422,34 +423,25 @@ export default function ToolsPage() {
   }, [resolvedNavIndex, updateIndicator]);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
+    <div className="min-h-screen overflow-x-hidden bg-[#0e1012] font-sans text-[#f7f7f8]">
       <div className="mx-auto flex w-full md:max-w-[90rem]">
-        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
+        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-3 md:flex">
           <div
             ref={navContainerRef}
             className="relative flex w-full flex-1 flex-col items-center gap-4"
           >
             <div
-              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#6a47ff] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 transform: `translateY(${indicatorStyle.top}px)`,
                 height: `${indicatorStyle.height}px`,
                 opacity: indicatorStyle.opacity,
                 transition: indicatorReady ? undefined : "none",
+                boxShadow: "0px 0px 12px rgba(106, 71, 255, 0.5)",
               }}
             />
-            <a
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-7 w-7 scale-[1.5] origin-center"
-              />
-            </a>
-            <div className="h-px w-10 bg-gray-200" />
+            <SaturaLogo size="md" />
+            <div className="h-px w-10 bg-[rgba(255,255,255,0.08)]" />
             <nav
               className="flex flex-col gap-2"
               onMouseLeave={() => setHoveredNavIndex(null)}
@@ -461,8 +453,8 @@ export default function ToolsPage() {
                   ref={(element) => {
                     navItemRefs.current[index] = element;
                   }}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
-                    item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-all duration-200 ${
+                    item.active ? "bg-[rgba(154,237,0,0.1)]" : "hover:bg-[rgba(255,255,255,0.05)]"
                   }`}
                   aria-label={item.label}
                   onMouseEnter={() => setHoveredNavIndex(index)}
@@ -473,7 +465,7 @@ export default function ToolsPage() {
             </nav>
             <div className="mt-auto pb-6">
               <button
-                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100 xl:h-14 xl:w-14"
+                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-all duration-200 hover:border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)] xl:h-14 xl:w-14"
                 type="button"
                 aria-label="Search"
                 onClick={() => setSearchOpen(true)}
@@ -481,7 +473,7 @@ export default function ToolsPage() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-400 group-hover:text-gray-600"
+                  className="h-5 w-5 text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -491,7 +483,7 @@ export default function ToolsPage() {
                   <circle cx="11" cy="11" r="7" />
                   <path d="m20 20-3.5-3.5" />
                 </svg>
-                <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600">
+                <span className="text-[10px] font-medium text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]">
                   Cmd+K
                 </span>
               </button>
@@ -500,20 +492,10 @@ export default function ToolsPage() {
         </aside>
 
         <main className="flex min-h-[100dvh] w-full flex-1 flex-col px-4 pb-16 pt-3 md:px-6 md:py-6">
-          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
-            <a
-              className="flex h-10 w-10 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-6 w-6 scale-[1.5] origin-center"
-              />
-            </a>
+          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#0e1012]/90 px-4 py-3 backdrop-blur-xl md:hidden">
+            <SaturaLogo size="sm" />
             <button
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white transition-colors hover:bg-gray-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] transition-colors hover:bg-[#252729]"
               type="button"
               aria-label="Open menu"
               aria-expanded={mobileMenuOpen}
@@ -522,7 +504,7 @@ export default function ToolsPage() {
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-4 w-4 text-gray-700"
+                className="h-4 w-4 text-[#f7f7f8]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -542,13 +524,13 @@ export default function ToolsPage() {
             }`}
           >
             <div
-              className={`absolute inset-0 bg-black/20 transition-opacity ${
+              className={`absolute inset-0 bg-black/50 transition-opacity ${
                 mobileMenuOpen ? "opacity-100" : "opacity-0"
               }`}
               onClick={() => setMobileMenuOpen(false)}
             />
             <div
-              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-white shadow-xl transition-transform ${
+              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-[#0e1012] shadow-xl transition-transform ${
                 mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
               }`}
             >
@@ -561,10 +543,10 @@ export default function ToolsPage() {
                     draggable="false"
                   />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-[#f7f7f8]">
                       Jonathan Groschel
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[#898a8b]">
                       jonathangroschel5@gmail.com
                     </p>
                   </div>
@@ -581,10 +563,10 @@ export default function ToolsPage() {
                   return (
                     <div
                       key={section.label}
-                      className="border-b border-gray-100 last:border-0"
+                      className="border-b border-[rgba(255,255,255,0.08)] last:border-0"
                     >
                       <button
-                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-gray-50 focus:outline-none"
+                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.05)] focus:outline-none"
                         type="button"
                         aria-expanded={isOpen}
                         aria-controls={`section-${sectionId}`}
@@ -592,14 +574,14 @@ export default function ToolsPage() {
                       >
                         <div className="flex items-center space-x-2">
                           {section.icon}
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-[#f7f7f8]">
                             {section.label}
                           </span>
                         </div>
                         <svg
                           aria-hidden="true"
                           viewBox="0 0 24 24"
-                          className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${
+                          className={`h-4 w-4 text-[#898a8b] transition-transform duration-200 ${
                             isOpen ? "rotate-90" : ""
                           }`}
                           fill="none"
@@ -622,7 +604,7 @@ export default function ToolsPage() {
                             <a
                               key={item.label}
                               href={item.href}
-                              className="flex w-full items-center px-10 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none"
+                              className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
@@ -642,8 +624,8 @@ export default function ToolsPage() {
                     href={action.href}
                     className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       action.tone === "danger"
-                        ? "text-red-600 hover:bg-red-50"
-                        : "text-gray-700 hover:bg-gray-100"
+                        ? "text-[#e72930] hover:bg-[rgba(231,41,48,0.1)]"
+                        : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                     }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
@@ -654,13 +636,13 @@ export default function ToolsPage() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
+          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#0e1012]/95 py-3 backdrop-blur-xl md:flex">
             <div className="flex items-center gap-2">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-700"
+                  className="h-5 w-5 text-[#9aed00]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -678,12 +660,12 @@ export default function ToolsPage() {
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-medium text-black">Tools</h2>
+                <h2 className="font-[family-name:var(--font-geist-sans)] text-lg font-semibold uppercase tracking-tight text-[#f7f7f8]">Tools</h2>
               </div>
             </div>
             <div className="relative" ref={profileMenuRef}>
               <button
-                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
+                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 px-2 transition-colors hover:bg-[#252729] focus:outline-none"
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={profileMenuOpen}
@@ -699,7 +681,7 @@ export default function ToolsPage() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-4 w-4 text-gray-600"
+                  className="h-4 w-4 text-[#898a8b]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -711,7 +693,7 @@ export default function ToolsPage() {
               </button>
               <div
                 id="tools-profile-menu"
-                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg transition-all duration-150 ${
                   profileMenuOpen
                     ? "pointer-events-auto translate-y-0 opacity-100"
                     : "pointer-events-none translate-y-1 opacity-0"
@@ -725,35 +707,35 @@ export default function ToolsPage() {
                     draggable="false"
                   />
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium">Jonathan Groschel</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-base font-medium text-[#f7f7f8]">Jonathan Groschel</p>
+                    <p className="text-xs text-[#898a8b]">
                       jonathangroschel5@gmail.com
                     </p>
                   </div>
                 </div>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Settings
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Upgrade
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   24/7 Support
                 </button>
                 <button
-                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
@@ -763,22 +745,22 @@ export default function ToolsPage() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
+          <div className="flex flex-1 flex-col gap-4 border-t border-[rgba(255,255,255,0.08)] pt-4 md:border-none md:pt-0">
             <div className="flex flex-col space-y-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {quickTools.map((tool) => (
                   <a
                     key={tool.title}
-                    className="group flex items-center justify-between rounded-xl border border-gray-200 bg-[#FAFAFA] p-3"
+                    className="group flex items-center justify-between rounded-xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] p-3 transition-all duration-200 hover:border-[rgba(106,71,255,0.3)]"
                     href={tool.href}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E1E4EA] bg-white">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[rgba(154,237,0,0.1)]">
                         {tool.icon}
                       </div>
                       <div>
-                        <h3 className="font-medium">{tool.title}</h3>
-                        <p className="text-sm text-gray-500">
+                        <h3 className="font-medium text-[#f7f7f8]">{tool.title}</h3>
+                        <p className="text-sm text-[#898a8b]">
                           {tool.description}
                         </p>
                       </div>
@@ -786,7 +768,7 @@ export default function ToolsPage() {
                     <svg
                       aria-hidden="true"
                       viewBox="0 0 24 24"
-                      className="h-4 w-4 text-gray-400 transition-all group-hover:text-blue-500"
+                      className="h-4 w-4 text-[#898a8b] transition-all group-hover:text-[#9aed00]"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
@@ -804,27 +786,27 @@ export default function ToolsPage() {
                 {toolCards.map((tool) => (
                   <div
                     key={tool.title}
-                    className="flex flex-col rounded-2xl border border-gray-200 bg-white"
+                    className="flex flex-col rounded-2xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] transition-all duration-200 hover:border-[rgba(106,71,255,0.3)]"
                   >
-                    <div className="h-40 w-full rounded-t-2xl border-b border-gray-200 bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
+                    <div className="h-40 w-full rounded-t-2xl border-b border-[rgba(255,255,255,0.08)] bg-gradient-to-br from-[#191240] via-[#252729] to-[#0e1012]" />
                     <div className="flex h-full flex-col justify-between space-y-2 p-4 pb-3">
                       <div className="flex flex-col space-y-px">
                         <div className="flex items-start justify-between">
-                          <h3 className="text-lg font-medium">{tool.title}</h3>
+                          <h3 className="font-[family-name:var(--font-geist-sans)] text-lg font-semibold uppercase tracking-tight text-[#f7f7f8]">{tool.title}</h3>
                           {tool.badge ? (
-                            <span className="rounded-full bg-blue-600 px-2 py-1 text-xs text-white">
+                            <span className="rounded-full bg-[#9aed00] px-2 py-1 text-xs text-black font-semibold">
                               {tool.badge}
                             </span>
                           ) : null}
                         </div>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-[#898a8b]">
                           {tool.description}
                         </p>
                       </div>
                       <div className="mt-auto">
                         <a href={tool.href}>
                           <button
-                            className="w-full rounded-xl border border-gray-300 py-2 text-center transition-colors hover:bg-gray-50"
+                            className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-2 text-center text-[#f7f7f8] transition-all hover:border-[rgba(106,71,255,0.3)] hover:bg-[rgba(106,71,255,0.1)]"
                             type="button"
                           >
                             Get Started

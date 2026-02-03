@@ -25,15 +25,15 @@ export const SliderField = ({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-600">{label}</span>
-        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+        <span className="text-xs font-semibold text-[#898a8b]">{label}</span>
+        <span className="rounded-full bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-[11px] font-semibold text-[#898a8b]">
           {valueLabel ?? value}
         </span>
       </div>
       <div className="relative h-4">
-        <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-gray-200/80" />
+        <div className="pointer-events-none absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[rgba(255,255,255,0.08)]" />
         <div
-          className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#5B6CFF]"
+          className="pointer-events-none absolute left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[#9aed00]"
           style={{ width: `${normalized}%` }}
         />
         <input

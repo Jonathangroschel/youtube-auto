@@ -1,6 +1,7 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
+import { SaturaLogo } from "@/components/satura-logo";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
@@ -31,7 +32,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -51,7 +52,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#335CFF]"
+        className="h-5 w-5 text-[#9aed00] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -69,7 +70,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -89,7 +90,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -114,7 +115,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.8"
@@ -135,7 +136,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b] transition-colors"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -434,7 +435,7 @@ function ProjectPreviewMedia({ project }: { project: ProjectLibraryItem }) {
   }
 
   return (
-    <div className="h-48 w-full bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
+    <div className="h-48 w-full bg-gradient-to-br from-[#191240] via-[#252729] to-[#0e1012]" />
   );
 }
 
@@ -442,8 +443,8 @@ export default function ProjectsPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
-          <div className="mx-auto flex w-full max-w-[90rem] px-4 py-10 text-sm text-gray-500 md:px-6">
+        <div className="min-h-screen bg-[#0e1012] font-sans text-[#f7f7f8]">
+          <div className="mx-auto flex w-full max-w-[90rem] px-4 py-10 text-sm text-[#898a8b] md:px-6">
             Loading projects...
           </div>
         </div>
@@ -488,7 +489,7 @@ const resolveProjectRenderUi = (
       isReady,
       isError,
       badgeLabel: "Rendering",
-      badgeClassName: "border-transparent bg-[#E7EDFF] text-[#335CFF]",
+      badgeClassName: "border-transparent bg-[rgba(154,237,0,0.1)] text-[#9aed00]",
       badgeShowPing: true,
       stageLabel,
       progressPercent,
@@ -502,7 +503,7 @@ const resolveProjectRenderUi = (
       isReady,
       isError,
       badgeLabel: project.kind === "clip" ? "Exported" : "Ready",
-      badgeClassName: "border-transparent bg-emerald-50 text-emerald-600",
+      badgeClassName: "border-transparent bg-[rgba(76,175,80,0.1)] text-[#4caf50]",
       badgeShowPing: false,
       stageLabel,
       progressPercent: null,
@@ -516,7 +517,7 @@ const resolveProjectRenderUi = (
       isReady,
       isError,
       badgeLabel: "Failed",
-      badgeClassName: "border-transparent bg-rose-50 text-rose-600",
+      badgeClassName: "border-transparent bg-[rgba(231,41,48,0.1)] text-[#e72930]",
       badgeShowPing: false,
       stageLabel,
       progressPercent: null,
@@ -529,7 +530,7 @@ const resolveProjectRenderUi = (
     isReady,
     isError,
     badgeLabel: project.kind === "editor" ? "Draft" : "Exported",
-    badgeClassName: "border-transparent bg-gray-100 text-gray-500",
+    badgeClassName: "border-transparent bg-[rgba(255,255,255,0.05)] text-[#898a8b]",
     badgeShowPing: false,
     stageLabel: null,
     progressPercent: null,
@@ -1354,12 +1355,12 @@ function ProjectsPageInner() {
         : "Export to download";
   const previewStatusLabel = previewRenderUi?.badgeLabel ?? "Draft";
   const previewStatusClassName = previewRenderUi?.isRendering
-    ? "text-[#335CFF]"
+    ? "text-[#9aed00]"
     : previewRenderUi?.isReady
-      ? "text-emerald-600"
+      ? "text-[#4caf50]"
       : previewRenderUi?.isError
-        ? "text-rose-600"
-        : "text-gray-500";
+        ? "text-[#e72930]"
+        : "text-[#898a8b]";
   const previewRenderMessage =
     previewRenderUi?.isRendering && previewStageLabel
       ? previewProgressPercent != null
@@ -1382,34 +1383,25 @@ function ProjectsPageInner() {
   );
 
   return (
-    <div className="min-h-screen bg-[#F6F8FC] font-sans text-[#0E121B]">
+    <div className="min-h-screen bg-[#0e1012] font-sans text-[#f7f7f8]">
       <div className="mx-auto flex w-full max-w-[90rem]">
-        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
+        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-3 md:flex">
           <div
             ref={navContainerRef}
             className="relative flex w-full flex-1 flex-col items-center gap-4"
           >
             <div
-              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#6a47ff] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 transform: `translateY(${indicatorStyle.top}px)`,
                 height: `${indicatorStyle.height}px`,
                 opacity: indicatorStyle.opacity,
                 transition: indicatorReady ? undefined : "none",
+                boxShadow: "0px 0px 12px rgba(106, 71, 255, 0.5)",
               }}
             />
-            <a
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-7 w-7 scale-[1.5] origin-center"
-              />
-            </a>
-            <div className="h-px w-10 bg-gray-200" />
+            <SaturaLogo size="md" />
+            <div className="h-px w-10 bg-[rgba(255,255,255,0.08)]" />
             <nav
               className="flex flex-col gap-2"
               onMouseLeave={() => setHoveredNavIndex(null)}
@@ -1421,8 +1413,8 @@ function ProjectsPageInner() {
                   ref={(element) => {
                     navItemRefs.current[index] = element;
                   }}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
-                    item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-all duration-200 ${
+                    item.active ? "bg-[rgba(154,237,0,0.1)]" : "hover:bg-[rgba(255,255,255,0.05)]"
                   }`}
                   aria-label={item.label}
                   onMouseEnter={() => setHoveredNavIndex(index)}
@@ -1433,7 +1425,7 @@ function ProjectsPageInner() {
             </nav>
             <div className="mt-auto pb-6">
               <button
-                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100 xl:h-14 xl:w-14"
+                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-all duration-200 hover:border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)] xl:h-14 xl:w-14"
                 type="button"
                 aria-label="Search"
                 onClick={() => setSearchOpen(true)}
@@ -1441,7 +1433,7 @@ function ProjectsPageInner() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-400 group-hover:text-gray-600"
+                  className="h-5 w-5 text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1451,7 +1443,7 @@ function ProjectsPageInner() {
                   <circle cx="11" cy="11" r="7" />
                   <path d="m20 20-3.5-3.5" />
                 </svg>
-                <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600">
+                <span className="text-[10px] font-medium text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]">
                   Cmd+K
                 </span>
               </button>
@@ -1460,20 +1452,10 @@ function ProjectsPageInner() {
         </aside>
 
         <main className="flex min-h-screen flex-1 flex-col px-4 pb-10 pt-4 md:px-6 md:py-6">
-          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
-            <a
-              className="flex h-10 w-10 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-6 w-6 scale-[1.5] origin-center"
-              />
-            </a>
+          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#0e1012]/90 px-4 py-3 backdrop-blur-xl md:hidden">
+            <SaturaLogo size="sm" />
             <button
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white transition-colors hover:bg-gray-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] transition-colors hover:bg-[#252729]"
               type="button"
               aria-label="Open menu"
               aria-expanded={mobileMenuOpen}
@@ -1482,7 +1464,7 @@ function ProjectsPageInner() {
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-4 w-4 text-gray-700"
+                className="h-4 w-4 text-[#f7f7f8]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -1502,13 +1484,13 @@ function ProjectsPageInner() {
             }`}
           >
             <div
-              className={`absolute inset-0 bg-black/20 transition-opacity ${
+              className={`absolute inset-0 bg-black/50 transition-opacity ${
                 mobileMenuOpen ? "opacity-100" : "opacity-0"
               }`}
               onClick={() => setMobileMenuOpen(false)}
             />
             <div
-              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-white shadow-xl transition-transform ${
+              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-[#0e1012] shadow-xl transition-transform ${
                 mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
               }`}
             >
@@ -1521,10 +1503,10 @@ function ProjectsPageInner() {
                     draggable="false"
                   />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-[#f7f7f8]">
                       Jonathan Groschel
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[#898a8b]">
                       jonathangroschel5@gmail.com
                     </p>
                   </div>
@@ -1541,10 +1523,10 @@ function ProjectsPageInner() {
                   return (
                     <div
                       key={section.label}
-                      className="border-b border-gray-100 last:border-0"
+                      className="border-b border-[rgba(255,255,255,0.08)] last:border-0"
                     >
                       <button
-                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-gray-50 focus:outline-none"
+                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.05)] focus:outline-none"
                         type="button"
                         aria-expanded={isOpen}
                         aria-controls={`section-${sectionId}`}
@@ -1552,14 +1534,14 @@ function ProjectsPageInner() {
                       >
                         <div className="flex items-center space-x-2">
                           {section.icon}
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-[#f7f7f8]">
                             {section.label}
                           </span>
                         </div>
                         <svg
                           aria-hidden="true"
                           viewBox="0 0 24 24"
-                          className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${
+                          className={`h-4 w-4 text-[#898a8b] transition-transform duration-200 ${
                             isOpen ? "rotate-90" : ""
                           }`}
                           fill="none"
@@ -1582,7 +1564,7 @@ function ProjectsPageInner() {
                             <a
                               key={item.label}
                               href={item.href}
-                              className="flex w-full items-center px-10 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none"
+                              className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
@@ -1602,8 +1584,8 @@ function ProjectsPageInner() {
                     href={action.href}
                     className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       action.tone === "danger"
-                        ? "text-red-600 hover:bg-red-50"
-                        : "text-gray-700 hover:bg-gray-100"
+                        ? "text-[#e72930] hover:bg-[rgba(231,41,48,0.1)]"
+                        : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                     }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
@@ -1614,13 +1596,13 @@ function ProjectsPageInner() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
+          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#0e1012]/95 py-3 backdrop-blur-xl md:flex">
             <div className="flex items-center gap-2">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]">
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-700"
+                  className="h-5 w-5 text-[#9aed00]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1631,12 +1613,12 @@ function ProjectsPageInner() {
                 </svg>
               </div>
               <div>
-                <h2 className="text-lg font-medium text-black">Projects</h2>
+                <h2 className="font-[family-name:var(--font-geist-sans)] text-lg font-semibold uppercase tracking-tight text-[#f7f7f8]">Projects</h2>
               </div>
             </div>
             <div className="relative" ref={profileMenuRef}>
               <button
-                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
+                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 px-2 transition-colors hover:bg-[#252729] focus:outline-none"
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={profileMenuOpen}
@@ -1652,7 +1634,7 @@ function ProjectsPageInner() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-4 w-4 text-gray-600"
+                  className="h-4 w-4 text-[#898a8b]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1664,7 +1646,7 @@ function ProjectsPageInner() {
               </button>
               <div
                 id="projects-profile-menu"
-                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg transition-all duration-150 ${
                   profileMenuOpen
                     ? "pointer-events-auto translate-y-0 opacity-100"
                     : "pointer-events-none translate-y-1 opacity-0"
@@ -1678,35 +1660,35 @@ function ProjectsPageInner() {
                     draggable="false"
                   />
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium">Jonathan Groschel</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-base font-medium text-[#f7f7f8]">Jonathan Groschel</p>
+                    <p className="text-xs text-[#898a8b]">
                       jonathangroschel5@gmail.com
                     </p>
                   </div>
                 </div>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Settings
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Upgrade
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   24/7 Support
                 </button>
                 <button
-                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
@@ -1716,7 +1698,7 @@ function ProjectsPageInner() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-4 border-t border-gray-200 pt-4 md:border-none md:pt-0">
+          <div className="flex flex-1 flex-col gap-4 border-t border-[rgba(255,255,255,0.08)] pt-4 md:border-none md:pt-0">
             <div className="flex flex-col space-y-3 lg:flex-row lg:items-end lg:justify-between lg:space-y-0">
               <div className="relative w-full lg:w-64" ref={sortMenuRef}>
                 <button
@@ -1726,12 +1708,12 @@ function ProjectsPageInner() {
                   aria-expanded={sortMenuOpen}
                   onClick={() => setSortMenuOpen((open) => !open)}
                 >
-                  <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:bg-gray-100">
-                    <p className="text-sm text-gray-800">{sortLabel}</p>
+                  <div className="flex items-center justify-between rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-left transition-colors hover:bg-[#252729]">
+                    <p className="text-sm text-[#f7f7f8]">{sortLabel}</p>
                     <svg
                       aria-hidden="true"
                       viewBox="0 0 24 24"
-                      className="h-4 w-4 text-gray-700"
+                      className="h-4 w-4 text-[#898a8b]"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
@@ -1748,7 +1730,7 @@ function ProjectsPageInner() {
                 <div
                   role="listbox"
                   aria-label="Sort projects"
-                  className={`absolute z-30 mt-2 w-full rounded-lg border border-gray-200 bg-white p-1 text-sm shadow-md transition-all ${
+                  className={`absolute z-30 mt-2 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 text-sm shadow-lg transition-all ${
                     sortMenuOpen
                       ? "pointer-events-auto translate-y-0 opacity-100"
                       : "pointer-events-none translate-y-1 opacity-0"
@@ -1763,8 +1745,8 @@ function ProjectsPageInner() {
                         aria-selected={isSelected}
                         className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors ${
                           isSelected
-                            ? "bg-gray-100 text-gray-900"
-                            : "text-gray-700 hover:bg-gray-50"
+                            ? "bg-[rgba(154,237,0,0.1)] text-[#f7f7f8]"
+                            : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                         }`}
                         type="button"
                         onClick={() => handleSortChange(option.key)}
@@ -1774,7 +1756,7 @@ function ProjectsPageInner() {
                           <svg
                             aria-hidden="true"
                             viewBox="0 0 24 24"
-                            className="h-4 w-4 text-[#335CFF]"
+                            className="h-4 w-4 text-[#9aed00]"
                             fill="none"
                             stroke="currentColor"
                             strokeWidth="2"
@@ -1790,7 +1772,7 @@ function ProjectsPageInner() {
                 </div>
               </div>
               <button
-                className="hidden max-h-[42px] w-full items-center justify-center gap-2 rounded-lg bg-[#335CFF] px-4 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:flex sm:w-fit"
+                className="hidden max-h-[42px] w-full items-center justify-center gap-2 rounded-lg bg-[#9aed00] px-4 py-3 text-sm font-medium text-black transition-all hover:shadow-[0px_0px_12px_rgba(154,237,0,0.4)] sm:flex sm:w-fit"
                 type="button"
                 onClick={() => router.push("/editor/advanced")}
               >
@@ -1813,11 +1795,11 @@ function ProjectsPageInner() {
 
             <div className="grid flex-1 auto-rows-max grid-cols-1 content-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {projectsLoading ? (
-                <div className="col-span-full rounded-xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
+                <div className="col-span-full rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
                   Loading projects...
                 </div>
               ) : projectsError ? (
-                <div className="col-span-full rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-600">
+                <div className="col-span-full rounded-xl border border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)] p-6 text-sm text-[#e72930]">
                   {projectsError}
                 </div>
               ) : projects.length ? (
@@ -1838,7 +1820,7 @@ function ProjectsPageInner() {
                   return (
                     <div
                       key={project.id}
-                      className={`relative flex w-full cursor-pointer flex-col rounded-lg border border-gray-200 bg-white ${
+                      className={`relative flex w-full cursor-pointer flex-col rounded-lg border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] transition-all duration-200 hover:border-[rgba(106,71,255,0.3)] ${
                         openProjectMenuIndex === index ? "z-10" : "z-0"
                       }`}
                       role="button"
@@ -1854,7 +1836,7 @@ function ProjectsPageInner() {
                       <div className="relative w-full overflow-hidden rounded-t-lg">
                         <ProjectPreviewMedia project={project} />
                       </div>
-                      <div className="flex w-full flex-col gap-1 border-t border-gray-200 p-3.5">
+                      <div className="flex w-full flex-col gap-1 border-t border-[rgba(255,255,255,0.08)] p-3.5">
                         <div className="flex w-full items-center gap-2">
                           <div className="flex min-w-[100px] flex-1 items-center gap-2">
                             {isEditingTitle ? (
@@ -1862,7 +1844,7 @@ function ProjectsPageInner() {
                                 value={titleDraft}
                                 autoFocus
                                 maxLength={80}
-                                className="h-7 w-full min-w-0 rounded-md border border-[#335CFF]/30 bg-white px-2 text-sm text-gray-900 outline-none ring-0 transition focus:border-[#335CFF] focus:ring-2 focus:ring-[#335CFF]/20"
+                                className="h-7 w-full min-w-0 rounded-md border border-[#9aed00]/30 bg-[#0e1012] px-2 text-sm text-[#f7f7f8] outline-none ring-0 transition focus:border-[#9aed00] focus:ring-2 focus:ring-[#9aed00]/20"
                                 onChange={(event) =>
                                   handleProjectTitleChange(
                                     project.id,
@@ -1880,7 +1862,7 @@ function ProjectsPageInner() {
                             ) : (
                               <button
                                 type="button"
-                                className="min-w-0 flex-1 truncate rounded px-1 text-left text-sm text-gray-900 transition-colors hover:bg-gray-100"
+                                className="min-w-0 flex-1 truncate rounded px-1 text-left text-sm text-[#f7f7f8] transition-colors hover:bg-[rgba(255,255,255,0.05)]"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleProjectTitleClick(project);
@@ -1899,8 +1881,8 @@ function ProjectsPageInner() {
                             >
                               {renderUi.badgeShowPing ? (
                                 <span className="relative flex h-1.5 w-1.5">
-                                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#335CFF]/60" />
-                                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#335CFF]" />
+                                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#9aed00]/60" />
+                                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#9aed00]" />
                                 </span>
                               ) : null}
                               {renderUi.badgeLabel}
@@ -1908,7 +1890,7 @@ function ProjectsPageInner() {
                           </div>
                           <div className="relative" data-project-menu>
                             <button
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-black hover:bg-gray-100"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                               type="button"
                               aria-label="Project menu"
                               aria-expanded={openProjectMenuIndex === index}
@@ -1935,14 +1917,14 @@ function ProjectsPageInner() {
                               </svg>
                             </button>
                             <div
-                              className={`absolute right-0 top-9 z-30 w-48 rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-md transition-all ${
+                              className={`absolute right-0 top-9 z-30 w-48 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-2 text-sm shadow-lg transition-all ${
                                 openProjectMenuIndex === index
                                   ? "pointer-events-auto translate-y-0 opacity-100"
                                   : "pointer-events-none translate-y-1 opacity-0"
                               }`}
                             >
                               <button
-                                className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-gray-100"
+                                className="block w-full rounded-lg px-2 py-1.5 text-left text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -1955,7 +1937,7 @@ function ProjectsPageInner() {
                                   : "Open advanced editor"}
                               </button>
                               <button
-                                className={`mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 ${
+                                className={`mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] disabled:cursor-not-allowed disabled:opacity-60 ${
                                   isDeleting ? "pointer-events-none" : ""
                                 }`}
                                 type="button"
@@ -1972,17 +1954,17 @@ function ProjectsPageInner() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-[#898a8b]">
                             {updatedLabel}
                           </span>
                         </div>
                         {renderUi.isRendering && renderDetailLabel ? (
-                          <div className="mt-1 truncate text-[11px] font-medium text-[#335CFF]">
+                          <div className="mt-1 truncate text-[11px] font-medium text-[#9aed00]">
                             {renderDetailLabel}
                           </div>
                         ) : null}
                         {renderUi.isError && renderUi.stageLabel ? (
-                          <div className="mt-1 truncate text-[11px] font-medium text-rose-600">
+                          <div className="mt-1 truncate text-[11px] font-medium text-[#e72930]">
                             {renderUi.stageLabel}
                           </div>
                         ) : null}
@@ -1991,7 +1973,7 @@ function ProjectsPageInner() {
                             {renderUi.isRendering ? (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-full bg-[#E7EDFF] px-3 text-xs font-semibold text-[#335CFF]"
+                                className="inline-flex h-8 items-center justify-center rounded-full bg-[rgba(154,237,0,0.1)] px-3 text-xs font-semibold text-[#9aed00]"
                                 disabled
                               >
                                 Rendering...
@@ -1999,7 +1981,7 @@ function ProjectsPageInner() {
                             ) : (
                               <button
                                 type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-full bg-[#335CFF] px-3 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(51,92,255,0.22)] transition hover:brightness-105"
+                                className="inline-flex h-8 items-center justify-center rounded-full bg-[#9aed00] px-3 text-xs font-semibold text-black shadow-[0_8px_16px_rgba(154,237,0,0.22)] transition hover:shadow-[0_8px_20px_rgba(154,237,0,0.35)]"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleDownloadProject(project);
@@ -2015,19 +1997,19 @@ function ProjectsPageInner() {
                   );
                 })
               ) : (
-                <div className="col-span-full rounded-xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
+                <div className="col-span-full rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
                   No projects yet. Start editing to see them here.
                 </div>
               )}
             </div>
 
             <div className="flex flex-col items-center space-y-2 sm:hidden">
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-[#898a8b]">
                 Page {currentPage} of {totalPages}
               </span>
               <div className="flex items-center justify-center gap-1">
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="First page"
                   disabled={!canPreviousPage}
@@ -2048,7 +2030,7 @@ function ProjectsPageInner() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="Previous page"
                   disabled={!canPreviousPage}
@@ -2074,8 +2056,8 @@ function ProjectsPageInner() {
                       key={`mobile-page-${pageNumber}`}
                       className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm transition-colors ${
                         isCurrent
-                          ? "bg-gray-100 text-gray-900"
-                          : "text-gray-600 hover:bg-gray-100"
+                          ? "bg-[rgba(154,237,0,0.1)] text-[#9aed00]"
+                          : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                       }`}
                       type="button"
                       aria-current={isCurrent ? "page" : undefined}
@@ -2086,7 +2068,7 @@ function ProjectsPageInner() {
                   );
                 })}
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="Next page"
                   disabled={!canNextPage}
@@ -2106,7 +2088,7 @@ function ProjectsPageInner() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="Last page"
                   disabled={!canNextPage}
@@ -2130,12 +2112,12 @@ function ProjectsPageInner() {
             </div>
 
             <div className="relative hidden h-8 items-center justify-center sm:flex">
-              <span className="absolute left-0 text-sm text-gray-600">
+              <span className="absolute left-0 text-sm text-[#898a8b]">
                 Page {currentPage} of {totalPages}
               </span>
               <div className="flex items-center justify-center gap-1">
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="First page"
                   disabled={!canPreviousPage}
@@ -2156,7 +2138,7 @@ function ProjectsPageInner() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="Previous page"
                   disabled={!canPreviousPage}
@@ -2182,8 +2164,8 @@ function ProjectsPageInner() {
                       key={`desktop-page-${pageNumber}`}
                       className={`inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm transition-colors ${
                         isCurrent
-                          ? "bg-gray-100 text-gray-900"
-                          : "text-gray-600 hover:bg-gray-100"
+                          ? "bg-[rgba(154,237,0,0.1)] text-[#9aed00]"
+                          : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                       }`}
                       type="button"
                       aria-current={isCurrent ? "page" : undefined}
@@ -2194,7 +2176,7 @@ function ProjectsPageInner() {
                   );
                 })}
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="Next page"
                   disabled={!canNextPage}
@@ -2214,7 +2196,7 @@ function ProjectsPageInner() {
                   </svg>
                 </button>
                 <button
-                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-1 text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                   aria-label="Last page"
                   disabled={!canNextPage}
@@ -2235,7 +2217,7 @@ function ProjectsPageInner() {
                   </svg>
                 </button>
               </div>
-              <span className="absolute right-0 text-sm text-gray-600">
+              <span className="absolute right-0 text-sm text-[#898a8b]">
                 {pageSizeLabel} / page
               </span>
             </div>
@@ -2245,7 +2227,7 @@ function ProjectsPageInner() {
       {previewProject ? (
         <>
           <div
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
             onClick={handleClosePreview}
             aria-hidden="true"
           />
@@ -2258,21 +2240,21 @@ function ProjectsPageInner() {
               aria-modal="true"
               aria-labelledby="project-preview-title"
               aria-describedby="project-preview-desc"
-              className="flex w-full max-w-[90vw] max-h-[90svh] flex-col gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg focus:outline-none md:max-w-2xl"
+              className="flex w-full max-w-[90vw] max-h-[90svh] flex-col gap-0 overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#0e1012] shadow-lg focus:outline-none md:max-w-2xl"
               onClick={(event) => event.stopPropagation()}
               tabIndex={-1}
             >
-              <div className="flex w-full items-center justify-between gap-2 border-b border-gray-200 px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex w-full items-center justify-between gap-2 border-b border-[rgba(255,255,255,0.08)] px-4 py-4 sm:px-6 sm:py-5">
                 <h2
                   id="project-preview-title"
-                  className="flex min-w-0 flex-1 items-center gap-2 text-lg font-medium leading-none tracking-tight"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-lg font-medium leading-none tracking-tight text-[#f7f7f8]"
                 >
                   <span className="truncate text-xl font-medium leading-none sm:text-2xl">
                     {previewProject.title}
                   </span>
                 </h2>
                 <button
-                  className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none"
+                  className="rounded-sm text-[#898a8b] transition-colors hover:text-[#f7f7f8] focus:outline-none"
                   type="button"
                   aria-label="Close"
                   onClick={handleClosePreview}
@@ -2280,7 +2262,7 @@ function ProjectsPageInner() {
                   <svg
                     aria-hidden="true"
                     viewBox="0 0 24 24"
-                    className="h-4 w-4 text-black"
+                    className="h-4 w-4"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
@@ -2299,16 +2281,16 @@ function ProjectsPageInner() {
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="flex h-[min(60svh,420px)] flex-col sm:flex-row">
                   <div className="flex w-full flex-col justify-between gap-4 p-4 sm:w-[320px] sm:min-w-[320px]">
-                    <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-600">
+                    <div className="grid gap-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 text-sm text-[#898a8b]">
                       <div className="flex items-center justify-between">
                         <p>Created on</p>
-                        <p className="font-medium text-gray-500">
+                        <p className="font-medium text-[#f7f7f8]">
                           {previewCreatedLabel}
                         </p>
                       </div>
                       <div className="flex items-center justify-between">
                         <p>Updated on</p>
-                        <p className="font-medium text-gray-500">
+                        <p className="font-medium text-[#f7f7f8]">
                           {previewUpdatedLabel}
                         </p>
                       </div>
@@ -2321,7 +2303,7 @@ function ProjectsPageInner() {
                     </div>
                     <div className="flex w-full flex-col gap-2 sm:flex-row">
                       <button
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-2 text-sm font-medium text-[#898a8b] transition-colors hover:bg-[#252729] hover:text-[#f7f7f8]"
                         type="button"
                         onClick={() => handleOpenProjectInEditor(previewProject)}
                       >
@@ -2343,8 +2325,8 @@ function ProjectsPageInner() {
                       <button
                         className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
                           previewDownloadEnabled
-                            ? "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                            ? "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] text-[#898a8b] hover:bg-[#252729] hover:text-[#f7f7f8]"
+                            : "cursor-not-allowed border-[rgba(255,255,255,0.04)] bg-[#0e1012] text-[#525252]"
                         }`}
                         type="button"
                         disabled={!previewDownloadEnabled}
@@ -2368,7 +2350,7 @@ function ProjectsPageInner() {
                       </button>
                     </div>
                   </div>
-                  <div className="order-first flex flex-1 items-center justify-center overflow-hidden border-b border-gray-200 bg-[#F5F7FA] p-4 sm:order-none sm:border-b-0 sm:border-l">
+                  <div className="order-first flex flex-1 items-center justify-center overflow-hidden border-b border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4 sm:order-none sm:border-b-0 sm:border-l">
                     {previewVideoUrl ? (
                       <video
                         src={previewVideoUrl}
@@ -2379,18 +2361,18 @@ function ProjectsPageInner() {
                         className="h-full max-h-full w-auto max-w-full rounded-2xl object-contain"
                       />
                     ) : previewRenderUi?.isRendering ? (
-                      <div className="flex h-full w-full flex-col items-center justify-center text-center text-sm font-medium text-[#335CFF]">
+                      <div className="flex h-full w-full flex-col items-center justify-center text-center text-sm font-medium text-[#9aed00]">
                         <p>{previewRenderMessage ?? "Rendering"}</p>
-                        <p className="mt-1 text-xs font-normal text-[#335CFF]/80">
+                        <p className="mt-1 text-xs font-normal text-[#9aed00]/80">
                           You can keep working. We will update this automatically.
                         </p>
                       </div>
                     ) : previewRenderUi?.isError ? (
-                      <div className="flex h-full w-full items-center justify-center text-sm font-medium text-rose-600">
+                      <div className="flex h-full w-full items-center justify-center text-sm font-medium text-[#e72930]">
                         {previewRenderMessage ?? "Export failed"}
                       </div>
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
+                      <div className="flex h-full w-full items-center justify-center text-sm text-[#898a8b]">
                         Preview unavailable
                       </div>
                     )}

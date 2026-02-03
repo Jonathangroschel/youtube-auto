@@ -13,42 +13,189 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 228 89% 60%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 220 14% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 220 14% 96%;
-  --muted-foreground: 220 9% 46%;
-  --accent: 220 14% 96%;
-  --accent-foreground: 222 47% 11%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 220 13% 91%;
-  --input: 220 13% 91%;
-  --ring: 228 89% 60%;
+  /* ============================================
+     SATURA DESIGN SYSTEM - CORE TOKENS
+     ============================================ */
+  
+  /* Brand Colors */
+  --satura-brand-primary: #9aed00;
+  --satura-brand-primary-50: #f4ffe6;
+  --satura-brand-primary-100: #e6ffc9;
+  --satura-brand-primary-200: #ceff99;
+  --satura-brand-primary-300: #aef85c;
+  --satura-brand-primary-400: #9aed00;
+  --satura-brand-primary-500: #7ac700;
+  --satura-brand-primary-600: #5c9e00;
+  --satura-brand-primary-700: #467800;
+  --satura-brand-primary-800: #3a5f00;
+  --satura-brand-primary-900: #324f08;
+  --satura-brand-primary-foreground: #000000;
+
+  --satura-brand-secondary: #191240;
+  --satura-brand-secondary-50: #eeeeff;
+  --satura-brand-secondary-100: #e0e0ff;
+  --satura-brand-secondary-200: #c7c5ff;
+  --satura-brand-secondary-300: #a5a0ff;
+  --satura-brand-secondary-400: #8270ff;
+  --satura-brand-secondary-500: #6a47ff;
+  --satura-brand-secondary-600: #5c24f7;
+  --satura-brand-secondary-700: #4f18e3;
+  --satura-brand-secondary-800: #4214bf;
+  --satura-brand-secondary-900: #37139c;
+  --satura-brand-secondary-950: #191240;
+  --satura-brand-secondary-foreground: #ffffff;
+  
+  /* Secondary Brand Opacity Variants */
+  --satura-brand-secondary-5: rgba(106, 71, 255, 0.05);
+  --satura-brand-secondary-10: rgba(106, 71, 255, 0.1);
+  --satura-brand-secondary-20: rgba(106, 71, 255, 0.2);
+  --satura-brand-secondary-30: rgba(106, 71, 255, 0.3);
+
+  /* Brand Opacity Variants */
+  --satura-brand-primary-5: rgba(154, 237, 0, 0.05);
+  --satura-brand-primary-10: rgba(154, 237, 0, 0.1);
+  --satura-brand-primary-20: rgba(154, 237, 0, 0.2);
+  --satura-brand-primary-24: rgba(154, 237, 0, 0.24);
+  --satura-brand-primary-30: rgba(154, 237, 0, 0.3);
+  --satura-brand-primary-48: rgba(154, 237, 0, 0.48);
+  --satura-brand-primary-60: rgba(154, 237, 0, 0.6);
+  --satura-brand-primary-80: rgba(154, 237, 0, 0.8);
+
+  /* Surface Colors */
+  --satura-surface-primary: #0e1012;
+  --satura-surface-secondary: #1a1c1e;
+  --satura-surface-tertiary: #252729;
+  --satura-surface-subtle: #1a1c1e;
+
+  /* Text/Font Colors */
+  --satura-font-primary: #f7f7f8;
+  --satura-font-secondary: #898a8b;
+  --satura-font-brand: #9aed00;
+  --satura-font-disabled: #5e636e;
+
+  /* Icon Colors */
+  --satura-icon-primary: #ffffff;
+  --satura-icon-secondary: #898a8b;
+  --satura-icon-brand: #9aed00;
+
+  /* Divider & Separator Colors */
+  --satura-divider-primary: rgba(255, 255, 255, 0.08);
+  --satura-divider-secondary: rgba(255, 255, 255, 0.06);
+  --satura-separator-button: rgba(0, 0, 0, 0.09);
+  --satura-separator-card: rgba(217, 217, 217, 0.04);
+
+  /* Semantic Colors */
+  --satura-success: #07bc0c;
+  --satura-success-surface: rgba(0, 195, 20, 0.2);
+  --satura-separator-success: #00c314;
+  --satura-error: #e72930;
+  --satura-error-surface: rgba(231, 41, 48, 0.2);
+  --satura-separator-error: #db3f3e;
+  --satura-warning: #f1c40f;
+  --satura-warning-surface: rgba(255, 190, 76, 0.2);
+  --satura-separator-warning: #ffbe4c;
+  --satura-info: #4778f5;
+  --satura-info-surface: rgba(71, 120, 245, 0.2);
+
+  /* White/Black Opacity Scales */
+  --satura-white-5: rgba(255, 255, 255, 0.05);
+  --satura-white-10: rgba(255, 255, 255, 0.1);
+  --satura-white-14: rgba(255, 255, 255, 0.14);
+  --satura-white-18: rgba(255, 255, 255, 0.18);
+  --satura-white-24: rgba(255, 255, 255, 0.24);
+  --satura-white-32: rgba(255, 255, 255, 0.32);
+  --satura-white-46: rgba(255, 255, 255, 0.46);
+  --satura-white-50: rgba(255, 255, 255, 0.5);
+  --satura-white-60: rgba(255, 255, 255, 0.6);
+  --satura-white-70: rgba(255, 255, 255, 0.7);
+  --satura-white-80: rgba(255, 255, 255, 0.8);
+  --satura-white-90: rgba(255, 255, 255, 0.9);
+
+  --satura-black-5: rgba(0, 0, 0, 0.05);
+  --satura-black-10: rgba(0, 0, 0, 0.1);
+  --satura-black-15: rgba(0, 0, 0, 0.15);
+  --satura-black-20: rgba(0, 0, 0, 0.2);
+  --satura-black-24: rgba(0, 0, 0, 0.24);
+  --satura-black-30: rgba(0, 0, 0, 0.3);
+  --satura-black-50: rgba(0, 0, 0, 0.5);
+  --satura-black-70: rgba(0, 0, 0, 0.7);
+  --satura-black-80: rgba(0, 0, 0, 0.8);
+  --satura-black-90: rgba(0, 0, 0, 0.9);
+
+  /* Gray Scale */
+  --satura-gray-4: #c8cad0;
+  --satura-gray-5: #babdc5;
+  --satura-gray-9: #5e636e;
+  --satura-gray-10: #464a53;
+  --satura-gray-11: #333333;
+
+  /* Shadows */
+  --satura-shadow-sm: 0px 1px 2px rgba(0, 0, 0, 0.05);
+  --satura-shadow-default: 0px 1px 3px rgba(0, 0, 0, 0.1), 0px 1px 2px rgba(0, 0, 0, 0.06);
+  --satura-shadow-md: 0px 4px 6px rgba(0, 0, 0, 0.1), 0px 2px 4px rgba(0, 0, 0, 0.06);
+  --satura-shadow-lg: 0px 10px 15px rgba(0, 0, 0, 0.1), 0px 4px 6px rgba(0, 0, 0, 0.05);
+  --satura-shadow-xl: 0px 20px 25px rgba(0, 0, 0, 0.1), 0px 10px 10px rgba(0, 0, 0, 0.04);
+  --satura-shadow-2xl: 0px 25px 50px rgba(0, 0, 0, 0.25);
+  --satura-shadow-inner: inset 0px 2px 4px rgba(0, 0, 0, 0.06);
+  --satura-shadow-glow: 0px 0px 20px 0px rgba(154, 237, 0, 0.3);
+  --satura-shadow-glow-focus: 0px 0px 0px 4px rgba(154, 237, 0, 0.24);
+
+  /* Animation */
+  --satura-duration-fast: 150ms;
+  --satura-duration-default: 200ms;
+  --satura-duration-slow: 300ms;
+  --satura-ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --satura-ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* Z-Index */
+  --satura-z-dropdown: 1000;
+  --satura-z-sticky: 1020;
+  --satura-z-fixed: 1030;
+  --satura-z-modal-backdrop: 1040;
+  --satura-z-modal: 1050;
+  --satura-z-popover: 1060;
+  --satura-z-tooltip: 1070;
+  --satura-z-toast: 1080;
+
+  /* ============================================
+     MAPPED CSS VARIABLES (for shadcn compatibility)
+     ============================================ */
+  --background: var(--satura-surface-primary);
+  --foreground: var(--satura-font-primary);
+  --card: var(--satura-surface-secondary);
+  --card-foreground: var(--satura-font-primary);
+  --popover: var(--satura-surface-tertiary);
+  --popover-foreground: var(--satura-font-primary);
+  --primary: var(--satura-brand-primary);
+  --primary-foreground: var(--satura-brand-primary-foreground);
+  --secondary: var(--satura-surface-tertiary);
+  --secondary-foreground: var(--satura-font-primary);
+  --muted: var(--satura-surface-secondary);
+  --muted-foreground: var(--satura-font-secondary);
+  --accent: var(--satura-brand-primary-10);
+  --accent-foreground: var(--satura-brand-primary);
+  --destructive: var(--satura-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--satura-divider-primary);
+  --input: var(--satura-divider-primary);
+  --ring: var(--satura-brand-primary);
   --radius: 0.75rem;
-  --primary-light: #EEF0FF;
-  --text-secondary: #6B7280;
-  --text-muted: #9CA3AF;
-  --chart-1: oklch(0.646 0.222 41.116);
+  --primary-light: var(--satura-brand-primary-10);
+  --text-secondary: var(--satura-font-secondary);
+  --text-muted: var(--satura-font-disabled);
+  --chart-1: oklch(0.88 0.25 128);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: var(--satura-surface-primary);
+  --sidebar-foreground: var(--satura-font-primary);
+  --sidebar-primary: var(--satura-brand-primary);
+  --sidebar-primary-foreground: var(--satura-brand-primary-foreground);
+  --sidebar-accent: var(--satura-brand-primary-10);
+  --sidebar-accent-foreground: var(--satura-brand-primary);
+  --sidebar-border: var(--satura-divider-primary);
+  --sidebar-ring: var(--satura-brand-primary);
 }
 
 @layer utilities {
@@ -64,6 +211,101 @@
   .text-primary {
     color: var(--primary);
   }
+
+  /* Satura Typography Utilities */
+  .satura-h1 {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 3rem;
+    font-weight: 600;
+    line-height: 1.17;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+  }
+
+  .satura-h2 {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 2.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+  }
+
+  .satura-h3 {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 2.25rem;
+    font-weight: 600;
+    line-height: 1.11;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+  }
+
+  .satura-h4 {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.29;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+  }
+
+  .satura-h5 {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+  }
+
+  .satura-h6 {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+  }
+
+  .satura-body {
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+
+  .satura-body-sm {
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.43;
+  }
+
+  .satura-caption {
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0.3px;
+  }
+
+  .satura-label {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 2;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+
+  /* Satura Brand Glow Effects */
+  .satura-glow {
+    box-shadow: 0px 0px 20px 0px rgba(154, 237, 0, 0.3);
+  }
+
+  .satura-glow-focus {
+    box-shadow: 0px 0px 0px 4px rgba(154, 237, 0, 0.24);
+  }
 }
 
 @theme inline {
@@ -71,6 +313,41 @@
   --color-foreground: var(--foreground);
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
+  
+  /* Satura Brand Colors */
+  --color-satura-brand: var(--satura-brand-primary);
+  --color-satura-brand-foreground: var(--satura-brand-primary-foreground);
+  --color-satura-brand-50: var(--satura-brand-primary-50);
+  --color-satura-brand-100: var(--satura-brand-primary-100);
+  --color-satura-brand-200: var(--satura-brand-primary-200);
+  --color-satura-brand-300: var(--satura-brand-primary-300);
+  --color-satura-brand-400: var(--satura-brand-primary-400);
+  --color-satura-brand-500: var(--satura-brand-primary-500);
+  --color-satura-brand-600: var(--satura-brand-primary-600);
+  --color-satura-brand-700: var(--satura-brand-primary-700);
+  --color-satura-brand-800: var(--satura-brand-primary-800);
+  --color-satura-brand-900: var(--satura-brand-primary-900);
+  
+  /* Satura Surfaces */
+  --color-satura-surface: var(--satura-surface-primary);
+  --color-satura-surface-secondary: var(--satura-surface-secondary);
+  --color-satura-surface-tertiary: var(--satura-surface-tertiary);
+  
+  /* Satura Text */
+  --color-satura-text: var(--satura-font-primary);
+  --color-satura-text-secondary: var(--satura-font-secondary);
+  --color-satura-text-disabled: var(--satura-font-disabled);
+  
+  /* Satura Dividers */
+  --color-satura-divider: var(--satura-divider-primary);
+  --color-satura-card-border: var(--satura-separator-card);
+  
+  /* Satura Semantic */
+  --color-satura-success: var(--satura-success);
+  --color-satura-error: var(--satura-error);
+  --color-satura-warning: var(--satura-warning);
+  --color-satura-info: var(--satura-info);
+  
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -100,27 +377,29 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-4xl: 32px;
 }
 
 html {
-  background: var(--background);
-  color: var(--foreground);
-  color-scheme: light;
+  background: var(--satura-surface-primary);
+  color: var(--satura-font-primary);
+  color-scheme: dark;
 }
 
 body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  background-color: var(--satura-surface-primary);
+  color: var(--satura-font-primary);
 }
 
-/* Clean minimal slider */
+/* Satura slider styles */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -132,7 +411,7 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: #E5E7EB;
+  background: var(--satura-surface-tertiary);
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -141,31 +420,31 @@ input[type="range"]::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: white;
-  border: 2px solid var(--primary);
+  background: var(--satura-brand-primary);
+  border: 2px solid var(--satura-brand-primary);
   margin-top: -6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0px 0px 10px rgba(154, 237, 0, 0.3);
 }
 
 input[type="range"]::-moz-range-track {
   height: 4px;
   border-radius: 2px;
-  background: #E5E7EB;
+  background: var(--satura-surface-tertiary);
 }
 
 input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: white;
-  border: 2px solid var(--primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--satura-brand-primary);
+  border: 2px solid var(--satura-brand-primary);
+  box-shadow: 0px 0px 10px rgba(154, 237, 0, 0.3);
 }
 
 input[type="range"]::-moz-range-progress {
   height: 4px;
   border-radius: 2px;
-  background: var(--primary);
+  background: var(--satura-brand-primary);
 }
 
 input[type="range"].refined-slider {
@@ -175,7 +454,7 @@ input[type="range"].refined-slider {
 input[type="range"].refined-slider::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 999px;
-  background: transparent;
+  background: var(--satura-surface-tertiary);
 }
 
 input[type="range"].refined-slider::-webkit-slider-thumb {
@@ -184,36 +463,37 @@ input[type="range"].refined-slider::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid var(--primary);
+  background: var(--satura-brand-primary);
+  border: 2px solid var(--satura-brand-primary);
   margin-top: -4px;
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
+  box-shadow: 0px 0px 12px rgba(154, 237, 0, 0.4);
 }
 
 input[type="range"].refined-slider::-moz-range-track {
   height: 6px;
   border-radius: 999px;
-  background: transparent;
+  background: var(--satura-surface-tertiary);
 }
 
 input[type="range"].refined-slider::-moz-range-progress {
   height: 6px;
   border-radius: 999px;
-  background: transparent;
+  background: var(--satura-brand-primary);
 }
 
 input[type="range"].refined-slider::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid var(--primary);
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
+  background: var(--satura-brand-primary);
+  border: 2px solid var(--satura-brand-primary);
+  box-shadow: 0px 0px 12px rgba(154, 237, 0, 0.4);
 }
 
-/* Minimal scrollbar */
+/* Satura scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -221,8 +501,12 @@ input[type="range"].refined-slider::-moz-range-thumb {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
-  border-radius: 2px;
+  background: var(--satura-surface-tertiary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--satura-gray-9);
 }
 
 /* Number input */
@@ -692,38 +976,39 @@ details.group\/details[open] .animate-details-content {
   }
 }
 
+/* Dark mode is the default for Satura - these are the same values */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
+  --background: var(--satura-surface-primary);
+  --foreground: var(--satura-font-primary);
+  --card: var(--satura-surface-secondary);
+  --card-foreground: var(--satura-font-primary);
+  --popover: var(--satura-surface-tertiary);
+  --popover-foreground: var(--satura-font-primary);
+  --primary: var(--satura-brand-primary);
+  --primary-foreground: var(--satura-brand-primary-foreground);
+  --secondary: var(--satura-surface-tertiary);
+  --secondary-foreground: var(--satura-font-primary);
+  --muted: var(--satura-surface-secondary);
+  --muted-foreground: var(--satura-font-secondary);
+  --accent: var(--satura-brand-primary-10);
+  --accent-foreground: var(--satura-brand-primary);
+  --destructive: var(--satura-error);
+  --border: var(--satura-divider-primary);
+  --input: var(--satura-divider-primary);
+  --ring: var(--satura-brand-primary);
+  --chart-1: oklch(0.88 0.25 128);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: var(--satura-surface-primary);
+  --sidebar-foreground: var(--satura-font-primary);
+  --sidebar-primary: var(--satura-brand-primary);
+  --sidebar-primary-foreground: var(--satura-brand-primary-foreground);
+  --sidebar-accent: var(--satura-brand-primary-10);
+  --sidebar-accent-foreground: var(--satura-brand-primary);
+  --sidebar-border: var(--satura-divider-primary);
+  --sidebar-ring: var(--satura-brand-primary);
 }
 
 @layer base {
@@ -732,6 +1017,18 @@ details.group\/details[open] .animate-details-content {
   }
   body {
     @apply bg-background text-foreground;
+  }
+  
+  /* Satura focus states */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0px 0px 0px 4px rgba(154, 237, 0, 0.24);
+  }
+  
+  /* Selection styling */
+  ::selection {
+    background-color: rgba(154, 237, 0, 0.3);
+    color: var(--satura-font-primary);
   }
 }
 

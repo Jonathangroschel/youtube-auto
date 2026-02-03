@@ -1,6 +1,7 @@
 "use client";
 
 import SearchOverlay from "@/components/search-overlay";
+import { SaturaLogo } from "@/components/satura-logo";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +14,7 @@ type NavItem = {
   active?: boolean;
 };
 
+// Satura brand green: #9aed00
 const navItems: NavItem[] = [
   {
     label: "Dashboard",
@@ -22,7 +24,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#335CFF]"
+        className="h-5 w-5 text-[#9aed00]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -41,7 +43,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -59,7 +61,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -79,7 +81,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -104,7 +106,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b]"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.8"
@@ -125,7 +127,7 @@ const navItems: NavItem[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-gray-500"
+        className="h-5 w-5 text-[#898a8b]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -159,7 +161,7 @@ const mainActions: MainAction[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 512 512"
-        className="h-5 w-5 text-white"
+        className="h-5 w-5 text-black"
         fill="currentColor"
       >
         <path d="M194.82 496a18.36 18.36 0 0 1-18.1-21.53v-.11L204.83 320H96a16 16 0 0 1-12.44-26.06L302.73 23a18.45 18.45 0 0 1 32.8 13.71c0 .3-.08.59-.13.89L307.19 192H416a16 16 0 0 1 12.44 26.06L209.24 489a18.45 18.45 0 0 1-14.42 7z" />
@@ -176,7 +178,7 @@ const mainActions: MainAction[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 256 256"
-        className="h-5 w-5 text-white"
+        className="h-5 w-5 text-[#8270ff]"
         fill="currentColor"
       >
         <path d="M235.24 84.38 207.18 108l8.56 35.39a13.34 13.34 0 0 1-5.09 13.91 13.54 13.54 0 0 1-15 .69L164 139l-31.65 19.06a13.51 13.51 0 0 1-15-.69 13.32 13.32 0 0 1-5.1-13.91L120.81 108 92.76 84.38a13.39 13.39 0 0 1 7.66-23.58l36.94-2.92 14.21-33.66a13.51 13.51 0 0 1 24.86 0l14.21 33.66 36.94 2.92a13.39 13.39 0 0 1 7.66 23.58Z" />
@@ -239,7 +241,7 @@ const toolCards: ToolCard[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#122368]"
+        className="h-5 w-5 text-[#9aed00]"
         fill="currentColor"
       >
         <path fill="none" d="M0 0h24v24H0z" />
@@ -254,7 +256,7 @@ const toolCards: ToolCard[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#122368]"
+        className="h-5 w-5 text-[#9aed00]"
         fill="currentColor"
       >
         <path fill="none" d="M0 0h24v24H0z" />
@@ -269,7 +271,7 @@ const toolCards: ToolCard[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#122368]"
+        className="h-5 w-5 text-[#9aed00]"
         fill="currentColor"
       >
         <path fill="none" d="M0 0h24v24H0z" />
@@ -284,7 +286,7 @@ const toolCards: ToolCard[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#122368]"
+        className="h-5 w-5 text-[#9aed00]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -305,7 +307,7 @@ const toolCards: ToolCard[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"
-        className="h-5 w-5 text-[#122368]"
+        className="h-5 w-5 text-[#9aed00]"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -326,7 +328,7 @@ const toolCards: ToolCard[] = [
       <svg
         aria-hidden="true"
         viewBox="0 0 576 512"
-        className="h-5 w-5 text-[#122368]"
+        className="h-5 w-5 text-[#9aed00]"
         fill="currentColor"
       >
         <path d="M549.655 124.083c-6.281-23.65-24.787-42.276-48.284-48.597C458.781 64 288 64 288 64S117.22 64 74.629 75.486c-23.497 6.322-42.003 24.947-48.284 48.597-11.412 42.867-11.412 132.305-11.412 132.305s0 89.438 11.412 132.305c6.281 23.65 24.787 41.5 48.284 47.821C117.22 448 288 448 288 448s170.78 0 213.371-11.486c23.497-6.321 42.003-24.171 48.284-47.821 11.412-42.867 11.412-132.305 11.412-132.305s0-89.438-11.412-132.305zm-317.51 213.508V175.185l142.739 81.205-142.739 81.201z" />
@@ -535,34 +537,25 @@ export default function DashboardPage() {
   }, [resolvedNavIndex, updateIndicator]);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F6F8FC] font-sans text-[#0E121B]">
+    <div className="min-h-screen overflow-x-hidden bg-[#0e1012] font-sans text-[#f7f7f8]">
       <div className="mx-auto flex w-full md:max-w-[90rem]">
-        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-gray-200 bg-white py-3 md:flex">
+        <aside className="sticky top-0 hidden min-h-screen w-24 flex-col items-center border-r border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-3 md:flex">
           <div
             ref={navContainerRef}
             className="relative flex w-full flex-1 flex-col items-center gap-4"
           >
             <div
-              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#335CFF] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+              className="pointer-events-none absolute left-0 top-0 w-1.5 rounded-r-lg bg-[#6a47ff] transition-[transform,height,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
               style={{
                 transform: `translateY(${indicatorStyle.top}px)`,
                 height: `${indicatorStyle.height}px`,
                 opacity: indicatorStyle.opacity,
                 transition: indicatorReady ? undefined : "none",
+                boxShadow: "0px 0px 12px rgba(106, 71, 255, 0.5)",
               }}
             />
-            <a
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-7 w-7 scale-[1.5] origin-center"
-              />
-            </a>
-            <div className="h-px w-10 bg-gray-200" />
+            <SaturaLogo size="md" />
+            <div className="h-px w-10 bg-[rgba(255,255,255,0.08)]" />
             <nav
               className="flex flex-col gap-2"
               onMouseLeave={() => setHoveredNavIndex(null)}
@@ -574,8 +567,8 @@ export default function DashboardPage() {
                   ref={(element) => {
                     navItemRefs.current[index] = element;
                   }}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${
-                    item.active ? "bg-[#EEF2FF]" : "hover:bg-gray-100"
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition-all duration-200 ${
+                    item.active ? "bg-[rgba(154,237,0,0.1)]" : "hover:bg-[rgba(255,255,255,0.05)]"
                   }`}
                   aria-label={item.label}
                   onMouseEnter={() => setHoveredNavIndex(index)}
@@ -586,7 +579,7 @@ export default function DashboardPage() {
             </nav>
             <div className="mt-auto pb-6">
               <button
-                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-gray-200 hover:bg-gray-100 xl:h-14 xl:w-14"
+                className="group flex h-12 w-12 flex-col items-center justify-center rounded-xl border border-transparent transition-all duration-200 hover:border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.05)] xl:h-14 xl:w-14"
                 type="button"
                 aria-label="Search"
                 onClick={() => setSearchOpen(true)}
@@ -594,7 +587,7 @@ export default function DashboardPage() {
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-gray-400 group-hover:text-gray-600"
+                  className="h-5 w-5 text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -604,7 +597,7 @@ export default function DashboardPage() {
                   <circle cx="11" cy="11" r="7" />
                   <path d="m20 20-3.5-3.5" />
                 </svg>
-                <span className="text-[10px] font-medium text-gray-400 group-hover:text-gray-600">
+                <span className="text-[10px] font-medium text-[#898a8b] transition-colors group-hover:text-[#f7f7f8]">
                   Cmd+K
                 </span>
               </button>
@@ -613,20 +606,10 @@ export default function DashboardPage() {
         </aside>
 
         <main className="flex min-h-[100dvh] w-full flex-1 flex-col px-4 pb-16 pt-3 md:px-10 md:py-6">
-          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#F6F8FC]/80 px-4 py-3 backdrop-blur-xl md:hidden">
-            <a
-              className="flex h-10 w-10 items-center justify-center rounded-2xl"
-              href="/dashboard"
-              aria-label="Dashboard"
-            >
-              <img
-                src="/icon.svg"
-                alt="Youtube Auto"
-                className="h-6 w-6 scale-[1.5] origin-center"
-              />
-            </a>
+          <div className="sticky top-0 z-20 -mx-4 flex items-center justify-between bg-[#0e1012]/90 px-4 py-3 backdrop-blur-xl md:hidden">
+            <SaturaLogo size="sm" />
             <button
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white transition-colors hover:bg-gray-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] transition-colors hover:bg-[#252729]"
               type="button"
               aria-label="Open menu"
               aria-expanded={mobileMenuOpen}
@@ -635,7 +618,7 @@ export default function DashboardPage() {
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-4 w-4 text-gray-700"
+                className="h-4 w-4 text-[#f7f7f8]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -655,13 +638,13 @@ export default function DashboardPage() {
             }`}
           >
             <div
-              className={`absolute inset-0 bg-black/20 transition-opacity ${
+              className={`absolute inset-0 bg-black/50 transition-opacity ${
                 mobileMenuOpen ? "opacity-100" : "opacity-0"
               }`}
               onClick={() => setMobileMenuOpen(false)}
             />
             <div
-              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-white shadow-xl transition-transform ${
+              className={`absolute left-0 top-0 h-full w-[82%] max-w-xs bg-[#0e1012] shadow-xl transition-transform ${
                 mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
               }`}
             >
@@ -675,15 +658,15 @@ export default function DashboardPage() {
                       draggable="false"
                     />
                   ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-sm font-semibold text-white">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9aed00] text-sm font-semibold text-black">
                       {userInitials}
                     </div>
                   )}
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-[#f7f7f8]">
                       {userName}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[#898a8b]">
                       {userEmail}
                     </p>
                   </div>
@@ -700,10 +683,10 @@ export default function DashboardPage() {
                   return (
                     <div
                       key={section.label}
-                      className="border-b border-gray-100 last:border-0"
+                      className="border-b border-[rgba(255,255,255,0.08)] last:border-0"
                     >
                       <button
-                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-gray-50 focus:outline-none"
+                        className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.05)] focus:outline-none"
                         type="button"
                         aria-expanded={isOpen}
                         aria-controls={`section-${sectionId}`}
@@ -711,14 +694,14 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-center space-x-2">
                           {section.icon}
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-sm font-medium text-[#f7f7f8]">
                             {section.label}
                           </span>
                         </div>
                         <svg
                           aria-hidden="true"
                           viewBox="0 0 24 24"
-                          className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${
+                          className={`h-4 w-4 text-[#898a8b] transition-transform duration-200 ${
                             isOpen ? "rotate-90" : ""
                           }`}
                           fill="none"
@@ -741,7 +724,7 @@ export default function DashboardPage() {
                             <a
                               key={item.label}
                               href={item.href}
-                              className="flex w-full items-center px-10 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none"
+                              className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
@@ -759,7 +742,7 @@ export default function DashboardPage() {
                   action.label === "Log Out" ? (
                     <button
                       key={action.label}
-                      className="mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                      className="mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] disabled:opacity-50"
                       onClick={handleSignOut}
                       disabled={isLoggingOut}
                     >
@@ -771,8 +754,8 @@ export default function DashboardPage() {
                       href={action.href}
                       className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                         action.tone === "danger"
-                          ? "text-red-600 hover:bg-red-50"
-                          : "text-gray-700 hover:bg-gray-100"
+                          ? "text-[#e72930] hover:bg-[rgba(231,41,48,0.1)]"
+                          : "text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                       }`}
                       onClick={() => setMobileMenuOpen(false)}
                     >
@@ -784,13 +767,13 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#F6F8FC]/95 py-3 backdrop-blur-xl md:flex">
-            <p className="text-lg font-semibold text-black">
-              Welcome back, {userName.split(" ")[0]} 👋
-            </p>
+          <div className="sticky top-0 z-20 hidden items-center justify-between bg-[#0e1012]/95 py-3 backdrop-blur-xl md:flex">
+            <h1 className="font-[family-name:var(--font-geist-sans)] text-lg font-semibold uppercase tracking-tight text-[#f7f7f8]">
+              Welcome back, {userName.split(" ")[0]}
+            </h1>
             <div className="relative" ref={profileMenuRef}>
               <button
-                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-gray-300 bg-white p-1 px-2 hover:bg-gray-100 focus:outline-none"
+                className="flex h-10 w-auto items-center space-x-3 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-1 px-2 transition-colors hover:bg-[#252729] focus:outline-none"
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={profileMenuOpen}
@@ -805,14 +788,14 @@ export default function DashboardPage() {
                     draggable="false"
                   />
                 ) : (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-xs font-semibold text-black md:h-8 md:w-8 md:text-sm">
                     {userInitials}
                   </div>
                 )}
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
-                  className="h-4 w-4 text-gray-600"
+                  className="h-4 w-4 text-[#898a8b]"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -824,7 +807,7 @@ export default function DashboardPage() {
               </button>
               <div
                 id="dashboard-profile-menu"
-                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-md transition-all duration-150 ${
+                className={`absolute right-0 top-full z-30 mt-2 w-64 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] shadow-lg transition-all duration-150 ${
                   profileMenuOpen
                     ? "pointer-events-auto translate-y-0 opacity-100"
                     : "pointer-events-none translate-y-1 opacity-0"
@@ -839,40 +822,40 @@ export default function DashboardPage() {
                       draggable="false"
                     />
                   ) : (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-semibold text-white md:h-8 md:w-8 md:text-sm">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-xs font-semibold text-black md:h-8 md:w-8 md:text-sm">
                       {userInitials}
                     </div>
                   )}
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-base font-medium">{userName}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-base font-medium text-[#f7f7f8]">{userName}</p>
+                    <p className="text-xs text-[#898a8b]">
                       {userEmail}
                     </p>
                   </div>
                 </div>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Settings
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   Upgrade
                 </button>
                 <button
-                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-gray-800 hover:bg-gray-100 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full px-3 py-1.5 text-left text-xs font-normal text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={() => setProfileMenuOpen(false)}
                 >
                   24/7 Support
                 </button>
                 <button
-                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-red-500 hover:bg-gray-100 disabled:opacity-50 sm:px-3 sm:py-2 sm:text-sm"
+                  className="block w-full rounded-b-lg px-3 py-1.5 text-left text-xs font-normal text-[#e72930] transition-colors hover:bg-[rgba(231,41,48,0.1)] disabled:opacity-50 sm:px-3 sm:py-2 sm:text-sm"
                   type="button"
                   onClick={handleSignOut}
                   disabled={isLoggingOut}
@@ -892,24 +875,24 @@ export default function DashboardPage() {
                       <div
                         className={`flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
                           action.tone === "primary"
-                            ? "bg-[#6895FF]"
-                            : "bg-[#335CFF]"
+                            ? "bg-[rgba(154,237,0,0.8)]"
+                            : "bg-[rgba(106,71,255,0.15)]"
                         }`}
                       >
                         {action.icon}
                       </div>
                       <div>
                         <h2
-                          className={`text-sm font-semibold sm:text-base md:text-lg lg:text-xl ${
+                          className={`font-[family-name:var(--font-geist-sans)] text-sm font-semibold uppercase tracking-tight sm:text-base md:text-lg lg:text-xl ${
                             action.tone === "primary"
-                              ? "text-white"
-                              : "text-black"
+                              ? "text-black"
+                              : "text-[#f7f7f8]"
                           }`}
                         >
                           {action.highlight ? (
                             <>
                               {action.title}{" "}
-                              <span className="text-[#335CFF]">
+                              <span className={action.tone === "neutral" ? "text-[#8270ff]" : "text-[#9aed00]"}>
                                 {action.highlight}
                               </span>{" "}
                               {action.suffix}
@@ -921,8 +904,8 @@ export default function DashboardPage() {
                         <p
                           className={`text-[11px] sm:text-xs ${
                             action.tone === "primary"
-                              ? "text-blue-100"
-                              : "text-gray-600"
+                              ? "text-black/70"
+                              : "text-[#898a8b]"
                           }`}
                         >
                           {action.subtitle}
@@ -932,8 +915,8 @@ export default function DashboardPage() {
                     <div
                       className={`flex h-8 w-8 items-center justify-center rounded-xl self-end sm:h-10 sm:w-10 sm:self-auto ${
                         action.tone === "primary"
-                          ? "bg-[#6895FF]"
-                          : "bg-white"
+                          ? "bg-[rgba(0,0,0,0.1)]"
+                          : "bg-[#252729]"
                       }`}
                     >
                       <svg
@@ -941,8 +924,8 @@ export default function DashboardPage() {
                         viewBox="0 0 24 24"
                         className={`h-5 w-5 ${
                           action.tone === "primary"
-                            ? "text-white"
-                            : "text-[#525866]"
+                            ? "text-black"
+                            : "text-[#898a8b]"
                         }`}
                         fill="none"
                         stroke="currentColor"
@@ -956,10 +939,10 @@ export default function DashboardPage() {
                   </>
                 );
 
-                const className = `flex flex-col gap-4 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${
+                const className = `flex flex-col gap-4 rounded-2xl p-4 transition-all duration-200 sm:flex-row sm:items-center sm:justify-between sm:p-5 ${
                   action.tone === "primary"
-                    ? "bg-[#335CFF] text-white"
-                    : "border border-[#E1E4EA] bg-[#F5F7FA]"
+                    ? "bg-[#9aed00] text-black hover:shadow-[0px_0px_20px_rgba(154,237,0,0.3)]"
+                    : "border border-[rgba(106,71,255,0.15)] bg-gradient-to-br from-[#1a1c1e] via-[#1a1c1e] to-[rgba(25,18,64,0.4)] hover:border-[rgba(106,71,255,0.3)] hover:shadow-[0px_0px_20px_rgba(106,71,255,0.15)]"
                 }`;
 
                 if (action.href) {
@@ -986,21 +969,21 @@ export default function DashboardPage() {
               {primaryFeatures.map((feature) => (
                 <div
                   key={feature.title}
-                  className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 md:p-5"
+                  className="flex flex-col gap-4 rounded-2xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] p-4 transition-all duration-200 hover:border-[rgba(106,71,255,0.3)] md:p-5"
                 >
-                  <div className="h-40 w-full rounded-xl bg-gradient-to-br from-slate-100 via-slate-200 to-slate-300" />
+                  <div className="h-40 w-full rounded-xl bg-gradient-to-br from-[#191240] via-[#252729] to-[#0e1012]" />
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h3 className="text-base font-semibold sm:text-lg">
+                      <h3 className="font-[family-name:var(--font-geist-sans)] text-base font-semibold uppercase tracking-tight text-[#f7f7f8] sm:text-lg">
                         {feature.title}
                       </h3>
-                      <p className="text-xs text-gray-500 sm:text-sm">
+                      <p className="text-xs text-[#898a8b] sm:text-sm">
                         {feature.description}
                       </p>
                     </div>
                     {feature.title === "AutoClip" ? (
                       <a
-                        className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#EBF1FF] px-4 py-2 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5] sm:w-auto"
+                        className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#9aed00] px-4 py-2 text-sm font-semibold text-black transition-all hover:shadow-[0px_0px_12px_rgba(154,237,0,0.4)] sm:w-auto"
                         href="/tools/autoclip"
                       >
                         Try Now
@@ -1019,7 +1002,7 @@ export default function DashboardPage() {
                       </a>
                     ) : (
                       <button
-                        className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#EBF1FF] px-4 py-2 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5] sm:w-auto"
+                        className="flex w-full items-center justify-center gap-1 rounded-lg bg-[rgba(154,237,0,0.1)] px-4 py-2 text-sm font-semibold text-[#9aed00] transition-all hover:bg-[rgba(154,237,0,0.2)] sm:w-auto"
                         type="button"
                       >
                         Try Now
@@ -1050,21 +1033,21 @@ export default function DashboardPage() {
                     return (
                       <div
                         key={feature.title}
-                        className="flex w-[82%] flex-none snap-center items-center gap-3 rounded-xl border border-gray-200 bg-white p-3"
+                        className="flex w-[82%] flex-none snap-center items-center gap-3 rounded-xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] p-3"
                       >
-                      <div className="h-24 w-20 flex-shrink-0 rounded-lg bg-gradient-to-br from-slate-200 via-slate-100 to-slate-300" />
+                      <div className="h-24 w-20 flex-shrink-0 rounded-lg bg-gradient-to-br from-[#191240] via-[#252729] to-[#0e1012]" />
                       <div className="flex h-full flex-1 flex-col justify-between">
                         <div>
-                          <h3 className="text-base font-semibold text-gray-900">
+                          <h3 className="font-[family-name:var(--font-geist-sans)] text-base font-semibold uppercase tracking-tight text-[#f7f7f8]">
                             {feature.title}
                           </h3>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-[#898a8b]">
                             {feature.description}
                           </p>
                         </div>
                         {href ? (
                           <a
-                            className="flex w-fit items-center gap-1 rounded-lg bg-[#EBF1FF] px-3 py-1.5 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5]"
+                            className="flex w-fit items-center gap-1 rounded-lg bg-[rgba(154,237,0,0.1)] px-3 py-1.5 text-sm font-semibold text-[#9aed00] transition-colors hover:bg-[rgba(154,237,0,0.2)]"
                             href={href}
                           >
                             Try Now
@@ -1093,7 +1076,7 @@ export default function DashboardPage() {
                   <button
                     key={feature.title}
                     className={`h-2 rounded-full transition-colors ${
-                      index === 1 ? "w-6 bg-gray-800" : "w-2 bg-gray-300"
+                      index === 1 ? "w-6 bg-[#9aed00]" : "w-2 bg-[#252729]"
                     }`}
                     type="button"
                     aria-label={`Go to ${feature.title}`}
@@ -1108,21 +1091,21 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={feature.title}
-                    className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4"
+                    className="flex items-center gap-4 rounded-2xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] p-4 transition-all duration-200 hover:border-[rgba(106,71,255,0.3)]"
                   >
-                  <div className="h-24 w-24 rounded-xl bg-gradient-to-br from-slate-200 via-slate-100 to-slate-300" />
+                  <div className="h-24 w-24 rounded-xl bg-gradient-to-br from-[#191240] via-[#252729] to-[#0e1012]" />
                   <div className="flex flex-1 flex-col gap-2">
                     <div>
-                      <h3 className="text-base font-semibold">
+                      <h3 className="font-[family-name:var(--font-geist-sans)] text-base font-semibold uppercase tracking-tight text-[#f7f7f8]">
                         {feature.title}
                       </h3>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-[#898a8b]">
                         {feature.description}
                       </p>
                     </div>
                     {href ? (
                       <a
-                        className="flex w-fit items-center gap-1 rounded-lg bg-[#EBF1FF] px-3 py-1.5 text-sm font-semibold text-[#122368] transition-colors hover:bg-[#C9D4F5]"
+                        className="flex w-fit items-center gap-1 rounded-lg bg-[rgba(154,237,0,0.1)] px-3 py-1.5 text-sm font-semibold text-[#9aed00] transition-colors hover:bg-[rgba(154,237,0,0.2)]"
                         href={href}
                       >
                         Try Now
@@ -1148,11 +1131,11 @@ export default function DashboardPage() {
 
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold sm:text-lg">
+                <h2 className="font-[family-name:var(--font-geist-sans)] text-base font-semibold uppercase tracking-tight text-[#f7f7f8] sm:text-lg">
                   Tools
                 </h2>
                 <a
-                  className="flex items-center gap-1 text-sm font-medium text-[#0E121B]"
+                  className="flex items-center gap-1 text-sm font-medium text-[#9aed00] transition-colors hover:text-[#7ac700]"
                   href="/tools"
                 >
                   View All Tools
@@ -1175,24 +1158,24 @@ export default function DashboardPage() {
                   <a
                     key={tool.label}
                     href={tool.href}
-                    className="flex flex-col items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 text-center transition-colors hover:bg-gray-50 sm:p-4 md:p-6"
+                    className="flex flex-col items-center gap-3 rounded-2xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] p-3 text-center transition-all duration-200 hover:border-[rgba(106,71,255,0.3)] hover:bg-[#252729] sm:p-4 md:p-6"
                   >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EBF1FF]">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[rgba(154,237,0,0.1)]">
                       {tool.icon}
                     </div>
-                    <p className="text-xs font-semibold">{tool.label}</p>
+                    <p className="text-xs font-semibold text-[#f7f7f8]">{tool.label}</p>
                   </a>
                 ))}
               </div>
             </div>
           </div>
-          <footer className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-gray-200 pt-4 text-[11px] text-gray-500 sm:flex-row">
+          <footer className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-[rgba(255,255,255,0.08)] pt-4 text-[11px] text-[#898a8b] sm:flex-row">
             <span>Privacy and terms</span>
             <div className="flex items-center gap-4">
-              <a className="transition-colors hover:text-gray-700" href="/privacy-policy">
+              <a className="transition-colors hover:text-[#9aed00]" href="/privacy-policy">
                 Privacy Policy
               </a>
-              <a className="transition-colors hover:text-gray-700" href="/terms-of-service">
+              <a className="transition-colors hover:text-[#9aed00]" href="/terms-of-service">
                 Terms of Service
               </a>
             </div>
