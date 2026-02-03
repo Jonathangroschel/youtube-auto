@@ -716,6 +716,15 @@ function ProjectsPageInner() {
         ) {
           return;
         }
+        const persistedTitle = savedProjectTitlesRef.current[projectId];
+        if (typeof persistedTitle === "string") {
+          setProjectTitleLocally(projectId, persistedTitle);
+          setProjectTitleDrafts((prev) =>
+            prev[projectId] === persistedTitle
+              ? prev
+              : { ...prev, [projectId]: persistedTitle }
+          );
+        }
         setProjectsError(
           error instanceof Error ? error.message : "Unable to rename project."
         );
