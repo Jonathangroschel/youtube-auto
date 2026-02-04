@@ -2,7 +2,7 @@
 
 import { Gauge } from "@/components/gauge";
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 type TrustScoreShareExperienceMode = "reveal" | "share";
 
@@ -25,6 +25,15 @@ type DrawCardOptions = {
 
 const SHARE_CARD_WIDTH = 1080;
 const SHARE_CARD_HEIGHT = 1350;
+
+const buildCardSharePath = (score: number, channelTitle?: string | null) => {
+  const params = new URLSearchParams({ score: String(score) });
+  const safeChannelTitle = channelTitle?.trim();
+  if (safeChannelTitle) {
+    params.set("channel", safeChannelTitle);
+  }
+  return `/card-share?${params.toString()}`;
+};
 
 const roundedRect = (
   ctx: CanvasRenderingContext2D,
@@ -308,7 +317,7 @@ const iconButtonClassName =
 const actionButtonClassName =
   "inline-flex h-11 w-full items-center justify-center rounded-xl bg-[var(--satura-surface-secondary)] text-sm font-semibold text-[var(--satura-font-primary)] transition-all hover:bg-[var(--satura-surface-tertiary)] disabled:cursor-not-allowed disabled:opacity-40";
 
-function TrustScoreGradientCard({
+export function TrustScoreGradientCard({
   score,
   channelTitle,
 }: {
@@ -548,6 +557,8 @@ export function TrustScoreShareExperience({
   onClose,
 }: TrustScoreShareExperienceProps) {
   const [busyAction, setBusyAction] = useState<"image" | "share" | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyResetTimeoutRef = useRef<number | null>(null);
 
   const safeScore = useMemo(() => {
     if (score === null) {
@@ -556,10 +567,25 @@ export function TrustScoreShareExperience({
     return Math.max(0, Math.min(100, Math.round(score)));
   }, [score]);
 
+  useEffect(() => {
+    return () => {
+      if (copyResetTimeoutRef.current !== null) {
+        window.clearTimeout(copyResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const sharePath = useMemo(() => {
+    if (safeScore === null) {
+      return "/card-share";
+    }
+    return buildCardSharePath(safeScore, channelTitle);
+  }, [channelTitle, safeScore]);
+
   const shareUrl =
     typeof window === "undefined"
-      ? "/tools/trust-score"
-      : `${window.location.origin}/tools/trust-score`;
+      ? sharePath
+      : `${window.location.origin}${sharePath}`;
 
   const shareCaption = useMemo(() => {
     if (safeScore === null) {
@@ -579,6 +605,25 @@ export function TrustScoreShareExperience({
       // Clipboard failures should not block sharing.
     }
   }, [shareCaption, shareUrl]);
+
+  const handleCopyShareLink = useCallback(async () => {
+    if (!navigator.clipboard?.writeText) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setLinkCopied(true);
+      if (copyResetTimeoutRef.current !== null) {
+        window.clearTimeout(copyResetTimeoutRef.current);
+      }
+      copyResetTimeoutRef.current = window.setTimeout(() => {
+        setLinkCopied(false);
+      }, 1800);
+    } catch {
+      // Clipboard failures should not block sharing.
+    }
+  }, [shareUrl]);
 
   const handleDownloadImage = useCallback(async () => {
     if (safeScore === null || busyAction) {
@@ -675,8 +720,26 @@ export function TrustScoreShareExperience({
                     Share your score
                   </h2>
                   <p className="mt-1 text-sm text-[var(--satura-font-secondary)]">
-                    One tap to post with friends
+                    Copy your link or post with one tap
                   </p>
+                </div>
+
+                <div className="rounded-xl border border-[var(--satura-white-10)] bg-[rgba(255,255,255,0.02)] p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--satura-font-secondary)]">
+                    Share link
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <p className="flex-1 truncate rounded-lg bg-[rgba(0,0,0,0.32)] px-3 py-2 text-xs text-[var(--satura-font-secondary)]">
+                      {shareUrl}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCopyShareLink}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-[var(--satura-white-10)] px-3 text-xs font-semibold text-[var(--satura-font-primary)] transition-all hover:border-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.06)]"
+                    >
+                      {linkCopied ? "Copied" : "Copy link"}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">

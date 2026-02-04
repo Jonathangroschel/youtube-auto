@@ -965,6 +965,9 @@ export default function TrustScorePage() {
     latestSnapshot?.score ??
     selectedChannel?.lastScore ??
     null;
+  const concealScoreWhileReveal =
+    shareExperienceOpen && shareExperienceMode === "reveal";
+  const heroScore = concealScoreWhileReveal ? null : currentScore;
   const openShareExperience = useCallback(() => {
     if (currentScore === null) {
       return;
@@ -1435,13 +1438,13 @@ export default function TrustScorePage() {
 
                   <div className="mt-6 flex items-end justify-between">
                     <div>
-                      <p className={`text-7xl font-semibold tracking-tight ${currentScore === null ? "text-white/30" : ""}`}>
-                        {currentScore ?? "—"}
+                      <p className={`text-7xl font-semibold tracking-tight ${heroScore === null ? "text-white/30" : ""}`}>
+                        {heroScore ?? "—"}
                       </p>
-                      {currentScore !== null ? (
+                      {heroScore !== null ? (
                         <div className="mt-2 flex items-center gap-2">
                           <p className="text-sm font-medium text-white/60">
-                            {currentScore >= 85 ? "Excellent" : currentScore >= 70 ? "Strong" : currentScore >= 50 ? "Developing" : "Needs work"}
+                            {heroScore >= 85 ? "Excellent" : heroScore >= 70 ? "Strong" : heroScore >= 50 ? "Developing" : "Needs work"}
                           </p>
                           {dataConfidence ? (
                             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${confidenceMeta.tone}`}>
@@ -1450,7 +1453,9 @@ export default function TrustScorePage() {
                           ) : null}
                         </div>
                       ) : (
-                        <p className="mt-2 text-sm text-white/40">Connect a channel</p>
+                        <p className="mt-2 text-sm text-white/40">
+                          {concealScoreWhileReveal ? "Reveal pending..." : "Connect a channel"}
+                        </p>
                       )}
                     </div>
                     <svg width="100" height="100" viewBox="0 0 120 120" className="opacity-90">
@@ -1464,7 +1469,7 @@ export default function TrustScorePage() {
                         fill="none"
                         strokeLinecap="round"
                         strokeDasharray={2 * Math.PI * 52}
-                        strokeDashoffset={2 * Math.PI * 52 * (1 - (currentScore ?? 0) / 100)}
+                        strokeDashoffset={2 * Math.PI * 52 * (1 - (heroScore ?? 0) / 100)}
                         transform="rotate(-90 60 60)"
                         className="transition-all duration-1000"
                       />
@@ -1482,7 +1487,7 @@ export default function TrustScorePage() {
                         {analysisActive ? "Analyzing..." : "Recalculate"}
                       </button>
                     ) : null}
-                    {currentScore !== null ? (
+                    {heroScore !== null ? (
                       <button
                         className="rounded-xl border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.02)] px-4 py-3 text-sm font-semibold text-[#f7f7f8] transition-all hover:bg-[rgba(255,255,255,0.06)]"
                         type="button"
