@@ -563,6 +563,7 @@ export function TrustScoreShareExperience({
 }: TrustScoreShareExperienceProps) {
   const [busyAction, setBusyAction] = useState<"image" | "share" | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [hideChannelName, setHideChannelName] = useState(false);
   const copyResetTimeoutRef = useRef<number | null>(null);
 
   const safeScore = useMemo(() => {
@@ -571,6 +572,9 @@ export function TrustScoreShareExperience({
     }
     return Math.max(0, Math.min(100, Math.round(score)));
   }, [score]);
+
+  // Effective channel title based on privacy toggle
+  const effectiveChannelTitle = hideChannelName ? null : channelTitle;
 
   useEffect(() => {
     return () => {
@@ -584,8 +588,8 @@ export function TrustScoreShareExperience({
     if (safeScore === null) {
       return "/card-share";
     }
-    return buildCardSharePath(safeScore, channelTitle);
-  }, [channelTitle, safeScore]);
+    return buildCardSharePath(safeScore, effectiveChannelTitle);
+  }, [effectiveChannelTitle, safeScore]);
 
   const shareUrl =
     typeof window === "undefined"
@@ -637,12 +641,12 @@ export function TrustScoreShareExperience({
 
     setBusyAction("image");
     try {
-      const imageBlob = await createShareImage(safeScore, channelTitle);
+      const imageBlob = await createShareImage(safeScore, effectiveChannelTitle);
       downloadBlob(imageBlob, `satura-trustscore-${safeScore}.png`);
     } finally {
       setBusyAction(null);
     }
-  }, [busyAction, channelTitle, safeScore]);
+  }, [busyAction, effectiveChannelTitle, safeScore]);
 
   const handleShareX = useCallback(() => {
     if (safeScore === null || busyAction) {
@@ -716,7 +720,7 @@ export function TrustScoreShareExperience({
 
             <div className="grid gap-7 pt-8 lg:grid-cols-[360px_1fr] lg:items-center lg:pt-0">
               <div className="flex justify-center">
-                <TrustScoreGradientCard score={safeScore} channelTitle={channelTitle} />
+                <TrustScoreGradientCard score={safeScore} channelTitle={effectiveChannelTitle} />
               </div>
 
               <div className="flex flex-col gap-3">
@@ -733,6 +737,42 @@ export function TrustScoreShareExperience({
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--satura-font-secondary)]">
                     Share link
                   </p>
+                  {channelTitle ? (
+                    <button
+                      type="button"
+                      onClick={() => setHideChannelName((prev) => !prev)}
+                      className={`mt-2 inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-all ${
+                        hideChannelName
+                          ? "border-[var(--satura-brand-primary)]/30 bg-[var(--satura-brand-primary)]/10 text-[var(--satura-brand-primary)]"
+                          : "border-[var(--satura-white-10)] text-white/60 hover:border-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.04)] hover:text-white/80"
+                      }`}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 16 16"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        {hideChannelName ? (
+                          <>
+                            <path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4Z" />
+                            <circle cx="8" cy="8" r="2" />
+                            <path d="M2.5 13.5 13.5 2.5" strokeWidth="1.5" />
+                          </>
+                        ) : (
+                          <>
+                            <path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4Z" />
+                            <circle cx="8" cy="8" r="2" />
+                          </>
+                        )}
+                      </svg>
+                      {hideChannelName ? "Channel hidden" : "Hide channel name"}
+                    </button>
+                  ) : null}
                   <div className="mt-2 flex items-center gap-2">
                     <p className="flex-1 truncate rounded-lg bg-[rgba(0,0,0,0.32)] px-3 py-2 text-xs text-[var(--satura-font-secondary)]">
                       {shareUrl}
