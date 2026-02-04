@@ -73,6 +73,7 @@ import { GiphyLogo } from "./giphy-logo";
 import { SliderField } from "./slider-field";
 import { StockVideoCard } from "./stock-video-card";
 import { ToggleSwitch } from "./toggle-switch";
+import { AiVideoGeneratorPanel } from "./ai-video-generator-panel";
 
 type EditorSidebarProps = {
   updateClipSettings: (
@@ -247,17 +248,6 @@ const aiImageAspectRatioOptions = [
   { value: "3:4", label: "3:4 - Poster" },
   { value: "9:16", label: "9:16 - Reels / TikTok" },
   { value: "9:21", label: "9:21 - Stories" },
-];
-
-const aiVideoAspectRatioOptions = [
-  { value: "16:9", label: "16:9 - Widescreen" },
-  { value: "9:16", label: "9:16 - Vertical" },
-];
-
-const aiVideoDurationOptions = [
-  { value: 4, label: "4s" },
-  { value: 6, label: "6s" },
-  { value: 8, label: "8s" },
 ];
 
 const lemonSliceWidgetScriptSrc =
@@ -545,6 +535,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     aiVideoMagicError,
     handleAiVideoGenerate,
     handleAiVideoImprovePrompt,
+    handleAiVideoUploadImage,
     handleAiVideoClear,
     aiBackgroundRemovalStatus,
     aiBackgroundRemovalError,
@@ -1310,7 +1301,7 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
   const resolvedAiVideoDuration =
     typeof aiVideoDuration === "number" &&
     Number.isFinite(aiVideoDuration) &&
-    [4, 6, 8].includes(aiVideoDuration)
+    aiVideoDuration > 0
       ? aiVideoDuration
       : 8;
   const resolvedAiVideoGenerateAudio =
@@ -1323,13 +1314,6 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
     typeof resolvedAiVideoPreview?.assetId === "string"
       ? resolvedAiVideoPreview.assetId
       : null;
-  const isAiVideoMagicDisabled =
-    aiVideoMagicLoading || resolvedAiVideoPrompt.trim().length === 0;
-  const aiVideoMagicButtonClass = aiVideoMagicLoading
-    ? "cursor-wait bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
-    : isAiVideoMagicDisabled
-      ? "cursor-not-allowed bg-[rgba(255,255,255,0.05)] text-[#5e636e]"
-      : "bg-[#1a1c1e] text-[#898a8b] hover:bg-[#252729] hover:text-[#f7f7f8]";
   const canGenerateAiVideo =
     resolvedAiVideoPrompt.trim().length > 0 &&
     resolvedAiVideoStatus !== "loading";
@@ -8258,171 +8242,66 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                           </div>
                         </div>
                       ) : activeAiTool.id === "ai-video" ? (
-                        <div className="space-y-4">
-                          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                            <div className="flex items-center justify-between">
-                              <label
-                                htmlFor={activeAiToolInputId ?? undefined}
-                                className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]"
-                              >
-                                {activeAiTool.inputLabel}
-                              </label>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  className={`flex items-center gap-1 rounded-full border border-[rgba(255,255,255,0.08)] px-2.5 py-1 text-[10px] font-semibold transition ${aiVideoMagicButtonClass}`}
-                                  onClick={() => {
-                                    if (typeof handleAiVideoImprovePrompt === "function") {
-                                      handleAiVideoImprovePrompt();
-                                    }
-                                  }}
-                                  disabled={isAiVideoMagicDisabled}
-                                >
-                                  <Sparkles className="h-3 w-3" />
-                                  {aiVideoMagicLoading ? "Enhancing" : "Magic"}
-                                </button>
-                              </div>
-                            </div>
-                            <textarea
-                              id={activeAiToolInputId ?? undefined}
-                              placeholder={activeAiTool.inputPlaceholder}
-                              rows={4}
-                              value={resolvedAiVideoPrompt}
-                              onChange={(event) => {
-                                if (typeof setAiVideoPrompt === "function") {
-                                  setAiVideoPrompt(event.target.value);
-                                }
-                              }}
-                              className="mt-3 min-h-[110px] w-full resize-none rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2.5 text-sm font-medium text-[#f7f7f8] placeholder:text-[#5e636e] focus:border-[#9aed00] focus:outline-none"
-                            />
-                            {aiVideoMagicError && (
-                              <p className="mt-2 text-[11px] font-semibold text-rose-500">
-                                {aiVideoMagicError}
-                              </p>
-                            )}
-                            <div className="mt-4 grid gap-3 md:grid-cols-2">
-                              <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
-                                  Aspect Ratio
-                                </p>
-                                <label className="sr-only" htmlFor="ai-video-aspect">
-                                  Aspect ratio
-                                </label>
-                                <select
-                                  id="ai-video-aspect"
-                                  value={resolvedAiVideoAspectRatio}
-                                  onChange={(event) => {
-                                    if (typeof setAiVideoAspectRatio === "function") {
-                                      setAiVideoAspectRatio(event.target.value);
-                                    }
-                                  }}
-                                  className="mt-2 w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
-                                >
-                                  {aiVideoAspectRatioOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5e636e]">
-                                  Duration
-                                </p>
-                                <label className="sr-only" htmlFor="ai-video-duration">
-                                  Duration
-                                </label>
-                                <select
-                                  id="ai-video-duration"
-                                  value={resolvedAiVideoDuration}
-                                  onChange={(event) => {
-                                    const nextValue = Number(event.target.value);
-                                    if (
-                                      typeof setAiVideoDuration === "function" &&
-                                      Number.isFinite(nextValue)
-                                    ) {
-                                      setAiVideoDuration(nextValue);
-                                    }
-                                  }}
-                                  className="mt-2 w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#f7f7f8] focus:border-[#9aed00] focus:outline-none"
-                                >
-                                  {aiVideoDurationOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
-                            <div className="mt-4 space-y-3">
-                              <div className="flex items-center justify-between rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] px-3 py-2">
-                                <div>
-                                  <p className="text-sm font-semibold text-[#f7f7f8]">
-                                    Generate audio
-                                  </p>
-                                  <p className="text-xs text-[#5e636e]">
-                                    Include audio with the clip.
-                                  </p>
-                                </div>
-                                <ToggleSwitch
-                                  checked={resolvedAiVideoGenerateAudio}
-                                  onChange={(next) => {
-                                    if (typeof setAiVideoGenerateAudio === "function") {
-                                      setAiVideoGenerateAudio(next);
-                                    }
-                                    if (typeof setAiVideoSplitAudio === "function") {
-                                      setAiVideoSplitAudio(next);
-                                    }
-                                  }}
-                                  ariaLabel="Generate audio with video"
-                                />
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className={`mt-4 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,92,255,0.3)] transition ${
-                                resolvedAiVideoStatus === "loading" || !canGenerateAiVideo
-                                  ? "cursor-not-allowed bg-[#5e636e] shadow-none"
-                                  : "bg-[#9aed00] hover:bg-[#274BFF]"
-                              }`}
-                              onClick={() => {
-                                if (typeof handleAiVideoGenerate === "function") {
-                                  handleAiVideoGenerate();
-                                }
-                              }}
-                              disabled={resolvedAiVideoStatus === "loading" || !canGenerateAiVideo}
-                            >
-                              {resolvedAiVideoStatus === "loading"
-                                ? "Generating Video..."
-                                : activeAiTool.actionLabel}
-                            </button>
-                            {aiVideoError && (
-                              <p className="mt-2 text-[11px] font-semibold text-rose-500">
-                                {aiVideoError}
-                              </p>
-                            )}
-                            {resolvedAiVideoStatus === "loading" && (
-                              <p className="mt-2 text-[11px] font-semibold text-[#5e636e]">
-                                This can take 2-5 minutes to generate.
-                              </p>
-                            )}
-                            {resolvedAiVideoAssetId && (
-                              <div className="mt-3 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="flex-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-xs font-semibold text-[#898a8b] transition hover:bg-[rgba(255,255,255,0.03)]"
-                                  onClick={() => {
-                                    if (typeof handleAiVideoClear === "function") {
-                                      handleAiVideoClear();
-                                    }
-                                  }}
-                                >
-                                  Clear
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                        <AiVideoGeneratorPanel
+                          promptId={activeAiToolInputId ?? undefined}
+                          prompt={resolvedAiVideoPrompt}
+                          promptPlaceholder={activeAiTool.inputPlaceholder}
+                          onPromptChange={(value) => {
+                            if (typeof setAiVideoPrompt === "function") {
+                              setAiVideoPrompt(value);
+                            }
+                          }}
+                          onEnhancePrompt={() => {
+                            if (typeof handleAiVideoImprovePrompt === "function") {
+                              handleAiVideoImprovePrompt();
+                            }
+                          }}
+                          enhanceBusy={aiVideoMagicLoading}
+                          enhanceError={aiVideoMagicError}
+                          aspectRatio={resolvedAiVideoAspectRatio}
+                          onAspectRatioChange={(value) => {
+                            if (typeof setAiVideoAspectRatio === "function") {
+                              setAiVideoAspectRatio(value);
+                            }
+                          }}
+                          duration={resolvedAiVideoDuration}
+                          onDurationChange={(value) => {
+                            if (typeof setAiVideoDuration === "function") {
+                              setAiVideoDuration(value);
+                            }
+                          }}
+                          generateAudio={resolvedAiVideoGenerateAudio}
+                          onGenerateAudioChange={(next) => {
+                            if (typeof setAiVideoGenerateAudio === "function") {
+                              setAiVideoGenerateAudio(next);
+                            }
+                            if (typeof setAiVideoSplitAudio === "function") {
+                              setAiVideoSplitAudio(next);
+                            }
+                          }}
+                          status={resolvedAiVideoStatus}
+                          error={aiVideoError}
+                          canGenerate={canGenerateAiVideo}
+                          onGenerate={(request) => {
+                            if (typeof handleAiVideoGenerate === "function") {
+                              handleAiVideoGenerate(request);
+                            }
+                          }}
+                          onUploadImage={(file, context) => {
+                            if (typeof handleAiVideoUploadImage === "function") {
+                              return handleAiVideoUploadImage(file, context);
+                            }
+                            return Promise.reject(
+                              new Error("Upload is unavailable.")
+                            );
+                          }}
+                          hasGeneratedAsset={Boolean(resolvedAiVideoAssetId)}
+                          onClear={() => {
+                            if (typeof handleAiVideoClear === "function") {
+                              handleAiVideoClear();
+                            }
+                          }}
+                        />
                       ) : activeAiTool.id === "ai-background-removal" ? (
                         <div className="space-y-3">
                           <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">

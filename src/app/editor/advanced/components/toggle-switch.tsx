@@ -12,7 +12,7 @@ export const ToggleSwitch = ({ checked, onChange, ariaLabel }: ToggleSwitchProps
       aria-checked={checked}
       aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0e1012] ${
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(154,237,0,0.24)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0e1012] ${
         checked ? "bg-[#9aed00]" : "bg-[rgba(255,255,255,0.08)]"
       }`}
     >

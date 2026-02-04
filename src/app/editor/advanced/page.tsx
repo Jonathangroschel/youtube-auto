@@ -143,6 +143,11 @@ import { ToggleSwitch } from "./components/toggle-switch";
 
 import { EditorHeader } from "./components/editor-header";
 import { EditorSidebar } from "./components/editor-sidebar";
+import type {
+  AiVideoGenerateRequest,
+  AiVideoUploadContext,
+  AiVideoUploadedImage,
+} from "./components/ai-video-generator-panel";
 import {
   audioLaneMaxHeight,
   audioLaneMinHeight,
@@ -289,6 +294,18 @@ type AiVideoPreview = {
   aspectRatio?: number;
   generateAudio?: boolean;
   splitAudio?: boolean;
+};
+
+type AiVideoApiAsset = {
+  id?: string;
+  url?: string;
+  name?: string;
+  size?: number;
+  duration?: number;
+  width?: number;
+  height?: number;
+  aspectRatio?: number;
+  mimeType?: string;
 };
 
 type AiVoiceoverVoice = {
@@ -3164,7 +3181,7 @@ function AdvancedEditorContent() {
       setAiVideoDuration(
         typeof parsed.duration === "number" &&
           Number.isFinite(parsed.duration) &&
-          [4, 6, 8].includes(parsed.duration)
+          parsed.duration > 0
           ? parsed.duration
           : 8
       );
@@ -15759,6 +15776,85 @@ function AdvancedEditorContent() {
     []
   );
 
+  const handleAiVideoUploadImage = useCallback(
+    async (
+      file: File,
+      _context: AiVideoUploadContext
+    ): Promise<AiVideoUploadedImage> => {
+      const mime = file.type.toLowerCase();
+      const isImage = mime.startsWith("image/");
+      const isVideo = mime.startsWith("video/");
+      if (!isImage && !isVideo) {
+        throw new Error("Upload an image or video file.");
+      }
+
+      let objectUrl: string | null = null;
+      let meta: {
+        width?: number;
+        height?: number;
+        duration?: number;
+        aspectRatio?: number;
+      } = {};
+
+      try {
+        objectUrl = URL.createObjectURL(file);
+        meta = await getMediaMeta(isImage ? "image" : "video", objectUrl);
+      } catch {
+        meta = {};
+      } finally {
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+        }
+      }
+
+      const libraryAsset = await uploadAssetFileSafe(file, {
+        name: file.name,
+        kind: isImage ? "image" : "video",
+        source: "upload",
+        duration: meta.duration,
+        width: meta.width,
+        height: meta.height,
+        aspectRatio: meta.aspectRatio,
+      });
+
+      if (!libraryAsset) {
+        throw new Error("Unable to upload file.");
+      }
+
+      const nextAsset: MediaAsset = {
+        id: libraryAsset.id,
+        name: libraryAsset.name || file.name || "Uploaded media",
+        kind: isImage ? "image" : "video",
+        url: libraryAsset.url,
+        size: libraryAsset.size ?? file.size ?? 0,
+        duration: libraryAsset.duration ?? meta.duration,
+        width: libraryAsset.width ?? meta.width,
+        height: libraryAsset.height ?? meta.height,
+        aspectRatio: libraryAsset.aspectRatio ?? meta.aspectRatio,
+        createdAt: libraryAsset.createdAt ?? Date.now(),
+      };
+
+      setAssets((prev) => {
+        if (prev.some((asset) => asset.id === nextAsset.id)) {
+          return prev;
+        }
+        return [nextAsset, ...prev];
+      });
+      setActiveAssetId(nextAsset.id);
+
+      return {
+        assetId: nextAsset.id,
+        url: nextAsset.url,
+        name: nextAsset.name,
+        kind: isImage ? "image" : "video",
+        width: nextAsset.width,
+        height: nextAsset.height,
+        aspectRatio: nextAsset.aspectRatio,
+      };
+    },
+    []
+  );
+
   const handleAiVideoImprovePrompt = useCallback(async () => {
     const trimmedPrompt = aiVideoPrompt.trim();
     if (!trimmedPrompt) {
@@ -15792,191 +15888,287 @@ function AdvancedEditorContent() {
     }
   }, [aiVideoPrompt]);
 
-  const handleAiVideoGenerate = useCallback(async () => {
-    const trimmedPrompt = aiVideoPrompt.trim();
-    if (!trimmedPrompt) {
-      setAiVideoError("Enter a prompt to generate a video.");
-      return;
-    }
-    const resolvedAspectRatio =
-      aiVideoAspectRatio === "9:16" ? "9:16" : "16:9";
-    const resolvedDuration = [4, 6, 8].includes(aiVideoDuration)
-      ? aiVideoDuration
-      : 8;
-    const shouldSplitAudio = aiVideoGenerateAudio && aiVideoSplitAudio;
-    const requestId = aiVideoRequestIdRef.current + 1;
-    aiVideoRequestIdRef.current = requestId;
-    setAiVideoError(null);
-    setAiVideoMagicError(null);
-    setAiVideoStatus("loading");
-    setAiVideoSaving(false);
-    setAiVideoPreview(null);
-    try {
-      const response = await fetch("/api/ai-video", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: trimmedPrompt,
-          aspectRatio: resolvedAspectRatio,
+  const handleAiVideoGenerate = useCallback(
+    async (request?: AiVideoGenerateRequest) => {
+      const trimmedPrompt = (request?.prompt ?? aiVideoPrompt).trim();
+      const modelVariant =
+        typeof request?.variantId === "string" && request.variantId.trim().length > 0
+          ? request.variantId
+          : "sora-2-text-to-video";
+      const promptOptionalVariants = new Set([
+        "kling-2-6-pro-motion-control",
+      ]);
+      const promptRequired = !promptOptionalVariants.has(modelVariant);
+      if (promptRequired && !trimmedPrompt) {
+        setAiVideoError("Enter a prompt to generate a video.");
+        return;
+      }
+
+      const resolvedAspectRatio =
+        typeof request?.aspectRatio === "string" &&
+        request.aspectRatio.trim().length > 0
+          ? request.aspectRatio
+          : aiVideoAspectRatio === "9:16"
+            ? "9:16"
+            : "16:9";
+      const resolvedDurationCandidate =
+        typeof request?.duration === "number" &&
+        Number.isFinite(request.duration) &&
+        request.duration > 0
+          ? request.duration
+          : typeof aiVideoDuration === "number" &&
+              Number.isFinite(aiVideoDuration) &&
+              aiVideoDuration > 0
+            ? aiVideoDuration
+            : 8;
+      const resolvedDuration = Math.max(1, Math.round(resolvedDurationCandidate));
+      const resolvedGenerateAudio =
+        typeof request?.generateAudio === "boolean"
+          ? request.generateAudio
+          : aiVideoGenerateAudio;
+      const shouldSplitAudio = resolvedGenerateAudio && aiVideoSplitAudio;
+
+      const resolution =
+        typeof request?.resolution === "string" && request.resolution.trim().length > 0
+          ? request.resolution
+          : "720p";
+      const frameImages = request?.frameImages ?? {};
+      const ingredientImages = request?.ingredientImages ?? [];
+      const referenceImage = frameImages.reference;
+      const imageUrl =
+        typeof referenceImage?.url === "string" && referenceImage.url.length > 0
+          ? referenceImage.url
+          : null;
+
+      const requestId = aiVideoRequestIdRef.current + 1;
+      aiVideoRequestIdRef.current = requestId;
+      setAiVideoError(null);
+      setAiVideoMagicError(null);
+      setAiVideoStatus("loading");
+      setAiVideoSaving(false);
+      setAiVideoPreview(null);
+
+      try {
+        const response = await fetch("/api/ai-video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: trimmedPrompt,
+            aspectRatio: resolvedAspectRatio,
+            duration: resolvedDuration,
+            generateAudio: resolvedGenerateAudio,
+            modelVariant,
+            resolution,
+            characterOrientation: request?.characterOrientation,
+            ingredientsMode: request?.ingredientsMode ?? "frames",
+            frameImages,
+            ingredientImages: ingredientImages.map((item) => item.url),
+            imageUrl,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message =
+            typeof data?.error === "string" && data.error.length > 0
+              ? data.error
+              : "Video generation failed.";
+          setAiVideoStatus("error");
+          setAiVideoError(message);
+          return;
+        }
+
+        const videoEntry = data?.video ?? null;
+        const videoUrl =
+          typeof videoEntry?.url === "string"
+            ? videoEntry.url
+            : typeof data?.video_url === "string"
+              ? data.video_url
+              : typeof data?.videoUrl === "string"
+                ? data.videoUrl
+                : typeof data?.video === "string"
+                  ? data.video
+                  : null;
+        if (!videoUrl) {
+          setAiVideoStatus("error");
+          setAiVideoError("Video generation returned no video.");
+          return;
+        }
+        if (aiVideoRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setAiVideoStatus("ready");
+        setAiVideoLastPrompt(trimmedPrompt);
+        setAiVideoLastAspectRatio(resolvedAspectRatio);
+        setAiVideoLastDuration(resolvedDuration);
+        setAiVideoLastGenerateAudio(resolvedGenerateAudio);
+        setAiVideoPreview({
+          url: videoUrl,
+          name: "Generated video",
           duration: resolvedDuration,
-          generateAudio: aiVideoGenerateAudio,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+          generateAudio: resolvedGenerateAudio,
+          splitAudio: shouldSplitAudio,
+        });
+
+        setAiVideoSaving(true);
+
+        const apiAsset =
+          data?.asset && typeof data.asset === "object"
+            ? (data.asset as AiVideoApiAsset)
+            : null;
+
+        const generatedAsset: MediaAsset =
+          typeof apiAsset?.id === "string" &&
+          typeof apiAsset?.url === "string" &&
+          apiAsset.url.length > 0
+            ? {
+                id: apiAsset.id,
+                name: apiAsset.name || "Generated video",
+                kind: "video",
+                url: apiAsset.url,
+                size:
+                  typeof apiAsset.size === "number" && Number.isFinite(apiAsset.size)
+                    ? apiAsset.size
+                    : 0,
+                duration:
+                  typeof apiAsset.duration === "number" &&
+                  Number.isFinite(apiAsset.duration)
+                    ? apiAsset.duration
+                    : resolvedDuration,
+                width:
+                  typeof apiAsset.width === "number" && Number.isFinite(apiAsset.width)
+                    ? apiAsset.width
+                    : undefined,
+                height:
+                  typeof apiAsset.height === "number" &&
+                  Number.isFinite(apiAsset.height)
+                    ? apiAsset.height
+                    : undefined,
+                aspectRatio:
+                  typeof apiAsset.aspectRatio === "number" &&
+                  Number.isFinite(apiAsset.aspectRatio)
+                    ? apiAsset.aspectRatio
+                    : parseAspectRatio(resolvedAspectRatio),
+                createdAt: Date.now(),
+              }
+            : await createGeneratedVideoAsset({
+                url: videoUrl,
+                prompt: trimmedPrompt,
+                duration: resolvedDuration,
+                aspectRatio: resolvedAspectRatio,
+              });
+
+        if (aiVideoRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        let audioAsset: MediaAsset | null = null;
+        let audioClip: TimelineClip | null = null;
+        let actualSplitAudio = false;
+        if (shouldSplitAudio) {
+          try {
+            audioAsset = await createGeneratedVideoAudioAsset({
+              url: generatedAsset.url,
+              name: `${generatedAsset.name} (audio)`,
+              duration: generatedAsset.duration,
+            });
+            actualSplitAudio = true;
+          } catch {
+            setAiVideoError(
+              "Audio track couldn't be saved to Assets. The video was added without audio."
+            );
+          }
+        }
+
+        setAiVideoSaving(false);
+        setAiVideoLastSplitAudio(actualSplitAudio);
+        const nextLanes = [...lanesRef.current];
+        const startTime = resolveSnappedStartTime(playbackTimeRef.current);
+        const videoLaneId = createLaneId("video", nextLanes);
+        const videoClip = createClip(
+          generatedAsset.id,
+          videoLaneId,
+          startTime,
+          generatedAsset
+        );
+        if (actualSplitAudio && audioAsset) {
+          const audioLaneId = createLaneId("audio", nextLanes);
+          audioClip = {
+            id: crypto.randomUUID(),
+            assetId: audioAsset.id,
+            duration: videoClip.duration,
+            startOffset: videoClip.startOffset,
+            startTime: videoClip.startTime,
+            laneId: audioLaneId,
+          };
+        }
+        const nextPreview: AiVideoPreview = {
+          url: generatedAsset.url,
+          assetId: generatedAsset.id,
+          audioAssetId: audioAsset?.id ?? null,
+          name: generatedAsset.name,
+          duration: generatedAsset.duration,
+          width: generatedAsset.width,
+          height: generatedAsset.height,
+          aspectRatio: generatedAsset.aspectRatio,
+          generateAudio: resolvedGenerateAudio,
+          splitAudio: actualSplitAudio,
+        };
+        setAiVideoPreview(nextPreview);
+        setIsBackgroundSelected(false);
+        pushHistory();
+        setLanes(nextLanes);
+        setTimeline((prev) =>
+          audioClip ? [...prev, videoClip, audioClip] : [...prev, videoClip]
+        );
+        if (actualSplitAudio) {
+          setClipSettings((prev) => ({
+            ...prev,
+            [videoClip.id]: {
+              ...createDefaultVideoSettings(),
+              muted: true,
+            },
+          }));
+        }
+        setAssets((prev) => {
+          const existing = new Set(prev.map((asset) => asset.id));
+          const additions: MediaAsset[] = [];
+          if (!existing.has(generatedAsset.id)) {
+            additions.push(generatedAsset);
+          }
+          if (audioAsset && !existing.has(audioAsset.id)) {
+            additions.push(audioAsset);
+          }
+          return additions.length > 0 ? [...additions, ...prev] : prev;
+        });
+        setActiveAssetId(generatedAsset.id);
+      } catch (error) {
+        if (aiVideoRequestIdRef.current !== requestId) {
+          return;
+        }
         const message =
-          typeof data?.error === "string" && data.error.length > 0
-            ? data.error
+          error instanceof Error && error.message
+            ? error.message
             : "Video generation failed.";
         setAiVideoStatus("error");
         setAiVideoError(message);
-        return;
+        setAiVideoPreview(null);
+        setAiVideoSaving(false);
       }
-      const videoEntry = data?.video ?? null;
-      const videoUrl =
-        typeof videoEntry?.url === "string"
-          ? videoEntry.url
-          : typeof data?.video_url === "string"
-            ? data.video_url
-            : typeof data?.videoUrl === "string"
-              ? data.videoUrl
-              : typeof data?.video === "string"
-                ? data.video
-                : null;
-      if (!videoUrl) {
-        setAiVideoStatus("error");
-        setAiVideoError("Video generation returned no video.");
-        return;
-      }
-      if (aiVideoRequestIdRef.current !== requestId) {
-        return;
-      }
-      setAiVideoStatus("ready");
-      setAiVideoLastPrompt(trimmedPrompt);
-      setAiVideoLastAspectRatio(resolvedAspectRatio);
-      setAiVideoLastDuration(resolvedDuration);
-      setAiVideoLastGenerateAudio(aiVideoGenerateAudio);
-      setAiVideoPreview({
-        url: videoUrl,
-        name: "Generated video",
-        duration: resolvedDuration,
-        generateAudio: aiVideoGenerateAudio,
-        splitAudio: shouldSplitAudio,
-      });
-      setAiVideoSaving(true);
-      const generatedAsset = await createGeneratedVideoAsset({
-        url: videoUrl,
-        prompt: trimmedPrompt,
-        duration: resolvedDuration,
-        aspectRatio: resolvedAspectRatio,
-      });
-      if (aiVideoRequestIdRef.current !== requestId) {
-        return;
-      }
-      let audioAsset: MediaAsset | null = null;
-      let audioClip: TimelineClip | null = null;
-      let actualSplitAudio = false;
-      if (shouldSplitAudio) {
-        try {
-          audioAsset = await createGeneratedVideoAudioAsset({
-            url: generatedAsset.url,
-            name: `${generatedAsset.name} (audio)`,
-            duration: generatedAsset.duration,
-          });
-          actualSplitAudio = true;
-        } catch (error) {
-          setAiVideoError(
-            "Audio track couldn't be saved to Assets. The video was added without audio."
-          );
-        }
-      }
-      setAiVideoSaving(false);
-      setAiVideoLastSplitAudio(actualSplitAudio);
-      const nextLanes = [...lanesRef.current];
-      const startTime = resolveSnappedStartTime(playbackTimeRef.current);
-      const videoLaneId = createLaneId("video", nextLanes);
-      const videoClip = createClip(
-        generatedAsset.id,
-        videoLaneId,
-        startTime,
-        generatedAsset
-      );
-      if (actualSplitAudio && audioAsset) {
-        const audioLaneId = createLaneId("audio", nextLanes);
-        audioClip = {
-          id: crypto.randomUUID(),
-          assetId: audioAsset.id,
-          duration: videoClip.duration,
-          startOffset: videoClip.startOffset,
-          startTime: videoClip.startTime,
-          laneId: audioLaneId,
-        };
-      }
-      const nextPreview: AiVideoPreview = {
-        url: generatedAsset.url,
-        assetId: generatedAsset.id,
-        audioAssetId: audioAsset?.id ?? null,
-        name: generatedAsset.name,
-        duration: generatedAsset.duration,
-        width: generatedAsset.width,
-        height: generatedAsset.height,
-        aspectRatio: generatedAsset.aspectRatio,
-        generateAudio: aiVideoGenerateAudio,
-        splitAudio: actualSplitAudio,
-      };
-      setAiVideoPreview(nextPreview);
-      setIsBackgroundSelected(false);
-      pushHistory();
-      setLanes(nextLanes);
-      setTimeline((prev) =>
-        audioClip ? [...prev, videoClip, audioClip] : [...prev, videoClip]
-      );
-      if (actualSplitAudio) {
-        setClipSettings((prev) => ({
-          ...prev,
-          [videoClip.id]: {
-            ...createDefaultVideoSettings(),
-            muted: true,
-          },
-        }));
-      }
-      setAssets((prev) => {
-        const existing = new Set(prev.map((asset) => asset.id));
-        const additions: MediaAsset[] = [];
-        if (!existing.has(generatedAsset.id)) {
-          additions.push(generatedAsset);
-        }
-        if (audioAsset && !existing.has(audioAsset.id)) {
-          additions.push(audioAsset);
-        }
-        return additions.length > 0 ? [...additions, ...prev] : prev;
-      });
-      setActiveAssetId(generatedAsset.id);
-    } catch (error) {
-      if (aiVideoRequestIdRef.current !== requestId) {
-        return;
-      }
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : "Video generation failed.";
-      setAiVideoStatus("error");
-      setAiVideoError(message);
-      setAiVideoPreview(null);
-      setAiVideoSaving(false);
-    }
-  }, [
-    aiVideoAspectRatio,
-    aiVideoDuration,
-    aiVideoGenerateAudio,
-    aiVideoPrompt,
-    aiVideoSplitAudio,
-    createClip,
-    createGeneratedVideoAudioAsset,
-    createGeneratedVideoAsset,
-    createLaneId,
-    pushHistory,
-  ]);
+    },
+    [
+      aiVideoAspectRatio,
+      aiVideoDuration,
+      aiVideoGenerateAudio,
+      aiVideoPrompt,
+      aiVideoSplitAudio,
+      createClip,
+      createGeneratedVideoAudioAsset,
+      createGeneratedVideoAsset,
+      createLaneId,
+      pushHistory,
+    ]
+  );
 
   const handleAiVideoClear = useCallback(() => {
     const idsToDelete = [aiVideoPreview?.assetId, aiVideoPreview?.audioAssetId].filter(
@@ -19928,6 +20120,7 @@ function AdvancedEditorContent() {
     aiVideoMagicError,
     handleAiVideoGenerate,
     handleAiVideoImprovePrompt,
+    handleAiVideoUploadImage,
     handleAiVideoClear,
     aiBackgroundRemovalStatus,
     aiBackgroundRemovalError,
