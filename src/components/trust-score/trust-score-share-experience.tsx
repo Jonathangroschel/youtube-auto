@@ -355,6 +355,11 @@ export function TrustScoreGradientCard({
         transformStyle: "preserve-3d",
         boxShadow:
           "0 -10px 100px 10px rgba(78, 99, 255, 0.25), 0 0 10px 0 rgba(0, 0, 0, 0.5)",
+        isolation: "isolate",
+        contain: "paint",
+        clipPath: "inset(0 round 32px)",
+        WebkitClipPath: "inset(0 round 32px)",
+        WebkitMaskImage: "-webkit-radial-gradient(white, black)",
       }}
       initial={{ y: 0 }}
       animate={{

@@ -68,9 +68,7 @@ export default async function CardSharePage({ searchParams }: CardSharePageProps
         </p>
 
         <div className="mt-6">
-          <div className="origin-top scale-[0.82] min-[430px]:scale-[0.9] sm:scale-100">
-            <TrustScoreGradientCard score={score} channelTitle={channelTitle} />
-          </div>
+          <TrustScoreGradientCard score={score} channelTitle={channelTitle} />
         </div>
 
         <Link
