@@ -1,8 +1,12 @@
-"use client";
-
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { TrustScoreGradientCard } from "@/components/trust-score/trust-score-share-experience";
+
+type CardSharePageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const getFirstParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
 
 const parseSharedScore = (value?: string) => {
   if (!value) {
@@ -26,10 +30,10 @@ const sanitizeChannel = (value?: string) => {
   return trimmed.slice(0, 80);
 };
 
-export default function CardSharePage() {
-  const searchParams = useSearchParams();
-  const score = parseSharedScore(searchParams.get("score") ?? undefined);
-  const channelTitle = sanitizeChannel(searchParams.get("channel") ?? undefined);
+export default async function CardSharePage({ searchParams }: CardSharePageProps) {
+  const resolvedSearchParams = await searchParams;
+  const score = parseSharedScore(getFirstParam(resolvedSearchParams.score));
+  const channelTitle = sanitizeChannel(getFirstParam(resolvedSearchParams.channel));
   const headline = channelTitle ? `${channelTitle} Scored ${score}` : `Creator Scored ${score}`;
 
   if (score === null) {
