@@ -27,7 +27,6 @@ import {
   loadAssetLibrary,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
-import { createClient } from "@/lib/supabase/client";
 import {
   parseRedditVideoImportPayload,
   parseSplitScreenImportPayload,
@@ -186,6 +185,21 @@ import type {
   StockVideoOrientation,
   StockVideoOrientationFilter,
 } from "./page-helpers";
+
+type SupabaseClient = ReturnType<
+  (typeof import("@/lib/supabase/client"))["createClient"]
+>;
+
+let supabaseClientPromise: Promise<SupabaseClient> | null = null;
+
+const getSupabaseClient = async (): Promise<SupabaseClient> => {
+  if (!supabaseClientPromise) {
+    supabaseClientPromise = import("@/lib/supabase/client").then(
+      ({ createClient }) => createClient()
+    );
+  }
+  return supabaseClientPromise;
+};
 
 type SubtitleLanguageOption = {
   code: string;
@@ -825,6 +839,23 @@ const mergeAssetsWithLibrary = (
   return Array.from(merged.values());
 };
 
+const dedupeMediaAssets = (items: MediaAsset[]) => {
+  if (items.length <= 1) {
+    return items;
+  }
+  const seen = new Set<string>();
+  const deduped: MediaAsset[] = [];
+  items.forEach((asset) => {
+    const key = asset.id || `${asset.kind}:${asset.url}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    deduped.push(asset);
+  });
+  return deduped;
+};
+
 const ensureEven = (value: number) => {
   const rounded = Math.max(2, Math.round(value));
   return rounded % 2 === 0 ? rounded : rounded + 1;
@@ -1039,6 +1070,19 @@ const uploadAssetFileSafe = async (
     console.error("[assets] uploadAssetFile failed", error);
   }
   return null;
+};
+
+let initialAssetLibraryLoadPromise: Promise<AssetLibraryItem[]> | null = null;
+
+const loadInitialAssetLibrary = () => {
+  if (!initialAssetLibraryLoadPromise) {
+    initialAssetLibraryLoadPromise = loadAssetLibrary()
+      .catch(() => [])
+      .finally(() => {
+        initialAssetLibraryLoadPromise = null;
+      });
+  }
+  return initialAssetLibraryLoadPromise;
 };
 
 const getEditorExportPayload = (): EditorExportPayload | null => {
@@ -2648,7 +2692,7 @@ function AdvancedEditorContent() {
       if (notifyNameSave) {
         setProjectSaveState("saving");
       }
-      const supabase = createClient();
+      const supabase = await getSupabaseClient();
       const { data: userData } = await supabase.auth.getUser();
       const user = userData?.user;
       if (!user) {
@@ -3278,7 +3322,14 @@ function AdvancedEditorContent() {
     assetLibraryBootstrappedRef.current = true;
     let cancelled = false;
     const loadLibrary = async () => {
-      const storedAssets = await loadAssetLibrary();
+      let storedAssets = await loadInitialAssetLibrary();
+      if (!storedAssets.length && !cancelled) {
+        // Supabase auth can be briefly unavailable on first hydration; retry once.
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 650);
+        });
+        storedAssets = await loadInitialAssetLibrary();
+      }
       if (cancelled) {
         return;
       }
@@ -3324,7 +3375,7 @@ function AdvancedEditorContent() {
           clearEditorReloadSessionState();
         }
       }
-      const supabase = createClient();
+      const supabase = await getSupabaseClient();
       const { data: userData } = await supabase.auth.getUser();
       const user = userData?.user;
       if (!user) {
@@ -3350,6 +3401,7 @@ function AdvancedEditorContent() {
         return;
       }
 
+      const libraryItemsPromise = loadInitialAssetLibrary();
       const project = await fetchProjectById(queryProjectId);
 
       if (!cancelled && project?.project_state) {
@@ -3377,7 +3429,7 @@ function AdvancedEditorContent() {
             }));
           }
         }
-        const libraryItems = await loadAssetLibrary();
+        const libraryItems = await libraryItemsPromise;
         if (!cancelled && libraryItems.length) {
           setAssets((prev) => mergeAssetsWithLibrary(prev, libraryItems));
         }
@@ -4249,6 +4301,30 @@ function AdvancedEditorContent() {
           return normalized.includes("signal is aborted") || normalized.includes("abort");
         };
 
+        const isRetryableFetchError = (error: unknown) => {
+          if (!error) {
+            return false;
+          }
+          const anyError = error as { name?: unknown; message?: unknown };
+          const name =
+            typeof anyError?.name === "string" ? anyError.name.toLowerCase() : "";
+          if (name.includes("storageunknownerror")) {
+            return true;
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : typeof anyError?.message === "string"
+                ? anyError.message
+                : String(error);
+          const normalized = message.toLowerCase();
+          return (
+            normalized.includes("failed to fetch") ||
+            normalized.includes("network") ||
+            normalized.includes("load failed")
+          );
+        };
+
         const listWithTimeout = async (
           path: string,
           options?: { limit?: number; offset?: number }
@@ -4292,19 +4368,18 @@ function AdvancedEditorContent() {
           };
 
           let result = await attempt();
-          if (
+          let retryCount = 0;
+          while (
             result.error &&
             !shouldStop() &&
-            isAbortLikeError(result.error) &&
-            // Retry once for transient aborts.
-            true
+            (isAbortLikeError(result.error) || isRetryableFetchError(result.error)) &&
+            retryCount < 2
           ) {
-            await new Promise<void>((resolve) => window.setTimeout(resolve, 400));
+            retryCount += 1;
+            await new Promise<void>((resolve) =>
+              window.setTimeout(resolve, retryCount === 1 ? 350 : 900)
+            );
             result = await attempt();
-          }
-
-          if (result.error && !shouldStop() && !isAbortLikeError(result.error)) {
-            console.error("[stock-video] list error", path, result.error);
           }
 
           return result;
@@ -4391,7 +4466,11 @@ function AdvancedEditorContent() {
               // Avoid noisy console errors for aborted requests (often caused by navigation / retries).
               throw new Error("Stock video request was cancelled. Please retry.");
             }
-            throw error;
+            if (path === stockVideoRootPrefix) {
+              throw error;
+            }
+            // Skip failing subfolders so one transient network/storage failure doesn't blank the library.
+            return;
           }
           const entries = data ?? [];
           const files = entries.filter(isFileEntry);
@@ -5071,16 +5150,17 @@ function AdvancedEditorContent() {
   }, [lanes, sortLanesByType, isExportMode]);
 
   const filteredAssets = useMemo(() => {
+    const uniqueAssets = dedupeMediaAssets(assets);
     if (assetFilter === "All") {
-      return assets.filter((asset) => asset.kind !== "text");
+      return uniqueAssets.filter((asset) => asset.kind !== "text");
     }
     if (assetFilter === "Video") {
-      return assets.filter((asset) => asset.kind === "video");
+      return uniqueAssets.filter((asset) => asset.kind === "video");
     }
     if (assetFilter === "Images") {
-      return assets.filter((asset) => asset.kind === "image");
+      return uniqueAssets.filter((asset) => asset.kind === "image");
     }
-    return assets.filter((asset) => asset.kind === "audio");
+    return uniqueAssets.filter((asset) => asset.kind === "audio");
   }, [assets, assetFilter]);
 
   const viewAllAssets = useMemo(() => {
@@ -12257,7 +12337,7 @@ function AdvancedEditorContent() {
           : null;
 
       const resolveUserAssetUrl = async (assetId: string) => {
-        const supabase = createClient();
+        const supabase = await getSupabaseClient();
         const { data: userData } = await supabase.auth.getUser();
         const user = userData?.user;
         if (!user) {
@@ -22229,10 +22309,10 @@ function AdvancedEditorContent() {
                                 className="h-full w-full object-cover"
                                 muted
                                 playsInline
-                                preload="metadata"
+                                preload="auto"
                                 disablePictureInPicture
                                 tabIndex={-1}
-                                onLoadedMetadata={(event) => {
+                                onLoadedData={(event) => {
                                   const target = event.currentTarget;
                                   const safeEnd = Math.max(
                                     clip.startOffset,

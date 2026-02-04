@@ -2,6 +2,7 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
@@ -594,6 +595,8 @@ function ProjectsPageInner() {
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const sortMenuRef = useRef<HTMLDivElement | null>(null);
   const projectsRequestIdRef = useRef(0);
+  const projectsAbortRef = useRef<AbortController | null>(null);
+  const projectsLoadingRef = useRef(true);
   const projectsRef = useRef<ProjectLibraryItem[]>([]);
   const projectTitleDraftsRef = useRef<Record<string, string>>({});
   const savedProjectTitlesRef = useRef<Record<string, string>>({});
@@ -1012,6 +1015,10 @@ function ProjectsPageInner() {
   }, [projects]);
 
   useEffect(() => {
+    projectsLoadingRef.current = projectsLoading;
+  }, [projectsLoading]);
+
+  useEffect(() => {
     projectTitleDraftsRef.current = projectTitleDrafts;
   }, [projectTitleDrafts]);
 
@@ -1021,8 +1028,10 @@ function ProjectsPageInner() {
 
   useEffect(() => {
     const renameTimeouts = renameTimeoutsRef.current;
+    isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
+      projectsAbortRef.current?.abort();
       renameTimeouts.forEach((timeoutId) => {
         window.clearTimeout(timeoutId);
       });
@@ -1044,10 +1053,24 @@ function ProjectsPageInner() {
 
   const loadProjects = useCallback(
     async (options?: { silent?: boolean }) => {
+      const silent = options?.silent === true;
+      if (silent && projectsLoadingRef.current) {
+        return;
+      }
       const requestId = projectsRequestIdRef.current + 1;
       projectsRequestIdRef.current = requestId;
-      const silent = options?.silent === true;
+      let abortController: AbortController | null = null;
+      let timeoutId: number | null = null;
       if (!silent) {
+        projectsAbortRef.current?.abort();
+        abortController = new AbortController();
+        projectsAbortRef.current = abortController;
+        timeoutId = window.setTimeout(() => {
+          abortController?.abort();
+        }, 15000);
+      }
+      if (!silent) {
+        projectsLoadingRef.current = true;
         setProjectsLoading(true);
       }
       setProjectsError(null);
@@ -1057,7 +1080,10 @@ function ProjectsPageInner() {
         if (sortKey !== "updated") {
           params.set("sort", sortKey);
         }
-        const response = await fetch(`/api/projects?${params.toString()}`);
+        const response = await fetch(`/api/projects?${params.toString()}`, {
+          signal: abortController?.signal,
+          cache: "no-store",
+        });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           const message =
@@ -1137,13 +1163,26 @@ function ProjectsPageInner() {
           }
         }
       } catch (error) {
+        if (abortController?.signal.aborted) {
+          if (!isUnmountedRef.current && requestId === projectsRequestIdRef.current) {
+            setProjectsError("Loading projects timed out. Please retry.");
+          }
+          return;
+        }
         if (!isUnmountedRef.current) {
           setProjectsError(
             error instanceof Error ? error.message : "Unable to load projects."
           );
         }
       } finally {
-        if (!silent && !isUnmountedRef.current && requestId === projectsRequestIdRef.current) {
+        if (timeoutId !== null) {
+          window.clearTimeout(timeoutId);
+        }
+        if (abortController && projectsAbortRef.current === abortController) {
+          projectsAbortRef.current = null;
+        }
+        if (!isUnmountedRef.current && requestId === projectsRequestIdRef.current) {
+          projectsLoadingRef.current = false;
           setProjectsLoading(false);
         }
       }
@@ -1438,7 +1477,7 @@ function ProjectsPageInner() {
               onMouseLeave={() => setHoveredNavIndex(null)}
             >
               {navItems.map((item, index) => (
-                <a
+                <Link
                   key={item.label}
                   href={item.href}
                   ref={(element) => {
@@ -1451,7 +1490,7 @@ function ProjectsPageInner() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
-                </a>
+                </Link>
               ))}
             </nav>
             <div className="mt-auto pb-6">
@@ -1592,14 +1631,14 @@ function ProjectsPageInner() {
                       >
                         <div className="py-1">
                           {section.items.map((item) => (
-                            <a
+                            <Link
                               key={item.label}
                               href={item.href}
                               className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
-                            </a>
+                            </Link>
                           ))}
                         </div>
                       </div>
@@ -1610,7 +1649,7 @@ function ProjectsPageInner() {
 
               <div className="p-2">
                 {mobileFooterActions.map((action) => (
-                  <a
+                  <Link
                     key={action.label}
                     href={action.href}
                     className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
@@ -1621,7 +1660,7 @@ function ProjectsPageInner() {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {action.label}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -1712,7 +1751,7 @@ function ProjectsPageInner() {
                   </div>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
-                  <a
+                  <Link
                     href="/settings"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -1721,8 +1760,8 @@ function ProjectsPageInner() {
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                     Settings
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/upgrade"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -1733,8 +1772,8 @@ function ProjectsPageInner() {
                       <path d="m6 3 6 6 6-6" />
                     </svg>
                     Upgrade
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/support"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -1744,7 +1783,7 @@ function ProjectsPageInner() {
                       <path d="M12 17h.01" />
                     </svg>
                     24/7 Support
-                  </a>
+                  </Link>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
                   <button

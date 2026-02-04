@@ -1502,7 +1502,7 @@ export default function RedditVideoWizard() {
                             muted
                             playsInline
                             loop
-                            preload="metadata"
+                            preload="none"
                             onMouseEnter={(e) => {
                               e.currentTarget.play().catch(() => {});
                             }}

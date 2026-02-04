@@ -1,5 +1,3 @@
-"use client";
-
 import { ChevronRight, Play, SkipBack, SkipForward, Volume2, Maximize, Upload, Type, Wand2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
@@ -15,12 +13,14 @@ export default function EditorPreview() {
             <br />
             <span className="text-[#9aed00]">Feels like magic.</span>
           </h2>
-          <Button 
-            onClick={() => document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })}
+          <Button
+            asChild
             className="mt-4 bg-[#9aed00] hover:bg-[#8ad600] text-[#1a1240] rounded-full px-6 py-3 text-sm font-bold"
           >
-            Join Waitlist
-            <ChevronRight className="ml-1 h-4 w-4" />
+            <a href="#waitlist">
+              Join Waitlist
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </a>
           </Button>
         </div>
 
@@ -82,6 +82,7 @@ export default function EditorPreview() {
                   src="/theo-photo.png"
                   alt="Video preview"
                   fill
+                  sizes="(max-width: 768px) 100vw, 60vw"
                   className="object-cover"
                 />
               </div>

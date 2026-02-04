@@ -1,15 +1,31 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { login, signup } from "./actions";
-import { createClient } from "@/lib/supabase/client";
 import { SaturaLogo } from "@/components/satura-logo";
-import { ShaderRipple } from "@/components/shader-ripple";
-import { ShaderVoid } from "@/components/shader-void";
-import { GradientWave } from "@/components/gradient-wave";
-import { ShaderRGB } from "@/components/shader-rgb";
-import { RenderCanvas } from "@/components/render-canvas";
+
+const ShaderRipple = dynamic(
+  () => import("@/components/shader-ripple").then((mod) => mod.ShaderRipple),
+  { ssr: false }
+);
+const ShaderVoid = dynamic(
+  () => import("@/components/shader-void").then((mod) => mod.ShaderVoid),
+  { ssr: false }
+);
+const GradientWave = dynamic(
+  () => import("@/components/gradient-wave").then((mod) => mod.GradientWave),
+  { ssr: false }
+);
+const ShaderRGB = dynamic(
+  () => import("@/components/shader-rgb").then((mod) => mod.ShaderRGB),
+  { ssr: false }
+);
+const RenderCanvas = dynamic(
+  () => import("@/components/render-canvas").then((mod) => mod.RenderCanvas),
+  { ssr: false }
+);
 
 // Slideshow data for the right panel
 const slides = [
@@ -124,7 +140,6 @@ const SlideShaderBackground = ({ shader }: { shader: string }) => {
 
 function LoginContent() {
   const searchParams = useSearchParams();
-  const supabase = createClient();
   
   const [currentSlide, setCurrentSlide] = useState(0); // Start with QUICK SUBTITLES (now first)
   const [slideProgress, setSlideProgress] = useState(0);
@@ -185,6 +200,9 @@ function LoginContent() {
     setError(null);
 
     try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+
       // Always use the canonical production URL for OAuth callback
       const redirectUrl = process.env.NODE_ENV === "development"
         ? `${window.location.origin}/auth/callback`

@@ -2,36 +2,59 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
 export default function RedirectAuthedToDashboard() {
   const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
+    let timeoutId: number | null = null;
+    let idleId: number | null = null;
 
-    // Client-side redirect keeps the homepage statically cacheable for SEO/verification,
-    // while still taking logged-in users straight to the app.
-    supabase.auth
-      .getSession()
-      .then(({ data: { session } }) => {
-        if (cancelled) {
-          return;
-        }
-        if (session) {
+    const checkSession = async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!cancelled && session) {
           router.replace("/dashboard");
         }
-      })
-      .catch(() => {
+      } catch {
         // If session lookup fails, keep showing the marketing page.
-      });
+      }
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout?: number }
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (idleWindow.requestIdleCallback) {
+      idleId = idleWindow.requestIdleCallback(
+        () => {
+          void checkSession();
+        },
+        { timeout: 2500 }
+      );
+    } else {
+      timeoutId = window.setTimeout(() => {
+        void checkSession();
+      }, 800);
+    }
 
     return () => {
       cancelled = true;
+      if (idleId !== null) {
+        idleWindow.cancelIdleCallback?.(idleId);
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, [router]);
 
   return null;
 }
-

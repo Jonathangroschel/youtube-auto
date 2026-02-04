@@ -2,6 +2,7 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
+import Link from "next/link";
 import {
   deleteAssetById,
   loadAssetLibrary,
@@ -9,6 +10,7 @@ import {
   uploadAssetFile,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
+import { captureVideoPoster } from "@/lib/media/video-poster";
 import {
   useCallback,
   useEffect,
@@ -264,6 +266,9 @@ export default function AssetsPage() {
   >({});
   const [activeTab, setActiveTab] = useState("All");
   const [assetSortKey, setAssetSortKey] = useState<AssetSortKey>("updated-desc");
+  const [videoPosterByAssetId, setVideoPosterByAssetId] = useState<
+    Record<string, string>
+  >({});
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
@@ -544,6 +549,54 @@ export default function AssetsPage() {
     return next;
   }, [assetSortKey, filteredAssets]);
 
+  useEffect(() => {
+    const videoAssets = sortedAssets.filter((asset) => asset.kind === "video");
+    const activeVideoIds = new Set(videoAssets.map((asset) => asset.id));
+
+    setVideoPosterByAssetId((prev) => {
+      const nextEntries = Object.entries(prev).filter(([id]) =>
+        activeVideoIds.has(id)
+      );
+      if (nextEntries.length === Object.keys(prev).length) {
+        return prev;
+      }
+      return Object.fromEntries(nextEntries);
+    });
+
+    const missingPosters = videoAssets.filter(
+      (asset) => !videoPosterByAssetId[asset.id]
+    );
+    if (!missingPosters.length) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const buildPosters = async () => {
+      for (const asset of missingPosters) {
+        if (cancelled) {
+          return;
+        }
+        const poster = await captureVideoPoster(asset.url, { maxWidth: 480 });
+        if (!poster || cancelled) {
+          continue;
+        }
+        setVideoPosterByAssetId((prev) => {
+          if (prev[asset.id]) {
+            return prev;
+          }
+          return { ...prev, [asset.id]: poster };
+        });
+      }
+    };
+
+    void buildPosters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sortedAssets, videoPosterByAssetId]);
+
   const assetSortLabel = sortLabelByKey.get(assetSortKey) ?? "Last Updated";
 
   const toggleSection = (label: string) => {
@@ -683,7 +736,7 @@ export default function AssetsPage() {
               onMouseLeave={() => setHoveredNavIndex(null)}
             >
               {navItems.map((item, index) => (
-                <a
+                <Link
                   key={item.label}
                   href={item.href}
                   ref={(element) => {
@@ -696,7 +749,7 @@ export default function AssetsPage() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
-                </a>
+                </Link>
               ))}
             </nav>
             <div className="mt-auto pb-6">
@@ -837,14 +890,14 @@ export default function AssetsPage() {
                       >
                         <div className="py-1">
                           {section.items.map((item) => (
-                            <a
+                            <Link
                               key={item.label}
                               href={item.href}
                               className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
-                            </a>
+                            </Link>
                           ))}
                         </div>
                       </div>
@@ -855,7 +908,7 @@ export default function AssetsPage() {
 
               <div className="p-2">
                 {mobileFooterActions.map((action) => (
-                  <a
+                  <Link
                     key={action.label}
                     href={action.href}
                     className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
@@ -866,7 +919,7 @@ export default function AssetsPage() {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {action.label}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -959,7 +1012,7 @@ export default function AssetsPage() {
                   </div>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
-                  <a
+                  <Link
                     href="/settings"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -968,8 +1021,8 @@ export default function AssetsPage() {
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                     Settings
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/upgrade"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -980,8 +1033,8 @@ export default function AssetsPage() {
                       <path d="m6 3 6 6 6-6" />
                     </svg>
                     Upgrade
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/support"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -991,7 +1044,7 @@ export default function AssetsPage() {
                       <path d="M12 17h.01" />
                     </svg>
                     24/7 Support
-                  </a>
+                  </Link>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
                   <button
@@ -1154,10 +1207,29 @@ export default function AssetsPage() {
                           <video
                             src={asset.url}
                             className="h-full w-full object-cover"
+                            poster={videoPosterByAssetId[asset.id]}
                             controls
                             muted
                             playsInline
-                            preload="metadata"
+                            preload="auto"
+                            onLoadedData={(event) => {
+                              const target = event.currentTarget;
+                              if (!Number.isFinite(target.duration)) {
+                                return;
+                              }
+                              const seekTime = Math.min(
+                                0.08,
+                                Math.max(0, target.duration - 0.01)
+                              );
+                              if (Math.abs(target.currentTime - seekTime) < 0.01) {
+                                return;
+                              }
+                              try {
+                                target.currentTime = seekTime;
+                              } catch {
+                                // Keep the first decodable frame if seek is blocked.
+                              }
+                            }}
                           />
                         )}
                         <button

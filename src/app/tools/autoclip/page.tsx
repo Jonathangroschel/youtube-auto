@@ -2,6 +2,7 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
+import Link from "next/link";
 import {
   buildAssetLibraryItem,
   type AssetLibraryItem,
@@ -2143,7 +2144,7 @@ export default function AutoClipPage() {
               onMouseLeave={() => setHoveredNavIndex(null)}
             >
               {navItems.map((item, index) => (
-                <a
+                <Link
                   key={item.label}
                   href={item.href}
                   ref={(element) => {
@@ -2155,7 +2156,7 @@ export default function AutoClipPage() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
-                </a>
+                </Link>
               ))}
             </nav>
             <div className="mt-auto pb-6">
@@ -2273,14 +2274,14 @@ export default function AutoClipPage() {
                     {openSections[section.label] && (
                       <div className="flex flex-col gap-1 px-3 pb-2">
                         {section.items.map((item) => (
-                          <a
+                          <Link
                             key={item.label}
                             href={item.href}
                             className="rounded-lg px-2 py-1 text-sm text-[#898a8b] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                             onClick={() => setMobileMenuOpen(false)}
                           >
                             {item.label}
-                          </a>
+                          </Link>
                         ))}
                       </div>
                     )}
@@ -2289,7 +2290,7 @@ export default function AutoClipPage() {
               </div>
               <div className="mt-auto space-y-2 border-t border-[rgba(255,255,255,0.08)] px-3 py-3">
                 {mobileFooterActions.map((action) => (
-                  <a
+                  <Link
                     key={action.label}
                     href={action.href}
                     className={`block rounded-lg px-3 py-2 text-sm font-medium ${action.tone === "danger"
@@ -2299,7 +2300,7 @@ export default function AutoClipPage() {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {action.label}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -2393,7 +2394,7 @@ export default function AutoClipPage() {
                   </div>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
-                  <a
+                  <Link
                     href="/settings"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -2402,8 +2403,8 @@ export default function AutoClipPage() {
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                     Settings
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/upgrade"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -2414,8 +2415,8 @@ export default function AutoClipPage() {
                       <path d="m6 3 6 6 6-6" />
                     </svg>
                     Upgrade
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/support"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -2425,7 +2426,7 @@ export default function AutoClipPage() {
                       <path d="M12 17h.01" />
                     </svg>
                     24/7 Support
-                  </a>
+                  </Link>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
                   <button

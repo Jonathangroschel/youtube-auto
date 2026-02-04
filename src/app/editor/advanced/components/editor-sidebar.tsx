@@ -3126,9 +3126,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {viewAllAssets.map((asset: MediaAsset) => (
+                    {viewAllAssets.map((asset: MediaAsset, index: number) => (
                       <div
-                        key={asset.id}
+                        key={`${asset.id}-${index}`}
                         className="group relative flex flex-col gap-2"
                       >
                         <button
@@ -3156,6 +3156,25 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                               className="h-full w-full object-cover"
                               muted
                               playsInline
+                              preload="metadata"
+                              onLoadedData={(event) => {
+                                const target = event.currentTarget;
+                                if (!Number.isFinite(target.duration)) {
+                                  return;
+                                }
+                                const seekTime = Math.min(
+                                  0.08,
+                                  Math.max(0, target.duration - 0.01)
+                                );
+                                if (Math.abs(target.currentTime - seekTime) < 0.01) {
+                                  return;
+                                }
+                                try {
+                                  target.currentTime = seekTime;
+                                } catch {
+                                  // Leave first decodable frame when seek is unavailable.
+                                }
+                              }}
                             />
                           )}
                           {asset.kind === "audio" && (
@@ -6514,9 +6533,9 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                       </div>
                     ) : (
                       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {visibleAssetGridItems.map((asset: MediaAsset) => (
+                        {visibleAssetGridItems.map((asset: MediaAsset, index: number) => (
                           <div
-                            key={asset.id}
+                            key={`${asset.id}-${index}`}
                             className="group relative space-y-2"
                           >
                             <button
@@ -6544,6 +6563,25 @@ export const EditorSidebar = memo((props: EditorSidebarProps) => {
                                   className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
                                   muted
                                   playsInline
+                                  preload="metadata"
+                                  onLoadedData={(event) => {
+                                    const target = event.currentTarget;
+                                    if (!Number.isFinite(target.duration)) {
+                                      return;
+                                    }
+                                    const seekTime = Math.min(
+                                      0.08,
+                                      Math.max(0, target.duration - 0.01)
+                                    );
+                                    if (Math.abs(target.currentTime - seekTime) < 0.01) {
+                                      return;
+                                    }
+                                    try {
+                                      target.currentTime = seekTime;
+                                    } catch {
+                                      // Leave first decodable frame when seek is unavailable.
+                                    }
+                                  }}
                                 />
                               )}
                               {asset.kind === "audio" && (

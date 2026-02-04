@@ -1,5 +1,3 @@
-"use client";
-
 import { ChevronRight, Upload, Type, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -38,12 +36,14 @@ export default function Workflows() {
             Engineer virality to make money
             </h2>
           </div>
-          <Button 
-            onClick={() => document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })}
+          <Button
+            asChild
             className="mt-4 md:mt-0 bg-[#9aed00] hover:bg-[#8ad600] text-[#1a1240] rounded-full px-6 py-3 text-sm font-bold w-fit"
           >
-            Join Waitlist
-            <ChevronRight className="ml-1 h-4 w-4" />
+            <a href="#waitlist">
+              Join Waitlist
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </a>
           </Button>
         </div>
 

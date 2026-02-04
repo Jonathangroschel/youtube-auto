@@ -2,9 +2,9 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { signOut } from "@/app/login/actions";
-import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
 type NavItem = {
@@ -455,10 +455,21 @@ export default function DashboardPage() {
 
   // Fetch user on mount
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
+    let active = true;
+
+    const loadUser = async () => {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (active) {
+        setUser(user);
+      }
+    };
+
+    void loadUser();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleSignOut = async () => {
@@ -598,7 +609,7 @@ export default function DashboardPage() {
               onMouseLeave={() => setHoveredNavIndex(null)}
             >
               {navItems.map((item, index) => (
-                <a
+                <Link
                   key={item.label}
                   href={item.href}
                   ref={(element) => {
@@ -611,7 +622,7 @@ export default function DashboardPage() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
-                </a>
+                </Link>
               ))}
             </nav>
             <div className="mt-auto pb-6">
@@ -758,14 +769,14 @@ export default function DashboardPage() {
                       >
                         <div className="py-1">
                           {section.items.map((item) => (
-                            <a
+                            <Link
                               key={item.label}
                               href={item.href}
                               className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
-                            </a>
+                            </Link>
                           ))}
                         </div>
                       </div>
@@ -786,7 +797,7 @@ export default function DashboardPage() {
                       {isLoggingOut ? "Logging out..." : action.label}
                     </button>
                   ) : (
-                    <a
+                    <Link
                       key={action.label}
                       href={action.href}
                       className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
@@ -797,7 +808,7 @@ export default function DashboardPage() {
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       {action.label}
-                    </a>
+                    </Link>
                   )
                 )}
               </div>
@@ -886,7 +897,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
-                  <a
+                  <Link
                     href="/settings"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -904,8 +915,8 @@ export default function DashboardPage() {
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                     Settings
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/upgrade"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -925,8 +936,8 @@ export default function DashboardPage() {
                       <path d="m6 3 6 6 6-6" />
                     </svg>
                     Upgrade
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/support"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -945,7 +956,7 @@ export default function DashboardPage() {
                       <path d="M12 17h.01" />
                     </svg>
                     24/7 Support
-                  </a>
+                  </Link>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
                   <button
@@ -1056,13 +1067,13 @@ export default function DashboardPage() {
 
                 if (action.href) {
                   return (
-                    <a
+                    <Link
                       key={action.title}
                       className={className}
                       href={action.href}
                     >
                       {content}
-                    </a>
+                    </Link>
                   );
                 }
 
@@ -1091,7 +1102,7 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     {feature.title === "AutoClip" ? (
-                      <a
+                      <Link
                         className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#9aed00] px-4 py-2 text-sm font-semibold text-black transition-all hover:shadow-[0px_0px_12px_rgba(154,237,0,0.4)] sm:w-auto"
                         href="/tools/autoclip"
                       >
@@ -1108,7 +1119,7 @@ export default function DashboardPage() {
                         >
                           <path d="m9 18 6-6-6-6" />
                         </svg>
-                      </a>
+                      </Link>
                     ) : (
                       <button
                         className="flex w-full items-center justify-center gap-1 rounded-lg bg-[rgba(154,237,0,0.1)] px-4 py-2 text-sm font-semibold text-[#9aed00] transition-all hover:bg-[rgba(154,237,0,0.2)] sm:w-auto"
@@ -1155,7 +1166,7 @@ export default function DashboardPage() {
                           </p>
                         </div>
                         {href ? (
-                          <a
+                          <Link
                             className="flex w-fit items-center gap-1 rounded-lg bg-[rgba(154,237,0,0.1)] px-3 py-1.5 text-sm font-semibold text-[#9aed00] transition-colors hover:bg-[rgba(154,237,0,0.2)]"
                             href={href}
                           >
@@ -1172,7 +1183,7 @@ export default function DashboardPage() {
                             >
                               <path d="m9 18 6-6-6-6" />
                             </svg>
-                          </a>
+                          </Link>
                         ) : null}
                       </div>
                     </div>
@@ -1213,7 +1224,7 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     {href ? (
-                      <a
+                      <Link
                         className="flex w-fit items-center gap-1 rounded-lg bg-[rgba(154,237,0,0.1)] px-3 py-1.5 text-sm font-semibold text-[#9aed00] transition-colors hover:bg-[rgba(154,237,0,0.2)]"
                         href={href}
                       >
@@ -1230,7 +1241,7 @@ export default function DashboardPage() {
                         >
                           <path d="m9 18 6-6-6-6" />
                         </svg>
-                      </a>
+                      </Link>
                     ) : null}
                   </div>
                 </div>
@@ -1243,7 +1254,7 @@ export default function DashboardPage() {
                 <h2 className="font-[family-name:var(--font-geist-sans)] text-base font-semibold uppercase tracking-tight text-[#f7f7f8] sm:text-lg">
                   Tools
                 </h2>
-                <a
+                <Link
                   className="flex items-center gap-1 text-sm font-medium text-[#9aed00] transition-colors hover:text-[#7ac700]"
                   href="/tools"
                 >
@@ -1260,11 +1271,11 @@ export default function DashboardPage() {
                   >
                     <path d="m9 18 6-6-6-6" />
                   </svg>
-                </a>
+                </Link>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-6">
                 {toolCards.map((tool) => (
-                  <a
+                  <Link
                     key={tool.label}
                     href={tool.href}
                     className="flex flex-col items-center gap-3 rounded-2xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] p-3 text-center transition-all duration-200 hover:border-[rgba(106,71,255,0.3)] hover:bg-[#252729] sm:p-4 md:p-6"
@@ -1273,7 +1284,7 @@ export default function DashboardPage() {
                       {tool.icon}
                     </div>
                     <p className="text-xs font-semibold text-[#f7f7f8]">{tool.label}</p>
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -1281,12 +1292,12 @@ export default function DashboardPage() {
           <footer className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-[rgba(255,255,255,0.08)] pt-4 text-[11px] text-[#898a8b] sm:flex-row">
             <span>Privacy and terms</span>
             <div className="flex items-center gap-4">
-              <a className="transition-colors hover:text-[#9aed00]" href="/privacy-policy">
+              <Link className="transition-colors hover:text-[#9aed00]" href="/privacy-policy">
                 Privacy Policy
-              </a>
-              <a className="transition-colors hover:text-[#9aed00]" href="/terms-of-service">
+              </Link>
+              <Link className="transition-colors hover:text-[#9aed00]" href="/terms-of-service">
                 Terms of Service
-              </a>
+              </Link>
             </div>
           </footer>
         </main>

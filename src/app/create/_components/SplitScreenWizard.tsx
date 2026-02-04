@@ -703,7 +703,7 @@ export default function SplitScreenWizard({
                             muted
                             playsInline
                             loop
-                            preload="metadata"
+                            preload="none"
                             onMouseEnter={(e) => {
                               e.currentTarget.play().catch(() => {});
                             }}

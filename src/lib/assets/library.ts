@@ -1,7 +1,5 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
-
 export type AssetLibraryKind = "video" | "audio" | "image";
 
 export type AssetLibrarySource =
@@ -56,10 +54,26 @@ type UploadAssetMeta = {
   aspectRatio?: number;
 };
 
+type SupabaseClient = ReturnType<
+  (typeof import("@/lib/supabase/client"))["createClient"]
+>;
+
 const ASSET_BUCKET = "user-assets";
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const DELETED_ASSETS_KEY = "satura:deleted-assets";
 export const DELETED_ASSETS_EVENT = "satura:assets-deleted";
+
+let supabaseClient: SupabaseClient | null = null;
+
+const getSupabaseClient = async (): Promise<SupabaseClient> => {
+  if (supabaseClient) {
+    return supabaseClient;
+  }
+
+  const { createClient } = await import("@/lib/supabase/client");
+  supabaseClient = createClient();
+  return supabaseClient;
+};
 
 const hasWindow = () => typeof window !== "undefined";
 const isAssetDebugEnabled = () => {
@@ -247,7 +261,7 @@ const findExistingUploadedAsset = async ({
   kind,
   meta,
 }: {
-  supabase: ReturnType<typeof createClient>;
+  supabase: SupabaseClient;
   userId: string;
   file: File;
   name: string;
@@ -294,7 +308,7 @@ const findExistingUploadedAsset = async ({
 };
 
 const fetchSignedUrls = async (rows: AssetRow[]) => {
-  const supabase = createClient();
+  const supabase = await getSupabaseClient();
   const byBucket = new Map<string, string[]>();
   rows.forEach((row) => {
     if (!row.storage_bucket || !row.storage_path) {
@@ -366,7 +380,7 @@ export const loadAssetLibrary = async (): Promise<AssetLibraryItem[]> => {
   if (!hasWindow()) {
     return [];
   }
-  const supabase = createClient();
+  const supabase = await getSupabaseClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData?.user) {
     return [];
@@ -404,7 +418,7 @@ export const uploadAssetFile = async (
   if (!hasWindow()) {
     return null;
   }
-  const supabase = createClient();
+  const supabase = await getSupabaseClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError) {
     console.error("[assets] auth.getUser error", userError);
@@ -528,7 +542,7 @@ export const createExternalAsset = async (payload: {
   if (!hasWindow()) {
     return null;
   }
-  const supabase = createClient();
+  const supabase = await getSupabaseClient();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user;
   if (!user || !payload.url) {
@@ -600,7 +614,7 @@ export const addAssetsToLibrary = async (
   if (!pending.length) {
     return dedupeAssets(normalized);
   }
-  const supabase = createClient();
+  const supabase = await getSupabaseClient();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user;
   if (!user) {
@@ -652,7 +666,7 @@ export const deleteAssetById = async (assetId: string): Promise<void> => {
   if (!hasWindow()) {
     return;
   }
-  const supabase = createClient();
+  const supabase = await getSupabaseClient();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user;
   if (!user) {
@@ -701,7 +715,7 @@ export const renameAssetById = async (
   if (!hasWindow()) {
     return null;
   }
-  const supabase = createClient();
+  const supabase = await getSupabaseClient();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user;
   if (!user) {

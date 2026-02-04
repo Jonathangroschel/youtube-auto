@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
@@ -158,6 +159,7 @@ const navItems: NavItem[] = [
 
 export default function AppSidebar() {
   const pathname = usePathname() ?? "";
+  const router = useRouter();
   const resolvedPathname = useMemo(
     () => resolveActivePath(pathname),
     [pathname]
@@ -219,6 +221,15 @@ export default function AppSidebar() {
     return () => window.removeEventListener("resize", handleResize);
   }, [resolvedNavIndex, updateIndicator]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      router.prefetch("/editor/advanced");
+      router.prefetch("/tools/autoclip");
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [router]);
+
   return (
     <>
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
@@ -247,7 +258,7 @@ export default function AppSidebar() {
             {navItems.map((item, index) => {
               const active = index === activeNavIndex;
               return (
-                <a
+                <Link
                   key={item.label}
                   href={item.href}
                   ref={(element) => {
@@ -263,7 +274,7 @@ export default function AppSidebar() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon(active)}
-                </a>
+                </Link>
               );
             })}
           </nav>
@@ -297,4 +308,3 @@ export default function AppSidebar() {
     </>
   );
 }
-

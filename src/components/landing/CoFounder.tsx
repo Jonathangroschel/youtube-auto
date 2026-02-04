@@ -1,5 +1,3 @@
-"use client";
-
 import Image from "next/image";
 import { Youtube, Twitter } from "lucide-react";
 
@@ -24,6 +22,7 @@ export default function CoFounder() {
                   src="/deven-photo.png"
                   alt="Deven Seenath"
                   fill
+                  sizes="176px"
                   className="object-cover object-top"
                 />
               </div>

@@ -1,5 +1,3 @@
-"use client";
-
 import { ChevronRight, ImageIcon, Mic, Video, Download, Eraser, Lightbulb, AudioLines, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -58,12 +56,14 @@ export default function Features() {
           <p className="text-gray-500 mb-4">
             From cutting-edge speech enhancement to downloading videos, we&apos;ve got you covered.
           </p>
-          <Button 
-            onClick={() => document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })}
+          <Button
+            asChild
             className="bg-[#9aed00] hover:bg-[#8ad600] text-[#1a1240] rounded-full px-6 py-3 text-sm font-bold"
           >
-            Join Waitlist
-            <ChevronRight className="ml-1 h-4 w-4" />
+            <a href="#waitlist">
+              Join Waitlist
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </a>
           </Button>
         </div>
 

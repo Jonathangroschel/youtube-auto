@@ -1,20 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import VideoPlayer from "@/components/ui/video-player";
+import dynamic from "next/dynamic";
+import { useEffect, useRef, useState } from "react";
+
+const VideoPlayer = dynamic(() => import("@/components/ui/video-player"), {
+  ssr: false,
+});
 
 const VIDEO_SRC =
   "https://eslwirmmwflkmbfqzxxs.supabase.co/storage/v1/object/public/VSL/test-vsl.mp4";
 
 export default function VideoSection() {
-  const [isMounted, setIsMounted] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [shouldLoadPlayer, setShouldLoadPlayer] = useState(false);
 
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
+    const target = sectionRef.current;
+    if (!target || shouldLoadPlayer) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setShouldLoadPlayer(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px 0px", threshold: 0.1 }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [shouldLoadPlayer]);
 
   return (
-    <section className="py-16 px-4 bg-white">
+    <section ref={sectionRef} className="py-16 px-4 bg-white">
       <div className="max-w-4xl mx-auto">
         {/* Video Container with Glow Effect */}
         <div className="relative">
@@ -24,7 +45,7 @@ export default function VideoSection() {
 
           {/* Video Frame */}
           <div className="relative bg-[#1a1240] rounded-2xl p-2 shadow-2xl">
-            {isMounted ? (
+            {shouldLoadPlayer ? (
               <VideoPlayer src={VIDEO_SRC} />
             ) : (
               <div className="aspect-video rounded-xl bg-black" />

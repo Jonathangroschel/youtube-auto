@@ -2,6 +2,7 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 type NavItem = {
@@ -478,7 +479,7 @@ export default function ToolsPage() {
               onMouseLeave={() => setHoveredNavIndex(null)}
             >
               {navItems.map((item, index) => (
-                <a
+                <Link
                   key={item.label}
                   href={item.href}
                   ref={(element) => {
@@ -491,7 +492,7 @@ export default function ToolsPage() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
-                </a>
+                </Link>
               ))}
             </nav>
             <div className="mt-auto pb-6">
@@ -632,14 +633,14 @@ export default function ToolsPage() {
                       >
                         <div className="py-1">
                           {section.items.map((item) => (
-                            <a
+                            <Link
                               key={item.label}
                               href={item.href}
                               className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
-                            </a>
+                            </Link>
                           ))}
                         </div>
                       </div>
@@ -650,7 +651,7 @@ export default function ToolsPage() {
 
               <div className="p-2">
                 {mobileFooterActions.map((action) => (
-                  <a
+                  <Link
                     key={action.label}
                     href={action.href}
                     className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
@@ -661,7 +662,7 @@ export default function ToolsPage() {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {action.label}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -759,7 +760,7 @@ export default function ToolsPage() {
                   </div>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
-                  <a
+                  <Link
                     href="/settings"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -768,8 +769,8 @@ export default function ToolsPage() {
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                     Settings
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/upgrade"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -780,8 +781,8 @@ export default function ToolsPage() {
                       <path d="m6 3 6 6 6-6" />
                     </svg>
                     Upgrade
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/support"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -791,7 +792,7 @@ export default function ToolsPage() {
                       <path d="M12 17h.01" />
                     </svg>
                     24/7 Support
-                  </a>
+                  </Link>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
                   <button
@@ -814,7 +815,7 @@ export default function ToolsPage() {
             <div className="flex flex-col space-y-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {quickTools.map((tool) => (
-                  <a
+                  <Link
                     key={tool.title}
                     className="group flex items-center justify-between rounded-xl border border-[rgba(217,217,217,0.04)] bg-[#1a1c1e] p-3 transition-all duration-200 hover:border-[rgba(106,71,255,0.3)]"
                     href={tool.href}
@@ -843,7 +844,7 @@ export default function ToolsPage() {
                       <line x1="5" y1="12" x2="19" y2="12" />
                       <polyline points="12 5 19 12 12 19" />
                     </svg>
-                  </a>
+                  </Link>
                 ))}
               </div>
 
@@ -869,14 +870,14 @@ export default function ToolsPage() {
                         </p>
                       </div>
                       <div className="mt-auto">
-                        <a href={tool.href}>
+                        <Link href={tool.href}>
                           <button
                             className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#0e1012] py-2 text-center text-[#f7f7f8] transition-all hover:border-[rgba(106,71,255,0.3)] hover:bg-[rgba(106,71,255,0.1)]"
                             type="button"
                           >
                             Get Started
                           </button>
-                        </a>
+                        </Link>
                       </div>
                     </div>
                   </div>

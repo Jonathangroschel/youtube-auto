@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Loader2, Check } from "lucide-react";
 
@@ -109,19 +110,19 @@ export default function Hero() {
 
         <p className="text-gray-500 text-xs max-w-md mx-auto mb-6">
           By joining, you agree to our{" "}
-          <a
+          <Link
             href="/terms-of-service"
             className="underline underline-offset-2 hover:text-gray-700"
           >
             Terms of Service
-          </a>{" "}
+          </Link>{" "}
           and{" "}
-          <a
+          <Link
             href="/privacy-policy"
             className="underline underline-offset-2 hover:text-gray-700"
           >
             Privacy Policy
-          </a>
+          </Link>
           .
         </p>
 
@@ -142,6 +143,7 @@ export default function Hero() {
                 alt="User"
                 width={32}
                 height={32}
+                sizes="32px"
                 className="rounded-full border-2 border-white"
               />
             ))}

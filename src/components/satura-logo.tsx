@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 type SaturaLogoProps = {
   href?: string;
@@ -13,27 +14,20 @@ export const SaturaLogo = ({ href = "/dashboard", size = "md", className = "", a
   const containerRef = useRef<HTMLElement>(null);
   const [glowIntensity, setGlowIntensity] = useState(0);
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
+  const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const node = containerRef.current;
+    if (!node) {
+      return;
+    }
 
-      const rect = containerRef.current.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-
-      const distance = Math.sqrt(
-        Math.pow(e.clientX - centerX, 2) + Math.pow(e.clientY - centerY, 2)
-      );
-
-      // Max distance at which glow starts (150px), fully intense at 0px
-      const maxDistance = 150;
-      const intensity = Math.max(0, 1 - distance / maxDistance);
-      setGlowIntensity(intensity);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
+    const rect = node.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
+    const maxDistance = 120;
+    const intensity = Math.max(0, 1 - distance / maxDistance);
+    setGlowIntensity(intensity);
+  };
 
   const sizeConfig = {
     sm: {
@@ -68,6 +62,8 @@ export const SaturaLogo = ({ href = "/dashboard", size = "md", className = "", a
       <div
         ref={containerRef as React.RefObject<HTMLDivElement>}
         className={`flex items-center justify-center rounded-2xl ${config.container} ${className}`}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={() => setGlowIntensity(0)}
       >
         <img src="/icon-2.svg" alt="Satura" className={config.image} style={{ ...glowStyle, transition: "filter 150ms" }} />
       </div>
@@ -75,14 +71,16 @@ export const SaturaLogo = ({ href = "/dashboard", size = "md", className = "", a
   }
 
   return (
-    <a
+    <Link
       ref={containerRef as React.RefObject<HTMLAnchorElement>}
       className={`flex items-center justify-center rounded-2xl ${config.container} ${className}`}
       href={href}
       aria-label="Dashboard"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={() => setGlowIntensity(0)}
     >
       <img src="/icon-2.svg" alt="Satura" className={config.image} style={{ ...glowStyle, transition: "filter 150ms" }} />
-    </a>
+    </Link>
   );
 };
 

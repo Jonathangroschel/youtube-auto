@@ -1,5 +1,3 @@
-"use client";
-
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
@@ -74,12 +72,14 @@ export default function Testimonials() {
 
         {/* CTA */}
         <div className="flex justify-center">
-          <Button 
-            onClick={() => document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })}
+          <Button
+            asChild
             className="bg-[#9aed00] hover:bg-[#8ad600] text-[#1a1240] rounded-full px-8 py-6 text-base font-bold shadow-lg shadow-green-200"
           >
-            Join Waitlist
-            <ChevronRight className="ml-2 h-5 w-5" />
+            <a href="#waitlist">
+              Join Waitlist
+              <ChevronRight className="ml-2 h-5 w-5" />
+            </a>
           </Button>
         </div>
       </div>

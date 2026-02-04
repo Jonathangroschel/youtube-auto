@@ -2,11 +2,22 @@
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
-import { TrustScoreShareExperience } from "@/components/trust-score/trust-score-share-experience";
+import Link from "next/link";
+import dynamic from "next/dynamic";
 import { signOut } from "@/app/login/actions";
-import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+
+const TrustScoreShareExperience = dynamic(
+  () =>
+    import("@/components/trust-score/trust-score-share-experience").then(
+      (module) => module.TrustScoreShareExperience
+    ),
+  { ssr: false }
+);
+
+const preloadTrustScoreShareExperience = () =>
+  import("@/components/trust-score/trust-score-share-experience");
 
 type NavItem = {
   label: string;
@@ -570,10 +581,21 @@ export default function TrustScorePage() {
   const autoAnalyzeTriggeredRef = useRef(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
+    let active = true;
+
+    const loadUser = async () => {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (active) {
+        setUser(user);
+      }
+    };
+
+    void loadUser();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleSignOut = async () => {
@@ -811,6 +833,20 @@ export default function TrustScorePage() {
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     }
   }, [selectedChannelId, analysisActive]);
+
+  useEffect(() => {
+    if (!selectedChannelId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void preloadTrustScoreShareExperience();
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [selectedChannelId]);
 
   const buildOverridesPayload = useCallback(() => {
     const swipeRate = parseStudioRateInput(studioSwipeRateInput);
@@ -1079,7 +1115,7 @@ export default function TrustScorePage() {
               onMouseLeave={() => setHoveredNavIndex(null)}
             >
               {navItems.map((item, index) => (
-                <a
+                <Link
                   key={item.label}
                   href={item.href}
                   ref={(element) => {
@@ -1091,7 +1127,7 @@ export default function TrustScorePage() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
-                </a>
+                </Link>
               ))}
             </nav>
             <div className="mt-auto pb-6">
@@ -1231,14 +1267,14 @@ export default function TrustScorePage() {
                       >
                         <div className="py-1">
                           {section.items.map((item) => (
-                            <a
+                            <Link
                               key={item.label}
                               href={item.href}
                               className="flex w-full items-center px-10 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8] focus:outline-none"
                               onClick={() => setMobileMenuOpen(false)}
                             >
                               {item.label}
-                            </a>
+                            </Link>
                           ))}
                         </div>
                       </div>
@@ -1249,7 +1285,7 @@ export default function TrustScorePage() {
 
               <div className="p-2">
                 {mobileFooterActions.map((action) => (
-                  <a
+                  <Link
                     key={action.label}
                     href={action.href}
                     className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${action.tone === "danger"
@@ -1259,7 +1295,7 @@ export default function TrustScorePage() {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {action.label}
-                  </a>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -1363,7 +1399,7 @@ export default function TrustScorePage() {
                   </div>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
-                  <a
+                  <Link
                     href="/settings"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -1372,8 +1408,8 @@ export default function TrustScorePage() {
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                     Settings
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/upgrade"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -1384,8 +1420,8 @@ export default function TrustScorePage() {
                       <path d="m6 3 6 6 6-6" />
                     </svg>
                     Upgrade
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/support"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#898a8b] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[#f7f7f8]"
                   >
@@ -1395,7 +1431,7 @@ export default function TrustScorePage() {
                       <path d="M12 17h.01" />
                     </svg>
                     24/7 Support
-                  </a>
+                  </Link>
                 </div>
                 <div className="border-t border-[rgba(255,255,255,0.08)] py-1">
                   <button
@@ -1992,13 +2028,15 @@ export default function TrustScorePage() {
         </div>
       ) : null}
 
-      <TrustScoreShareExperience
-        open={shareExperienceOpen}
-        mode={shareExperienceMode}
-        score={shareExperienceScore ?? currentScore}
-        channelTitle={selectedChannel?.title ?? null}
-        onClose={() => setShareExperienceOpen(false)}
-      />
+      {shareExperienceOpen ? (
+        <TrustScoreShareExperience
+          open={shareExperienceOpen}
+          mode={shareExperienceMode}
+          score={shareExperienceScore ?? currentScore}
+          channelTitle={selectedChannel?.title ?? null}
+          onClose={() => setShareExperienceOpen(false)}
+        />
+      ) : null}
 
       <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
     </div>

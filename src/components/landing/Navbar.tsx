@@ -82,11 +82,11 @@ export default function Navbar() {
 
           {/* CTA Button */}
           <div className="hidden md:block">
-            <Button 
-              onClick={() => document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' })}
+            <Button
+              asChild
               className="bg-[#9aed00] hover:bg-[#8ad600] text-[#1a1240] rounded-full px-5 py-2 text-sm font-bold"
             >
-              Join Waitlist
+              <a href="#waitlist">Join Waitlist</a>
             </Button>
           </div>
 
@@ -108,14 +108,14 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden bg-white border-t border-gray-100">
           <div className="px-4 py-4 space-y-3">
-            <Button 
+            <Button
+              asChild
               onClick={() => {
                 setMobileMenuOpen(false);
-                document.getElementById('waitlist')?.scrollIntoView({ behavior: 'smooth' });
               }}
               className="w-full bg-[#9aed00] hover:bg-[#8ad600] text-[#1a1240] rounded-full px-5 py-2 text-sm font-bold mt-2"
             >
-              Join Waitlist
+              <a href="#waitlist">Join Waitlist</a>
             </Button>
           </div>
         </div>
