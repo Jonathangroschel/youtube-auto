@@ -1102,8 +1102,19 @@ export const selectHighlight = async (
     })
     .filter((value): value is NonNullable<typeof value> => Boolean(value)) as ScoredHighlight[];
 
+  const coverageSeed = buildCoverageHighlights(
+    segments,
+    requestedHighlights,
+    options?.durationSeconds ?? null,
+    excludeRanges,
+    requestedHighlights
+  ).map((highlight) => ({
+    highlight,
+    score: scoreHighlightCandidate(highlight, 56),
+  }));
+
   const dedupedMap = new Map<string, ScoredHighlight>();
-  normalized.forEach((item) => {
+  [...normalized, ...coverageSeed].forEach((item) => {
     const key = `${item.highlight.start.toFixed(2)}-${item.highlight.end.toFixed(
       2
     )}`;
@@ -1117,7 +1128,7 @@ export const selectHighlight = async (
     (a, b) => b.score - a.score
   );
   const selectedRanked: ScoredHighlight[] = [];
-  ranked.forEach((candidate) => {
+  const canAddCandidate = (candidate: ScoredHighlight) => {
     if (
       excludeRanges.some((range) =>
         isSignificantOverlap(candidate.highlight, range)
@@ -1126,6 +1137,42 @@ export const selectHighlight = async (
         isSignificantOverlap(candidate.highlight, item.highlight)
       )
     ) {
+      return false;
+    }
+    return true;
+  };
+  const durationForDiversity =
+    limits.duration && Number.isFinite(limits.duration) && limits.duration > 0
+      ? (limits.duration as number)
+      : resolveTranscriptDuration(segments) ?? 0;
+  if (durationForDiversity >= 8 * 60 && requestedHighlights >= 4) {
+    const binCount = Math.min(requestedHighlights, 6);
+    const binSize = durationForDiversity / binCount;
+    const usedIndexes = new Set<number>();
+    for (let bin = 0; bin < binCount; bin += 1) {
+      if (selectedRanked.length >= requestedHighlights) {
+        break;
+      }
+      const binStart = bin * binSize;
+      const binEnd = bin === binCount - 1 ? durationForDiversity + 1 : (bin + 1) * binSize;
+      const candidateIndex = ranked.findIndex(
+        (candidate, index) =>
+          !usedIndexes.has(index) &&
+          candidate.highlight.start >= binStart &&
+          candidate.highlight.start < binEnd &&
+          canAddCandidate(candidate)
+      );
+      if (candidateIndex >= 0) {
+        usedIndexes.add(candidateIndex);
+        selectedRanked.push(ranked[candidateIndex]);
+      }
+    }
+  }
+  ranked.forEach((candidate) => {
+    if (selectedRanked.length >= requestedHighlights) {
+      return;
+    }
+    if (!canAddCandidate(candidate)) {
       return;
     }
     selectedRanked.push(candidate);

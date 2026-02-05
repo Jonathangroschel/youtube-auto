@@ -1367,6 +1367,64 @@ const runTranscriptionPipeline = async ({
 
     const extractionErrors = [];
     let chunkFiles = [];
+    const chunkDurationByPath = new Map();
+    const sourceDurationSeconds =
+      sourceMetadata &&
+      Number.isFinite(sourceMetadata.duration) &&
+      sourceMetadata.duration > 0
+        ? sourceMetadata.duration
+        : null;
+    const computeChunkDurationTotal = async (files) => {
+      let totalDuration = 0;
+      for (const filePath of files) {
+        const existing = chunkDurationByPath.get(filePath);
+        if (Number.isFinite(existing) && existing > 0) {
+          totalDuration += existing;
+          continue;
+        }
+        const metadata = await getVideoMetadata(filePath).catch(() => null);
+        const duration =
+          metadata &&
+          Number.isFinite(metadata.duration) &&
+          metadata.duration > 0
+            ? metadata.duration
+            : TRANSCRIBE_CHUNK_SECONDS;
+        chunkDurationByPath.set(filePath, duration);
+        totalDuration += duration;
+      }
+      return totalDuration;
+    };
+    const isBetterExtractionCandidate = (next, current) => {
+      if (!current) {
+        return true;
+      }
+      const nextCoverage =
+        Number.isFinite(next.coverage) && next.coverage != null ? next.coverage : -1;
+      const currentCoverage =
+        Number.isFinite(current.coverage) && current.coverage != null
+          ? current.coverage
+          : -1;
+      if (nextCoverage > currentCoverage + 0.03) {
+        return true;
+      }
+      if (currentCoverage > nextCoverage + 0.03) {
+        return false;
+      }
+      if (next.code === 0 && current.code !== 0) {
+        return true;
+      }
+      if (next.code !== 0 && current.code === 0) {
+        return false;
+      }
+      if (next.totalDuration > current.totalDuration + 1) {
+        return true;
+      }
+      if (current.totalDuration > next.totalDuration + 1) {
+        return false;
+      }
+      return next.totalBytes > current.totalBytes;
+    };
+    let bestExtractionCandidate = null;
 
     for (const plan of extractionPlans) {
       await resetChunkDir();
@@ -1410,16 +1468,67 @@ const runTranscriptionPipeline = async ({
         continue;
       }
 
+      const totalDuration = await computeChunkDurationTotal(createdChunks);
+      const coverage =
+        sourceDurationSeconds && sourceDurationSeconds > 0
+          ? Math.min(1, totalDuration / sourceDurationSeconds)
+          : null;
+      const candidate = {
+        label: plan.label,
+        code: passResult.code,
+        stderr: passResult.stderr,
+        chunks: createdChunks,
+        totalBytes,
+        totalDuration,
+        coverage,
+      };
+      if (isBetterExtractionCandidate(candidate, bestExtractionCandidate)) {
+        bestExtractionCandidate = candidate;
+      }
+
+      const coverageLabel =
+        coverage == null ? "unknown" : `${Math.round(coverage * 100)}%`;
       if (passResult.code !== 0) {
-        console.warn(
-          `[transcribe] ${plan.label} exited with code ${passResult.code}; using partial audio chunks. ${compactFfmpegMessage(
-            passResult.stderr
-          )}`
+        extractionErrors.push(
+          `${plan.label}: exited with code ${passResult.code} (coverage ${coverageLabel})`
         );
       }
 
-      chunkFiles = createdChunks;
-      break;
+      if (
+        passResult.code === 0 &&
+        (coverage == null || coverage >= 0.85)
+      ) {
+        break;
+      }
+    }
+
+    if (bestExtractionCandidate?.chunks?.length) {
+      chunkFiles = bestExtractionCandidate.chunks;
+      if (bestExtractionCandidate.code !== 0) {
+        const coverageLabel =
+          bestExtractionCandidate.coverage == null
+            ? "unknown"
+            : `${Math.round(bestExtractionCandidate.coverage * 100)}%`;
+        console.warn(
+          `[transcribe] ${bestExtractionCandidate.label} exited with code ${bestExtractionCandidate.code}; using partial audio chunks (coverage ${coverageLabel}). ${compactFfmpegMessage(
+            bestExtractionCandidate.stderr
+          )}`
+        );
+      }
+      if (
+        sourceDurationSeconds &&
+        sourceDurationSeconds >= 480 &&
+        Number.isFinite(bestExtractionCandidate.coverage) &&
+        bestExtractionCandidate.coverage < 0.7
+      ) {
+        throw new Error(
+          `Audio extraction coverage is too low (${Math.round(
+            bestExtractionCandidate.coverage * 100
+          )}% of ${Math.round(
+            sourceDurationSeconds
+          )}s). Source audio appears heavily corrupted.`
+        );
+      }
     }
 
     if (!chunkFiles.length) {
@@ -1455,13 +1564,19 @@ const runTranscriptionPipeline = async ({
 
     for (let index = 0; index < chunkFiles.length; index += 1) {
       const chunkPath = chunkFiles[index];
-      const chunkMetadata = await getVideoMetadata(chunkPath).catch(() => null);
+      const chunkMetadata =
+        chunkDurationByPath.has(chunkPath)
+          ? null
+          : await getVideoMetadata(chunkPath).catch(() => null);
+      const knownChunkDuration = chunkDurationByPath.get(chunkPath);
       const chunkDuration =
-        chunkMetadata &&
-        Number.isFinite(chunkMetadata.duration) &&
-        chunkMetadata.duration > 0
-          ? chunkMetadata.duration
-          : TRANSCRIBE_CHUNK_SECONDS;
+        Number.isFinite(knownChunkDuration) && knownChunkDuration > 0
+          ? knownChunkDuration
+          : chunkMetadata &&
+              Number.isFinite(chunkMetadata.duration) &&
+              chunkMetadata.duration > 0
+            ? chunkMetadata.duration
+            : TRANSCRIBE_CHUNK_SECONDS;
       const audioBuffer = await fs.readFile(chunkPath);
       const chunkExt = path.extname(chunkPath).toLowerCase();
       const chunkMimeType =
