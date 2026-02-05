@@ -949,55 +949,57 @@ export const selectHighlight = async (
     .join("\n");
 
   const isGpt5Model = model.startsWith("gpt-5");
-  const temperature = isGpt5Model ? 0.6 : 0.35;
   const maxTokens = Math.max(300, requestedHighlights * 120);
   const maxTokenConfig = isGpt5Model
     ? { max_completion_tokens: maxTokens }
     : { max_tokens: maxTokens };
+  const requestBody: Record<string, unknown> = {
+    model,
+    ...maxTokenConfig,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "highlight_selection",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            highlights: {
+              type: "array",
+              minItems: minHighlights,
+              maxItems: requestedHighlights,
+              items: {
+                type: "object",
+                properties: {
+                  start: { type: "number" },
+                  end: { type: "number" },
+                  title: { type: "string" },
+                },
+                required: ["start", "end", "title"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["highlights"],
+          additionalProperties: false,
+        },
+      },
+    },
+  };
+  if (!isGpt5Model) {
+    requestBody.temperature = 0.35;
+  }
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      temperature,
-      ...maxTokenConfig,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "highlight_selection",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              highlights: {
-                type: "array",
-                minItems: minHighlights,
-                maxItems: requestedHighlights,
-                items: {
-                  type: "object",
-                  properties: {
-                    start: { type: "number" },
-                    end: { type: "number" },
-                    title: { type: "string" },
-                  },
-                  required: ["start", "end", "title"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["highlights"],
-            additionalProperties: false,
-          },
-        },
-      },
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
