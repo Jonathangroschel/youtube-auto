@@ -1170,6 +1170,69 @@ const transcribeChunkWithRetry = async (audioFile, requestedLanguage) => {
   throw lastError || new Error("OpenAI transcription failed.");
 };
 
+const isUnsupportedChunkDecodeError = (error) => {
+  const status = Number(error?.status);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error?.message === "string"
+        ? error.message
+        : "";
+  if (status === 400 && /audio file could not be decoded|format is not supported/i.test(message)) {
+    return true;
+  }
+  return /audio file could not be decoded|format is not supported/i.test(message);
+};
+
+const transcodeChunkToWav = async (inputPath) => {
+  const outputPath = path.join(
+    path.dirname(inputPath),
+    `${path.basename(inputPath, path.extname(inputPath))}_clean.wav`
+  );
+  await new Promise((resolve, reject) => {
+    const ffmpeg = spawn("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-fflags",
+      "+discardcorrupt",
+      "-err_detect",
+      "ignore_err",
+      "-ignore_unknown",
+      "-y",
+      "-i",
+      inputPath,
+      "-vn",
+      "-sn",
+      "-dn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "pcm_s16le",
+      outputPath,
+    ]);
+    let stderr = "";
+    ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+    ffmpeg.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `Chunk WAV fallback transcode failed (code ${code}): ${stderr.slice(-500)}`
+        )
+      );
+    });
+    ffmpeg.on("error", (err) =>
+      reject(new Error(`Chunk WAV fallback ffmpeg spawn error: ${err.message}`))
+    );
+  });
+  return outputPath;
+};
+
 const runTranscriptionPipeline = async ({
   sessionId,
   videoKey,
@@ -1586,12 +1649,41 @@ const runTranscriptionPipeline = async ({
       });
 
       let transcription;
+      let lastChunkError = null;
       try {
         transcription = await transcribeChunkWithRetry(audioFile, requestedLanguage);
       } catch (error) {
+        lastChunkError = error;
+        if (isUnsupportedChunkDecodeError(error)) {
+          let fallbackChunkPath = null;
+          try {
+            fallbackChunkPath = await transcodeChunkToWav(chunkPath);
+            const fallbackBuffer = await fs.readFile(fallbackChunkPath);
+            const fallbackFile = new File(
+              [fallbackBuffer],
+              path.basename(fallbackChunkPath),
+              { type: "audio/wav" }
+            );
+            transcription = await transcribeChunkWithRetry(
+              fallbackFile,
+              requestedLanguage
+            );
+          } catch (fallbackError) {
+            lastChunkError = fallbackError;
+          } finally {
+            if (fallbackChunkPath) {
+              await fs.unlink(fallbackChunkPath).catch(() => {});
+            }
+          }
+        }
+      }
+
+      if (!transcription) {
         failedChunks += 1;
         const message =
-          error instanceof Error ? error.message : "Chunk transcription failed.";
+          lastChunkError instanceof Error
+            ? lastChunkError.message
+            : "Chunk transcription failed.";
         skippedChunkErrors.push(`chunk ${index + 1}: ${message}`);
         console.warn(
           `[transcribe] skipping chunk ${index + 1}/${totalChunks}: ${message}`
