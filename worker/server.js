@@ -1189,48 +1189,142 @@ const transcodeChunkToWav = async (inputPath) => {
     path.dirname(inputPath),
     `${path.basename(inputPath, path.extname(inputPath))}_clean.wav`
   );
-  await new Promise((resolve, reject) => {
-    const ffmpeg = spawn("ffmpeg", [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-fflags",
-      "+discardcorrupt",
-      "-err_detect",
-      "ignore_err",
-      "-ignore_unknown",
-      "-y",
-      "-i",
-      inputPath,
-      "-vn",
-      "-sn",
-      "-dn",
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-c:a",
-      "pcm_s16le",
-      outputPath,
-    ]);
-    let stderr = "";
-    ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
-    ffmpeg.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new Error(
-          `Chunk WAV fallback transcode failed (code ${code}): ${stderr.slice(-500)}`
+  const compactFfmpegMessage = (value) => {
+    const normalized = String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) {
+      return "No ffmpeg stderr output.";
+    }
+    return normalized.length > 600
+      ? `${normalized.slice(0, 600)}...`
+      : normalized;
+  };
+  const runPass = async (args, label) => {
+    return new Promise((resolve, reject) => {
+      const ffmpeg = spawn("ffmpeg", args);
+      let stderr = "";
+      ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+      ffmpeg.on("close", (code) =>
+        resolve({
+          code: Number.isFinite(code) ? code : -1,
+          stderr,
+          label,
+        })
+      );
+      ffmpeg.on("error", (err) =>
+        reject(
+          new Error(
+            `Chunk WAV fallback ffmpeg spawn error (${label}): ${err.message}`
+          )
         )
       );
     });
-    ffmpeg.on("error", (err) =>
-      reject(new Error(`Chunk WAV fallback ffmpeg spawn error: ${err.message}`))
+  };
+  const hasUsableOutput = async () => {
+    const stats = await fs.stat(outputPath).catch(() => null);
+    return Boolean(stats && stats.size > 4096);
+  };
+  const buildCommonArgs = () => [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-fflags",
+    "+discardcorrupt",
+    "-err_detect",
+    "ignore_err",
+    "-ignore_unknown",
+    "-y",
+    "-i",
+    inputPath,
+    "-vn",
+    "-sn",
+    "-dn",
+  ];
+  const passConfigs = [
+    {
+      label: "map-channel",
+      args: [
+        ...buildCommonArgs(),
+        "-map_channel",
+        "0.0.0",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "wav",
+        outputPath,
+      ],
+    },
+    {
+      label: "pan-first-channel",
+      args: [
+        ...buildCommonArgs(),
+        "-map",
+        "0:a:0?",
+        "-af",
+        "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0",
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "wav",
+        outputPath,
+      ],
+    },
+    {
+      label: "mono-downmix",
+      args: [
+        ...buildCommonArgs(),
+        "-map",
+        "0:a:0?",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "wav",
+        outputPath,
+      ],
+    },
+  ];
+
+  const passErrors = [];
+  for (const pass of passConfigs) {
+    await fs.unlink(outputPath).catch(() => {});
+    let passResult;
+    try {
+      passResult = await runPass(pass.args, pass.label);
+    } catch (error) {
+      passErrors.push(
+        error instanceof Error ? error.message : String(error)
+      );
+      continue;
+    }
+
+    const usableOutput = await hasUsableOutput();
+    if (usableOutput && passResult.code === 0) {
+      return outputPath;
+    }
+    if (usableOutput) {
+      console.warn(
+        `[transcribe] chunk WAV fallback ${pass.label} exited with code ${passResult.code}; using partial WAV output. ${compactFfmpegMessage(
+          passResult.stderr
+        )}`
+      );
+      return outputPath;
+    }
+
+    passErrors.push(
+      `${pass.label}: ${compactFfmpegMessage(passResult.stderr)}`
     );
-  });
-  return outputPath;
+  }
+
+  throw new Error(
+    `Chunk WAV fallback transcode failed: ${passErrors.slice(0, 3).join(" | ")}`
+  );
 };
 
 const runTranscriptionPipeline = async ({
