@@ -90,10 +90,10 @@ const FFMPEG_THREADS = toPositiveInt(
   process.env.AUTOCLIP_FFMPEG_THREADS,
   Math.max(1, CPU_COUNT)
 );
-const MAX_RENDER_FPS = toPositiveInt(process.env.AUTOCLIP_MAX_RENDER_FPS, 30);
+const MAX_RENDER_FPS = toPositiveInt(process.env.AUTOCLIP_MAX_RENDER_FPS, 60);
 const MAX_RENDER_HEIGHT = toPositiveInt(
   process.env.AUTOCLIP_MAX_RENDER_HEIGHT,
-  1280
+  1920
 );
 const TRANSCRIBE_CHUNK_SECONDS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS,
@@ -102,7 +102,7 @@ const TRANSCRIBE_CHUNK_SECONDS = toPositiveInt(
 const TRANSCRIBE_AUDIO_BITRATE =
   process.env.AUTOCLIP_TRANSCRIBE_BITRATE || "64k";
 const RENDER_PRESET = process.env.AUTOCLIP_FFMPEG_PRESET || "veryfast";
-const SCALE_FLAGS = process.env.AUTOCLIP_SCALE_FLAGS || "fast_bilinear";
+const SCALE_FLAGS = process.env.AUTOCLIP_SCALE_FLAGS || "lanczos";
 const RENDER_HEIGHT = toEven(MAX_RENDER_HEIGHT);
 const RENDER_WIDTH = toEven(Math.round(RENDER_HEIGHT * 9 / 16));
 
@@ -1802,6 +1802,26 @@ app.post("/render", authMiddleware, async (req, res) => {
     if (downloadError) throw downloadError;
 
     await fs.writeFile(videoPath, Buffer.from(await videoData.arrayBuffer()));
+    const sourceMetadata = await getVideoMetadata(videoPath).catch(() => null);
+    const sourceFps =
+      sourceMetadata &&
+      Number.isFinite(sourceMetadata.frameRate) &&
+      sourceMetadata.frameRate > 0
+        ? sourceMetadata.frameRate
+        : MAX_RENDER_FPS;
+    const renderFps = Math.max(
+      24,
+      Math.min(MAX_RENDER_FPS, Math.round(sourceFps))
+    );
+    const qualityMode =
+      quality === "medium" || quality === "low" ? quality : "high";
+    const renderHeight =
+      qualityMode === "high"
+        ? Math.max(RENDER_HEIGHT, 1920)
+        : qualityMode === "medium"
+          ? Math.max(RENDER_HEIGHT, 1600)
+          : RENDER_HEIGHT;
+    const renderWidth = toEven(Math.round(renderHeight * 9 / 16));
 
     const outputs = [];
 
@@ -1822,7 +1842,7 @@ app.post("/render", authMiddleware, async (req, res) => {
           "-t", String(clipDuration),
           "-map", "0:v:0",
           "-map", "0:a:0?",
-          "-r", String(MAX_RENDER_FPS),
+          "-r", String(renderFps),
           "-c:v", "libx264",
           "-preset", RENDER_PRESET,
           "-crf", "18",
@@ -1873,7 +1893,9 @@ app.post("/render", authMiddleware, async (req, res) => {
       });
 
       // Step 3: Scale to 1080x1920 and merge with audio from original clip
-      const crf = quality === "high" ? "23" : quality === "medium" ? "26" : "30";
+      const crf = qualityMode === "high" ? "18" : qualityMode === "medium" ? "22" : "27";
+      const audioBitrate =
+        qualityMode === "high" ? "192k" : qualityMode === "medium" ? "160k" : "128k";
       
       await new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", [
@@ -1886,14 +1908,14 @@ app.post("/render", authMiddleware, async (req, res) => {
           "-map", "0:v:0",            // Take video from first input
           "-map", "1:a:0?",           // Take audio from second input (optional)
           "-filter_threads", String(FFMPEG_THREADS),
-          "-vf", `scale=${RENDER_WIDTH}:${RENDER_HEIGHT}:flags=${SCALE_FLAGS}`,
-          "-r", String(MAX_RENDER_FPS),
+          "-vf", `scale=${renderWidth}:${renderHeight}:flags=${SCALE_FLAGS}`,
+          "-r", String(renderFps),
           "-c:v", "libx264",
           "-preset", RENDER_PRESET,
           "-crf", crf,
           "-threads", String(FFMPEG_THREADS),
           "-c:a", "aac",
-          "-b:a", "128k",
+          "-b:a", audioBitrate,
           "-shortest",
           "-movflags", "+faststart",
           "-avoid_negative_ts", "make_zero",
@@ -2178,6 +2200,34 @@ async function getVideoMetadata(filePath) {
       try {
         const data = JSON.parse(stdout);
         const videoStream = data.streams?.find((s) => s.codec_type === "video");
+        const parseFrameRate = (value) => {
+          if (!value) {
+            return null;
+          }
+          const raw = String(value).trim();
+          if (!raw) {
+            return null;
+          }
+          if (raw.includes("/")) {
+            const [numRaw, denRaw] = raw.split("/");
+            const numerator = Number(numRaw);
+            const denominator = Number(denRaw);
+            if (
+              Number.isFinite(numerator) &&
+              Number.isFinite(denominator) &&
+              denominator > 0
+            ) {
+              const fps = numerator / denominator;
+              return Number.isFinite(fps) && fps > 0 ? fps : null;
+            }
+            return null;
+          }
+          const fps = Number(raw);
+          return Number.isFinite(fps) && fps > 0 ? fps : null;
+        };
+        const frameRate =
+          parseFrameRate(videoStream?.avg_frame_rate) ??
+          parseFrameRate(videoStream?.r_frame_rate);
         const audioStreams = Array.isArray(data.streams)
           ? data.streams.filter((s) => s.codec_type === "audio")
           : [];
@@ -2191,6 +2241,7 @@ async function getVideoMetadata(filePath) {
           .filter((index) => index != null);
         resolve({
           duration: parseFloat(data.format?.duration || "0"),
+          frameRate,
           width: videoStream?.width || null,
           height: videoStream?.height || null,
           audioStreamIndices,

@@ -12,9 +12,11 @@ const MIN_HIGHLIGHT_COUNT = 4;
 const MAX_HIGHLIGHT_COUNT = 6;
 const OVERLAP_RATIO_THRESHOLD = 0.6;
 const OVERLAP_SECONDS_THRESHOLD = 2;
-const MIN_TARGET_HIGHLIGHT_SECONDS = 20;
-const MAX_TARGET_HIGHLIGHT_SECONDS = 75;
-const DEFAULT_TARGET_HIGHLIGHT_SECONDS = 40;
+const MIN_TARGET_HIGHLIGHT_SECONDS = 18;
+const MAX_TARGET_HIGHLIGHT_SECONDS = 45;
+const DEFAULT_TARGET_HIGHLIGHT_SECONDS = 32;
+const LENGTH_PENALTY_START_SECONDS = 55;
+const PREFERRED_SHORT_FORM_SECONDS = 45;
 
 type HighlightRange = { start: number; end: number };
 type HighlightLimits = {
@@ -22,6 +24,16 @@ type HighlightLimits = {
   hasDuration: boolean;
   minLength: number;
   maxLength: number;
+};
+type HighlightCandidatePayload = {
+  start: number;
+  end: number;
+  title: string;
+  viralityScore?: number;
+};
+type ScoredHighlight = {
+  highlight: AutoClipHighlight;
+  score: number;
 };
 
 const buildTranscriptText = (segments: TranscriptSegment[]) =>
@@ -347,23 +359,6 @@ const isSignificantOverlap = (a: HighlightRange, b: HighlightRange) => {
   );
 };
 
-const filterDistinctHighlights = (
-  highlights: AutoClipHighlight[],
-  excludeRanges: HighlightRange[]
-) => {
-  const selected: AutoClipHighlight[] = [];
-  highlights.forEach((highlight) => {
-    if (
-      excludeRanges.some((range) => isSignificantOverlap(highlight, range)) ||
-      selected.some((range) => isSignificantOverlap(highlight, range))
-    ) {
-      return;
-    }
-    selected.push(highlight);
-  });
-  return selected;
-};
-
 const resolveFlexibleHighlightLimits = (
   segments: TranscriptSegment[],
   durationOverride: number | null | undefined,
@@ -416,6 +411,45 @@ const resolveTargetHighlightLength = (
     limits.maxLength,
     Math.max(limits.minLength, boundedIdeal)
   );
+};
+
+const normalizeViralityScore = (value: unknown) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 50;
+  }
+  return Math.max(0, Math.min(100, numeric));
+};
+
+const scoreHighlightCandidate = (
+  highlight: AutoClipHighlight,
+  modelViralityScore: number
+) => {
+  const length = Math.max(0, highlight.end - highlight.start);
+  let score = modelViralityScore;
+  if (length > LENGTH_PENALTY_START_SECONDS) {
+    score -= Math.min(
+      40,
+      (length - LENGTH_PENALTY_START_SECONDS) * 0.9
+    );
+  } else if (length > PREFERRED_SHORT_FORM_SECONDS) {
+    score -= (length - PREFERRED_SHORT_FORM_SECONDS) * 0.5;
+  }
+  if (length < MIN_HIGHLIGHT_SECONDS) {
+    score -= (MIN_HIGHLIGHT_SECONDS - length) * 0.8;
+  }
+  const content = String(highlight.content ?? "");
+  if (/[!?]/.test(content)) {
+    score += 2;
+  }
+  if (
+    /\b(controvers|rage|angry|fury|scam|exposed|worst|insane|crazy|drama|fight|lie|shocking)\b/i.test(
+      content
+    )
+  ) {
+    score += 4;
+  }
+  return score;
 };
 
 const buildFallbackHighlights = (
@@ -921,6 +955,8 @@ export const selectHighlight = async (
     "Avoid random snippets, weak transitions, greetings, sponsor reads, housekeeping, repeated info, and low-energy filler.",
     "Consider the full timeline and prefer highlights from different sections when possible, not just the opening.",
     `Select each segment between ${limits.minLength.toFixed(0)} and ${limits.maxLength.toFixed(0)} seconds.`,
+    "Prefer 18-45 second clips for short-form performance unless a longer setup is truly required for context/payoff.",
+    "Only return clips longer than 55 seconds when there is no shorter option that still preserves the hook and payoff.",
     "Start shortly before the moment gets interesting and end shortly after the payoff lands.",
     "The selected text should contain complete sentences and a complete thought.",
     "Choose start and end times that align with transcript segment boundaries.",
@@ -934,10 +970,11 @@ export const selectHighlight = async (
     highlightCountInstruction,
     shortageInstruction,
     "If you cannot reach the requested count with distinct clips, allow mild overlap to reach the target.",
+    "For each clip include a viralityScore from 0 to 100 based on hook strength, emotional pull, and payoff.",
     excludeHint,
     languageHint,
     "Return JSON only in the following structure:",
-    `{"highlights":[{"start":0,"end":20,"title":"..."}]}`,
+    `{"highlights":[{"start":0,"end":20,"title":"...","viralityScore":85}]}`,
   ].join(" ");
   const userPrompt = [
     instructions ? `User instructions: ${instructions}` : null,
@@ -978,8 +1015,9 @@ export const selectHighlight = async (
                   start: { type: "number" },
                   end: { type: "number" },
                   title: { type: "string" },
+                  viralityScore: { type: "number" },
                 },
-                required: ["start", "end", "title"],
+                required: ["start", "end", "title", "viralityScore"],
                 additionalProperties: false,
               },
             },
@@ -1013,7 +1051,7 @@ export const selectHighlight = async (
   const responseContent = data.choices?.[0]?.message?.content ?? "";
   const jsonBlock = extractJsonBlock(responseContent);
   const parsed = jsonBlock
-    ? safeParseJson<{ highlights: Array<{ start: number; end: number; title: string }> }>(
+    ? safeParseJson<{ highlights: HighlightCandidatePayload[] }>(
         jsonBlock
       )
     : null;
@@ -1050,28 +1088,52 @@ export const selectHighlight = async (
       const fallbackTitle = content
         ? content.split(/\s+/).slice(0, 8).join(" ")
         : "";
-      return {
+      const highlight = {
         start: aligned.start,
         end: aligned.end,
         content,
         title: rawTitle || fallbackTitle || undefined,
       };
+      const modelScore = normalizeViralityScore(item.viralityScore);
+      return {
+        highlight,
+        score: scoreHighlightCandidate(highlight, modelScore),
+      };
     })
-    .filter((value): value is NonNullable<typeof value> => Boolean(value)) as AutoClipHighlight[];
+    .filter((value): value is NonNullable<typeof value> => Boolean(value)) as ScoredHighlight[];
 
-  const deduped: AutoClipHighlight[] = [];
-  const seen = new Set<string>();
+  const dedupedMap = new Map<string, ScoredHighlight>();
   normalized.forEach((item) => {
-    const key = `${item.start.toFixed(2)}-${item.end.toFixed(2)}`;
-    if (seen.has(key)) {
-      return;
+    const key = `${item.highlight.start.toFixed(2)}-${item.highlight.end.toFixed(
+      2
+    )}`;
+    const existing = dedupedMap.get(key);
+    if (!existing || item.score > existing.score) {
+      dedupedMap.set(key, item);
     }
-    seen.add(key);
-    deduped.push(item);
   });
 
-  const distinct = filterDistinctHighlights(deduped, excludeRanges);
-  const highlights = distinct.slice(0, requestedHighlights);
+  const ranked = Array.from(dedupedMap.values()).sort(
+    (a, b) => b.score - a.score
+  );
+  const selectedRanked: ScoredHighlight[] = [];
+  ranked.forEach((candidate) => {
+    if (
+      excludeRanges.some((range) =>
+        isSignificantOverlap(candidate.highlight, range)
+      ) ||
+      selectedRanked.some((item) =>
+        isSignificantOverlap(candidate.highlight, item.highlight)
+      )
+    ) {
+      return;
+    }
+    selectedRanked.push(candidate);
+  });
+
+  const highlights = selectedRanked
+    .slice(0, requestedHighlights)
+    .map((item) => item.highlight);
   if (highlights.length < requestedHighlights) {
     const fallback = buildFallbackHighlights(
       segments,
