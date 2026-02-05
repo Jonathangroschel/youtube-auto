@@ -1200,6 +1200,13 @@ const isUnsupportedChunkDecodeError = (error) => {
   return /audio file could not be decoded|format is not supported/i.test(message);
 };
 
+const hasAacDecodeErrors = (value) => {
+  const message = String(value ?? "");
+  return /Invalid data found|Reserved bit set|invalid band type|Prediction is not allowed|channel element .*not allocated|Not yet implemented in FFmpeg/i.test(
+    message
+  );
+};
+
 const isChunkTooLargeError = (error) => {
   const status = Number(error?.status);
   const message =
@@ -2044,6 +2051,7 @@ const runTranscriptionPipeline = async ({
             ? "decode-wav-first-audio"
             : `decode-wav-stream-${String(index)}`,
         priority: 4,
+        audioStreamIndex: index,
         args: buildDecodeWavChunkingArgs(index),
       })),
       ...audioStreamCandidates.map((index) => ({
@@ -2052,11 +2060,13 @@ const runTranscriptionPipeline = async ({
             ? "decode-mp3-first-audio"
             : `decode-mp3-stream-${String(index)}`,
         priority: 3,
+        audioStreamIndex: index,
         args: buildDecodeMp3ChunkingArgs(index),
       })),
       {
         label: "decode-pan-wav-fallback",
         priority: 2,
+        audioStreamIndex: null,
         args: [
           "-hide_banner",
           "-loglevel",
@@ -2092,6 +2102,7 @@ const runTranscriptionPipeline = async ({
       {
         label: "decode-pan-mp3-fallback",
         priority: 2,
+        audioStreamIndex: null,
         args: [
           "-hide_banner",
           "-loglevel",
@@ -2128,6 +2139,7 @@ const runTranscriptionPipeline = async ({
         label:
           index == null ? "copy-first-audio" : `copy-stream-${String(index)}`,
         priority: 1,
+        audioStreamIndex: index,
         args: buildCopyChunkingArgs(index),
       })),
     ];
@@ -2196,6 +2208,112 @@ const runTranscriptionPipeline = async ({
         return false;
       }
       return next.totalBytes > current.totalBytes;
+    };
+    const runCleanAudioChunking = async (audioStreamIndex) => {
+      const cleanAudioPath = path.join(TEMP_DIR, `${sessionId}_clean_audio.mp3`);
+      cleanupTargets.push(cleanAudioPath);
+      await fs.unlink(cleanAudioPath).catch(() => {});
+      const cleanArgs = [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+discardcorrupt",
+        "-err_detect",
+        "ignore_err",
+        "-ignore_unknown",
+        "-y",
+        "-i",
+        videoPath,
+        ...(audioStreamIndex != null
+          ? ["-map", `0:${audioStreamIndex}`]
+          : ["-map", "0:a:0?"]),
+        "-vn",
+        "-sn",
+        "-dn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        TRANSCRIBE_AUDIO_BITRATE,
+        cleanAudioPath,
+      ];
+      const cleanResult = await runChunkingPass(cleanArgs, "clean-audio");
+      const cleanStats = await fs.stat(cleanAudioPath).catch(() => null);
+      if (!cleanStats || cleanStats.size <= 4096) {
+        throw new Error(
+          `Clean audio extraction failed: ${compactFfmpegMessage(cleanResult.stderr)}`
+        );
+      }
+
+      await resetChunkDir();
+      const segmentArgs = [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        cleanAudioPath,
+        "-vn",
+        "-sn",
+        "-dn",
+        "-c:a",
+        "copy",
+        "-f",
+        "segment",
+        "-segment_time",
+        String(TRANSCRIBE_CHUNK_SECONDS),
+        "-reset_timestamps",
+        "1",
+        path.join(audioChunkDir, "chunk_%03d.mp3"),
+      ];
+      const segmentResult = await runChunkingPass(segmentArgs, "clean-audio-segment");
+      const createdChunks = await listChunkFiles();
+      if (!createdChunks.length) {
+        throw new Error(
+          `Clean audio chunking produced no chunks (${compactFfmpegMessage(
+            segmentResult.stderr
+          )})`
+        );
+      }
+      const chunkSizes = await Promise.all(
+        createdChunks.map((filePath) =>
+          fs
+            .stat(filePath)
+            .then((stats) => stats.size)
+            .catch(() => 0)
+        )
+      );
+      const totalBytes = chunkSizes.reduce((sum, size) => sum + size, 0);
+      if (totalBytes < 4096) {
+        throw new Error(
+          `Clean audio chunking produced only ${totalBytes} bytes of output.`
+        );
+      }
+      const durationByPath = new Map();
+      const totalDuration = await computeChunkDurationTotal(
+        createdChunks,
+        durationByPath
+      );
+      const coverage =
+        sourceDurationSeconds && sourceDurationSeconds > 0
+          ? Math.min(1, totalDuration / sourceDurationSeconds)
+          : null;
+      return {
+        label: "clean-audio-mp3",
+        priority: 5,
+        audioStreamIndex: audioStreamIndex ?? null,
+        code: segmentResult.code,
+        stderr: `${cleanResult.stderr}\n${segmentResult.stderr}`,
+        chunks: createdChunks,
+        totalBytes,
+        totalDuration,
+        coverage,
+        durationByPath,
+      };
     };
     const cacheBestExtractionCandidate = async (candidate) => {
       await fs.rm(selectedChunkDir, { recursive: true, force: true }).catch(() => {});
@@ -2280,6 +2398,10 @@ const runTranscriptionPipeline = async ({
           Number.isFinite(plan.priority) && plan.priority > 0
             ? plan.priority
             : 1,
+        audioStreamIndex:
+          Number.isFinite(plan.audioStreamIndex) && plan.audioStreamIndex != null
+            ? plan.audioStreamIndex
+            : null,
         code: passResult.code,
         stderr: passResult.stderr,
         chunks: createdChunks,
@@ -2317,6 +2439,25 @@ const runTranscriptionPipeline = async ({
     }
 
     if (bestExtractionCandidate?.chunks?.length) {
+      if (
+        bestExtractionCandidate.code !== 0 &&
+        hasAacDecodeErrors(bestExtractionCandidate.stderr)
+      ) {
+        try {
+          const cleanCandidate = await runCleanAudioChunking(
+            bestExtractionCandidate.audioStreamIndex
+          );
+          const cachedClean = await cacheBestExtractionCandidate(cleanCandidate);
+          if (isBetterExtractionCandidate(cachedClean, bestExtractionCandidate)) {
+            bestExtractionCandidate = cachedClean;
+          }
+        } catch (error) {
+          extractionErrors.push(
+            `clean-audio: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
+
       chunkFiles = bestExtractionCandidate.chunks;
       chunkDurationByPath.clear();
       if (bestExtractionCandidate.durationByPath instanceof Map) {
