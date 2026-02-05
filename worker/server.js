@@ -1079,6 +1079,16 @@ const TRANSCRIBE_OPENAI_MAX_ATTEMPTS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_MAX_ATTEMPTS,
   2
 );
+const TRANSCRIBE_OPENAI_MAX_CONTENT_BYTES = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_OPENAI_MAX_CONTENT_BYTES,
+  25 * 1024 * 1024
+);
+const TRANSCRIBE_OPENAI_TARGET_FILE_BYTES = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_OPENAI_TARGET_FILE_BYTES,
+  24 * 1024 * 1024
+);
+const TRANSCRIBE_UPLOAD_FALLBACK_BITRATE =
+  process.env.AUTOCLIP_TRANSCRIBE_UPLOAD_FALLBACK_BITRATE || "32k";
 
 const transcribeQueue = [];
 const transcribeJobs = new Map();
@@ -1128,7 +1138,9 @@ const isRetryableTranscribeError = (error) => {
       : typeof error?.message === "string"
         ? error.message
         : "";
-  return /timeout|timed out|temporar|rate limit|network|503|502/i.test(message);
+  return /timeout|timed out|temporar|rate limit|network|connection error|socket|econn|503|502/i.test(
+    message
+  );
 };
 
 const transcribeChunkWithRetry = async (audioFile, requestedLanguage) => {
@@ -1182,6 +1194,164 @@ const isUnsupportedChunkDecodeError = (error) => {
     return true;
   }
   return /audio file could not be decoded|format is not supported/i.test(message);
+};
+
+const isChunkTooLargeError = (error) => {
+  const status = Number(error?.status);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error?.message === "string"
+        ? error.message
+        : "";
+  if (status === 413) {
+    return true;
+  }
+  return /413|maximum content size limit|content size limit|entity too large/i.test(
+    message
+  );
+};
+
+const getAudioMimeType = (audioPath) => {
+  const ext = path.extname(audioPath).toLowerCase();
+  if (ext === ".wav") {
+    return "audio/wav";
+  }
+  if (ext === ".m4a" || ext === ".mp4") {
+    return "audio/mp4";
+  }
+  return "audio/mpeg";
+};
+
+const transcodeChunkForUpload = async (inputPath, bitrate) => {
+  const suffix = String(bitrate || "default")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  const outputPath = path.join(
+    path.dirname(inputPath),
+    `${path.basename(inputPath, path.extname(inputPath))}_upload_${suffix}.mp3`
+  );
+  const compactFfmpegMessage = (value) => {
+    const normalized = String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) {
+      return "No ffmpeg stderr output.";
+    }
+    return normalized.length > 600
+      ? `${normalized.slice(0, 600)}...`
+      : normalized;
+  };
+  const result = await new Promise((resolve, reject) => {
+    const ffmpeg = spawn("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-fflags",
+      "+discardcorrupt",
+      "-err_detect",
+      "ignore_err",
+      "-ignore_unknown",
+      "-y",
+      "-i",
+      inputPath,
+      "-map",
+      "0:a:0?",
+      "-vn",
+      "-sn",
+      "-dn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      bitrate,
+      outputPath,
+    ]);
+    let stderr = "";
+    ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+    ffmpeg.on("close", (code) =>
+      resolve({
+        code: Number.isFinite(code) ? code : -1,
+        stderr,
+      })
+    );
+    ffmpeg.on("error", (err) =>
+      reject(new Error(`Upload transcode ffmpeg spawn error: ${err.message}`))
+    );
+  });
+  const stats = await fs.stat(outputPath).catch(() => null);
+  if (!stats || stats.size <= 4096) {
+    throw new Error("Upload transcode produced no usable audio.");
+  }
+  if (result.code !== 0) {
+    console.warn(
+      `[transcribe] upload transcode at ${bitrate} exited with code ${result.code}; using partial MP3 output. ${compactFfmpegMessage(
+        result.stderr
+      )}`
+    );
+  }
+  return outputPath;
+};
+
+const buildTranscribeAudioFile = async (inputPath) => {
+  const cleanupPaths = [];
+  let sourcePath = inputPath;
+  let audioBuffer = await fs.readFile(sourcePath);
+  const targetBytes = Math.max(
+    1024 * 1024,
+    Math.min(
+      TRANSCRIBE_OPENAI_TARGET_FILE_BYTES,
+      TRANSCRIBE_OPENAI_MAX_CONTENT_BYTES - 256 * 1024
+    )
+  );
+  if (audioBuffer.byteLength > targetBytes) {
+    const bitrates = [
+      TRANSCRIBE_AUDIO_BITRATE,
+      TRANSCRIBE_UPLOAD_FALLBACK_BITRATE,
+    ].filter((value, index, all) => value && all.indexOf(value) === index);
+    const compressionErrors = [];
+    for (const bitrate of bitrates) {
+      let compressedPath = null;
+      try {
+        compressedPath = await transcodeChunkForUpload(sourcePath, bitrate);
+        cleanupPaths.push(compressedPath);
+        const compressedBuffer = await fs.readFile(compressedPath);
+        sourcePath = compressedPath;
+        audioBuffer = compressedBuffer;
+        if (audioBuffer.byteLength <= targetBytes) {
+          break;
+        }
+      } catch (error) {
+        compressionErrors.push(
+          error instanceof Error ? error.message : String(error)
+        );
+        if (compressedPath) {
+          await fs.unlink(compressedPath).catch(() => {});
+        }
+      }
+    }
+    if (audioBuffer.byteLength > targetBytes) {
+      const maxMb = (targetBytes / (1024 * 1024)).toFixed(1);
+      const actualMb = (audioBuffer.byteLength / (1024 * 1024)).toFixed(1);
+      const detail =
+        compressionErrors.length > 0
+          ? ` ${compressionErrors.slice(0, 2).join(" | ")}`
+          : "";
+      throw new Error(
+        `Chunk is too large for transcription (${actualMb} MB > ${maxMb} MB target).${detail}`
+      );
+    }
+  }
+  const audioFile = new File([audioBuffer], path.basename(sourcePath), {
+    type: getAudioMimeType(sourcePath),
+  });
+  return {
+    audioFile,
+    cleanupPaths,
+  };
 };
 
 const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) => {
@@ -2054,49 +2224,54 @@ const runTranscriptionPipeline = async ({
               chunkMetadata.duration > 0
             ? chunkMetadata.duration
             : TRANSCRIBE_CHUNK_SECONDS;
-      const audioBuffer = await fs.readFile(chunkPath);
-      const chunkExt = path.extname(chunkPath).toLowerCase();
-      const chunkMimeType =
-        chunkExt === ".wav"
-          ? "audio/wav"
-          : chunkExt === ".m4a" || chunkExt === ".mp4"
-            ? "audio/mp4"
-            : "audio/mpeg";
-      const audioFile = new File([audioBuffer], path.basename(chunkPath), {
-        type: chunkMimeType,
-      });
 
       let transcription;
       let lastChunkError = null;
+      let uploadCleanupPaths = [];
       try {
-        transcription = await transcribeChunkWithRetry(audioFile, requestedLanguage);
+        const prepared = await buildTranscribeAudioFile(chunkPath);
+        uploadCleanupPaths = prepared.cleanupPaths;
+        transcription = await transcribeChunkWithRetry(
+          prepared.audioFile,
+          requestedLanguage
+        );
       } catch (error) {
         lastChunkError = error;
-        if (isUnsupportedChunkDecodeError(error)) {
+        if (isUnsupportedChunkDecodeError(error) || isChunkTooLargeError(error)) {
           let fallbackChunkPath = null;
+          let fallbackUploadCleanupPaths = [];
           try {
             fallbackChunkPath = await transcodeChunkToWav(
               chunkPath,
               chunkDuration
             );
-            const fallbackBuffer = await fs.readFile(fallbackChunkPath);
-            const fallbackFile = new File(
-              [fallbackBuffer],
-              path.basename(fallbackChunkPath),
-              { type: "audio/wav" }
+            const fallbackPrepared = await buildTranscribeAudioFile(
+              fallbackChunkPath
             );
+            fallbackUploadCleanupPaths = fallbackPrepared.cleanupPaths;
             transcription = await transcribeChunkWithRetry(
-              fallbackFile,
+              fallbackPrepared.audioFile,
               requestedLanguage
             );
           } catch (fallbackError) {
             lastChunkError = fallbackError;
           } finally {
+            await Promise.all(
+              fallbackUploadCleanupPaths.map(async (filePath) => {
+                await fs.unlink(filePath).catch(() => {});
+              })
+            );
             if (fallbackChunkPath) {
               await fs.unlink(fallbackChunkPath).catch(() => {});
             }
           }
         }
+      } finally {
+        await Promise.all(
+          uploadCleanupPaths.map(async (filePath) => {
+            await fs.unlink(filePath).catch(() => {});
+          })
+        );
       }
 
       const hasSegmentContent = Array.isArray(transcription?.segments)
