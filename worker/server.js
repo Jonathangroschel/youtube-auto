@@ -1199,28 +1199,94 @@ const runTranscriptionPipeline = async ({
     progress({ stage: "Extracting audio chunks", progress: 15 });
     await fs.mkdir(audioChunkDir, { recursive: true });
     const chunkPattern = path.join(audioChunkDir, "chunk_%03d.mp3");
-    await new Promise((resolve, reject) => {
-      const ffmpeg = spawn("ffmpeg", [
-        "-hide_banner", "-loglevel", "error",
-        "-y", "-i", videoPath,
-        "-vn", "-ac", "1", "-ar", "16000",
-        "-b:a", TRANSCRIBE_AUDIO_BITRATE,
-        "-f", "segment",
-        "-segment_time", String(TRANSCRIBE_CHUNK_SECONDS),
-        "-reset_timestamps", "1",
-        chunkPattern,
-      ]);
-      let stderr = "";
-      ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
-      ffmpeg.on("close", (code) =>
-        code === 0
-          ? resolve()
-          : reject(new Error(`FFmpeg audio chunking failed: ${stderr}`))
-      );
-      ffmpeg.on("error", (err) =>
-        reject(new Error(`FFmpeg spawn error: ${err.message}`))
-      );
-    });
+    const sourceMetadata = await getVideoMetadata(videoPath).catch(() => null);
+    const primaryAudioStreamIndex =
+      sourceMetadata && Number.isFinite(sourceMetadata.audioStreamIndex)
+        ? sourceMetadata.audioStreamIndex
+        : null;
+    const compactFfmpegMessage = (value) => {
+      const normalized = String(value ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!normalized) {
+        return "No ffmpeg stderr output.";
+      }
+      return normalized.length > 1200
+        ? `${normalized.slice(0, 1200)}...`
+        : normalized;
+    };
+    const runChunkingPass = async (args, label) => {
+      await new Promise((resolve, reject) => {
+        const ffmpeg = spawn("ffmpeg", args);
+        let stderr = "";
+        ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+        ffmpeg.on("close", (code) =>
+          code === 0
+            ? resolve()
+            : reject(
+                new Error(
+                  `${label} extraction failed: ${compactFfmpegMessage(stderr)}`
+                )
+              )
+        );
+        ffmpeg.on("error", (err) =>
+          reject(new Error(`FFmpeg spawn error (${label}): ${err.message}`))
+        );
+      });
+    };
+
+    const primaryChunkingArgs = [
+      "-hide_banner", "-loglevel", "error",
+      "-fflags", "+discardcorrupt",
+      "-err_detect", "ignore_err",
+      "-ignore_unknown",
+      "-y", "-i", videoPath,
+      ...(primaryAudioStreamIndex != null
+        ? ["-map_channel", `0.${primaryAudioStreamIndex}.0`]
+        : ["-map", "0:a:0?"]),
+      "-vn", "-sn", "-dn",
+      "-ar", "16000",
+      "-c:a", "libmp3lame",
+      "-b:a", TRANSCRIBE_AUDIO_BITRATE,
+      "-f", "segment",
+      "-segment_time", String(TRANSCRIBE_CHUNK_SECONDS),
+      "-reset_timestamps", "1",
+      chunkPattern,
+    ];
+    const fallbackChunkingArgs = [
+      "-hide_banner", "-loglevel", "error",
+      "-fflags", "+discardcorrupt",
+      "-err_detect", "ignore_err",
+      "-ignore_unknown",
+      "-y", "-i", videoPath,
+      "-map", "0:a:0?",
+      "-vn", "-sn", "-dn",
+      "-af", "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0",
+      "-c:a", "libmp3lame",
+      "-b:a", TRANSCRIBE_AUDIO_BITRATE,
+      "-f", "segment",
+      "-segment_time", String(TRANSCRIBE_CHUNK_SECONDS),
+      "-reset_timestamps", "1",
+      chunkPattern,
+    ];
+
+    try {
+      await runChunkingPass(primaryChunkingArgs, "primary");
+    } catch (primaryError) {
+      await fs.rm(audioChunkDir, { recursive: true, force: true }).catch(() => {});
+      await fs.mkdir(audioChunkDir, { recursive: true });
+      try {
+        await runChunkingPass(fallbackChunkingArgs, "fallback");
+      } catch (fallbackError) {
+        const primaryMessage =
+          primaryError instanceof Error ? primaryError.message : String(primaryError);
+        const fallbackMessage =
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        throw new Error(
+          `FFmpeg audio chunking failed after fallback. ${primaryMessage} ${fallbackMessage}`
+        );
+      }
+    }
 
     const chunkFiles = (await fs.readdir(audioChunkDir))
       .filter((name) => name.endsWith(".mp3"))
@@ -1937,10 +2003,16 @@ async function getVideoMetadata(filePath) {
       try {
         const data = JSON.parse(stdout);
         const videoStream = data.streams?.find((s) => s.codec_type === "video");
+        const audioStream = data.streams?.find((s) => s.codec_type === "audio");
         resolve({
           duration: parseFloat(data.format?.duration || "0"),
           width: videoStream?.width || null,
           height: videoStream?.height || null,
+          audioStreamIndex:
+            typeof audioStream?.index === "number" &&
+            Number.isFinite(audioStream.index)
+              ? audioStream.index
+              : null,
         });
       } catch (e) {
         reject(e);

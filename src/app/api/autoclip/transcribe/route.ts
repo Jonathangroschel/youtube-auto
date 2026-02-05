@@ -200,21 +200,55 @@ export async function POST(request: Request) {
   }
 
   try {
+    const workerRequestBody = JSON.stringify({
+      sessionId: session.workerSessionId,
+      videoKey: session.input.videoKey,
+      language,
+    });
+
     const response = await workerFetch("/transcribe/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: session.workerSessionId,
-        videoKey: session.input.videoKey,
-        language,
-      }),
+      body: workerRequestBody,
     });
 
     const workerPayload =
       (await response.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;
 
+    // Backward-compatible fallback for workers that only expose `/transcribe`.
+    if (response.status === 404) {
+      const legacyResponse = await workerFetch("/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: workerRequestBody,
+      });
+      const legacyPayload =
+        (await legacyResponse.json().catch(() => ({}))) as WorkerTranscriptionResult & {
+          error?: string;
+        };
+      if (!legacyResponse.ok) {
+        const message =
+          typeof legacyPayload?.error === "string" && legacyPayload.error
+            ? legacyPayload.error
+            : `Worker transcription failed (${legacyResponse.status}).`;
+        throw new Error(message);
+      }
+      const transcript = await applyWorkerTranscriptToSession(session, legacyPayload);
+      return NextResponse.json({ status: "complete", transcript });
+    }
+
+    if (response.status === 401) {
+      throw new Error(
+        "Worker authentication failed (check AUTOCLIP_WORKER_SECRET / WORKER_SECRET)."
+      );
+    }
+
     if (!response.ok) {
-      throw new Error(workerPayload.error || "Failed to queue transcription.");
+      const message =
+        typeof workerPayload.error === "string" && workerPayload.error
+          ? workerPayload.error
+          : `Failed to queue transcription (${response.status}).`;
+      throw new Error(message);
     }
 
     if (workerPayload.status === "complete" && workerPayload.result) {
@@ -257,7 +291,10 @@ export async function POST(request: Request) {
       { status: 202 }
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Transcription failed.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Transcription failed. Verify AUTOCLIP_WORKER_URL is reachable.";
     session.status = "error";
     session.error = message;
     await saveSession(session);
