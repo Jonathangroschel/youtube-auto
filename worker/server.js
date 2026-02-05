@@ -1198,12 +1198,23 @@ const runTranscriptionPipeline = async ({
 
     progress({ stage: "Extracting audio chunks", progress: 15 });
     await fs.mkdir(audioChunkDir, { recursive: true });
-    const chunkPattern = path.join(audioChunkDir, "chunk_%03d.mp3");
     const sourceMetadata = await getVideoMetadata(videoPath).catch(() => null);
-    const primaryAudioStreamIndex =
-      sourceMetadata && Number.isFinite(sourceMetadata.audioStreamIndex)
-        ? sourceMetadata.audioStreamIndex
-        : null;
+    const audioStreamCandidates = Array.isArray(sourceMetadata?.audioStreamIndices)
+      ? sourceMetadata.audioStreamIndices.filter((index) =>
+          Number.isFinite(index)
+        )
+      : [];
+    if (
+      !audioStreamCandidates.length &&
+      sourceMetadata &&
+      Number.isFinite(sourceMetadata.audioStreamIndex)
+    ) {
+      audioStreamCandidates.push(sourceMetadata.audioStreamIndex);
+    }
+    if (!audioStreamCandidates.length) {
+      audioStreamCandidates.push(null);
+    }
+
     const compactFfmpegMessage = (value) => {
       const normalized = String(value ?? "")
         .replace(/\s+/g, " ")
@@ -1215,19 +1226,25 @@ const runTranscriptionPipeline = async ({
         ? `${normalized.slice(0, 1200)}...`
         : normalized;
     };
+    const resetChunkDir = async () => {
+      await fs.rm(audioChunkDir, { recursive: true, force: true }).catch(() => {});
+      await fs.mkdir(audioChunkDir, { recursive: true });
+    };
+    const listChunkFiles = async () =>
+      (await fs.readdir(audioChunkDir))
+        .filter((name) => /^chunk_\d+\.(mp3|m4a)$/i.test(name))
+        .sort()
+        .map((name) => path.join(audioChunkDir, name));
     const runChunkingPass = async (args, label) => {
-      await new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) => {
         const ffmpeg = spawn("ffmpeg", args);
         let stderr = "";
         ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
         ffmpeg.on("close", (code) =>
-          code === 0
-            ? resolve()
-            : reject(
-                new Error(
-                  `${label} extraction failed: ${compactFfmpegMessage(stderr)}`
-                )
-              )
+          resolve({
+            code: Number.isFinite(code) ? code : -1,
+            stderr,
+          })
         );
         ffmpeg.on("error", (err) =>
           reject(new Error(`FFmpeg spawn error (${label}): ${err.message}`))
@@ -1235,65 +1252,184 @@ const runTranscriptionPipeline = async ({
       });
     };
 
-    const primaryChunkingArgs = [
-      "-hide_banner", "-loglevel", "error",
-      "-fflags", "+discardcorrupt",
-      "-err_detect", "ignore_err",
+    const buildDecodeChunkingArgs = (audioStreamIndex) => [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-fflags",
+      "+discardcorrupt",
+      "-err_detect",
+      "ignore_err",
       "-ignore_unknown",
-      "-y", "-i", videoPath,
-      ...(primaryAudioStreamIndex != null
-        ? ["-map_channel", `0.${primaryAudioStreamIndex}.0`]
+      "-y",
+      "-i",
+      videoPath,
+      ...(audioStreamIndex != null
+        ? ["-map", `0:${audioStreamIndex}`]
         : ["-map", "0:a:0?"]),
-      "-vn", "-sn", "-dn",
-      "-ar", "16000",
-      "-c:a", "libmp3lame",
-      "-b:a", TRANSCRIBE_AUDIO_BITRATE,
-      "-f", "segment",
-      "-segment_time", String(TRANSCRIBE_CHUNK_SECONDS),
-      "-reset_timestamps", "1",
-      chunkPattern,
-    ];
-    const fallbackChunkingArgs = [
-      "-hide_banner", "-loglevel", "error",
-      "-fflags", "+discardcorrupt",
-      "-err_detect", "ignore_err",
-      "-ignore_unknown",
-      "-y", "-i", videoPath,
-      "-map", "0:a:0?",
-      "-vn", "-sn", "-dn",
-      "-af", "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0",
-      "-c:a", "libmp3lame",
-      "-b:a", TRANSCRIBE_AUDIO_BITRATE,
-      "-f", "segment",
-      "-segment_time", String(TRANSCRIBE_CHUNK_SECONDS),
-      "-reset_timestamps", "1",
-      chunkPattern,
+      "-vn",
+      "-sn",
+      "-dn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      TRANSCRIBE_AUDIO_BITRATE,
+      "-f",
+      "segment",
+      "-segment_time",
+      String(TRANSCRIBE_CHUNK_SECONDS),
+      "-reset_timestamps",
+      "1",
+      path.join(audioChunkDir, "chunk_%03d.mp3"),
     ];
 
-    try {
-      await runChunkingPass(primaryChunkingArgs, "primary");
-    } catch (primaryError) {
-      await fs.rm(audioChunkDir, { recursive: true, force: true }).catch(() => {});
-      await fs.mkdir(audioChunkDir, { recursive: true });
+    const buildCopyChunkingArgs = (audioStreamIndex) => [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-fflags",
+      "+discardcorrupt",
+      "-err_detect",
+      "ignore_err",
+      "-ignore_unknown",
+      "-y",
+      "-i",
+      videoPath,
+      ...(audioStreamIndex != null
+        ? ["-map", `0:${audioStreamIndex}`]
+        : ["-map", "0:a:0?"]),
+      "-vn",
+      "-sn",
+      "-dn",
+      "-c:a",
+      "copy",
+      "-f",
+      "segment",
+      "-segment_time",
+      String(TRANSCRIBE_CHUNK_SECONDS),
+      "-segment_format",
+      "mp4",
+      "-reset_timestamps",
+      "1",
+      path.join(audioChunkDir, "chunk_%03d.m4a"),
+    ];
+
+    const extractionPlans = [
+      ...audioStreamCandidates.map((index) => ({
+        label:
+          index == null ? "decode-first-audio" : `decode-stream-${String(index)}`,
+        args: buildDecodeChunkingArgs(index),
+      })),
+      {
+        label: "decode-pan-fallback",
+        args: [
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-fflags",
+          "+discardcorrupt",
+          "-err_detect",
+          "ignore_err",
+          "-ignore_unknown",
+          "-y",
+          "-i",
+          videoPath,
+          "-map",
+          "0:a:0?",
+          "-vn",
+          "-sn",
+          "-dn",
+          "-af",
+          "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0",
+          "-c:a",
+          "libmp3lame",
+          "-b:a",
+          TRANSCRIBE_AUDIO_BITRATE,
+          "-f",
+          "segment",
+          "-segment_time",
+          String(TRANSCRIBE_CHUNK_SECONDS),
+          "-reset_timestamps",
+          "1",
+          path.join(audioChunkDir, "chunk_%03d.mp3"),
+        ],
+      },
+      ...audioStreamCandidates.map((index) => ({
+        label:
+          index == null ? "copy-first-audio" : `copy-stream-${String(index)}`,
+        args: buildCopyChunkingArgs(index),
+      })),
+    ];
+
+    const extractionErrors = [];
+    let chunkFiles = [];
+
+    for (const plan of extractionPlans) {
+      await resetChunkDir();
+      let passResult;
       try {
-        await runChunkingPass(fallbackChunkingArgs, "fallback");
-      } catch (fallbackError) {
-        const primaryMessage =
-          primaryError instanceof Error ? primaryError.message : String(primaryError);
-        const fallbackMessage =
-          fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        throw new Error(
-          `FFmpeg audio chunking failed after fallback. ${primaryMessage} ${fallbackMessage}`
+        passResult = await runChunkingPass(plan.args, plan.label);
+      } catch (error) {
+        extractionErrors.push(
+          `${plan.label}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        continue;
+      }
+
+      const createdChunks = await listChunkFiles();
+      if (!createdChunks.length) {
+        extractionErrors.push(
+          `${plan.label}: no chunks produced${
+            passResult.code === 0
+              ? ""
+              : ` (${compactFfmpegMessage(passResult.stderr)})`
+          }`
+        );
+        continue;
+      }
+
+      const chunkSizes = await Promise.all(
+        createdChunks.map((filePath) =>
+          fs
+            .stat(filePath)
+            .then((stats) => stats.size)
+            .catch(() => 0)
+        )
+      );
+      const totalBytes = chunkSizes.reduce((sum, size) => sum + size, 0);
+      if (totalBytes < 4096) {
+        extractionErrors.push(
+          `${plan.label}: produced only ${totalBytes} bytes of audio output.`
+        );
+        continue;
+      }
+
+      if (passResult.code !== 0) {
+        console.warn(
+          `[transcribe] ${plan.label} exited with code ${passResult.code}; using partial audio chunks. ${compactFfmpegMessage(
+            passResult.stderr
+          )}`
         );
       }
+
+      chunkFiles = createdChunks;
+      break;
     }
 
-    const chunkFiles = (await fs.readdir(audioChunkDir))
-      .filter((name) => name.endsWith(".mp3"))
-      .sort()
-      .map((name) => path.join(audioChunkDir, name));
     if (!chunkFiles.length) {
-      throw new Error("No audio chunks were created for transcription.");
+      const detail =
+        extractionErrors.length > 0
+          ? ` ${extractionErrors.slice(0, 4).join(" | ")}`
+          : "";
+      throw new Error(
+        `No audio chunks were created for transcription.${detail}`
+      );
     }
 
     const requestedLanguage =
@@ -1313,18 +1449,53 @@ const runTranscriptionPipeline = async ({
     let fullText = "";
     let detectedLanguage = null;
     let offsetSeconds = 0;
+    let successfulChunks = 0;
+    let failedChunks = 0;
+    const skippedChunkErrors = [];
 
     for (let index = 0; index < chunkFiles.length; index += 1) {
       const chunkPath = chunkFiles[index];
+      const chunkMetadata = await getVideoMetadata(chunkPath).catch(() => null);
+      const chunkDuration =
+        chunkMetadata &&
+        Number.isFinite(chunkMetadata.duration) &&
+        chunkMetadata.duration > 0
+          ? chunkMetadata.duration
+          : TRANSCRIBE_CHUNK_SECONDS;
       const audioBuffer = await fs.readFile(chunkPath);
+      const chunkExt = path.extname(chunkPath).toLowerCase();
+      const chunkMimeType =
+        chunkExt === ".m4a" || chunkExt === ".mp4" ? "audio/mp4" : "audio/mpeg";
       const audioFile = new File([audioBuffer], path.basename(chunkPath), {
-        type: "audio/mpeg",
+        type: chunkMimeType,
       });
 
-      const transcription = await transcribeChunkWithRetry(
-        audioFile,
-        requestedLanguage
-      );
+      let transcription;
+      try {
+        transcription = await transcribeChunkWithRetry(audioFile, requestedLanguage);
+      } catch (error) {
+        failedChunks += 1;
+        const message =
+          error instanceof Error ? error.message : "Chunk transcription failed.";
+        skippedChunkErrors.push(`chunk ${index + 1}: ${message}`);
+        console.warn(
+          `[transcribe] skipping chunk ${index + 1}/${totalChunks}: ${message}`
+        );
+        offsetSeconds += chunkDuration;
+        await fs.unlink(chunkPath).catch(() => {});
+        const completedChunks = index + 1;
+        progress({
+          stage: `Transcribing audio chunks (${completedChunks}/${totalChunks}, skipped ${failedChunks})`,
+          progress: Math.min(
+            95,
+            20 + Math.round((completedChunks / totalChunks) * 70)
+          ),
+          totalChunks,
+          completedChunks,
+        });
+        continue;
+      }
+      successfulChunks += 1;
 
       if (!detectedLanguage && transcription.language) {
         detectedLanguage = transcription.language;
@@ -1349,20 +1520,16 @@ const runTranscriptionPipeline = async ({
         fullText = fullText ? `${fullText} ${snippet}` : snippet;
       }
 
-      const chunkMetadata = await getVideoMetadata(chunkPath).catch(() => null);
-      const chunkDuration =
-        chunkMetadata &&
-        Number.isFinite(chunkMetadata.duration) &&
-        chunkMetadata.duration > 0
-          ? chunkMetadata.duration
-          : TRANSCRIBE_CHUNK_SECONDS;
       offsetSeconds += chunkDuration;
 
       await fs.unlink(chunkPath).catch(() => {});
 
       const completedChunks = index + 1;
       progress({
-        stage: `Transcribing audio chunks (${completedChunks}/${totalChunks})`,
+        stage:
+          failedChunks > 0
+            ? `Transcribing audio chunks (${completedChunks}/${totalChunks}, skipped ${failedChunks})`
+            : `Transcribing audio chunks (${completedChunks}/${totalChunks})`,
         progress: Math.min(
           95,
           20 + Math.round((completedChunks / totalChunks) * 70)
@@ -1370,6 +1537,14 @@ const runTranscriptionPipeline = async ({
         totalChunks,
         completedChunks,
       });
+    }
+
+    if (successfulChunks === 0) {
+      const detail =
+        skippedChunkErrors.length > 0
+          ? ` ${skippedChunkErrors[0]}`
+          : " Audio stream appears unreadable.";
+      throw new Error(`Unable to transcribe any audio chunks.${detail}`);
     }
 
     progress({
@@ -2003,11 +2178,22 @@ async function getVideoMetadata(filePath) {
       try {
         const data = JSON.parse(stdout);
         const videoStream = data.streams?.find((s) => s.codec_type === "video");
-        const audioStream = data.streams?.find((s) => s.codec_type === "audio");
+        const audioStreams = Array.isArray(data.streams)
+          ? data.streams.filter((s) => s.codec_type === "audio")
+          : [];
+        const audioStream = audioStreams[0];
+        const audioStreamIndices = audioStreams
+          .map((stream) =>
+            typeof stream?.index === "number" && Number.isFinite(stream.index)
+              ? stream.index
+              : null
+          )
+          .filter((index) => index != null);
         resolve({
           duration: parseFloat(data.format?.duration || "0"),
           width: videoStream?.width || null,
           height: videoStream?.height || null,
+          audioStreamIndices,
           audioStreamIndex:
             typeof audioStream?.index === "number" &&
             Number.isFinite(audioStream.index)
