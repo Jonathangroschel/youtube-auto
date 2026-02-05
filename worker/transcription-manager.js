@@ -12,7 +12,7 @@ const wait = (ms) =>
 
 const nowIso = () => new Date().toISOString();
 
-const compactMessage = (value, limit = 900) => {
+const compactMessage = (value, limit = 300) => {
   const normalized = String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
@@ -251,6 +251,48 @@ const runProcess = async (command, args, label) =>
 
 const runFfmpeg = (args, label) => runProcess("ffmpeg", args, label);
 
+const checkOpenAIConnectivity = async ({
+  openai,
+  openaiTimeoutMs,
+  openaiConnectionMaxAttempts,
+  openaiConnectionBackoffMs,
+  openaiConnectionMaxBackoffMs,
+}) => {
+  const maxAttempts = Math.max(1, Math.min(3, openaiConnectionMaxAttempts));
+  const timeoutMs = Math.max(5000, Math.min(20000, openaiTimeoutMs));
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => {
+        controller.abort();
+      }, timeoutMs);
+      try {
+        await openai.models.list({ signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isOpenAIConnectionError(error) || attempt >= maxAttempts) {
+        break;
+      }
+
+      const delayMs = Math.min(
+        openaiConnectionMaxBackoffMs,
+        openaiConnectionBackoffMs * Math.pow(2, Math.max(0, attempt - 1))
+      );
+      await wait(delayMs);
+    }
+  }
+
+  throw new Error(
+    `OpenAI connectivity check failed: ${formatErrorDetail(lastError)}`
+  );
+};
+
 const getAudioStreamIndices = async (filePath) => {
   const result = await runProcess(
     "ffprobe",
@@ -437,7 +479,7 @@ const extractNormalizedAudio = async ({
   }
 
   if (best.code !== 0) {
-    console.warn(
+    console.log(
       `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}, decodeWarnings=${best.decodeWarnings || 0}). ${compactMessage(
         best.stderr
       )}`
@@ -649,6 +691,18 @@ const buildTranscriptionPipeline = (config) => {
     await fs.mkdir(runDir, { recursive: true });
 
     try {
+      progress(onProgress, {
+        stage: "Checking OpenAI connectivity",
+        progress: 2,
+      });
+      await checkOpenAIConnectivity({
+        openai: config.openai,
+        openaiTimeoutMs: config.openaiTimeoutMs,
+        openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
+        openaiConnectionBackoffMs: config.openaiConnectionBackoffMs,
+        openaiConnectionMaxBackoffMs: config.openaiConnectionMaxBackoffMs,
+      });
+
       progress(onProgress, { stage: "Downloading source video", progress: 5 });
 
       const { data: videoData, error: downloadError } = await config.supabase.storage
@@ -801,12 +855,12 @@ export const createTranscriptionManager = ({
     openaiMaxAttempts: Math.max(1, Number(openaiMaxAttempts) || 3),
     openaiConnectionMaxAttempts: Math.max(
       1,
-      Number(openaiConnectionMaxAttempts) || 8
+      Math.min(4, Number(openaiConnectionMaxAttempts) || 4)
     ),
     openaiConnectionBackoffMs: Math.max(500, Number(openaiConnectionBackoffMs) || 3000),
     openaiConnectionMaxBackoffMs: Math.max(
       2000,
-      Number(openaiConnectionMaxBackoffMs) || 45000
+      Math.min(15000, Number(openaiConnectionMaxBackoffMs) || 15000)
     ),
     jobRetentionMs: Math.max(60000, Number(jobRetentionMs) || 60 * 60 * 1000),
     transientJobRetryLimit: Math.max(0, Number(transientJobRetryLimit) || 3),
