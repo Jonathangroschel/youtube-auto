@@ -1189,6 +1189,7 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
     path.dirname(inputPath),
     `${path.basename(inputPath, path.extname(inputPath))}_clean.wav`
   );
+  const outputBaseName = path.basename(outputPath, ".wav");
   const compactFfmpegMessage = (value) => {
     const normalized = String(value ?? "")
       .replace(/\s+/g, " ")
@@ -1221,8 +1222,8 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
       );
     });
   };
-  const getUsability = async () => {
-    const stats = await fs.stat(outputPath).catch(() => null);
+  const getUsability = async (candidatePath) => {
+    const stats = await fs.stat(candidatePath).catch(() => null);
     if (!stats || stats.size <= 4096) {
       return {
         usable: false,
@@ -1231,7 +1232,7 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
         coverage: null,
       };
     }
-    const metadata = await getVideoMetadata(outputPath).catch(() => null);
+    const metadata = await getVideoMetadata(candidatePath).catch(() => null);
     const decodedDuration =
       metadata &&
       Number.isFinite(metadata.duration) &&
@@ -1273,6 +1274,36 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
       coverage,
     };
   };
+  const isBetterUsablePass = (next, current) => {
+    if (!current) {
+      return true;
+    }
+    const nextCoverage =
+      Number.isFinite(next.coverage) && next.coverage != null ? next.coverage : -1;
+    const currentCoverage =
+      Number.isFinite(current.coverage) && current.coverage != null
+        ? current.coverage
+        : -1;
+    if (nextCoverage > currentCoverage + 0.03) {
+      return true;
+    }
+    if (currentCoverage > nextCoverage + 0.03) {
+      return false;
+    }
+    if (next.code === 0 && current.code !== 0) {
+      return true;
+    }
+    if (next.code !== 0 && current.code === 0) {
+      return false;
+    }
+    if (next.decodedDuration > current.decodedDuration + 2) {
+      return true;
+    }
+    if (current.decodedDuration > next.decodedDuration + 2) {
+      return false;
+    }
+    return next.label < current.label;
+  };
   const buildCommonArgs = () => [
     "-hide_banner",
     "-loglevel",
@@ -1292,7 +1323,7 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
   const passConfigs = [
     {
       label: "map-channel",
-      args: [
+      buildArgs: (candidatePath) => [
         ...buildCommonArgs(),
         "-map_channel",
         "0.0.0",
@@ -1302,12 +1333,12 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
         "pcm_s16le",
         "-f",
         "wav",
-        outputPath,
+        candidatePath,
       ],
     },
     {
       label: "pan-first-channel",
-      args: [
+      buildArgs: (candidatePath) => [
         ...buildCommonArgs(),
         "-map",
         "0:a:0?",
@@ -1317,12 +1348,12 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
         "pcm_s16le",
         "-f",
         "wav",
-        outputPath,
+        candidatePath,
       ],
     },
     {
       label: "mono-downmix",
-      args: [
+      buildArgs: (candidatePath) => [
         ...buildCommonArgs(),
         "-map",
         "0:a:0?",
@@ -1334,17 +1365,41 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
         "pcm_s16le",
         "-f",
         "wav",
-        outputPath,
+        candidatePath,
+      ],
+    },
+    {
+      label: "aresample-mono",
+      buildArgs: (candidatePath) => [
+        ...buildCommonArgs(),
+        "-map",
+        "0:a:0?",
+        "-af",
+        "aresample=16000:async=1:first_pts=0",
+        "-ac",
+        "1",
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "wav",
+        candidatePath,
       ],
     },
   ];
 
   const passErrors = [];
+  const generatedPassOutputs = [];
+  let bestUsablePass = null;
   for (const pass of passConfigs) {
-    await fs.unlink(outputPath).catch(() => {});
+    const passOutputPath = path.join(
+      path.dirname(outputPath),
+      `${outputBaseName}_${pass.label}.wav`
+    );
+    generatedPassOutputs.push(passOutputPath);
+    await fs.unlink(passOutputPath).catch(() => {});
     let passResult;
     try {
-      passResult = await runPass(pass.args, pass.label);
+      passResult = await runPass(pass.buildArgs(passOutputPath), pass.label);
     } catch (error) {
       passErrors.push(
         error instanceof Error ? error.message : String(error)
@@ -1352,21 +1407,26 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
       continue;
     }
 
-    const usability = await getUsability();
-    if (usability.usable && passResult.code === 0) {
-      return outputPath;
-    }
+    const usability = await getUsability(passOutputPath);
     if (usability.usable) {
-      const coverageLabel =
-        usability.coverage == null
-          ? "unknown"
-          : `${Math.round(usability.coverage * 100)}%`;
-      console.warn(
-        `[transcribe] chunk WAV fallback ${pass.label} exited with code ${passResult.code}; using partial WAV output (coverage ${coverageLabel}). ${compactFfmpegMessage(
-          passResult.stderr
-        )}`
-      );
-      return outputPath;
+      const candidate = {
+        label: pass.label,
+        code: passResult.code,
+        stderr: passResult.stderr,
+        path: passOutputPath,
+        coverage: usability.coverage,
+        decodedDuration: usability.decodedDuration,
+      };
+      if (isBetterUsablePass(candidate, bestUsablePass)) {
+        bestUsablePass = candidate;
+      }
+      if (
+        passResult.code === 0 &&
+        (usability.coverage == null || usability.coverage >= 0.98)
+      ) {
+        break;
+      }
+      continue;
     }
 
     passErrors.push(
@@ -1377,6 +1437,33 @@ const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) =>
       }`
     );
   }
+
+  if (bestUsablePass) {
+    await fs.copyFile(bestUsablePass.path, outputPath);
+    await Promise.all(
+      generatedPassOutputs.map(async (candidatePath) => {
+        await fs.unlink(candidatePath).catch(() => {});
+      })
+    );
+    if (bestUsablePass.code !== 0) {
+      const coverageLabel =
+        bestUsablePass.coverage == null
+          ? "unknown"
+          : `${Math.round(bestUsablePass.coverage * 100)}%`;
+      console.warn(
+        `[transcribe] chunk WAV fallback selected ${bestUsablePass.label} with partial output (exit ${bestUsablePass.code}, coverage ${coverageLabel}). ${compactFfmpegMessage(
+          bestUsablePass.stderr
+        )}`
+      );
+    }
+    return outputPath;
+  }
+
+  await Promise.all(
+    generatedPassOutputs.map(async (candidatePath) => {
+      await fs.unlink(candidatePath).catch(() => {});
+    })
+  );
 
   throw new Error(
     `Chunk WAV fallback transcode failed: ${passErrors.slice(0, 3).join(" | ")}`
@@ -1445,7 +1532,7 @@ const runTranscriptionPipeline = async ({
     };
     const listChunkFiles = async () =>
       (await fs.readdir(audioChunkDir))
-        .filter((name) => /^chunk_\d+\.(mp3|m4a)$/i.test(name))
+        .filter((name) => /^chunk_\d+\.(wav|mp3|m4a)$/i.test(name))
         .sort()
         .map((name) => path.join(audioChunkDir, name));
     const runChunkingPass = async (args, label) => {
@@ -1465,7 +1552,42 @@ const runTranscriptionPipeline = async ({
       });
     };
 
-    const buildDecodeChunkingArgs = (audioStreamIndex) => [
+    const buildDecodeWavChunkingArgs = (audioStreamIndex) => [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-fflags",
+      "+discardcorrupt",
+      "-err_detect",
+      "ignore_err",
+      "-ignore_unknown",
+      "-y",
+      "-i",
+      videoPath,
+      ...(audioStreamIndex != null
+        ? ["-map", `0:${audioStreamIndex}`]
+        : ["-map", "0:a:0?"]),
+      "-vn",
+      "-sn",
+      "-dn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "pcm_s16le",
+      "-f",
+      "segment",
+      "-segment_time",
+      String(TRANSCRIBE_CHUNK_SECONDS),
+      "-segment_format",
+      "wav",
+      "-reset_timestamps",
+      "1",
+      path.join(audioChunkDir, "chunk_%03d.wav"),
+    ];
+
+    const buildDecodeMp3ChunkingArgs = (audioStreamIndex) => [
       "-hide_banner",
       "-loglevel",
       "error",
@@ -1534,11 +1656,58 @@ const runTranscriptionPipeline = async ({
     const extractionPlans = [
       ...audioStreamCandidates.map((index) => ({
         label:
-          index == null ? "decode-first-audio" : `decode-stream-${String(index)}`,
-        args: buildDecodeChunkingArgs(index),
+          index == null
+            ? "decode-wav-first-audio"
+            : `decode-wav-stream-${String(index)}`,
+        priority: 4,
+        args: buildDecodeWavChunkingArgs(index),
+      })),
+      ...audioStreamCandidates.map((index) => ({
+        label:
+          index == null
+            ? "decode-mp3-first-audio"
+            : `decode-mp3-stream-${String(index)}`,
+        priority: 3,
+        args: buildDecodeMp3ChunkingArgs(index),
       })),
       {
-        label: "decode-pan-fallback",
+        label: "decode-pan-wav-fallback",
+        priority: 2,
+        args: [
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-fflags",
+          "+discardcorrupt",
+          "-err_detect",
+          "ignore_err",
+          "-ignore_unknown",
+          "-y",
+          "-i",
+          videoPath,
+          "-map",
+          "0:a:0?",
+          "-vn",
+          "-sn",
+          "-dn",
+          "-af",
+          "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0",
+          "-c:a",
+          "pcm_s16le",
+          "-f",
+          "segment",
+          "-segment_time",
+          String(TRANSCRIBE_CHUNK_SECONDS),
+          "-segment_format",
+          "wav",
+          "-reset_timestamps",
+          "1",
+          path.join(audioChunkDir, "chunk_%03d.wav"),
+        ],
+      },
+      {
+        label: "decode-pan-mp3-fallback",
+        priority: 2,
         args: [
           "-hide_banner",
           "-loglevel",
@@ -1574,6 +1743,7 @@ const runTranscriptionPipeline = async ({
       ...audioStreamCandidates.map((index) => ({
         label:
           index == null ? "copy-first-audio" : `copy-stream-${String(index)}`,
+        priority: 1,
         args: buildCopyChunkingArgs(index),
       })),
     ];
@@ -1587,10 +1757,10 @@ const runTranscriptionPipeline = async ({
       sourceMetadata.duration > 0
         ? sourceMetadata.duration
         : null;
-    const computeChunkDurationTotal = async (files) => {
+    const computeChunkDurationTotal = async (files, durationMap) => {
       let totalDuration = 0;
       for (const filePath of files) {
-        const existing = chunkDurationByPath.get(filePath);
+        const existing = durationMap.get(filePath);
         if (Number.isFinite(existing) && existing > 0) {
           totalDuration += existing;
           continue;
@@ -1602,7 +1772,7 @@ const runTranscriptionPipeline = async ({
           metadata.duration > 0
             ? metadata.duration
             : TRANSCRIBE_CHUNK_SECONDS;
-        chunkDurationByPath.set(filePath, duration);
+        durationMap.set(filePath, duration);
         totalDuration += duration;
       }
       return totalDuration;
@@ -1621,6 +1791,12 @@ const runTranscriptionPipeline = async ({
         return true;
       }
       if (currentCoverage > nextCoverage + 0.03) {
+        return false;
+      }
+      if (next.priority > current.priority) {
+        return true;
+      }
+      if (next.priority < current.priority) {
         return false;
       }
       if (next.code === 0 && current.code !== 0) {
@@ -1681,19 +1857,28 @@ const runTranscriptionPipeline = async ({
         continue;
       }
 
-      const totalDuration = await computeChunkDurationTotal(createdChunks);
+      const durationByPath = new Map();
+      const totalDuration = await computeChunkDurationTotal(
+        createdChunks,
+        durationByPath
+      );
       const coverage =
         sourceDurationSeconds && sourceDurationSeconds > 0
           ? Math.min(1, totalDuration / sourceDurationSeconds)
           : null;
       const candidate = {
         label: plan.label,
+        priority:
+          Number.isFinite(plan.priority) && plan.priority > 0
+            ? plan.priority
+            : 1,
         code: passResult.code,
         stderr: passResult.stderr,
         chunks: createdChunks,
         totalBytes,
         totalDuration,
         coverage,
+        durationByPath,
       };
       if (isBetterExtractionCandidate(candidate, bestExtractionCandidate)) {
         bestExtractionCandidate = candidate;
@@ -1717,6 +1902,14 @@ const runTranscriptionPipeline = async ({
 
     if (bestExtractionCandidate?.chunks?.length) {
       chunkFiles = bestExtractionCandidate.chunks;
+      chunkDurationByPath.clear();
+      if (bestExtractionCandidate.durationByPath instanceof Map) {
+        for (const [filePath, duration] of bestExtractionCandidate.durationByPath) {
+          if (Number.isFinite(duration) && duration > 0) {
+            chunkDurationByPath.set(filePath, duration);
+          }
+        }
+      }
       if (bestExtractionCandidate.code !== 0) {
         const coverageLabel =
           bestExtractionCandidate.coverage == null
@@ -1826,7 +2019,11 @@ const runTranscriptionPipeline = async ({
       const audioBuffer = await fs.readFile(chunkPath);
       const chunkExt = path.extname(chunkPath).toLowerCase();
       const chunkMimeType =
-        chunkExt === ".m4a" || chunkExt === ".mp4" ? "audio/mp4" : "audio/mpeg";
+        chunkExt === ".wav"
+          ? "audio/wav"
+          : chunkExt === ".m4a" || chunkExt === ".mp4"
+            ? "audio/mp4"
+            : "audio/mpeg";
       const audioFile = new File([audioBuffer], path.basename(chunkPath), {
         type: chunkMimeType,
       });
