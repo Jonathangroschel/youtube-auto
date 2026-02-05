@@ -1089,6 +1089,10 @@ const TRANSCRIBE_OPENAI_TARGET_FILE_BYTES = toPositiveInt(
 );
 const TRANSCRIBE_UPLOAD_FALLBACK_BITRATE =
   process.env.AUTOCLIP_TRANSCRIBE_UPLOAD_FALLBACK_BITRATE || "32k";
+const TRANSCRIBE_UPLOAD_SEGMENT_SECONDS = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_UPLOAD_SEGMENT_SECONDS,
+  300
+);
 
 const transcribeQueue = [];
 const transcribeJobs = new Map();
@@ -1207,7 +1211,7 @@ const isChunkTooLargeError = (error) => {
   if (status === 413) {
     return true;
   }
-  return /413|maximum content size limit|content size limit|entity too large/i.test(
+  return /413|maximum content size limit|content size limit|entity too large|chunk is too large/i.test(
     message
   );
 };
@@ -1221,6 +1225,52 @@ const getAudioMimeType = (audioPath) => {
     return "audio/mp4";
   }
   return "audio/mpeg";
+};
+
+const parseBitrateKbps = (value) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  const match = normalized.match(/^(\d+)\s*k$/);
+  if (match) {
+    const kbps = Number(match[1]);
+    return Number.isFinite(kbps) && kbps > 0 ? kbps : null;
+  }
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.round(numeric / 1000);
+  }
+  return null;
+};
+
+const buildUploadBitrateCandidates = () => {
+  const requested = [
+    TRANSCRIBE_AUDIO_BITRATE,
+    TRANSCRIBE_UPLOAD_FALLBACK_BITRATE,
+    "24k",
+    "16k",
+    "12k",
+    "8k",
+  ];
+  const seen = new Set();
+  const out = [];
+  for (const raw of requested) {
+    const kbps = parseBitrateKbps(raw);
+    if (!Number.isFinite(kbps) || kbps <= 0) {
+      continue;
+    }
+    const safe = Math.max(8, Math.min(96, Math.floor(kbps)));
+    if (seen.has(safe)) {
+      continue;
+    }
+    seen.add(safe);
+    out.push(`${safe}k`);
+  }
+  return out;
 };
 
 const transcodeChunkForUpload = async (inputPath, bitrate) => {
@@ -1308,15 +1358,12 @@ const buildTranscribeAudioFile = async (inputPath) => {
     )
   );
   if (audioBuffer.byteLength > targetBytes) {
-    const bitrates = [
-      TRANSCRIBE_AUDIO_BITRATE,
-      TRANSCRIBE_UPLOAD_FALLBACK_BITRATE,
-    ].filter((value, index, all) => value && all.indexOf(value) === index);
+    const bitrates = buildUploadBitrateCandidates();
     const compressionErrors = [];
     for (const bitrate of bitrates) {
       let compressedPath = null;
       try {
-        compressedPath = await transcodeChunkForUpload(sourcePath, bitrate);
+        compressedPath = await transcodeChunkForUpload(inputPath, bitrate);
         cleanupPaths.push(compressedPath);
         const compressedBuffer = await fs.readFile(compressedPath);
         sourcePath = compressedPath;
@@ -1351,6 +1398,167 @@ const buildTranscribeAudioFile = async (inputPath) => {
   return {
     audioFile,
     cleanupPaths,
+  };
+};
+
+const transcribeChunkViaSegmentedUpload = async ({
+  chunkPath,
+  chunkDuration,
+  requestedLanguage,
+}) => {
+  const splitDir = path.join(
+    path.dirname(chunkPath),
+    `${path.basename(chunkPath, path.extname(chunkPath))}_upload_split_${Date.now()}`
+  );
+  const compactFfmpegMessage = (value) => {
+    const normalized = String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) {
+      return "No ffmpeg stderr output.";
+    }
+    return normalized.length > 600
+      ? `${normalized.slice(0, 600)}...`
+      : normalized;
+  };
+  const runSplit = async () => {
+    await fs.rm(splitDir, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(splitDir, { recursive: true });
+    const targetSegmentSeconds = Math.max(
+      60,
+      Math.min(
+        TRANSCRIBE_UPLOAD_SEGMENT_SECONDS,
+        Number.isFinite(chunkDuration) && chunkDuration > 0
+          ? Math.max(60, Math.floor(chunkDuration / 2))
+          : TRANSCRIBE_UPLOAD_SEGMENT_SECONDS
+      )
+    );
+    const result = await new Promise((resolve, reject) => {
+      const ffmpeg = spawn("ffmpeg", [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+discardcorrupt",
+        "-err_detect",
+        "ignore_err",
+        "-ignore_unknown",
+        "-y",
+        "-i",
+        chunkPath,
+        "-map",
+        "0:a:0?",
+        "-vn",
+        "-sn",
+        "-dn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        TRANSCRIBE_UPLOAD_FALLBACK_BITRATE,
+        "-f",
+        "segment",
+        "-segment_time",
+        String(targetSegmentSeconds),
+        "-reset_timestamps",
+        "1",
+        path.join(splitDir, "part_%03d.mp3"),
+      ]);
+      let stderr = "";
+      ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
+      ffmpeg.on("close", (code) =>
+        resolve({
+          code: Number.isFinite(code) ? code : -1,
+          stderr,
+        })
+      );
+      ffmpeg.on("error", (err) =>
+        reject(new Error(`Segment split ffmpeg spawn error: ${err.message}`))
+      );
+    });
+    const partFiles = (await fs.readdir(splitDir))
+      .filter((name) => /^part_\d+\.mp3$/i.test(name))
+      .sort()
+      .map((name) => path.join(splitDir, name));
+    if (!partFiles.length) {
+      throw new Error(
+        `Segment split produced no files (exit ${result.code}): ${compactFfmpegMessage(
+          result.stderr
+        )}`
+      );
+    }
+    if (result.code !== 0) {
+      console.warn(
+        `[transcribe] segmented upload split exited with code ${result.code}; using partial split output. ${compactFfmpegMessage(
+          result.stderr
+        )}`
+      );
+    }
+    return partFiles;
+  };
+
+  const partFiles = await runSplit();
+  let localOffset = 0;
+  let detectedLanguage = null;
+  const allSegments = [];
+  const allWords = [];
+  let fullText = "";
+  try {
+    for (const partPath of partFiles) {
+      const metadata = await getVideoMetadata(partPath).catch(() => null);
+      const partDuration =
+        metadata &&
+        Number.isFinite(metadata.duration) &&
+        metadata.duration > 0
+          ? metadata.duration
+          : Math.max(30, TRANSCRIBE_UPLOAD_SEGMENT_SECONDS);
+      const prepared = await buildTranscribeAudioFile(partPath);
+      let transcription;
+      try {
+        transcription = await transcribeChunkWithRetry(
+          prepared.audioFile,
+          requestedLanguage
+        );
+      } finally {
+        await Promise.all(
+          prepared.cleanupPaths.map(async (filePath) => {
+            await fs.unlink(filePath).catch(() => {});
+          })
+        );
+      }
+      if (!detectedLanguage && transcription?.language) {
+        detectedLanguage = transcription.language;
+      }
+      const partSegments = (transcription?.segments || []).map((segment) => ({
+        ...segment,
+        start: Number(segment.start) + localOffset,
+        end: Number(segment.end) + localOffset,
+      }));
+      const partWords = (transcription?.words || []).map((word) => ({
+        ...word,
+        start: Number(word.start) + localOffset,
+        end: Number(word.end) + localOffset,
+      }));
+      allSegments.push(...partSegments);
+      allWords.push(...partWords);
+      const snippet = String(transcription?.text ?? "").trim();
+      if (snippet) {
+        fullText = fullText ? `${fullText} ${snippet}` : snippet;
+      }
+      localOffset += partDuration;
+    }
+  } finally {
+    await fs.rm(splitDir, { recursive: true, force: true }).catch(() => {});
+  }
+
+  return {
+    segments: allSegments,
+    words: allWords,
+    text: fullText,
+    language: detectedLanguage,
   };
 };
 
@@ -2237,7 +2445,7 @@ const runTranscriptionPipeline = async ({
         );
       } catch (error) {
         lastChunkError = error;
-        if (isUnsupportedChunkDecodeError(error) || isChunkTooLargeError(error)) {
+        if (isUnsupportedChunkDecodeError(error)) {
           let fallbackChunkPath = null;
           let fallbackUploadCleanupPaths = [];
           try {
@@ -2264,6 +2472,17 @@ const runTranscriptionPipeline = async ({
             if (fallbackChunkPath) {
               await fs.unlink(fallbackChunkPath).catch(() => {});
             }
+          }
+        }
+        if (!transcription && isChunkTooLargeError(lastChunkError)) {
+          try {
+            transcription = await transcribeChunkViaSegmentedUpload({
+              chunkPath,
+              chunkDuration,
+              requestedLanguage,
+            });
+          } catch (splitError) {
+            lastChunkError = splitError;
           }
         }
       } finally {
