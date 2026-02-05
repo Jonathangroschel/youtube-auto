@@ -1032,6 +1032,81 @@ const logAssetDebug = (...args: unknown[]) => {
   }
 };
 
+const IMPORT_TIMEOUT_MS = 240_000;
+const REDDIT_VOICEOVER_TIMEOUT_MS = 90_000;
+const REDDIT_VOICEOVER_MAX_ATTEMPTS = 2;
+const TRANSCRIPTION_SOURCE_FETCH_TIMEOUT_MS = 45_000;
+const TRANSCRIPTION_REQUEST_TIMEOUT_MS = 120_000;
+const TRANSCRIPTION_REQUEST_MAX_ATTEMPTS = 2;
+const REDDIT_IMAGE_FETCH_TIMEOUT_MS = 10_000;
+const IMPORT_SUBTITLE_TIMEOUT_MS = 300_000;
+
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(() => resolve(), ms);
+  });
+
+const withPromiseTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    let finished = false;
+    const timeoutId = setTimeout(() => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s.`));
+    }, timeoutMs);
+    promise
+      .then((value) => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+
+const fetchWithTimeout = async (
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+  label: string
+) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const isTransientErrorMessage = (message: string) =>
+  /timed out|timeout|abort|network|failed to fetch|429|5\d\d|temporar|rate limit/i.test(
+    message
+  );
+
 const createExternalAssetSafe = async (
   payload: ExternalAssetPayload
 ): Promise<AssetLibraryItem | null> => {
@@ -9236,35 +9311,63 @@ function AdvancedEditorContent() {
           chunkingStrategy?: string;
         }
       ) => {
-        const formData = new FormData();
-        if ("file" in source) {
-          formData.append("file", source.file);
-        } else {
-          formData.append("url", source.url);
+        let lastError: Error | null = null;
+        for (
+          let attempt = 1;
+          attempt <= TRANSCRIPTION_REQUEST_MAX_ATTEMPTS;
+          attempt += 1
+        ) {
+          try {
+            const formData = new FormData();
+            if ("file" in source) {
+              formData.append("file", source.file);
+            } else {
+              formData.append("url", source.url);
+            }
+            formData.append("model", options.model);
+            formData.append("response_format", options.responseFormat);
+            if (options.chunkingStrategy) {
+              formData.append("chunking_strategy", options.chunkingStrategy);
+            }
+            if (options.includeTimestampGranularities) {
+              formData.append("timestamp_granularities[]", "segment");
+              formData.append("timestamp_granularities[]", "word");
+            }
+            if (subtitleLanguage?.code) {
+              formData.append("language", subtitleLanguage.code);
+            }
+            const response = await fetchWithTimeout(
+              "/api/transcriptions",
+              {
+                method: "POST",
+                body: formData,
+              },
+              TRANSCRIPTION_REQUEST_TIMEOUT_MS,
+              "Subtitle transcription"
+            );
+            if (!response.ok) {
+              const message = await response.text().catch(() => "");
+              throw new Error(
+                message || `Unable to generate subtitles for this clip (${response.status}).`
+              );
+            }
+            return response.json();
+          } catch (error) {
+            const normalized =
+              error instanceof Error
+                ? error
+                : new Error("Unable to generate subtitles for this clip.");
+            lastError = normalized;
+            if (
+              attempt >= TRANSCRIPTION_REQUEST_MAX_ATTEMPTS ||
+              !isTransientErrorMessage(normalized.message)
+            ) {
+              throw normalized;
+            }
+            await delay(attempt === 1 ? 800 : 1400);
+          }
         }
-        formData.append("model", options.model);
-        formData.append("response_format", options.responseFormat);
-        if (options.chunkingStrategy) {
-          formData.append("chunking_strategy", options.chunkingStrategy);
-        }
-        if (options.includeTimestampGranularities) {
-          formData.append("timestamp_granularities[]", "segment");
-          formData.append("timestamp_granularities[]", "word");
-        }
-        if (subtitleLanguage?.code) {
-          formData.append("language", subtitleLanguage.code);
-        }
-        const response = await fetch("/api/transcriptions", {
-          method: "POST",
-          body: formData,
-        });
-        if (!response.ok) {
-          const message = await response.text().catch(() => "");
-          throw new Error(
-            message || `Unable to generate subtitles for this clip (${response.status}).`
-          );
-        }
-        return response.json();
+        throw lastError ?? new Error("Unable to generate subtitles for this clip.");
       };
       const primaryTranscription = {
         model: "gpt-4o-transcribe-diarize",
@@ -9304,7 +9407,10 @@ function AdvancedEditorContent() {
               allowFallback
             );
           }
-          if (/internal_error|internal server error/i.test(message)) {
+          if (
+            /internal_error|internal server error/i.test(message) ||
+            isTransientErrorMessage(message)
+          ) {
             try {
               await new Promise((resolve) => window.setTimeout(resolve, 800));
               return await requestTranscription(source, options);
@@ -9568,8 +9674,41 @@ function AdvancedEditorContent() {
         return { chunks, assetDuration: resolvedAssetDuration, clipEndOffset };
       };
       const nextSegments: TranscriptSegment[] = [];
+      const fetchSourceBlob = async (url: string, assetName: string) => {
+        let lastError: Error | null = null;
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          try {
+            const response = await fetchWithTimeout(
+              url,
+              { method: "GET" },
+              TRANSCRIPTION_SOURCE_FETCH_TIMEOUT_MS,
+              `Loading media for ${assetName}`
+            );
+            if (!response.ok) {
+              throw new Error(
+                `Unable to read media for subtitle generation (${response.status}).`
+              );
+            }
+            return response.blob();
+          } catch (error) {
+            const normalized =
+              error instanceof Error
+                ? error
+                : new Error("Unable to read media for subtitle generation.");
+            lastError = normalized;
+            if (attempt >= 2 || !isTransientErrorMessage(normalized.message)) {
+              throw normalized;
+            }
+            await delay(600);
+          }
+        }
+        throw lastError ?? new Error("Unable to read media for subtitle generation.");
+      };
       for (const entry of sortedSources) {
-        const blob = await fetch(entry.asset.url).then((res) => res.blob());
+        const blob = await fetchSourceBlob(
+          entry.asset.url,
+          entry.asset.name || "clip"
+        );
         const clipStartOffset = entry.clip.startOffset ?? 0;
         const speedSetting = clipSettings[entry.clip.id]?.speed ?? 1;
         const playbackRate = clamp(speedSetting, 0.1, 4);
@@ -9892,8 +10031,20 @@ function AdvancedEditorContent() {
     pendingSplitScreenSubtitleRef.current = null;
     setSplitScreenImportOverlayStage("subtitles");
     setSplitScreenImportOverlayOpen(true);
-    handleGenerateSubtitles()
-      .catch(() => {})
+    withPromiseTimeout(
+      handleGenerateSubtitles(),
+      IMPORT_SUBTITLE_TIMEOUT_MS,
+      "Subtitle generation"
+    )
+      .catch((error) => {
+        if (subtitleStatusRef.current === "error") {
+          return;
+        }
+        setSubtitleStatus("error");
+        setSubtitleError(
+          error instanceof Error ? error.message : "Subtitle generation failed."
+        );
+      })
       .finally(() => {
         setSplitScreenImportOverlayStage("finalizing");
         requestAnimationFrame(() => {
@@ -9935,8 +10086,20 @@ function AdvancedEditorContent() {
     pendingStreamerVideoSubtitleRef.current = null;
     setStreamerVideoImportOverlayStage("subtitles");
     setStreamerVideoImportOverlayOpen(true);
-    handleGenerateSubtitles()
-      .catch(() => {})
+    withPromiseTimeout(
+      handleGenerateSubtitles(),
+      IMPORT_SUBTITLE_TIMEOUT_MS,
+      "Subtitle generation"
+    )
+      .catch((error) => {
+        if (subtitleStatusRef.current === "error") {
+          return;
+        }
+        setSubtitleStatus("error");
+        setSubtitleError(
+          error instanceof Error ? error.message : "Subtitle generation failed."
+        );
+      })
       .finally(() => {
         setStreamerVideoImportOverlayStage("finalizing");
         requestAnimationFrame(() => {
@@ -9974,8 +10137,20 @@ function AdvancedEditorContent() {
     pendingRedditVideoSubtitleRef.current = null;
     setRedditVideoImportOverlayStage("subtitles");
     setRedditVideoImportOverlayOpen(true);
-    handleGenerateSubtitles()
-      .catch(() => {})
+    withPromiseTimeout(
+      handleGenerateSubtitles(),
+      IMPORT_SUBTITLE_TIMEOUT_MS,
+      "Subtitle generation"
+    )
+      .catch((error) => {
+        if (subtitleStatusRef.current === "error") {
+          return;
+        }
+        setSubtitleStatus("error");
+        setSubtitleError(
+          error instanceof Error ? error.message : "Subtitle generation failed."
+        );
+      })
       .finally(() => {
         setRedditVideoImportOverlayStage("finalizing");
         requestAnimationFrame(() => {
@@ -12747,34 +12922,62 @@ function AdvancedEditorContent() {
       });
 
       const generateVoiceoverUrl = async (text: string, voice: string) => {
-        const response = await fetch("/api/ai-voiceover", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, voice }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const message =
-            typeof data?.error === "string" && data.error.length > 0
-              ? data.error
-              : "Voiceover generation failed.";
-          throw new Error(message);
+        let lastError: Error | null = null;
+        for (
+          let attempt = 1;
+          attempt <= REDDIT_VOICEOVER_MAX_ATTEMPTS;
+          attempt += 1
+        ) {
+          try {
+            const response = await fetchWithTimeout(
+              "/api/ai-voiceover",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, voice }),
+              },
+              REDDIT_VOICEOVER_TIMEOUT_MS,
+              "Voiceover generation"
+            );
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              const message =
+                typeof data?.error === "string" && data.error.length > 0
+                  ? data.error
+                  : `Voiceover generation failed (${response.status}).`;
+              throw new Error(message);
+            }
+            const audioEntry = data?.audio ?? null;
+            const audioUrl =
+              typeof audioEntry?.url === "string"
+                ? audioEntry.url
+                : typeof data?.audio_url === "string"
+                  ? data.audio_url
+                  : typeof data?.audioUrl === "string"
+                    ? data.audioUrl
+                    : typeof data?.audio === "string"
+                      ? data.audio
+                      : null;
+            if (!audioUrl) {
+              throw new Error("Voiceover generation returned no audio.");
+            }
+            return audioUrl;
+          } catch (error) {
+            const normalized =
+              error instanceof Error
+                ? error
+                : new Error("Voiceover generation failed.");
+            lastError = normalized;
+            if (
+              attempt >= REDDIT_VOICEOVER_MAX_ATTEMPTS ||
+              !isTransientErrorMessage(normalized.message)
+            ) {
+              throw normalized;
+            }
+            await delay(attempt === 1 ? 900 : 1600);
+          }
         }
-        const audioEntry = data?.audio ?? null;
-        const audioUrl =
-          typeof audioEntry?.url === "string"
-            ? audioEntry.url
-            : typeof data?.audio_url === "string"
-              ? data.audio_url
-              : typeof data?.audioUrl === "string"
-                ? data.audioUrl
-                : typeof data?.audio === "string"
-                  ? data.audio
-                  : null;
-        if (!audioUrl) {
-          throw new Error("Voiceover generation returned no audio.");
-        }
-        return audioUrl;
+        throw lastError ?? new Error("Voiceover generation failed.");
       };
 
       const createGeneratedVoiceAsset = async (options: {
@@ -12964,7 +13167,12 @@ function AdvancedEditorContent() {
             return normalized;
           }
           try {
-            const response = await fetch(normalized);
+            const response = await fetchWithTimeout(
+              normalized,
+              { method: "GET" },
+              REDDIT_IMAGE_FETCH_TIMEOUT_MS,
+              "Loading Reddit intro image"
+            );
             if (!response.ok) {
               return normalized;
             }
@@ -13655,8 +13863,11 @@ function AdvancedEditorContent() {
           if (bucket !== "gameplay-footage") {
             return url;
           }
-          const response = await fetch(
-            `/api/gameplay-footage/sign?path=${encodeURIComponent(storagePath)}`
+          const response = await fetchWithTimeout(
+            `/api/gameplay-footage/sign?path=${encodeURIComponent(storagePath)}`,
+            { method: "GET" },
+            REDDIT_IMAGE_FETCH_TIMEOUT_MS,
+            "Refreshing gameplay URL"
           );
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
@@ -14037,7 +14248,11 @@ function AdvancedEditorContent() {
           return;
         }
         console.info("[split-screen] applying import", payload);
-        await applySplitScreenImport(payload);
+        await withPromiseTimeout(
+          applySplitScreenImport(payload),
+          IMPORT_TIMEOUT_MS,
+          "Split-screen import"
+        );
       } catch (error) {
         console.error("[split-screen] import failed", error);
         if (!cancelled) {
@@ -14158,15 +14373,23 @@ function AdvancedEditorContent() {
       },
     };
 
-    console.info("[streamer-video] applying import", payload);
-    applyStreamerVideoImport(payload)
-      .catch((error) => {
+    const run = async () => {
+      try {
+        console.info("[streamer-video] applying import", payload);
+        await withPromiseTimeout(
+          applyStreamerVideoImport(payload),
+          IMPORT_TIMEOUT_MS,
+          "Streamer video import"
+        );
+      } catch (error) {
         console.error("[streamer-video] import failed", error);
         setStreamerVideoImportOverlayOpen(false);
-      })
-      .finally(() => {
+      } finally {
         clearImportQuery();
-      });
+      }
+    };
+
+    void run();
   }, [applyStreamerVideoImport, importQuery, importTs, searchParams]);
 
   useEffect(() => {
@@ -14240,7 +14463,11 @@ function AdvancedEditorContent() {
           return;
         }
         console.info("[reddit-video] applying import", payload);
-        await applyRedditVideoImport(payload);
+        await withPromiseTimeout(
+          applyRedditVideoImport(payload),
+          IMPORT_TIMEOUT_MS,
+          "Reddit video import"
+        );
       } catch (error) {
         console.error("[reddit-video] import failed", error);
         if (!cancelled) {

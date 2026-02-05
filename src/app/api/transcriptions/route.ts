@@ -3,6 +3,13 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const MAX_REMOTE_FILE_BYTES = 25 * 1024 * 1024; // 25MB safety cap
+const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 120_000;
+const OPENAI_TRANSCRIPTION_MAX_ATTEMPTS = 2;
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const isIpv4Address = (hostname: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
 
@@ -129,7 +136,7 @@ export async function POST(request: Request) {
         method: "GET",
         signal: controller.signal,
       });
-    } catch (error) {
+    } catch {
       clearTimeout(timeoutId);
       return NextResponse.json(
         { error: "Failed to fetch transcription URL." },
@@ -210,30 +217,96 @@ export async function POST(request: Request) {
     return payload;
   };
 
-  const runTranscription = async (payload: FormData) =>
-    fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: payload,
-    });
+  const runTranscription = async (payload: FormData) => {
+    let lastError: Error | null = null;
+    for (
+      let attempt = 1;
+      attempt <= OPENAI_TRANSCRIPTION_MAX_ATTEMPTS;
+      attempt += 1
+    ) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        OPENAI_TRANSCRIPTION_TIMEOUT_MS
+      );
+      try {
+        const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: payload,
+          signal: controller.signal,
+        });
+        if (
+          response.ok ||
+          attempt >= OPENAI_TRANSCRIPTION_MAX_ATTEMPTS ||
+          (response.status !== 429 && response.status < 500)
+        ) {
+          return response;
+        }
+      } catch (error) {
+        const isAbort = error instanceof DOMException && error.name === "AbortError";
+        const normalized = new Error(
+          isAbort
+            ? "OpenAI transcription request timed out."
+            : error instanceof Error
+              ? error.message
+              : "OpenAI transcription request failed."
+        );
+        lastError = normalized;
+        const isRetryable = isAbort || error instanceof TypeError;
+        if (attempt >= OPENAI_TRANSCRIPTION_MAX_ATTEMPTS || !isRetryable) {
+          throw normalized;
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      await wait(attempt === 1 ? 900 : 1500);
+    }
+    throw lastError ?? new Error("OpenAI transcription request failed.");
+  };
 
-  let response = await runTranscription(
-    buildOpenAiPayload({
-      model,
-      responseFormat,
-      chunkingStrategy: resolvedChunkingStrategy,
-    })
-  );
-  if (!response.ok && model !== "whisper-1") {
+  let response: Response;
+  try {
     response = await runTranscription(
       buildOpenAiPayload({
-        model: "whisper-1",
-        responseFormat: "verbose_json",
-        chunkingStrategy: null,
+        model,
+        responseFormat,
+        chunkingStrategy: resolvedChunkingStrategy,
       })
     );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "OpenAI transcription request failed.",
+      },
+      { status: 504 }
+    );
+  }
+  if (!response.ok && model !== "whisper-1") {
+    try {
+      response = await runTranscription(
+        buildOpenAiPayload({
+          model: "whisper-1",
+          responseFormat: "verbose_json",
+          chunkingStrategy: null,
+        })
+      );
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "OpenAI transcription request failed.",
+        },
+        { status: 504 }
+      );
+    }
   }
 
   if (!response.ok) {

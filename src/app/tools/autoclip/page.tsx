@@ -269,6 +269,8 @@ type StepDefinition = {
 
 const MIN_CLIP_SECONDS = 1;
 const MAX_CLIP_SECONDS = Number.POSITIVE_INFINITY;
+const TRANSCRIPTION_POLL_INTERVAL_MS = 2500;
+const TRANSCRIPTION_POLL_TIMEOUT_MS = 45 * 60 * 1000;
 
 const stepDefinitions: StepDefinition[] = [
   {
@@ -653,6 +655,12 @@ export default function AutoClipPage() {
   const [processingStage, setProcessingStage] = useState<
     "transcribing" | "highlighting" | null
   >(null);
+  const [transcriptionProgress, setTranscriptionProgress] = useState<
+    number | null
+  >(null);
+  const [transcriptionStageLabel, setTranscriptionStageLabel] = useState<
+    string | null
+  >(null);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -928,7 +936,11 @@ export default function AutoClipPage() {
   );
   const processingLabel =
     processingStage === "transcribing"
-      ? "Transcribing your audio"
+      ? transcriptionProgress != null
+        ? `${transcriptionStageLabel || "Transcribing your audio"} (${Math.round(
+            transcriptionProgress
+          )}%)`
+        : transcriptionStageLabel || "Transcribing your audio"
       : processingStage === "highlighting"
         ? "Selecting the best highlights"
         : "Preparing your clip";
@@ -1034,6 +1046,8 @@ export default function AutoClipPage() {
     setApprovalLoading(false);
     setProcessing(false);
     setProcessingStage(null);
+    setTranscriptionProgress(null);
+    setTranscriptionStageLabel(null);
     setProcessingError(null);
     setRenderError(null);
     setRendering(false);
@@ -1272,6 +1286,59 @@ export default function AutoClipPage() {
     }
   }, [ensureSession, inputPreviewUrl, resetPipeline, videoUrl]);
 
+  const pollTranscriptionUntilComplete = useCallback(
+    async (activeSessionId: string) => {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < TRANSCRIPTION_POLL_TIMEOUT_MS) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, TRANSCRIPTION_POLL_INTERVAL_MS);
+        });
+
+        const statusResponse = await fetch(
+          `/api/autoclip/transcribe?sessionId=${encodeURIComponent(
+            activeSessionId
+          )}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
+        const statusPayload = await statusResponse.json().catch(() => ({}));
+
+        if (statusResponse.status === 202) {
+          const progress =
+            typeof statusPayload?.progress === "number" &&
+            Number.isFinite(statusPayload.progress)
+              ? Math.max(0, Math.min(100, statusPayload.progress))
+              : null;
+          setTranscriptionProgress(progress);
+          setTranscriptionStageLabel(
+            typeof statusPayload?.stage === "string" &&
+              statusPayload.stage.trim().length > 0
+              ? statusPayload.stage.trim()
+              : "Transcribing your audio"
+          );
+          continue;
+        }
+
+        if (!statusResponse.ok) {
+          const message =
+            typeof statusPayload?.error === "string"
+              ? statusPayload.error
+              : "Transcription failed.";
+          throw new Error(message);
+        }
+
+        return statusPayload;
+      }
+
+      throw new Error(
+        "Transcription is taking longer than expected. Please wait a moment and try again."
+      );
+    },
+    []
+  );
+
   const handleFindMoments = useCallback(async () => {
     if (!sessionId || !uploadReady) {
       return;
@@ -1283,6 +1350,8 @@ export default function AutoClipPage() {
     }
     setProcessing(true);
     setProcessingStage("transcribing");
+    setTranscriptionProgress(null);
+    setTranscriptionStageLabel("Transcribing your audio");
     setProcessingError(null);
     setOutputs([]);
     setSelectedClipIds([]);
@@ -1300,18 +1369,40 @@ export default function AutoClipPage() {
         }),
       });
       const transcribePayload = await transcribeResponse.json().catch(() => ({}));
-      if (!transcribeResponse.ok) {
+
+      if (transcribeResponse.status === 202) {
+        const initialProgress =
+          typeof transcribePayload?.progress === "number" &&
+          Number.isFinite(transcribePayload.progress)
+            ? Math.max(0, Math.min(100, transcribePayload.progress))
+            : null;
+        setTranscriptionProgress(initialProgress);
+        setTranscriptionStageLabel(
+          typeof transcribePayload?.stage === "string" &&
+            transcribePayload.stage.trim().length > 0
+            ? transcribePayload.stage.trim()
+            : "Transcribing your audio"
+        );
+      } else if (!transcribeResponse.ok) {
         const message =
           typeof transcribePayload?.error === "string"
             ? transcribePayload.error
             : "Transcription failed.";
         throw new Error(message);
       }
+
+      const completedTranscription =
+        transcribeResponse.status === 202
+          ? await pollTranscriptionUntilComplete(sessionId)
+          : transcribePayload;
+
       setTranscriptSegments(
-        Array.isArray(transcribePayload?.transcript?.segments)
-          ? transcribePayload.transcript.segments
+        Array.isArray(completedTranscription?.transcript?.segments)
+          ? completedTranscription.transcript.segments
           : []
       );
+      setTranscriptionProgress(100);
+      setTranscriptionStageLabel("Transcription complete");
       setProcessingStage("highlighting");
       const highlightResponse = await fetch("/api/autoclip/highlight", {
         method: "POST",
@@ -1347,8 +1438,17 @@ export default function AutoClipPage() {
     } finally {
       setProcessing(false);
       setProcessingStage(null);
+      setTranscriptionProgress(null);
+      setTranscriptionStageLabel(null);
     }
-  }, [description, instructions, sessionId, transcriptionLanguage, uploadReady]);
+  }, [
+    description,
+    instructions,
+    pollTranscriptionUntilComplete,
+    sessionId,
+    transcriptionLanguage,
+    uploadReady,
+  ]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {

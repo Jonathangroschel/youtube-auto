@@ -1,6 +1,7 @@
 export type AutoClipStatus =
   | "created"
   | "input_ready"
+  | "transcribing"
   | "transcribed"
   | "highlights_ready"
   | "awaiting_approval"

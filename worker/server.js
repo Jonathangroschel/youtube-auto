@@ -943,6 +943,12 @@ app.get("/health", (req, res) => {
       maxConcurrency: MAX_EXPORT_CONCURRENCY,
       ffmpegThreadsPerExport: EXPORT_FFMPEG_THREADS,
     },
+    transcription: {
+      active: activeTranscribes,
+      queued: transcribeQueue.length,
+      maxConcurrency: MAX_TRANSCRIBE_CONCURRENCY,
+      openJobs: transcribeJobs.size,
+    },
   });
 });
 
@@ -1057,13 +1063,128 @@ app.post("/youtube", authMiddleware, async (req, res) => {
   }
 });
 
-// Transcribe video
-app.post("/transcribe", authMiddleware, async (req, res) => {
-  const cleanupTargets = [];
-  try {
-    const { sessionId, videoKey, language = "en" } = req.body;
+const MAX_TRANSCRIBE_CONCURRENCY = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_CONCURRENCY,
+  1
+);
+const TRANSCRIBE_JOB_RETENTION_MS = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_JOB_RETENTION_MS,
+  60 * 60 * 1000
+);
+const TRANSCRIBE_OPENAI_TIMEOUT_MS = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_OPENAI_TIMEOUT_MS,
+  120000
+);
+const TRANSCRIBE_OPENAI_MAX_ATTEMPTS = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_OPENAI_MAX_ATTEMPTS,
+  2
+);
 
-    // Download video from Supabase
+const transcribeQueue = [];
+const transcribeJobs = new Map();
+const transcribeJobBySession = new Map();
+let activeTranscribes = 0;
+let transcribeQueueRunning = false;
+
+const updateTranscribeJob = (jobId, patch) => {
+  const existing = transcribeJobs.get(jobId);
+  if (!existing) {
+    return null;
+  }
+  const next = {
+    ...existing,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  transcribeJobs.set(jobId, next);
+  return next;
+};
+
+const toTranscribeJobPayload = (job, includeResult = false) => ({
+  jobId: job.id,
+  sessionId: job.sessionId,
+  status: job.status,
+  stage: job.stage,
+  progress: job.progress,
+  totalChunks: job.totalChunks,
+  completedChunks: job.completedChunks,
+  error: job.error || null,
+  ...(includeResult && job.result ? { result: job.result } : {}),
+});
+
+const wait = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const isRetryableTranscribeError = (error) => {
+  const status = Number(error?.status);
+  if (Number.isFinite(status) && (status === 429 || status >= 500)) {
+    return true;
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error?.message === "string"
+        ? error.message
+        : "";
+  return /timeout|timed out|temporar|rate limit|network|503|502/i.test(message);
+};
+
+const transcribeChunkWithRetry = async (audioFile, requestedLanguage) => {
+  let lastError = null;
+  for (let attempt = 1; attempt <= TRANSCRIBE_OPENAI_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const transcription = await Promise.race([
+        openai.audio.transcriptions.create({
+          file: audioFile,
+          model: "whisper-1",
+          language: requestedLanguage,
+          response_format: "verbose_json",
+          timestamp_granularities: ["word", "segment"],
+        }),
+        new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(
+              new Error(
+                `OpenAI transcription timed out after ${Math.round(
+                  TRANSCRIBE_OPENAI_TIMEOUT_MS / 1000
+                )}s`
+              )
+            );
+          }, TRANSCRIBE_OPENAI_TIMEOUT_MS);
+        }),
+      ]);
+      return transcription;
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= TRANSCRIBE_OPENAI_MAX_ATTEMPTS ||
+        !isRetryableTranscribeError(error)
+      ) {
+        throw error;
+      }
+      await wait(attempt === 1 ? 900 : 1500);
+    }
+  }
+  throw lastError || new Error("OpenAI transcription failed.");
+};
+
+const runTranscriptionPipeline = async ({
+  sessionId,
+  videoKey,
+  language = "en",
+  onProgress,
+}) => {
+  const cleanupTargets = [];
+  const progress = (patch) => {
+    if (typeof onProgress === "function") {
+      onProgress(patch);
+    }
+  };
+
+  try {
+    progress({ stage: "Downloading source video", progress: 5 });
     const videoPath = path.join(TEMP_DIR, `${sessionId}_video.mp4`);
     const audioChunkDir = path.join(TEMP_DIR, `${sessionId}_audio_chunks`);
     cleanupTargets.push(videoPath, audioChunkDir);
@@ -1073,10 +1194,9 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
       .download(videoKey);
 
     if (downloadError) throw downloadError;
-
     await fs.writeFile(videoPath, Buffer.from(await videoData.arrayBuffer()));
 
-    // Extract audio into chunks to stay under Whisper limits.
+    progress({ stage: "Extracting audio chunks", progress: 15 });
     await fs.mkdir(audioChunkDir, { recursive: true });
     const chunkPattern = path.join(audioChunkDir, "chunk_%03d.mp3");
     await new Promise((resolve, reject) => {
@@ -1097,7 +1217,9 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
           ? resolve()
           : reject(new Error(`FFmpeg audio chunking failed: ${stderr}`))
       );
-      ffmpeg.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
+      ffmpeg.on("error", (err) =>
+        reject(new Error(`FFmpeg spawn error: ${err.message}`))
+      );
     });
 
     const chunkFiles = (await fs.readdir(audioChunkDir))
@@ -1112,25 +1234,31 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
       typeof language === "string" && language.trim().length > 0
         ? language
         : undefined;
+    const totalChunks = chunkFiles.length;
+    progress({
+      stage: `Transcribing audio chunks (0/${totalChunks})`,
+      progress: 20,
+      totalChunks,
+      completedChunks: 0,
+    });
+
     const allSegments = [];
     const allWords = [];
     let fullText = "";
     let detectedLanguage = null;
     let offsetSeconds = 0;
 
-    for (const chunkPath of chunkFiles) {
+    for (let index = 0; index < chunkFiles.length; index += 1) {
+      const chunkPath = chunkFiles[index];
       const audioBuffer = await fs.readFile(chunkPath);
       const audioFile = new File([audioBuffer], path.basename(chunkPath), {
         type: "audio/mpeg",
       });
 
-      const transcription = await openai.audio.transcriptions.create({
-        file: audioFile,
-        model: "whisper-1",
-        language: requestedLanguage,
-        response_format: "verbose_json",
-        timestamp_granularities: ["word", "segment"],
-      });
+      const transcription = await transcribeChunkWithRetry(
+        audioFile,
+        requestedLanguage
+      );
 
       if (!detectedLanguage && transcription.language) {
         detectedLanguage = transcription.language;
@@ -1165,17 +1293,32 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
       offsetSeconds += chunkDuration;
 
       await fs.unlink(chunkPath).catch(() => {});
+
+      const completedChunks = index + 1;
+      progress({
+        stage: `Transcribing audio chunks (${completedChunks}/${totalChunks})`,
+        progress: Math.min(
+          95,
+          20 + Math.round((completedChunks / totalChunks) * 70)
+        ),
+        totalChunks,
+        completedChunks,
+      });
     }
 
-    res.json({
+    progress({
+      stage: "Finalizing transcript",
+      progress: 99,
+      totalChunks,
+      completedChunks: totalChunks,
+    });
+
+    return {
       segments: allSegments,
       words: allWords,
       text: fullText,
       language: detectedLanguage,
-    });
-  } catch (error) {
-    console.error("Transcribe error:", error);
-    res.status(500).json({ error: error.message });
+    };
   } finally {
     await Promise.all(
       cleanupTargets.map(async (target) => {
@@ -1185,6 +1328,191 @@ app.post("/transcribe", authMiddleware, async (req, res) => {
         await fs.rm(target, { recursive: true, force: true }).catch(() => {});
       })
     );
+  }
+};
+
+const processTranscribeQueue = () => {
+  if (transcribeQueueRunning) {
+    return;
+  }
+  transcribeQueueRunning = true;
+  try {
+    while (activeTranscribes < MAX_TRANSCRIBE_CONCURRENCY) {
+      const nextId = transcribeQueue.shift();
+      if (!nextId) {
+        break;
+      }
+      const job = transcribeJobs.get(nextId);
+      if (!job || job.status !== "queued") {
+        continue;
+      }
+      activeTranscribes += 1;
+      updateTranscribeJob(job.id, {
+        status: "processing",
+        stage: "Starting transcription",
+        progress: Math.max(job.progress || 0, 1),
+      });
+      runTranscriptionPipeline({
+        sessionId: job.sessionId,
+        videoKey: job.videoKey,
+        language: job.language,
+        onProgress: (patch) => {
+          updateTranscribeJob(job.id, patch);
+        },
+      })
+        .then((result) => {
+          updateTranscribeJob(job.id, {
+            status: "complete",
+            stage: "Transcription complete",
+            progress: 100,
+            result,
+            error: null,
+            completedAt: new Date().toISOString(),
+          });
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : "Transcription failed.";
+          console.error("Transcribe job error:", job.id, message);
+          updateTranscribeJob(job.id, {
+            status: "error",
+            stage: "Transcription failed",
+            error: message,
+            completedAt: new Date().toISOString(),
+          });
+        })
+        .finally(() => {
+          activeTranscribes = Math.max(0, activeTranscribes - 1);
+          processTranscribeQueue();
+        });
+    }
+  } finally {
+    transcribeQueueRunning = false;
+  }
+};
+
+const enqueueTranscribeJob = ({ sessionId, videoKey, language }) => {
+  const existingJobId = transcribeJobBySession.get(sessionId);
+  if (existingJobId) {
+    const existing = transcribeJobs.get(existingJobId);
+    if (
+      existing &&
+      (existing.status === "queued" || existing.status === "processing")
+    ) {
+      return existing;
+    }
+    if (
+      existing &&
+      existing.status === "complete" &&
+      existing.videoKey === videoKey &&
+      existing.language === language
+    ) {
+      return existing;
+    }
+  }
+
+  const jobId = uuidv4().slice(0, 12);
+  const now = new Date().toISOString();
+  const job = {
+    id: jobId,
+    sessionId,
+    videoKey,
+    language,
+    status: "queued",
+    stage: "Queued",
+    progress: 0,
+    totalChunks: 0,
+    completedChunks: 0,
+    result: null,
+    error: null,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+  };
+  transcribeJobs.set(jobId, job);
+  transcribeJobBySession.set(sessionId, jobId);
+  transcribeQueue.push(jobId);
+  processTranscribeQueue();
+
+  setTimeout(() => {
+    const latestJobId = transcribeJobBySession.get(sessionId);
+    if (latestJobId === jobId) {
+      transcribeJobBySession.delete(sessionId);
+    }
+    transcribeJobs.delete(jobId);
+  }, TRANSCRIBE_JOB_RETENTION_MS);
+
+  return job;
+};
+
+app.post("/transcribe/queue", authMiddleware, async (req, res) => {
+  try {
+    const { sessionId, videoKey, language = "en" } = req.body || {};
+    if (!sessionId || typeof sessionId !== "string") {
+      return res.status(400).json({ error: "Missing sessionId" });
+    }
+    if (!videoKey || typeof videoKey !== "string") {
+      return res.status(400).json({ error: "Missing videoKey" });
+    }
+    const job = enqueueTranscribeJob({
+      sessionId,
+      videoKey,
+      language: typeof language === "string" ? language : "en",
+    });
+    const includeResult = job.status === "complete";
+    const statusCode = includeResult ? 200 : 202;
+    return res
+      .status(statusCode)
+      .json(toTranscribeJobPayload(job, includeResult));
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to queue transcription.";
+    return res.status(500).json({ error: message });
+  }
+});
+
+app.get("/transcribe/status/:sessionId", authMiddleware, (req, res) => {
+  const sessionId = req.params.sessionId;
+  if (!sessionId) {
+    return res.status(400).json({ error: "Missing sessionId" });
+  }
+  const jobId = transcribeJobBySession.get(sessionId);
+  if (!jobId) {
+    return res.status(404).json({ error: "Transcription job not found." });
+  }
+  const job = transcribeJobs.get(jobId);
+  if (!job) {
+    transcribeJobBySession.delete(sessionId);
+    return res.status(404).json({ error: "Transcription job not found." });
+  }
+  const includeResult = job.status === "complete";
+  const statusCode =
+    job.status === "complete" || job.status === "error" ? 200 : 202;
+  return res
+    .status(statusCode)
+    .json(toTranscribeJobPayload(job, includeResult));
+});
+
+// Transcribe video synchronously (legacy endpoint).
+app.post("/transcribe", authMiddleware, async (req, res) => {
+  try {
+    const { sessionId, videoKey, language = "en" } = req.body || {};
+    if (!sessionId || !videoKey) {
+      return res.status(400).json({ error: "Missing sessionId or videoKey" });
+    }
+    const result = await runTranscriptionPipeline({
+      sessionId,
+      videoKey,
+      language,
+    });
+    return res.json(result);
+  } catch (error) {
+    console.error("Transcribe error:", error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : "Transcription failed.",
+    });
   }
 });
 
@@ -1629,6 +1957,9 @@ app.listen(PORT, () => {
   );
   console.log(
     `[worker] editor export ffmpeg threads per job=${EXPORT_FFMPEG_THREADS} (cpuCount=${CPU_COUNT})`
+  );
+  console.log(
+    `[worker] transcription concurrency=${MAX_TRANSCRIBE_CONCURRENCY} chunkSeconds=${TRANSCRIBE_CHUNK_SECONDS} chunkBitrate=${TRANSCRIBE_AUDIO_BITRATE}`
   );
   console.log(
     `[worker] editor export quality preset=${EXPORT_VIDEO_PRESET} crf=${EXPORT_VIDEO_CRF} audioBitrate=${EXPORT_AUDIO_BITRATE} frameFormat=${EXPORT_FRAME_FORMAT}`
