@@ -2247,6 +2247,28 @@ const runTranscriptionPipeline = async ({
         Number.isFinite(current.coverage) && current.coverage != null
           ? current.coverage
           : -1;
+      const nextDecodeHealthy =
+        next.code === 0 && !hasAacDecodeErrors(next.stderr);
+      const currentDecodeHealthy =
+        current.code === 0 && !hasAacDecodeErrors(current.stderr);
+      if (nextDecodeHealthy && !currentDecodeHealthy) {
+        if (
+          nextCoverage < 0 ||
+          currentCoverage < 0 ||
+          nextCoverage >= currentCoverage - 0.25
+        ) {
+          return true;
+        }
+      }
+      if (currentDecodeHealthy && !nextDecodeHealthy) {
+        if (
+          nextCoverage < 0 ||
+          currentCoverage < 0 ||
+          currentCoverage >= nextCoverage - 0.25
+        ) {
+          return false;
+        }
+      }
       if (nextCoverage > currentCoverage + 0.03) {
         return true;
       }
@@ -2561,9 +2583,32 @@ const runTranscriptionPipeline = async ({
           const cleanCandidate = await runCleanAudioChunking(
             bestExtractionCandidate.audioStreamIndex
           );
-          if (isBetterExtractionCandidate(cleanCandidate, bestExtractionCandidate)) {
+          const cleanCoverage =
+            Number.isFinite(cleanCandidate.coverage) &&
+            cleanCandidate.coverage != null
+              ? cleanCandidate.coverage
+              : null;
+          const bestCoverage =
+            Number.isFinite(bestExtractionCandidate.coverage) &&
+            bestExtractionCandidate.coverage != null
+              ? bestExtractionCandidate.coverage
+              : null;
+          const cleanCoverageAcceptable =
+            cleanCoverage == null ||
+            bestCoverage == null ||
+            cleanCoverage >= Math.max(0.6, bestCoverage - 0.25);
+          const shouldPreferCleanCandidate =
+            isBetterExtractionCandidate(cleanCandidate, bestExtractionCandidate) ||
+            cleanCoverageAcceptable;
+          if (shouldPreferCleanCandidate) {
             const cachedClean = await cacheBestExtractionCandidate(cleanCandidate);
             bestExtractionCandidate = cachedClean;
+          } else {
+            console.warn(
+              `[transcribe] clean-audio candidate had much lower coverage than current best (${Math.round(
+                (cleanCoverage ?? 0) * 100
+              )}% vs ${Math.round((bestCoverage ?? 0) * 100)}%); keeping current extraction candidate.`
+            );
           }
         } catch (error) {
           extractionErrors.push(

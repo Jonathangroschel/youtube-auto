@@ -62,11 +62,41 @@ async function workerFetch(endpoint: string, options: RequestInit = {}) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("Worker request timed out.");
     }
+    if (error instanceof TypeError) {
+      const message = String(error.message ?? "").toLowerCase();
+      if (
+        /fetch failed|network|econn|socket|enotfound|eai_again|refused|unreachable/i.test(
+          message
+        )
+      ) {
+        throw new Error(
+          "Unable to reach the transcription worker. Please retry in a moment."
+        );
+      }
+    }
     throw error;
   } finally {
     clearTimeout(timeoutId);
   }
 }
+
+const getTranscribeRouteErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    const normalized = error.message.trim();
+    if (!normalized) {
+      return fallback;
+    }
+    if (
+      /failed to fetch|fetch failed|network|econn|socket|enotfound|eai_again|refused|unreachable/i.test(
+        normalized.toLowerCase()
+      )
+    ) {
+      return "Unable to connect to the transcription service. Please try again.";
+    }
+    return normalized;
+  }
+  return fallback;
+};
 
 const resolveTranscriptSegments = (
   workerResult: WorkerTranscriptionResult,
@@ -291,10 +321,10 @@ export async function POST(request: Request) {
       { status: 202 }
     );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Transcription failed. Verify AUTOCLIP_WORKER_URL is reachable.";
+    const message = getTranscribeRouteErrorMessage(
+      error,
+      "Transcription failed. Verify AUTOCLIP_WORKER_URL is reachable."
+    );
     session.status = "error";
     session.error = message;
     await saveSession(session);
@@ -383,8 +413,10 @@ export async function GET(request: Request) {
       { status: 202 }
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to fetch transcription status.";
+    const message = getTranscribeRouteErrorMessage(
+      error,
+      "Unable to fetch transcription status."
+    );
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

@@ -272,6 +272,56 @@ const MIN_CLIP_SECONDS = 1;
 const MAX_CLIP_SECONDS = Number.POSITIVE_INFINITY;
 const TRANSCRIPTION_POLL_INTERVAL_MS = 2500;
 const TRANSCRIPTION_POLL_TIMEOUT_MS = 45 * 60 * 1000;
+const TRANSCRIPTION_FETCH_RETRY_ATTEMPTS = 3;
+const TRANSCRIPTION_FETCH_RETRY_DELAY_MS = 1000;
+const TRANSCRIPTION_POLL_NETWORK_FAILURE_LIMIT = 8;
+
+const waitFor = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const isTransientFetchError = (error: unknown) => {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return /failed to fetch|fetch failed|network|load failed|timeout|timed out|connection|socket|econn|abort/i.test(
+    message.toLowerCase()
+  );
+};
+
+const fetchWithTransientRetry = async (
+  input: RequestInfo | URL,
+  init: RequestInit,
+  options?: {
+    attempts?: number;
+    delayMs?: number;
+  }
+) => {
+  const attempts = Math.max(1, options?.attempts ?? TRANSCRIPTION_FETCH_RETRY_ATTEMPTS);
+  const delayMs = Math.max(100, options?.delayMs ?? TRANSCRIPTION_FETCH_RETRY_DELAY_MS);
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (!isTransientFetchError(error) || attempt >= attempts) {
+        throw error;
+      }
+      await waitFor(delayMs * attempt);
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to fetch the server endpoint.");
+};
 
 const stepDefinitions: StepDefinition[] = [
   {
@@ -1296,20 +1346,42 @@ export default function AutoClipPage() {
   const pollTranscriptionUntilComplete = useCallback(
     async (activeSessionId: string) => {
       const startedAt = Date.now();
+      let networkFailures = 0;
       while (Date.now() - startedAt < TRANSCRIPTION_POLL_TIMEOUT_MS) {
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, TRANSCRIPTION_POLL_INTERVAL_MS);
-        });
+        await waitFor(TRANSCRIPTION_POLL_INTERVAL_MS);
 
-        const statusResponse = await fetch(
-          `/api/autoclip/transcribe?sessionId=${encodeURIComponent(
-            activeSessionId
-          )}`,
-          {
-            method: "GET",
-            cache: "no-store",
+        let statusResponse: Response;
+        try {
+          statusResponse = await fetchWithTransientRetry(
+            `/api/autoclip/transcribe?sessionId=${encodeURIComponent(
+              activeSessionId
+            )}`,
+            {
+              method: "GET",
+              cache: "no-store",
+            },
+            {
+              attempts: 2,
+              delayMs: 800,
+            }
+          );
+          networkFailures = 0;
+        } catch (error) {
+          if (isTransientFetchError(error)) {
+            networkFailures += 1;
+            setTranscriptionStageLabel(
+              "Connection interrupted. Reconnecting to transcription service..."
+            );
+            if (networkFailures < TRANSCRIPTION_POLL_NETWORK_FAILURE_LIMIT) {
+              continue;
+            }
+            throw new Error(
+              "Lost connection while checking transcription status. Please try again."
+            );
           }
-        );
+          throw error;
+        }
+
         const statusPayload = await statusResponse.json().catch(() => ({}));
 
         if (statusResponse.status === 202) {
@@ -1364,17 +1436,20 @@ export default function AutoClipPage() {
     setSelectedClipIds([]);
     setView("processingMoments");
     try {
-      const transcribeResponse = await fetch("/api/autoclip/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          language:
-            transcriptionLanguage === "auto"
-              ? null
-              : transcriptionLanguage,
-        }),
-      });
+      const transcribeResponse = await fetchWithTransientRetry(
+        "/api/autoclip/transcribe",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            language:
+              transcriptionLanguage === "auto"
+                ? null
+                : transcriptionLanguage,
+          }),
+        }
+      );
       const transcribePayload = await transcribeResponse.json().catch(() => ({}));
 
       if (transcribeResponse.status === 202) {
@@ -1411,15 +1486,18 @@ export default function AutoClipPage() {
       setTranscriptionProgress(100);
       setTranscriptionStageLabel("Transcription complete");
       setProcessingStage("highlighting");
-      const highlightResponse = await fetch("/api/autoclip/highlight", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          instructions: resolvedInstructions,
-          description: description.trim(),
-        }),
-      });
+      const highlightResponse = await fetchWithTransientRetry(
+        "/api/autoclip/highlight",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            instructions: resolvedInstructions,
+            description: description.trim(),
+          }),
+        }
+      );
       const highlightPayload = await highlightResponse.json().catch(() => ({}));
       if (!highlightResponse.ok) {
         const message =
