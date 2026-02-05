@@ -1223,6 +1223,39 @@ const isChunkTooLargeError = (error) => {
   );
 };
 
+const hasTranscriptionContent = (transcription) => {
+  const hasSegmentContent = Array.isArray(transcription?.segments)
+    ? transcription.segments.some((segment) => {
+        const start = Number(segment?.start);
+        const end = Number(segment?.end);
+        const text = String(segment?.text ?? "").trim();
+        return (
+          Number.isFinite(start) &&
+          Number.isFinite(end) &&
+          end > start &&
+          text.length > 0
+        );
+      })
+    : false;
+  const hasWordContent = Array.isArray(transcription?.words)
+    ? transcription.words.some((word) => {
+        const start = Number(word?.start);
+        const end = Number(word?.end);
+        const text = String(word?.word ?? word?.text ?? "").trim();
+        return (
+          Number.isFinite(start) &&
+          Number.isFinite(end) &&
+          end > start &&
+          text.length > 0
+        );
+      })
+    : false;
+  const hasTextContent =
+    typeof transcription?.text === "string" &&
+    transcription.text.trim().length > 0;
+  return hasSegmentContent || hasWordContent || hasTextContent;
+};
+
 const getAudioMimeType = (audioPath) => {
   const ext = path.extname(audioPath).toLowerCase();
   if (ext === ".wav") {
@@ -1513,8 +1546,11 @@ const transcribeChunkViaSegmentedUpload = async ({
   const allSegments = [];
   const allWords = [];
   let fullText = "";
+  let successfulParts = 0;
+  const partErrors = [];
   try {
-    for (const partPath of partFiles) {
+    for (let partIndex = 0; partIndex < partFiles.length; partIndex += 1) {
+      const partPath = partFiles[partIndex];
       const metadata = await getVideoMetadata(partPath).catch(() => null);
       const partDuration =
         metadata &&
@@ -1522,20 +1558,42 @@ const transcribeChunkViaSegmentedUpload = async ({
         metadata.duration > 0
           ? metadata.duration
           : Math.max(30, TRANSCRIBE_UPLOAD_SEGMENT_SECONDS);
-      const prepared = await buildTranscribeAudioFile(partPath);
-      let transcription;
+
+      let prepared = null;
+      let transcription = null;
+      let partError = null;
       try {
+        prepared = await buildTranscribeAudioFile(partPath);
         transcription = await transcribeChunkWithRetry(
           prepared.audioFile,
           requestedLanguage
         );
+      } catch (error) {
+        partError = error;
       } finally {
-        await Promise.all(
-          prepared.cleanupPaths.map(async (filePath) => {
-            await fs.unlink(filePath).catch(() => {});
-          })
-        );
+        if (prepared?.cleanupPaths?.length) {
+          await Promise.all(
+            prepared.cleanupPaths.map(async (filePath) => {
+              await fs.unlink(filePath).catch(() => {});
+            })
+          );
+        }
       }
+
+      if (!transcription || !hasTranscriptionContent(transcription)) {
+        const message =
+          partError instanceof Error
+            ? partError.message
+            : "Segment transcription returned no usable text.";
+        partErrors.push(`part ${partIndex + 1}: ${message}`);
+        console.warn(
+          `[transcribe] skipping segmented upload part ${partIndex + 1}/${partFiles.length}: ${message}`
+        );
+        localOffset += partDuration;
+        continue;
+      }
+
+      successfulParts += 1;
       if (!detectedLanguage && transcription?.language) {
         detectedLanguage = transcription.language;
       }
@@ -1559,6 +1617,12 @@ const transcribeChunkViaSegmentedUpload = async ({
     }
   } finally {
     await fs.rm(splitDir, { recursive: true, force: true }).catch(() => {});
+  }
+
+  if (successfulParts === 0) {
+    const detail =
+      partErrors.length > 0 ? ` ${partErrors[0]}` : " No segment could be transcribed.";
+    throw new Error(`Segmented upload transcription failed.${detail}`);
   }
 
   return {
@@ -2316,28 +2380,78 @@ const runTranscriptionPipeline = async ({
       };
     };
     const cacheBestExtractionCandidate = async (candidate) => {
-      await fs.rm(selectedChunkDir, { recursive: true, force: true }).catch(() => {});
-      await fs.mkdir(selectedChunkDir, { recursive: true });
-      const copiedChunks = [];
-      const copiedDurationByPath = new Map();
-      for (let index = 0; index < candidate.chunks.length; index += 1) {
-        const sourcePath = candidate.chunks[index];
-        const targetPath = path.join(
-          selectedChunkDir,
-          `chunk_${String(index).padStart(3, "0")}${path.extname(sourcePath)}`
-        );
-        await fs.copyFile(sourcePath, targetPath);
-        copiedChunks.push(targetPath);
-        const duration = candidate.durationByPath.get(sourcePath);
-        if (Number.isFinite(duration) && duration > 0) {
-          copiedDurationByPath.set(targetPath, duration);
+      const cacheToken = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const stagingDir = path.join(
+        TEMP_DIR,
+        `${sessionId}_selected_audio_chunks_staging_${cacheToken}`
+      );
+      const backupDir = path.join(
+        TEMP_DIR,
+        `${sessionId}_selected_audio_chunks_backup_${cacheToken}`
+      );
+      const candidateDurations =
+        candidate.durationByPath instanceof Map ? candidate.durationByPath : null;
+      const stagedEntries = [];
+      let hasExistingSelected = false;
+
+      try {
+        await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+        await fs.mkdir(stagingDir, { recursive: true });
+
+        for (let index = 0; index < candidate.chunks.length; index += 1) {
+          const sourcePath = candidate.chunks[index];
+          const fileName = `chunk_${String(index).padStart(3, "0")}${path.extname(sourcePath)}`;
+          const stagedPath = path.join(stagingDir, fileName);
+          await fs.copyFile(sourcePath, stagedPath);
+          const duration = candidateDurations ? candidateDurations.get(sourcePath) : null;
+          stagedEntries.push({
+            fileName,
+            duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+          });
+        }
+
+        const selectedStats = await fs.stat(selectedChunkDir).catch(() => null);
+        hasExistingSelected = Boolean(selectedStats);
+        if (hasExistingSelected) {
+          await fs.rm(backupDir, { recursive: true, force: true }).catch(() => {});
+          await fs.rename(selectedChunkDir, backupDir);
+        }
+
+        try {
+          await fs.rename(stagingDir, selectedChunkDir);
+        } catch (error) {
+          if (hasExistingSelected) {
+            await fs.rm(selectedChunkDir, { recursive: true, force: true }).catch(() => {});
+            await fs.rename(backupDir, selectedChunkDir).catch(() => {});
+          }
+          throw error;
+        }
+
+        if (hasExistingSelected) {
+          await fs.rm(backupDir, { recursive: true, force: true }).catch(() => {});
+        }
+
+        const copiedChunks = [];
+        const copiedDurationByPath = new Map();
+        for (const entry of stagedEntries) {
+          const targetPath = path.join(selectedChunkDir, entry.fileName);
+          copiedChunks.push(targetPath);
+          if (Number.isFinite(entry.duration) && entry.duration > 0) {
+            copiedDurationByPath.set(targetPath, entry.duration);
+          }
+        }
+
+        return {
+          ...candidate,
+          chunks: copiedChunks,
+          durationByPath: copiedDurationByPath,
+        };
+      } finally {
+        await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+        if (!hasExistingSelected) {
+          await fs.rm(backupDir, { recursive: true, force: true }).catch(() => {});
         }
       }
-      return {
-        ...candidate,
-        chunks: copiedChunks,
-        durationByPath: copiedDurationByPath,
-      };
     };
     let bestExtractionCandidate = null;
 
@@ -2447,8 +2561,8 @@ const runTranscriptionPipeline = async ({
           const cleanCandidate = await runCleanAudioChunking(
             bestExtractionCandidate.audioStreamIndex
           );
-          const cachedClean = await cacheBestExtractionCandidate(cleanCandidate);
-          if (isBetterExtractionCandidate(cachedClean, bestExtractionCandidate)) {
+          if (isBetterExtractionCandidate(cleanCandidate, bestExtractionCandidate)) {
+            const cachedClean = await cacheBestExtractionCandidate(cleanCandidate);
             bestExtractionCandidate = cachedClean;
           }
         } catch (error) {
@@ -2484,30 +2598,182 @@ const runTranscriptionPipeline = async ({
         Number.isFinite(bestExtractionCandidate.coverage) &&
         bestExtractionCandidate.coverage < 0.7
       ) {
-        throw new Error(
-          `Audio extraction coverage is too low (${Math.round(
+        console.warn(
+          `[transcribe] audio extraction coverage is low (${Math.round(
             bestExtractionCandidate.coverage * 100
-          )}% of ${Math.round(
-            sourceDurationSeconds
-          )}s). Source audio appears heavily corrupted.`
+          )}% of ${Math.round(sourceDurationSeconds)}s). Continuing with best available chunks.`
         );
       }
-    }
-
-    if (!chunkFiles.length) {
-      const detail =
-        extractionErrors.length > 0
-          ? ` ${extractionErrors.slice(0, 4).join(" | ")}`
-          : "";
-      throw new Error(
-        `No audio chunks were created for transcription.${detail}`
-      );
     }
 
     const requestedLanguage =
       typeof language === "string" && language.trim().length > 0
         ? language
         : undefined;
+    const runRescueTranscription = async (reasonLabel) => {
+      progress({
+        stage: "Recovering audio with resilient fallback",
+        progress: 25,
+      });
+      const buildRescueArgs = ({ outputPath, audioStreamIndex, panFirstChannel }) => [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+discardcorrupt",
+        "-err_detect",
+        "ignore_err",
+        "-ignore_unknown",
+        "-y",
+        "-i",
+        videoPath,
+        ...(audioStreamIndex != null
+          ? ["-map", `0:${audioStreamIndex}`]
+          : ["-map", "0:a:0?"]),
+        "-vn",
+        "-sn",
+        "-dn",
+        ...(panFirstChannel
+          ? ["-af", "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0"]
+          : ["-af", "aresample=16000:async=1:first_pts=0", "-ac", "1"]),
+        "-ar",
+        "16000",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        TRANSCRIBE_UPLOAD_FALLBACK_BITRATE,
+        outputPath,
+      ];
+      const rescuePlans = [
+        ...audioStreamCandidates.map((index) => ({
+          label:
+            index == null ? "stream-default" : `stream-${String(index)}`,
+          audioStreamIndex: index,
+          panFirstChannel: false,
+        })),
+        {
+          label: "pan-first-channel",
+          audioStreamIndex: null,
+          panFirstChannel: true,
+        },
+      ];
+      const rescueErrors = [];
+      for (const plan of rescuePlans) {
+        const rescueAudioPath = path.join(
+          TEMP_DIR,
+          `${sessionId}_rescue_audio_${plan.label}.mp3`
+        );
+        cleanupTargets.push(rescueAudioPath);
+        await fs.unlink(rescueAudioPath).catch(() => {});
+        let result;
+        try {
+          result = await runChunkingPass(
+            buildRescueArgs({
+              outputPath: rescueAudioPath,
+              audioStreamIndex: plan.audioStreamIndex,
+              panFirstChannel: plan.panFirstChannel,
+            }),
+            `rescue-audio-${plan.label}`
+          );
+        } catch (error) {
+          rescueErrors.push(
+            `${plan.label}: ${error instanceof Error ? error.message : String(error)}`
+          );
+          continue;
+        }
+        const stats = await fs.stat(rescueAudioPath).catch(() => null);
+        if (!stats || stats.size <= 4096) {
+          rescueErrors.push(`${plan.label}: produced no usable rescue audio.`);
+          continue;
+        }
+        if (result.code !== 0) {
+          console.warn(
+            `[transcribe] rescue extraction ${plan.label} exited with code ${result.code}; using partial output. ${compactFfmpegMessage(
+              result.stderr
+            )}`
+          );
+        }
+        try {
+          const rescueTranscript = await transcribeChunkViaSegmentedUpload({
+            chunkPath: rescueAudioPath,
+            chunkDuration: sourceDurationSeconds,
+            requestedLanguage,
+          });
+          if (hasTranscriptionContent(rescueTranscript)) {
+            console.warn(
+              `[transcribe] rescue transcription succeeded via ${plan.label} after ${reasonLabel}.`
+            );
+            return rescueTranscript;
+          }
+          rescueErrors.push(`${plan.label}: rescue transcript had no usable text.`);
+        } catch (error) {
+          rescueErrors.push(
+            `${plan.label}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      }
+      const detail =
+        rescueErrors.length > 0 ? ` ${rescueErrors.slice(0, 4).join(" | ")}` : "";
+      throw new Error(`Unable to recover transcript with rescue mode.${detail}`);
+    };
+
+    if (!chunkFiles.length) {
+      const detail =
+        extractionErrors.length > 0
+          ? ` ${extractionErrors.slice(0, 4).join(" | ")}`
+          : "";
+      console.warn(
+        `[transcribe] no extraction chunks were created; attempting rescue mode.${detail}`
+      );
+      const rescueTranscript = await runRescueTranscription(
+        `no extraction chunks${detail}`
+      );
+      progress({
+        stage: "Finalizing rescued transcript",
+        progress: 99,
+        totalChunks: 0,
+        completedChunks: 0,
+      });
+      return rescueTranscript;
+    }
+    const missingChunks = [];
+    const verifiedChunkFiles = [];
+    for (const chunkPath of chunkFiles) {
+      const stats = await fs.stat(chunkPath).catch(() => null);
+      if (stats && stats.size > 0) {
+        verifiedChunkFiles.push(chunkPath);
+      } else {
+        missingChunks.push(path.basename(chunkPath));
+        chunkDurationByPath.delete(chunkPath);
+      }
+    }
+    if (missingChunks.length > 0) {
+      const suffix =
+        missingChunks.length > 4 ? ` (+${missingChunks.length - 4} more)` : "";
+      console.warn(
+        `[transcribe] dropped ${missingChunks.length} missing/unreadable selected chunk(s): ${missingChunks
+          .slice(0, 4)
+          .join(", ")}${suffix}`
+      );
+    }
+    chunkFiles = verifiedChunkFiles;
+    if (!chunkFiles.length) {
+      console.warn(
+        "[transcribe] selected chunk set has no readable files; attempting rescue mode."
+      );
+      const rescueTranscript = await runRescueTranscription(
+        "selected chunks missing/unreadable"
+      );
+      progress({
+        stage: "Finalizing rescued transcript",
+        progress: 99,
+        totalChunks: 0,
+        completedChunks: 0,
+      });
+      return rescueTranscript;
+    }
     const totalChunks = chunkFiles.length;
     progress({
       stage: `Transcribing audio chunks (0/${totalChunks})`,
@@ -2634,36 +2900,7 @@ const runTranscriptionPipeline = async ({
         );
       }
 
-      const hasSegmentContent = Array.isArray(transcription?.segments)
-        ? transcription.segments.some((segment) => {
-            const start = Number(segment?.start);
-            const end = Number(segment?.end);
-            const text = String(segment?.text ?? "").trim();
-            return (
-              Number.isFinite(start) &&
-              Number.isFinite(end) &&
-              end > start &&
-              text.length > 0
-            );
-          })
-        : false;
-      const hasWordContent = Array.isArray(transcription?.words)
-        ? transcription.words.some((word) => {
-            const start = Number(word?.start);
-            const end = Number(word?.end);
-            const text = String(word?.word ?? word?.text ?? "").trim();
-            return (
-              Number.isFinite(start) &&
-              Number.isFinite(end) &&
-              end > start &&
-              text.length > 0
-            );
-          })
-        : false;
-      const hasTextContent =
-        typeof transcription?.text === "string" &&
-        transcription.text.trim().length > 0;
-      if (transcription && !hasSegmentContent && !hasWordContent && !hasTextContent) {
+      if (transcription && !hasTranscriptionContent(transcription)) {
         failedChunks += 1;
         const message = "Chunk transcription returned no usable text.";
         skippedChunkErrors.push(`chunk ${index + 1}: ${message}`);
@@ -2755,11 +2992,23 @@ const runTranscriptionPipeline = async ({
     }
 
     if (successfulChunks === 0) {
-      const detail =
+      const detailMessage =
         skippedChunkErrors.length > 0
-          ? ` ${skippedChunkErrors[0]}`
-          : " Audio stream appears unreadable.";
-      throw new Error(`Unable to transcribe any audio chunks.${detail}`);
+          ? skippedChunkErrors[0]
+          : "Audio stream appears unreadable.";
+      console.warn(
+        `[transcribe] no chunk transcription succeeded; attempting rescue mode. ${detailMessage}`
+      );
+      const rescueTranscript = await runRescueTranscription(
+        `all chunk transcriptions failed: ${detailMessage}`
+      );
+      progress({
+        stage: "Finalizing rescued transcript",
+        progress: 99,
+        totalChunks,
+        completedChunks: totalChunks,
+      });
+      return rescueTranscript;
     }
 
     const sourceDurationForCoverage =
@@ -2779,15 +3028,29 @@ const runTranscriptionPipeline = async ({
       sourceDurationForCoverage >= 480 &&
       (chunkCoverageRatio < 0.65 || transcriptCoverageRatio < 0.2)
     ) {
-      throw new Error(
-        `Transcript coverage is too low (${Math.round(
-          chunkCoverageRatio * 100
-        )}% decoded chunks, ${Math.round(
-          transcriptCoverageRatio * 100
-        )}% timestamp coverage of ${Math.round(
-          sourceDurationForCoverage
-        )}s). Source audio appears too corrupted for reliable clipping.`
+      const coverageMessage = `Transcript coverage is low (${Math.round(
+        chunkCoverageRatio * 100
+      )}% decoded chunks, ${Math.round(
+        transcriptCoverageRatio * 100
+      )}% timestamp coverage of ${Math.round(sourceDurationForCoverage)}s).`;
+      console.warn(
+        `[transcribe] ${coverageMessage} Attempting rescue mode before finalizing partial transcript.`
       );
+      try {
+        const rescueTranscript = await runRescueTranscription("low transcript coverage");
+        progress({
+          stage: "Finalizing rescued transcript",
+          progress: 99,
+          totalChunks,
+          completedChunks: totalChunks,
+        });
+        return rescueTranscript;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[transcribe] rescue mode after low coverage failed; returning partial transcript. ${message}`
+        );
+      }
     }
 
     progress({
