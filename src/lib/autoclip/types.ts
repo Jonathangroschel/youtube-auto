@@ -84,6 +84,10 @@ export type AutoClipSession = {
   tempDir: string;
   /** Worker session ID from Railway worker */
   workerSessionId?: string;
+  /** Active worker transcription job ID (if queued/processing). */
+  workerTranscribeJobId?: string | null;
+  /** Last requested language for worker transcription re-queue. */
+  workerTranscribeLanguage?: string;
   input?: AutoClipInput;
   transcript?: TranscriptBundle;
   highlights?: AutoClipHighlight[];

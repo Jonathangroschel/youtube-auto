@@ -184,6 +184,72 @@ const applyWorkerTranscriptToSession = async (
   return session.transcript;
 };
 
+const queueWorkerTranscription = async (
+  session: Awaited<ReturnType<typeof getSession>>,
+  language: string
+): Promise<WorkerTranscribeStatusPayload> => {
+  if (!session?.workerSessionId || !session.input?.videoKey) {
+    throw new Error("Worker session is not ready for transcription.");
+  }
+
+  const workerRequestBody = JSON.stringify({
+    sessionId: session.workerSessionId,
+    videoKey: session.input.videoKey,
+    language,
+  });
+
+  const response = await workerFetch("/transcribe/queue", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: workerRequestBody,
+  });
+
+  const workerPayload =
+    (await response.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;
+
+  // Backward-compatible fallback for workers that only expose `/transcribe`.
+  if (response.status === 404) {
+    const legacyResponse = await workerFetch("/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: workerRequestBody,
+    });
+    const legacyPayload =
+      (await legacyResponse.json().catch(() => ({}))) as WorkerTranscriptionResult & {
+        error?: string;
+      };
+    if (!legacyResponse.ok) {
+      const message =
+        typeof legacyPayload?.error === "string" && legacyPayload.error
+          ? legacyPayload.error
+          : `Worker transcription failed (${legacyResponse.status}).`;
+      throw new Error(message);
+    }
+    return {
+      status: "complete",
+      stage: "Transcription complete",
+      progress: 100,
+      result: legacyPayload,
+    };
+  }
+
+  if (response.status === 401) {
+    throw new Error(
+      "Worker authentication failed (check AUTOCLIP_WORKER_SECRET / WORKER_SECRET)."
+    );
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof workerPayload.error === "string" && workerPayload.error
+        ? workerPayload.error
+        : `Failed to queue transcription (${response.status}).`;
+    throw new Error(message);
+  }
+
+  return workerPayload;
+};
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId : null;
@@ -230,58 +296,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const workerRequestBody = JSON.stringify({
-      sessionId: session.workerSessionId,
-      videoKey: session.input.videoKey,
-      language,
-    });
-
-    const response = await workerFetch("/transcribe/queue", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: workerRequestBody,
-    });
-
-    const workerPayload =
-      (await response.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;
-
-    // Backward-compatible fallback for workers that only expose `/transcribe`.
-    if (response.status === 404) {
-      const legacyResponse = await workerFetch("/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: workerRequestBody,
-      });
-      const legacyPayload =
-        (await legacyResponse.json().catch(() => ({}))) as WorkerTranscriptionResult & {
-          error?: string;
-        };
-      if (!legacyResponse.ok) {
-        const message =
-          typeof legacyPayload?.error === "string" && legacyPayload.error
-            ? legacyPayload.error
-            : `Worker transcription failed (${legacyResponse.status}).`;
-        throw new Error(message);
-      }
-      const transcript = await applyWorkerTranscriptToSession(session, legacyPayload);
-      return NextResponse.json({ status: "complete", transcript });
-    }
-
-    if (response.status === 401) {
-      throw new Error(
-        "Worker authentication failed (check AUTOCLIP_WORKER_SECRET / WORKER_SECRET)."
-      );
-    }
-
-    if (!response.ok) {
-      const message =
-        typeof workerPayload.error === "string" && workerPayload.error
-          ? workerPayload.error
-          : `Failed to queue transcription (${response.status}).`;
-      throw new Error(message);
-    }
+    const workerPayload = await queueWorkerTranscription(session, language);
 
     if (workerPayload.status === "complete" && workerPayload.result) {
+      session.workerTranscribeJobId = null;
+      session.workerTranscribeLanguage = language;
       const transcript = await applyWorkerTranscriptToSession(
         session,
         workerPayload.result
@@ -289,6 +308,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: "complete", transcript });
     }
 
+    session.workerTranscribeLanguage = language;
+    session.workerTranscribeJobId =
+      typeof workerPayload.jobId === "string" && workerPayload.jobId.trim().length > 0
+        ? workerPayload.jobId.trim()
+        : session.workerTranscribeJobId ?? null;
     session.error = null;
     if (session.status !== "transcribing") {
       await updateSessionStatus(
@@ -366,9 +390,57 @@ export async function GET(request: Request) {
       (await response.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;
 
     if (response.status === 404) {
+      const requeueLanguage =
+        typeof session.workerTranscribeLanguage === "string" &&
+        session.workerTranscribeLanguage.trim().length > 0
+          ? session.workerTranscribeLanguage.trim()
+          : "en";
+      const requeuedPayload = await queueWorkerTranscription(session, requeueLanguage);
+      if (requeuedPayload.status === "complete" && requeuedPayload.result) {
+        session.workerTranscribeJobId = null;
+        session.workerTranscribeLanguage = requeueLanguage;
+        const transcript = await applyWorkerTranscriptToSession(
+          session,
+          requeuedPayload.result
+        );
+        return NextResponse.json({ status: "complete", transcript });
+      }
+      session.workerTranscribeLanguage = requeueLanguage;
+      if (
+        typeof requeuedPayload.jobId === "string" &&
+        requeuedPayload.jobId.trim().length > 0
+      ) {
+        session.workerTranscribeJobId = requeuedPayload.jobId.trim();
+      }
+      session.error = null;
+      if (session.status !== "transcribing") {
+        await updateSessionStatus(
+          session,
+          "transcribing",
+          "Transcription job re-queued after worker restart."
+        );
+      } else {
+        await saveSession(session);
+      }
       return NextResponse.json(
-        { error: "Transcription job not found. Please retry transcription." },
-        { status: 404 }
+        {
+          status: requeuedPayload.status ?? "queued",
+          stage: requeuedPayload.stage ?? "Queued after worker restart",
+          progress:
+            typeof requeuedPayload.progress === "number"
+              ? requeuedPayload.progress
+              : 0,
+          totalChunks:
+            typeof requeuedPayload.totalChunks === "number"
+              ? requeuedPayload.totalChunks
+              : null,
+          completedChunks:
+            typeof requeuedPayload.completedChunks === "number"
+              ? requeuedPayload.completedChunks
+              : null,
+          requeued: true,
+        },
+        { status: 202 }
       );
     }
 
@@ -377,6 +449,7 @@ export async function GET(request: Request) {
     }
 
     if (workerPayload.status === "complete" && workerPayload.result) {
+      session.workerTranscribeJobId = null;
       const transcript = await applyWorkerTranscriptToSession(
         session,
         workerPayload.result
@@ -389,6 +462,7 @@ export async function GET(request: Request) {
         workerPayload.error || "Worker transcription failed. Please retry.";
       session.status = "error";
       session.error = message;
+      session.workerTranscribeJobId = null;
       await saveSession(session);
       return NextResponse.json({ error: message }, { status: 502 });
     }

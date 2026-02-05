@@ -1073,11 +1073,11 @@ const TRANSCRIBE_JOB_RETENTION_MS = toPositiveInt(
 );
 const TRANSCRIBE_OPENAI_TIMEOUT_MS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_TIMEOUT_MS,
-  120000
+  300000
 );
 const TRANSCRIBE_OPENAI_MAX_ATTEMPTS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_MAX_ATTEMPTS,
-  2
+  3
 );
 const TRANSCRIBE_OPENAI_MAX_CONTENT_BYTES = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_MAX_CONTENT_BYTES,
@@ -1091,7 +1091,7 @@ const TRANSCRIBE_UPLOAD_FALLBACK_BITRATE =
   process.env.AUTOCLIP_TRANSCRIBE_UPLOAD_FALLBACK_BITRATE || "32k";
 const TRANSCRIBE_UPLOAD_SEGMENT_SECONDS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_UPLOAD_SEGMENT_SECONDS,
-  300
+  150
 );
 
 const transcribeQueue = [];
@@ -1219,6 +1219,22 @@ const isChunkTooLargeError = (error) => {
     return true;
   }
   return /413|maximum content size limit|content size limit|entity too large|chunk is too large/i.test(
+    message
+  );
+};
+
+const isChunkTranscribeTimeoutError = (error) => {
+  const status = Number(error?.status);
+  if (status === 408 || status === 504) {
+    return true;
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error?.message === "string"
+        ? error.message
+        : "";
+  return /timeout|timed out|etimedout|deadline exceeded|request timeout/i.test(
     message
   );
 };
@@ -2926,8 +2942,17 @@ const runTranscriptionPipeline = async ({
             }
           }
         }
-        if (!transcription && isChunkTooLargeError(lastChunkError)) {
+        if (
+          !transcription &&
+          (isChunkTooLargeError(lastChunkError) ||
+            isChunkTranscribeTimeoutError(lastChunkError))
+        ) {
           try {
+            if (isChunkTranscribeTimeoutError(lastChunkError)) {
+              console.warn(
+                `[transcribe] chunk ${index + 1}/${totalChunks} timed out in direct transcription; retrying via segmented upload fallback.`
+              );
+            }
             transcription = await transcribeChunkViaSegmentedUpload({
               chunkPath,
               chunkDuration,
