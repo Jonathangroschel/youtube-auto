@@ -55,6 +55,7 @@ RUN npx playwright install chromium
 
 # Copy source from worker directory
 COPY worker/server.js ./
+COPY worker/transcription-manager.js ./
 
 # Copy Python crop script
 COPY scripts/autoclip/crop.py ./scripts/crop.py
