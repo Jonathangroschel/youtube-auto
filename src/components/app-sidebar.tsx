@@ -1,12 +1,45 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
 import { cn } from "@/lib/utils";
+
+// Minimalist tooltip component using portal
+function NavTooltip({ label, targetRef, show }: { label: string; targetRef: React.RefObject<HTMLAnchorElement | null>; show: boolean }) {
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (show && targetRef.current) {
+      const rect = targetRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.top + rect.height / 2,
+        left: rect.right + 12,
+      });
+    }
+  }, [show, targetRef]);
+
+  if (!mounted || !show) return null;
+
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-md bg-[#252729] px-2.5 py-1.5 text-xs font-medium text-[#f7f7f8] shadow-lg"
+      style={{ top: position.top, left: position.left }}
+    >
+      {label}
+    </div>,
+    document.body
+  );
+}
 
 type NavItem = {
   label: string;
@@ -274,6 +307,11 @@ export default function AppSidebar() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon(active)}
+                  <NavTooltip
+                    label={item.label}
+                    targetRef={{ current: navItemRefs.current[index] }}
+                    show={hoveredNavIndex === index}
+                  />
                 </Link>
               );
             })}

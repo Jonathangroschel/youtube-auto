@@ -1,5 +1,6 @@
 "use client";
 
+import { NavTooltip } from "@/components/nav-tooltip";
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
 import Link from "next/link";
@@ -597,6 +598,7 @@ export default function DashboardPage() {
                   onMouseEnter={() => setHoveredNavIndex(index)}
                 >
                   {item.icon}
+                  <NavTooltip label={item.label} anchor={navItemRefs.current[index]} visible={hoveredNavIndex === index} onDismiss={() => setHoveredNavIndex(null)} />
                 </Link>
               ))}
             </nav>
