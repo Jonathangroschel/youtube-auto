@@ -24,6 +24,14 @@ const compactFfmpegMessage = (value, limit = 900) => {
     : normalized;
 };
 
+const countDecodeWarnings = (value) => {
+  const message = String(value ?? "");
+  const matches = message.match(
+    /Invalid data found|Reserved bit set|invalid band type|Prediction is not allowed|channel element .*not allocated|Not yet implemented in FFmpeg/gi
+  );
+  return Array.isArray(matches) ? matches.length : 0;
+};
+
 const safeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -248,12 +256,13 @@ const getAudioStreamIndices = async (filePath) =>
             Number.isFinite(stream?.index) ? Number(stream.index) : null
           )
           .filter((value) => value != null);
-        resolve(indices.length > 0 ? indices : [null]);
+        const normalized = [...new Set(indices)].sort((a, b) => a - b);
+        resolve(normalized);
       } catch {
-        resolve([null]);
+        resolve([]);
       }
     });
-    ffprobe.on("error", () => resolve([null]));
+    ffprobe.on("error", () => resolve([]));
   });
 
 const listSegmentFiles = async (directory, prefix) => {
@@ -282,6 +291,22 @@ const pickBestAudioCandidate = (next, current) => {
   if (currentDuration > nextDuration + 1) {
     return false;
   }
+  const nextWarnings = Number(next.decodeWarnings) || 0;
+  const currentWarnings = Number(current.decodeWarnings) || 0;
+  if (nextWarnings < currentWarnings) {
+    return true;
+  }
+  if (currentWarnings < nextWarnings) {
+    return false;
+  }
+  const nextIsPrimary = next.streamIndex == null;
+  const currentIsPrimary = current.streamIndex == null;
+  if (nextIsPrimary && !currentIsPrimary) {
+    return true;
+  }
+  if (!nextIsPrimary && currentIsPrimary) {
+    return false;
+  }
   return next.size > current.size;
 };
 
@@ -292,9 +317,16 @@ const extractCleanAudio = async ({
   requestedStreamIndices,
 }) => {
   const streamIndices =
-    Array.isArray(requestedStreamIndices) && requestedStreamIndices.length > 0
-      ? requestedStreamIndices
-      : [null];
+    [
+      null,
+      ...[
+        ...new Set(
+          (Array.isArray(requestedStreamIndices) ? requestedStreamIndices : [])
+            .map((value) => (Number.isFinite(value) ? Number(value) : null))
+            .filter((value) => value != null)
+        ),
+      ],
+    ];
   const profiles = [
     {
       label: "mono",
@@ -360,6 +392,7 @@ const extractCleanAudio = async ({
         streamIndex,
         code: result.code,
         stderr: result.stderr,
+        decodeWarnings: countDecodeWarnings(result.stderr),
         size: stats.size,
         duration,
       };
@@ -731,8 +764,7 @@ const transcribeSegmentWithFallback = async ({
 
   if (
     isChunkTooLargeError(lastError) ||
-    isChunkTranscribeTimeoutError(lastError) ||
-    isOpenAIConnectionError(lastError)
+    isChunkTranscribeTimeoutError(lastError)
   ) {
     const splitDir = path.join(
       tmpDir,
@@ -906,6 +938,9 @@ const buildTranscriptionPipeline = (config) => {
           console.warn(
             `[transcribe] skipping segment ${index + 1}/${totalSegments}: ${message}`
           );
+          if (isOpenAIConnectionError(error) && successfulSegments === 0) {
+            throw error;
+          }
         }
 
         offsetSeconds += segmentDuration;
