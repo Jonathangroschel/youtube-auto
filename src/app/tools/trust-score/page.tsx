@@ -1671,7 +1671,98 @@ export default function TrustScorePage() {
                   </div>
                 </div>
 
-                {/* Weakest areas - simplified */}
+                {/* YouTube Studio data */}
+                <div className="rounded-[2rem] border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-[#f7f7f8]">YouTube Studio data</p>
+                      <p className="mt-0.5 text-xs text-[#898a8b]">For the most accurate score, add data YouTube doesn&apos;t share via API.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApplyStudioData}
+                      disabled={!selectedChannelId || analysisActive || studioApplyActive}
+                      className="shrink-0 rounded-lg bg-[#9aed00] px-3 py-1.5 text-xs font-medium text-black transition-all hover:bg-[#8ad600] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {studioApplyActive ? "Saving..." : "Save"}
+                    </button>
+                  </div>
+
+                  {studioApplyError ? (
+                    <p className="mt-2 text-xs text-[#e72930]">{studioApplyError}</p>
+                  ) : null}
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs text-[#898a8b]">Swipe rate</label>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <input
+                          inputMode="decimal"
+                          placeholder="—"
+                          value={studioSwipeRateInput}
+                          onChange={(event) => setStudioSwipeRateInput(event.target.value)}
+                          className={`w-full rounded-lg border px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20 ${
+                            studioSwipeRateInput.trim().length > 0 && studioSwipeRateParsed === null
+                              ? "border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)]"
+                              : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
+                          }`}
+                        />
+                        <span className="text-sm text-[#898a8b]">%</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[#898a8b]">Community strikes</label>
+                      <select
+                        value={studioCommunityStrikesInput}
+                        onChange={(event) =>
+                          setStudioCommunityStrikesInput(event.target.value as "" | "0" | "1" | "2+")
+                        }
+                        className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
+                      >
+                        <option value="">—</option>
+                        <option value="0">None</option>
+                        <option value="1">1</option>
+                        <option value="2+">2+</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[#898a8b]">Copyright strikes</label>
+                      <select
+                        value={studioCopyrightStrikeInput}
+                        onChange={(event) =>
+                          setStudioCopyrightStrikeInput(event.target.value as "" | "yes" | "no")
+                        }
+                        className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
+                      >
+                        <option value="">—</option>
+                        <option value="no">None</option>
+                        <option value="yes">Yes</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-[#898a8b]">Content type</label>
+                      <select
+                        value={studioOriginalityInput}
+                        onChange={(event) =>
+                          setStudioOriginalityInput(
+                            event.target.value as "" | "mostly_original" | "mix" | "mostly_reused"
+                          )
+                        }
+                        className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
+                      >
+                        <option value="">—</option>
+                        <option value="mostly_original">Original</option>
+                        <option value="mix">Mixed</option>
+                        <option value="mostly_reused">Reused</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Weakest areas */}
                 <div className="rounded-[2rem] border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6">
                   <p className="text-sm font-semibold text-[#f7f7f8]">Weakest areas</p>
                   <div className="mt-5 space-y-4">
@@ -1720,96 +1811,6 @@ export default function TrustScorePage() {
                     </summary>
                     <div className="overflow-hidden">
                       <div key={detailsAnimKey} className="animate-details-content border-t border-[rgba(255,255,255,0.08)] p-6 pt-4 overflow-visible">
-                        <div className="mb-6 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#0e1012] p-5">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-medium text-[#f7f7f8]">YouTube Studio data</p>
-                              <p className="mt-0.5 text-xs text-[#898a8b]">For the most accurate score, add data YouTube doesn&apos;t share via API.</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleApplyStudioData}
-                              disabled={!selectedChannelId || analysisActive || studioApplyActive}
-                              className="rounded-lg bg-[#9aed00] px-3 py-1.5 text-xs font-medium text-black transition-all hover:bg-[#8ad600] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              {studioApplyActive ? "Saving..." : "Save"}
-                            </button>
-                          </div>
-
-                          {studioApplyError ? (
-                            <p className="mt-2 text-xs text-[#e72930]">{studioApplyError}</p>
-                          ) : null}
-
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className="text-xs text-[#898a8b]">Swipe rate</label>
-                              <div className="mt-1.5 flex items-center gap-2">
-                                <input
-                                  inputMode="decimal"
-                                  placeholder="—"
-                                  value={studioSwipeRateInput}
-                                  onChange={(event) => setStudioSwipeRateInput(event.target.value)}
-                                  className={`w-full rounded-lg border px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20 ${
-                                    studioSwipeRateInput.trim().length > 0 && studioSwipeRateParsed === null
-                                      ? "border-[rgba(231,41,48,0.3)] bg-[rgba(231,41,48,0.1)]"
-                                      : "border-[rgba(255,255,255,0.08)] bg-[#1a1c1e]"
-                                  }`}
-                                />
-                                <span className="text-sm text-[#898a8b]">%</span>
-                              </div>
-                            </div>
-
-                            <div>
-                              <label className="text-xs text-[#898a8b]">Community strikes</label>
-                              <select
-                                value={studioCommunityStrikesInput}
-                                onChange={(event) =>
-                                  setStudioCommunityStrikesInput(event.target.value as "" | "0" | "1" | "2+")
-                                }
-                                className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
-                              >
-                                <option value="">—</option>
-                                <option value="0">None</option>
-                                <option value="1">1</option>
-                                <option value="2+">2+</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="text-xs text-[#898a8b]">Copyright strikes</label>
-                              <select
-                                value={studioCopyrightStrikeInput}
-                                onChange={(event) =>
-                                  setStudioCopyrightStrikeInput(event.target.value as "" | "yes" | "no")
-                                }
-                                className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
-                              >
-                                <option value="">—</option>
-                                <option value="no">None</option>
-                                <option value="yes">Yes</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="text-xs text-[#898a8b]">Content type</label>
-                              <select
-                                value={studioOriginalityInput}
-                                onChange={(event) =>
-                                  setStudioOriginalityInput(
-                                    event.target.value as "" | "mostly_original" | "mix" | "mostly_reused"
-                                  )
-                                }
-                                className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-3 py-2 text-sm text-[#f7f7f8] outline-none transition focus:border-[#9aed00]/30 focus:ring-1 focus:ring-[#9aed00]/20"
-                              >
-                                <option value="">—</option>
-                                <option value="mostly_original">Original</option>
-                                <option value="mix">Mixed</option>
-                                <option value="mostly_reused">Reused</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-
                         <div className="grid gap-3 sm:grid-cols-2">
                         {breakdownItems.map((item, idx) => {
                           const tooltip = getComponentTooltip(item.key, item.score);
