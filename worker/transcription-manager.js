@@ -24,6 +24,19 @@ const compactMessage = (value, limit = 300) => {
     : normalized;
 };
 
+const summarizeDecodeWarnings = (stderr) => {
+  const message = String(stderr ?? "");
+  const tokens = [
+    "Reserved bit set",
+    "invalid band type",
+    "Invalid data found",
+    "Not yet implemented in FFmpeg",
+    "Prediction is not allowed",
+    "channel element",
+  ];
+  return tokens.filter((token) => message.includes(token)).join(", ");
+};
+
 const countDecodeWarnings = (value) => {
   const message = String(value ?? "");
   const matches = message.match(
@@ -479,10 +492,9 @@ const extractNormalizedAudio = async ({
   }
 
   if (best.code !== 0) {
+    const warningSummary = summarizeDecodeWarnings(best.stderr);
     console.log(
-      `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}, decodeWarnings=${best.decodeWarnings || 0}). ${compactMessage(
-        best.stderr
-      )}`
+      `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}, decodeWarnings=${best.decodeWarnings || 0})${warningSummary ? `; warningTypes=${warningSummary}` : ""}.`
     );
   }
 
@@ -744,6 +756,7 @@ const buildTranscriptionPipeline = (config) => {
       const skippedErrors = [];
       let successfulSegments = 0;
       let offsetSeconds = 0;
+      let consecutiveConnectionErrors = 0;
 
       for (let index = 0; index < segmentFiles.length; index += 1) {
         const segmentPath = segmentFiles[index];
@@ -764,11 +777,20 @@ const buildTranscriptionPipeline = (config) => {
 
           slices.push(buildOffsetTranscription(transcription, offsetSeconds));
           successfulSegments += 1;
+          consecutiveConnectionErrors = 0;
         } catch (error) {
           const message = formatErrorDetail(error);
 
           // Fail fast on OpenAI outages so queue-level retry can restart cleanly.
-          if (isOpenAIConnectionError(error) && successfulSegments === 0) {
+          if (isOpenAIConnectionError(error)) {
+            consecutiveConnectionErrors += 1;
+          } else {
+            consecutiveConnectionErrors = 0;
+          }
+          if (
+            isOpenAIConnectionError(error) &&
+            (successfulSegments === 0 || consecutiveConnectionErrors >= 2)
+          ) {
             throw error;
           }
 

@@ -73,6 +73,14 @@ const toPositiveInt = (value, fallback) => {
   return fallback;
 };
 
+const toNonNegativeInt = (value, fallback) => {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return Math.floor(parsed);
+  }
+  return fallback;
+};
+
 const toEven = (value) => {
   const safe = Math.max(2, Math.floor(value));
   return safe - (safe % 2);
@@ -191,9 +199,9 @@ const OPENAI_HTTP_TIMEOUT_MS = toPositiveInt(
   process.env.AUTOCLIP_OPENAI_HTTP_TIMEOUT_MS,
   300000
 );
-const OPENAI_HTTP_MAX_RETRIES = toPositiveInt(
+const OPENAI_HTTP_MAX_RETRIES = toNonNegativeInt(
   process.env.AUTOCLIP_OPENAI_HTTP_MAX_RETRIES,
-  2
+  1
 );
 
 const exportQueue = [];
