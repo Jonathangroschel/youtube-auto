@@ -1487,7 +1487,11 @@ const runTranscriptionPipeline = async ({
     progress({ stage: "Downloading source video", progress: 5 });
     const videoPath = path.join(TEMP_DIR, `${sessionId}_video.mp4`);
     const audioChunkDir = path.join(TEMP_DIR, `${sessionId}_audio_chunks`);
-    cleanupTargets.push(videoPath, audioChunkDir);
+    const selectedChunkDir = path.join(
+      TEMP_DIR,
+      `${sessionId}_selected_audio_chunks`
+    );
+    cleanupTargets.push(videoPath, audioChunkDir, selectedChunkDir);
 
     const { data: videoData, error: downloadError } = await supabase.storage
       .from(BUCKET)
@@ -1498,6 +1502,8 @@ const runTranscriptionPipeline = async ({
 
     progress({ stage: "Extracting audio chunks", progress: 15 });
     await fs.mkdir(audioChunkDir, { recursive: true });
+    await fs.rm(selectedChunkDir, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(selectedChunkDir, { recursive: true });
     const sourceMetadata = await getVideoMetadata(videoPath).catch(() => null);
     const audioStreamCandidates = Array.isArray(sourceMetadata?.audioStreamIndices)
       ? sourceMetadata.audioStreamIndices.filter((index) =>
@@ -1813,6 +1819,30 @@ const runTranscriptionPipeline = async ({
       }
       return next.totalBytes > current.totalBytes;
     };
+    const cacheBestExtractionCandidate = async (candidate) => {
+      await fs.rm(selectedChunkDir, { recursive: true, force: true }).catch(() => {});
+      await fs.mkdir(selectedChunkDir, { recursive: true });
+      const copiedChunks = [];
+      const copiedDurationByPath = new Map();
+      for (let index = 0; index < candidate.chunks.length; index += 1) {
+        const sourcePath = candidate.chunks[index];
+        const targetPath = path.join(
+          selectedChunkDir,
+          `chunk_${String(index).padStart(3, "0")}${path.extname(sourcePath)}`
+        );
+        await fs.copyFile(sourcePath, targetPath);
+        copiedChunks.push(targetPath);
+        const duration = candidate.durationByPath.get(sourcePath);
+        if (Number.isFinite(duration) && duration > 0) {
+          copiedDurationByPath.set(targetPath, duration);
+        }
+      }
+      return {
+        ...candidate,
+        chunks: copiedChunks,
+        durationByPath: copiedDurationByPath,
+      };
+    };
     let bestExtractionCandidate = null;
 
     for (const plan of extractionPlans) {
@@ -1881,7 +1911,15 @@ const runTranscriptionPipeline = async ({
         durationByPath,
       };
       if (isBetterExtractionCandidate(candidate, bestExtractionCandidate)) {
-        bestExtractionCandidate = candidate;
+        try {
+          bestExtractionCandidate = await cacheBestExtractionCandidate(candidate);
+        } catch (error) {
+          extractionErrors.push(
+            `${plan.label}: failed to cache chunks (${
+              error instanceof Error ? error.message : String(error)
+            })`
+          );
+        }
       }
 
       const coverageLabel =
