@@ -26,6 +26,10 @@ export async function POST(request: Request) {
     typeof body?.workerSessionId === "string" && body.workerSessionId.trim().length > 0
       ? body.workerSessionId.trim()
       : null;
+  const requestedSizeBytes =
+    typeof body?.sizeBytes === "number" && Number.isFinite(body.sizeBytes) && body.sizeBytes > 0
+      ? body.sizeBytes
+      : null;
 
   if (!sessionId) {
     return NextResponse.json({ error: "Missing sessionId." }, { status: 400 });
@@ -56,6 +60,10 @@ export async function POST(request: Request) {
       ...session.input,
       sourceType: "file",
       videoKey,
+      originalSizeBytes:
+        typeof session.input?.originalSizeBytes === "number" && session.input.originalSizeBytes > 0
+          ? session.input.originalSizeBytes
+          : requestedSizeBytes,
     };
     await saveSession(session);
 
@@ -106,10 +114,30 @@ export async function POST(request: Request) {
     }
 
     // Update session with file info
+    const sizeBytesFromInfo =
+      typeof fileInfo?.size === "number" && Number.isFinite(fileInfo.size) && fileInfo.size > 0
+        ? fileInfo.size
+        : null;
+    const metadataSizeCandidate =
+      typeof fileInfo?.metadata?.size === "number"
+        ? fileInfo.metadata.size
+        : typeof fileInfo?.metadata?.contentLength === "number"
+          ? fileInfo.metadata.contentLength
+          : typeof fileInfo?.metadata?.content_length === "number"
+            ? fileInfo.metadata.content_length
+            : null;
+    const resolvedSizeBytes =
+      sizeBytesFromInfo ??
+      (metadataSizeCandidate && metadataSizeCandidate > 0 ? metadataSizeCandidate : null) ??
+      requestedSizeBytes ??
+      (typeof session.input?.originalSizeBytes === "number" && session.input.originalSizeBytes > 0
+        ? session.input.originalSizeBytes
+        : null);
+
     session.input = {
       ...session.input,
       videoKey,
-      sizeBytes: fileInfo?.metadata?.size || null,
+      sizeBytes: resolvedSizeBytes,
       durationSeconds: metadata.duration,
       width: metadata.width,
       height: metadata.height,

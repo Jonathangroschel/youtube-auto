@@ -24,6 +24,8 @@ export type AutoClipInput = {
   width?: number | null;
   height?: number | null;
   sizeBytes?: number | null;
+  /** Client-reported size before storage verification. */
+  originalSizeBytes?: number | null;
 };
 
 export type TranscriptWord = {

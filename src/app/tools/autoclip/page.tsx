@@ -1160,6 +1160,7 @@ export default function AutoClipPage() {
             sessionId: activeSession,
             videoKey: urlData.videoKey,
             workerSessionId: urlData.workerSessionId,
+            sizeBytes: file.size,
           }),
         });
         const payload = await completeResponse.json().catch(() => ({}));
