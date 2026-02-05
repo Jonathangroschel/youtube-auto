@@ -7,17 +7,36 @@ export const runtime = "nodejs";
 const WORKER_URL = process.env.AUTOCLIP_WORKER_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";
 const BUCKET = "autoclip-files";
+const UPLOAD_VERIFY_MAX_ATTEMPTS = 8;
+const UPLOAD_VERIFY_RETRY_MS = 350;
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId : null;
+  const requestedVideoKey =
+    typeof body?.videoKey === "string" && body.videoKey.trim().length > 0
+      ? body.videoKey.trim()
+      : null;
+  const requestedWorkerSessionId =
+    typeof body?.workerSessionId === "string" && body.workerSessionId.trim().length > 0
+      ? body.workerSessionId.trim()
+      : null;
 
   if (!sessionId) {
     return NextResponse.json({ error: "Missing sessionId." }, { status: 400 });
   }
 
   const session = await getSession(sessionId);
-  if (!session || !session.input?.videoKey || !session.workerSessionId) {
+  const sessionVideoKey = session?.input?.videoKey ?? null;
+  const sessionWorkerSessionId = session?.workerSessionId ?? null;
+  const videoKey = requestedVideoKey ?? sessionVideoKey;
+  const workerSessionId = requestedWorkerSessionId ?? sessionWorkerSessionId;
+  if (!session || !videoKey || !workerSessionId) {
     return NextResponse.json({ error: "Session not ready." }, { status: 404 });
   }
 
@@ -31,18 +50,39 @@ export async function POST(request: Request) {
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get file info from Supabase to verify upload and get metadata
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: fileData, error: fileError } = await (supabase.storage as any)
-      .from(BUCKET)
-      .list(`sessions/${session.workerSessionId}`, { limit: 1 });
+    // Persist latest upload identifiers from client payload when provided.
+    session.workerSessionId = workerSessionId;
+    session.input = {
+      ...session.input,
+      sourceType: "file",
+      videoKey,
+    };
+    await saveSession(session);
 
-    if (fileError || !fileData?.length) {
-      throw new Error("Upload verification failed - file not found in storage");
+    // Verify the exact uploaded object path. Storage indexing can be slightly delayed.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let fileInfo: any = null;
+    let verifyErrorMessage = "";
+    for (let attempt = 1; attempt <= UPLOAD_VERIFY_MAX_ATTEMPTS; attempt += 1) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.storage as any).from(BUCKET).info(videoKey);
+      if (!error && data) {
+        fileInfo = data;
+        break;
+      }
+      verifyErrorMessage =
+        error?.message || "file not found in storage";
+      if (attempt < UPLOAD_VERIFY_MAX_ATTEMPTS) {
+        await wait(UPLOAD_VERIFY_RETRY_MS * attempt);
+      }
     }
 
-    const file = fileData[0];
-    
+    if (!fileInfo) {
+      throw new Error(
+        `Upload verification failed - file not found in storage (${verifyErrorMessage})`
+      );
+    }
+
     // Try to get video metadata from the worker
     let metadata = { duration: null, width: null, height: null };
     try {
@@ -53,8 +93,8 @@ export async function POST(request: Request) {
           Authorization: `Bearer ${WORKER_SECRET}`,
         },
         body: JSON.stringify({
-          sessionId: session.workerSessionId,
-          videoKey: session.input.videoKey,
+          sessionId: workerSessionId,
+          videoKey,
         }),
       });
       if (response.ok) {
@@ -68,7 +108,8 @@ export async function POST(request: Request) {
     // Update session with file info
     session.input = {
       ...session.input,
-      sizeBytes: file.metadata?.size || null,
+      videoKey,
+      sizeBytes: fileInfo?.metadata?.size || null,
       durationSeconds: metadata.duration,
       width: metadata.width,
       height: metadata.height,

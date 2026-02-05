@@ -1156,7 +1156,11 @@ export default function AutoClipPage() {
         const completeResponse = await fetch("/api/autoclip/upload-complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: activeSession }),
+          body: JSON.stringify({
+            sessionId: activeSession,
+            videoKey: urlData.videoKey,
+            workerSessionId: urlData.workerSessionId,
+          }),
         });
         const payload = await completeResponse.json().catch(() => ({}));
         if (!completeResponse.ok) {
