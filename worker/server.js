@@ -1184,7 +1184,7 @@ const isUnsupportedChunkDecodeError = (error) => {
   return /audio file could not be decoded|format is not supported/i.test(message);
 };
 
-const transcodeChunkToWav = async (inputPath) => {
+const transcodeChunkToWav = async (inputPath, expectedDurationSeconds = null) => {
   const outputPath = path.join(
     path.dirname(inputPath),
     `${path.basename(inputPath, path.extname(inputPath))}_clean.wav`
@@ -1221,9 +1221,57 @@ const transcodeChunkToWav = async (inputPath) => {
       );
     });
   };
-  const hasUsableOutput = async () => {
+  const getUsability = async () => {
     const stats = await fs.stat(outputPath).catch(() => null);
-    return Boolean(stats && stats.size > 4096);
+    if (!stats || stats.size <= 4096) {
+      return {
+        usable: false,
+        reason: "output-too-small",
+        decodedDuration: 0,
+        coverage: null,
+      };
+    }
+    const metadata = await getVideoMetadata(outputPath).catch(() => null);
+    const decodedDuration =
+      metadata &&
+      Number.isFinite(metadata.duration) &&
+      metadata.duration > 0
+        ? metadata.duration
+        : 0;
+    if (!decodedDuration) {
+      return {
+        usable: false,
+        reason: "missing-duration",
+        decodedDuration: 0,
+        coverage: null,
+      };
+    }
+    const expected =
+      Number.isFinite(expectedDurationSeconds) && expectedDurationSeconds > 0
+        ? expectedDurationSeconds
+        : null;
+    const coverage =
+      expected && expected > 0 ? Math.min(1, decodedDuration / expected) : null;
+    if (expected) {
+      const minCoverage =
+        expected >= 300 ? 0.35 : expected >= 120 ? 0.45 : 0.6;
+      const minAbsoluteDuration =
+        expected >= 300 ? 90 : expected >= 120 ? 45 : 10;
+      if (coverage < minCoverage || decodedDuration < minAbsoluteDuration) {
+        return {
+          usable: false,
+          reason: "low-coverage",
+          decodedDuration,
+          coverage,
+        };
+      }
+    }
+    return {
+      usable: true,
+      reason: "ok",
+      decodedDuration,
+      coverage,
+    };
   };
   const buildCommonArgs = () => [
     "-hide_banner",
@@ -1304,13 +1352,17 @@ const transcodeChunkToWav = async (inputPath) => {
       continue;
     }
 
-    const usableOutput = await hasUsableOutput();
-    if (usableOutput && passResult.code === 0) {
+    const usability = await getUsability();
+    if (usability.usable && passResult.code === 0) {
       return outputPath;
     }
-    if (usableOutput) {
+    if (usability.usable) {
+      const coverageLabel =
+        usability.coverage == null
+          ? "unknown"
+          : `${Math.round(usability.coverage * 100)}%`;
       console.warn(
-        `[transcribe] chunk WAV fallback ${pass.label} exited with code ${passResult.code}; using partial WAV output. ${compactFfmpegMessage(
+        `[transcribe] chunk WAV fallback ${pass.label} exited with code ${passResult.code}; using partial WAV output (coverage ${coverageLabel}). ${compactFfmpegMessage(
           passResult.stderr
         )}`
       );
@@ -1318,7 +1370,11 @@ const transcodeChunkToWav = async (inputPath) => {
     }
 
     passErrors.push(
-      `${pass.label}: ${compactFfmpegMessage(passResult.stderr)}`
+      `${pass.label}: ${compactFfmpegMessage(passResult.stderr)}${
+        usability.reason === "low-coverage" && Number.isFinite(usability.decodedDuration)
+          ? ` (decoded ${Math.round(usability.decodedDuration)}s)`
+          : ""
+      }`
     );
   }
 
@@ -1716,8 +1772,41 @@ const runTranscriptionPipeline = async ({
     let detectedLanguage = null;
     let offsetSeconds = 0;
     let successfulChunks = 0;
+    let successfulChunkDuration = 0;
     let failedChunks = 0;
     const skippedChunkErrors = [];
+    const computeTranscriptCoverageSeconds = (segments) => {
+      const ranges = segments
+        .map((segment) => ({
+          start: Number(segment?.start),
+          end: Number(segment?.end),
+        }))
+        .filter(
+          (segment) =>
+            Number.isFinite(segment.start) &&
+            Number.isFinite(segment.end) &&
+            segment.end > segment.start
+        )
+        .sort((a, b) => a.start - b.start || a.end - b.end);
+      if (!ranges.length) {
+        return 0;
+      }
+      let total = 0;
+      let activeStart = ranges[0].start;
+      let activeEnd = ranges[0].end;
+      for (let i = 1; i < ranges.length; i += 1) {
+        const range = ranges[i];
+        if (range.start <= activeEnd) {
+          activeEnd = Math.max(activeEnd, range.end);
+          continue;
+        }
+        total += Math.max(0, activeEnd - activeStart);
+        activeStart = range.start;
+        activeEnd = range.end;
+      }
+      total += Math.max(0, activeEnd - activeStart);
+      return total;
+    };
 
     for (let index = 0; index < chunkFiles.length; index += 1) {
       const chunkPath = chunkFiles[index];
@@ -1751,7 +1840,10 @@ const runTranscriptionPipeline = async ({
         if (isUnsupportedChunkDecodeError(error)) {
           let fallbackChunkPath = null;
           try {
-            fallbackChunkPath = await transcodeChunkToWav(chunkPath);
+            fallbackChunkPath = await transcodeChunkToWav(
+              chunkPath,
+              chunkDuration
+            );
             const fallbackBuffer = await fs.readFile(fallbackChunkPath);
             const fallbackFile = new File(
               [fallbackBuffer],
@@ -1770,6 +1862,57 @@ const runTranscriptionPipeline = async ({
             }
           }
         }
+      }
+
+      const hasSegmentContent = Array.isArray(transcription?.segments)
+        ? transcription.segments.some((segment) => {
+            const start = Number(segment?.start);
+            const end = Number(segment?.end);
+            const text = String(segment?.text ?? "").trim();
+            return (
+              Number.isFinite(start) &&
+              Number.isFinite(end) &&
+              end > start &&
+              text.length > 0
+            );
+          })
+        : false;
+      const hasWordContent = Array.isArray(transcription?.words)
+        ? transcription.words.some((word) => {
+            const start = Number(word?.start);
+            const end = Number(word?.end);
+            const text = String(word?.word ?? word?.text ?? "").trim();
+            return (
+              Number.isFinite(start) &&
+              Number.isFinite(end) &&
+              end > start &&
+              text.length > 0
+            );
+          })
+        : false;
+      const hasTextContent =
+        typeof transcription?.text === "string" &&
+        transcription.text.trim().length > 0;
+      if (transcription && !hasSegmentContent && !hasWordContent && !hasTextContent) {
+        failedChunks += 1;
+        const message = "Chunk transcription returned no usable text.";
+        skippedChunkErrors.push(`chunk ${index + 1}: ${message}`);
+        console.warn(
+          `[transcribe] skipping chunk ${index + 1}/${totalChunks}: ${message}`
+        );
+        offsetSeconds += chunkDuration;
+        await fs.unlink(chunkPath).catch(() => {});
+        const completedChunks = index + 1;
+        progress({
+          stage: `Transcribing audio chunks (${completedChunks}/${totalChunks}, skipped ${failedChunks})`,
+          progress: Math.min(
+            95,
+            20 + Math.round((completedChunks / totalChunks) * 70)
+          ),
+          totalChunks,
+          completedChunks,
+        });
+        continue;
       }
 
       if (!transcription) {
@@ -1797,6 +1940,7 @@ const runTranscriptionPipeline = async ({
         continue;
       }
       successfulChunks += 1;
+      successfulChunkDuration += chunkDuration;
 
       if (!detectedLanguage && transcription.language) {
         detectedLanguage = transcription.language;
@@ -1846,6 +1990,34 @@ const runTranscriptionPipeline = async ({
           ? ` ${skippedChunkErrors[0]}`
           : " Audio stream appears unreadable.";
       throw new Error(`Unable to transcribe any audio chunks.${detail}`);
+    }
+
+    const sourceDurationForCoverage =
+      sourceDurationSeconds && sourceDurationSeconds > 0
+        ? sourceDurationSeconds
+        : offsetSeconds;
+    const chunkCoverageRatio =
+      sourceDurationForCoverage > 0
+        ? Math.min(1, successfulChunkDuration / sourceDurationForCoverage)
+        : 1;
+    const transcriptCoverageSeconds = computeTranscriptCoverageSeconds(allSegments);
+    const transcriptCoverageRatio =
+      sourceDurationForCoverage > 0
+        ? Math.min(1, transcriptCoverageSeconds / sourceDurationForCoverage)
+        : 1;
+    if (
+      sourceDurationForCoverage >= 480 &&
+      (chunkCoverageRatio < 0.65 || transcriptCoverageRatio < 0.2)
+    ) {
+      throw new Error(
+        `Transcript coverage is too low (${Math.round(
+          chunkCoverageRatio * 100
+        )}% decoded chunks, ${Math.round(
+          transcriptCoverageRatio * 100
+        )}% timestamp coverage of ${Math.round(
+          sourceDurationForCoverage
+        )}s). Source audio appears too corrupted for reliable clipping.`
+      );
     }
 
     progress({
