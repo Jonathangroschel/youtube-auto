@@ -1036,8 +1036,8 @@ const IMPORT_TIMEOUT_MS = 240_000;
 const REDDIT_VOICEOVER_TIMEOUT_MS = 90_000;
 const REDDIT_VOICEOVER_MAX_ATTEMPTS = 2;
 const TRANSCRIPTION_SOURCE_FETCH_TIMEOUT_MS = 45_000;
-const TRANSCRIPTION_REQUEST_TIMEOUT_MS = 120_000;
-const TRANSCRIPTION_REQUEST_MAX_ATTEMPTS = 2;
+const TRANSCRIPTION_REQUEST_TIMEOUT_MS = 280_000;
+const TRANSCRIPTION_REQUEST_MAX_ATTEMPTS = 3;
 const REDDIT_IMAGE_FETCH_TIMEOUT_MS = 10_000;
 const IMPORT_SUBTITLE_TIMEOUT_MS = 300_000;
 
@@ -9557,7 +9557,8 @@ function AdvancedEditorContent() {
         clipDuration: number,
         playbackRate: number,
         assetDuration: number,
-        extractAudio: boolean
+        extractAudio: boolean,
+        remoteUrl?: string
       ): Promise<{
         chunks: TranscriptionChunk[];
         assetDuration: number;
@@ -9579,6 +9580,31 @@ function AdvancedEditorContent() {
             audioBuffer = await audioContext.decodeAudioData(buffer);
             resolvedAssetDuration = audioBuffer.duration;
           } catch (error) {
+            if (extractAudio && remoteUrl) {
+              const fallbackAssetDuration =
+                Number.isFinite(resolvedAssetDuration) &&
+                resolvedAssetDuration > 0
+                  ? resolvedAssetDuration
+                  : clipStartOffset +
+                    Math.max(1, clipDuration * playbackRate);
+              const fallbackClipAssetDuration = Math.min(
+                clipDuration * playbackRate,
+                Math.max(0, fallbackAssetDuration - clipStartOffset)
+              );
+              const fallbackClipEndOffset =
+                clipStartOffset + fallbackClipAssetDuration;
+              return {
+                chunks: [
+                  {
+                    remoteUrl,
+                    chunkStartOffset: 0,
+                    chunkEndOffset: fallbackAssetDuration,
+                  },
+                ],
+                assetDuration: fallbackAssetDuration,
+                clipEndOffset: fallbackClipEndOffset,
+              };
+            }
             throw new Error(
               extractAudio
                 ? "Unable to extract audio from this file. Try a different clip or format."
@@ -9720,7 +9746,8 @@ function AdvancedEditorContent() {
           entry.clip.duration,
           playbackRate,
           assetDuration,
-          entry.asset.kind === "video"
+          entry.asset.kind === "video",
+          entry.asset.url
         );
         const clipSegments: TimedSegment[] = [];
         for (const chunk of chunks) {

@@ -4,13 +4,17 @@ import type {
 } from "@/lib/autoclip/types";
 import { safeParseJson } from "@/lib/autoclip/utils";
 
-const MIN_HIGHLIGHT_SECONDS = 7;
-const MAX_HIGHLIGHT_SECONDS = 45;
+const MIN_HIGHLIGHT_SECONDS = 15;
+const MAX_HIGHLIGHT_SECONDS = 120;
 const MIN_EDIT_HIGHLIGHT_SECONDS = 1;
 const DEFAULT_HIGHLIGHT_COUNT = 6;
 const MIN_HIGHLIGHT_COUNT = 4;
+const MAX_HIGHLIGHT_COUNT = 6;
 const OVERLAP_RATIO_THRESHOLD = 0.6;
 const OVERLAP_SECONDS_THRESHOLD = 2;
+const MIN_TARGET_HIGHLIGHT_SECONDS = 20;
+const MAX_TARGET_HIGHLIGHT_SECONDS = 75;
+const DEFAULT_TARGET_HIGHLIGHT_SECONDS = 40;
 
 type HighlightRange = { start: number; end: number };
 type HighlightLimits = {
@@ -394,6 +398,26 @@ const resolveFlexibleHighlightLimits = (
   };
 };
 
+const resolveTargetHighlightLength = (
+  limits: HighlightLimits,
+  durationSeconds: number,
+  targetCount: number
+) => {
+  const safeTarget = Math.max(targetCount, 1);
+  const idealLength =
+    durationSeconds > 0
+      ? durationSeconds / safeTarget
+      : DEFAULT_TARGET_HIGHLIGHT_SECONDS;
+  const boundedIdeal = Math.max(
+    MIN_TARGET_HIGHLIGHT_SECONDS,
+    Math.min(MAX_TARGET_HIGHLIGHT_SECONDS, idealLength)
+  );
+  return Math.min(
+    limits.maxLength,
+    Math.max(limits.minLength, boundedIdeal)
+  );
+};
+
 const buildFallbackHighlights = (
   segments: TranscriptSegment[],
   count: number,
@@ -410,11 +434,10 @@ const buildFallbackHighlights = (
     duration && Number.isFinite(duration)
       ? (duration as number)
       : resolveTranscriptDuration(segments) ?? 0;
-  const idealLength =
-    durationSeconds > 0 ? durationSeconds / Math.max(targetCount, 1) : 12;
-  const targetLength = Math.min(
-    maxLength,
-    Math.max(minLength, Math.min(12, idealLength))
+  const targetLength = resolveTargetHighlightLength(
+    limits,
+    durationSeconds,
+    targetCount
   );
   const candidates = segments
     .map((segment) => {
@@ -485,11 +508,10 @@ const buildCoverageHighlights = (
     duration && Number.isFinite(duration)
       ? (duration as number)
       : resolveTranscriptDuration(segments) ?? 0;
-  const idealLength =
-    durationSeconds > 0 ? durationSeconds / Math.max(targetCount, 1) : 12;
-  const targetLength = Math.min(
-    maxLength,
-    Math.max(minLength, Math.min(12, idealLength))
+  const targetLength = resolveTargetHighlightLength(
+    limits,
+    durationSeconds,
+    targetCount
   );
   const orderedSegments = segments
     .filter((segment) => {
@@ -608,10 +630,10 @@ const buildTimelineHighlights = (
   if (!durationSeconds || durationSeconds <= 0) {
     return [];
   }
-  const idealLength = durationSeconds / Math.max(targetCount, 1);
-  const targetLength = Math.min(
-    maxLength,
-    Math.max(minLength, Math.min(12, idealLength))
+  const targetLength = resolveTargetHighlightLength(
+    limits,
+    durationSeconds,
+    targetCount
   );
   const span = Math.max(0, durationSeconds - targetLength);
   const steps = Math.max(count - 1, 1);
@@ -841,18 +863,20 @@ export const selectHighlight = async (
     throw new Error("Missing OPENAI_API_KEY for highlight selection.");
   }
 
-  const requestedHighlights =
+  const requestedRawCount =
     options?.maxHighlights && options.maxHighlights > 0
       ? Math.floor(options.maxHighlights)
       : DEFAULT_HIGHLIGHT_COUNT;
-  const minHighlights = options?.maxHighlights
-    ? requestedHighlights
-    : Math.min(MIN_HIGHLIGHT_COUNT, requestedHighlights);
+  const requestedHighlights = Math.min(
+    MAX_HIGHLIGHT_COUNT,
+    Math.max(MIN_HIGHLIGHT_COUNT, requestedRawCount)
+  );
+  const minHighlights = Math.min(MIN_HIGHLIGHT_COUNT, requestedHighlights);
   const limits = resolveHighlightLimits(
     segments,
     options?.durationSeconds ?? null
   );
-  const model = process.env.AUTOCLIP_HIGHLIGHT_MODEL || "gpt-5-nano";
+  const model = process.env.AUTOCLIP_HIGHLIGHT_MODEL || "gpt-5-mini";
   const transcription = buildTranscriptText(segments);
   const languageHint = options?.language
     ? `Transcript language code: ${options.language}.`
@@ -888,16 +912,17 @@ export const selectHighlight = async (
       ? "If there are fewer than requested, return as many strong options as possible."
       : `If you cannot find ${requestedHighlights}, return as many strong options as possible (minimum ${minHighlights} if the transcript allows).`;
   const systemPrompt = [
-    "You are a world-class YouTube Shorts editor and viral short-form creator.",
+    "You are a world-class short-form video clipping editor (YouTube Shorts, TikTok, Reels).",
     "The input contains a timestamped transcription of a video.",
-    "Your goal is to pick the moments most likely to go viral.",
-    "Prefer moments with a strong hook in the first 1-2 seconds, rising tension or curiosity, and a clear payoff.",
-    "Pick segments that are surprising, emotionally charged, funny, controversial, or deliver a sharp, useful insight.",
-    "Avoid intros, greetings, sponsor reads, housekeeping, repeated info, and low-energy filler.",
+    "Your goal is to select only moments that are truly clip-worthy and likely to perform.",
+    "Every selected clip must stand on its own and make sense to someone who has not seen the rest of the video.",
+    "Each clip should include enough setup/context, a clear hook, and a payoff or strong takeaway.",
+    "Prefer moments that are surprising, emotionally charged, funny, controversial, high-tension, or deliver a sharp insight.",
+    "Avoid random snippets, weak transitions, greetings, sponsor reads, housekeeping, repeated info, and low-energy filler.",
     "Consider the full timeline and prefer highlights from different sections when possible, not just the opening.",
-    "Select a segment between 7 and 45 seconds. Start right before the hook; end right after the payoff.",
-    "Include enough setup/context for the punchline or key moment to make sense; extend the clip as needed within 7-45 seconds.",
-    "The selected text should contain only complete sentences and form a complete thought.",
+    `Select each segment between ${limits.minLength.toFixed(0)} and ${limits.maxLength.toFixed(0)} seconds.`,
+    "Start shortly before the moment gets interesting and end shortly after the payoff lands.",
+    "The selected text should contain complete sentences and a complete thought.",
     "Choose start and end times that align with transcript segment boundaries.",
     "Do not cut in the middle of sentences; prefer sentence-ending punctuation at the clip end.",
     "Use the same language as the transcript. Do not translate.",
@@ -924,7 +949,7 @@ export const selectHighlight = async (
     .join("\n");
 
   const isGpt5Model = model.startsWith("gpt-5");
-  const temperature = isGpt5Model ? 1 : 0.7;
+  const temperature = isGpt5Model ? 0.6 : 0.35;
   const maxTokens = Math.max(300, requestedHighlights * 120);
   const maxTokenConfig = isGpt5Model
     ? { max_completion_tokens: maxTokens }
