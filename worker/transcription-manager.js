@@ -24,6 +24,54 @@ const compactMessage = (value, limit = 900) => {
     : normalized;
 };
 
+const countDecodeWarnings = (value) => {
+  const message = String(value ?? "");
+  const matches = message.match(
+    /Invalid data found|Reserved bit set|invalid band type|Prediction is not allowed|channel element .*not allocated|Not yet implemented in FFmpeg/gi
+  );
+  return Array.isArray(matches) ? matches.length : 0;
+};
+
+const formatErrorDetail = (error) => {
+  const parts = [];
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error?.message === "string"
+        ? error.message
+        : String(error ?? "");
+  if (message) {
+    parts.push(message);
+  }
+
+  const status = Number(error?.status);
+  if (Number.isFinite(status)) {
+    parts.push(`status=${status}`);
+  }
+
+  const code =
+    error?.code ||
+    error?.cause?.code ||
+    error?.cause?.cause?.code ||
+    null;
+  if (typeof code === "string" && code.trim()) {
+    parts.push(`code=${code.trim()}`);
+  }
+
+  const causeMessage =
+    typeof error?.cause?.message === "string"
+      ? error.cause.message
+      : typeof error?.cause?.cause?.message === "string"
+        ? error.cause.cause.message
+        : "";
+  if (causeMessage && !parts.join(" ").includes(causeMessage)) {
+    parts.push(`cause=${causeMessage}`);
+  }
+
+  const out = parts.join(" | ").trim();
+  return out || "Unknown error";
+};
+
 const safeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -285,6 +333,19 @@ const chooseBestExtraction = (next, current) => {
     return false;
   }
 
+  const nextWarnings = Number.isFinite(next.decodeWarnings)
+    ? next.decodeWarnings
+    : 0;
+  const currentWarnings = Number.isFinite(current.decodeWarnings)
+    ? current.decodeWarnings
+    : 0;
+  if (nextWarnings + 5 < currentWarnings) {
+    return true;
+  }
+  if (currentWarnings + 5 < nextWarnings) {
+    return false;
+  }
+
   const nextDuration = Number.isFinite(next.duration) ? next.duration : -1;
   const currentDuration = Number.isFinite(current.duration) ? current.duration : -1;
   if (nextDuration > currentDuration + 1) {
@@ -361,6 +422,7 @@ const extractNormalizedAudio = async ({
       mapSpec,
       code: result.code,
       stderr: result.stderr,
+      decodeWarnings: countDecodeWarnings(result.stderr),
       size: stats.size,
       duration,
     };
@@ -376,7 +438,7 @@ const extractNormalizedAudio = async ({
 
   if (best.code !== 0) {
     console.warn(
-      `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}). ${compactMessage(
+      `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}, decodeWarnings=${best.decodeWarnings || 0}). ${compactMessage(
         best.stderr
       )}`
     );
@@ -523,7 +585,7 @@ const transcribeFileWithRetry = async ({
         delayMs += Math.floor(Math.random() * 1200);
       }
 
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = formatErrorDetail(error);
       console.warn(
         `[transcribe] OpenAI attempt ${attempt}/${maxAttemptsForError} failed (${connectionError ? "connection" : "retryable"}): ${detail}. Retrying in ${Math.max(
           1,
@@ -649,7 +711,7 @@ const buildTranscriptionPipeline = (config) => {
           slices.push(buildOffsetTranscription(transcription, offsetSeconds));
           successfulSegments += 1;
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = formatErrorDetail(error);
 
           // Fail fast on OpenAI outages so queue-level retry can restart cleanly.
           if (isOpenAIConnectionError(error) && successfulSegments === 0) {
@@ -859,8 +921,7 @@ export const createTranscriptionManager = ({
             scheduleCleanup(job.id);
           })
           .catch((error) => {
-            const message =
-              error instanceof Error ? error.message : "Transcription failed.";
+            const message = formatErrorDetail(error);
             const latestJob = jobs.get(job.id) || job;
             const retryCount = Number.isFinite(latestJob.retryCount)
               ? latestJob.retryCount
