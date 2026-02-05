@@ -4,6 +4,7 @@ import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useUserProfile } from "@/lib/supabase/use-user-profile";
 import {
   Suspense,
   useCallback,
@@ -608,6 +609,7 @@ function ProjectsPageInner() {
   const activeNavIndex = navItems.findIndex((item) => item.active);
   const resolvedNavIndex =
     hoveredNavIndex ?? (activeNavIndex >= 0 ? activeNavIndex : 0);
+  const { userAvatarSrc, userEmail, userName } = useUserProfile();
 
   const updateIndicator = useCallback((index: number) => {
     const container = navContainerRef.current;
@@ -1567,17 +1569,17 @@ function ProjectsPageInner() {
               <div className="p-3">
                 <div className="flex items-center space-x-3">
                   <img
-                    src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
+                    src={userAvatarSrc}
                     alt="Profile"
                     className="h-10 w-10 rounded-full object-cover"
                     draggable="false"
                   />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-[#f7f7f8]">
-                      Jonathan Groschel
+                      {userName}
                     </p>
                     <p className="text-xs text-[#898a8b]">
-                      jonathangroschel5@gmail.com
+                      {userEmail}
                     </p>
                   </div>
                 </div>
@@ -1703,7 +1705,7 @@ function ProjectsPageInner() {
                 onClick={() => setProfileMenuOpen((open) => !open)}
               >
                 <img
-                  src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
+                  src={userAvatarSrc}
                   alt="Profile"
                   className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
                   draggable="false"
@@ -1738,15 +1740,15 @@ function ProjectsPageInner() {
               >
                 <div className="flex flex-row items-center space-x-3 px-3 py-3">
                   <img
-                    src="https://lh3.googleusercontent.com/a/ACg8ocIpO3tPyuyBmmElNF-TQRNnIwAow9n7zGLo64RDHYAw7zMMX1ogFA=s96-c"
+                    src={userAvatarSrc}
                     alt="Profile"
                     className="h-10 w-10 select-none rounded-full object-cover"
                     draggable="false"
                   />
                   <div className="flex flex-col items-start justify-start">
-                    <p className="text-sm font-medium text-[#f7f7f8]">Jonathan Groschel</p>
+                    <p className="text-sm font-medium text-[#f7f7f8]">{userName}</p>
                     <p className="text-xs text-[#898a8b] truncate max-w-[160px]">
-                      jonathangroschel5@gmail.com
+                      {userEmail}
                     </p>
                   </div>
                 </div>

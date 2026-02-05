@@ -3,9 +3,9 @@
 import SearchOverlay from "@/components/search-overlay";
 import { SaturaLogo } from "@/components/satura-logo";
 import Link from "next/link";
+import { useUserProfile } from "@/lib/supabase/use-user-profile";
 import dynamic from "next/dynamic";
 import { signOut } from "@/app/login/actions";
-import type { User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 const TrustScoreShareExperience = dynamic(
@@ -548,8 +548,7 @@ export default function TrustScorePage() {
   const activeNavIndex = navItems.findIndex((item) => item.active);
   const resolvedNavIndex =
     hoveredNavIndex ?? (activeNavIndex >= 0 ? activeNavIndex : 0);
-
-  const [user, setUser] = useState<User | null>(null);
+  const { userAvatarSrc, userEmail, userName } = useUserProfile();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
@@ -579,24 +578,6 @@ export default function TrustScorePage() {
   const [shareExperienceMode, setShareExperienceMode] = useState<"reveal" | "share">("share");
   const [shareExperienceScore, setShareExperienceScore] = useState<number | null>(null);
   const autoAnalyzeTriggeredRef = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadUser = async () => {
-      const { createClient } = await import("@/lib/supabase/client");
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (active) {
-        setUser(user);
-      }
-    };
-
-    void loadUser();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const handleSignOut = async () => {
     setIsLoggingOut(true);
@@ -1023,16 +1004,6 @@ export default function TrustScorePage() {
   const dataConfidence =
     analysisResult?.dataConfidence ?? latestSnapshot?.data_confidence ?? null;
   const confidenceMeta = getDataConfidenceMeta(dataConfidence);
-  const userEmail = user?.email ?? "";
-  const userName =
-    user?.user_metadata?.full_name ??
-    user?.user_metadata?.name ??
-    userEmail.split("@")[0] ??
-    "User";
-  const userAvatar =
-    user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? null;
-  const userInitials = userName.slice(0, 2).toUpperCase();
-
 
   const topLifts = useMemo(() => {
     // Separate issues and wins
@@ -1200,18 +1171,12 @@ export default function TrustScorePage() {
             >
               <div className="p-3">
                 <div className="flex items-center space-x-3">
-                  {userAvatar ? (
-                    <img
-                      src={userAvatar}
-                      alt="Profile"
-                      className="h-10 w-10 rounded-full object-cover"
-                      draggable="false"
-                    />
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9aed00] text-sm font-semibold text-black">
-                      {userInitials}
-                    </div>
-                  )}
+                  <img
+                    src={userAvatarSrc}
+                    alt="Profile"
+                    className="h-10 w-10 rounded-full object-cover"
+                    draggable="false"
+                  />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-[#f7f7f8]">
                       {userName}
@@ -1340,18 +1305,12 @@ export default function TrustScorePage() {
                 aria-controls="trust-score-profile-menu"
                 onClick={() => setProfileMenuOpen((open) => !open)}
               >
-                {userAvatar ? (
-                  <img
-                    src={userAvatar}
-                    alt="Profile"
-                    className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
-                    draggable="false"
-                  />
-                ) : (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#9aed00] text-xs font-semibold text-black md:h-8 md:w-8 md:text-sm">
-                    {userInitials}
-                  </div>
-                )}
+                <img
+                  src={userAvatarSrc}
+                  alt="Profile"
+                  className="h-6 w-6 select-none rounded-full object-cover md:h-8 md:w-8"
+                  draggable="false"
+                />
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 24 24"
@@ -1381,18 +1340,12 @@ export default function TrustScorePage() {
                 }`}
               >
                 <div className="flex flex-row items-center space-x-3 px-3 py-3">
-                  {userAvatar ? (
-                    <img
-                      src={userAvatar}
-                      alt="Profile"
-                      className="h-10 w-10 select-none rounded-full object-cover"
-                      draggable="false"
-                    />
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9aed00] text-sm font-semibold text-black">
-                      {userInitials}
-                    </div>
-                  )}
+                  <img
+                    src={userAvatarSrc}
+                    alt="Profile"
+                    className="h-10 w-10 select-none rounded-full object-cover"
+                    draggable="false"
+                  />
                   <div className="flex flex-col items-start justify-start">
                     <p className="text-sm font-medium text-[#f7f7f8]">{userName}</p>
                     <p className="text-xs text-[#898a8b] truncate max-w-[160px]">{userEmail}</p>
