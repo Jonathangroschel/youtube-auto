@@ -12,62 +12,21 @@ const wait = (ms) =>
 
 const nowIso = () => new Date().toISOString();
 
-const compactFfmpegMessage = (value, limit = 900) => {
+const compactMessage = (value, limit = 900) => {
   const normalized = String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
   if (!normalized) {
-    return "No ffmpeg stderr output.";
+    return "No stderr output.";
   }
   return normalized.length > limit
     ? `${normalized.slice(0, limit)}...`
     : normalized;
 };
 
-const countDecodeWarnings = (value) => {
-  const message = String(value ?? "");
-  const matches = message.match(
-    /Invalid data found|Reserved bit set|invalid band type|Prediction is not allowed|channel element .*not allocated|Not yet implemented in FFmpeg/gi
-  );
-  return Array.isArray(matches) ? matches.length : 0;
-};
-
 const safeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const hasTranscriptionContent = (transcription) => {
-  const hasSegmentContent = Array.isArray(transcription?.segments)
-    ? transcription.segments.some((segment) => {
-        const start = Number(segment?.start);
-        const end = Number(segment?.end);
-        const text = String(segment?.text ?? "").trim();
-        return (
-          Number.isFinite(start) &&
-          Number.isFinite(end) &&
-          end > start &&
-          text.length > 0
-        );
-      })
-    : false;
-  const hasWordContent = Array.isArray(transcription?.words)
-    ? transcription.words.some((word) => {
-        const start = Number(word?.start);
-        const end = Number(word?.end);
-        const text = String(word?.word ?? word?.text ?? "").trim();
-        return (
-          Number.isFinite(start) &&
-          Number.isFinite(end) &&
-          end > start &&
-          text.length > 0
-        );
-      })
-    : false;
-  const hasTextContent =
-    typeof transcription?.text === "string" &&
-    transcription.text.trim().length > 0;
-  return hasSegmentContent || hasWordContent || hasTextContent;
 };
 
 const normalizeSegments = (segments) =>
@@ -99,6 +58,73 @@ const normalizeWords = (words) =>
         word.end > word.start &&
         word.word.length > 0
     );
+
+const hasTranscriptionContent = (transcription) => {
+  const hasSegments = normalizeSegments(transcription?.segments).length > 0;
+  const hasWords = normalizeWords(transcription?.words).length > 0;
+  const hasText =
+    typeof transcription?.text === "string" &&
+    transcription.text.trim().length > 0;
+  return hasSegments || hasWords || hasText;
+};
+
+const buildOffsetTranscription = (transcription, offsetSeconds) => {
+  const segments = normalizeSegments(transcription?.segments).map((segment) => ({
+    ...segment,
+    start: segment.start + offsetSeconds,
+    end: segment.end + offsetSeconds,
+  }));
+  const words = normalizeWords(transcription?.words).map((word) => ({
+    ...word,
+    start: word.start + offsetSeconds,
+    end: word.end + offsetSeconds,
+  }));
+  const text = typeof transcription?.text === "string" ? transcription.text.trim() : "";
+  const language =
+    typeof transcription?.language === "string" && transcription.language.trim()
+      ? transcription.language.trim()
+      : null;
+
+  return {
+    segments,
+    words,
+    text,
+    language,
+  };
+};
+
+const mergeTranscriptionSlices = (slices) => {
+  const segments = [];
+  const words = [];
+  let text = "";
+  let language = null;
+
+  for (const slice of slices) {
+    if (!slice) {
+      continue;
+    }
+    if (Array.isArray(slice.segments) && slice.segments.length > 0) {
+      segments.push(...slice.segments);
+    }
+    if (Array.isArray(slice.words) && slice.words.length > 0) {
+      words.push(...slice.words);
+    }
+    const snippet = typeof slice.text === "string" ? slice.text.trim() : "";
+    if (snippet) {
+      text = text ? `${text} ${snippet}` : snippet;
+    }
+    if (!language && typeof slice.language === "string" && slice.language.trim()) {
+      language = slice.language.trim();
+    }
+  }
+
+  return {
+    segments,
+    words,
+    text,
+    language,
+  };
+};
 
 const isRetryableOpenAIError = (error) => {
   const status = Number(error?.status);
@@ -148,122 +174,94 @@ const isChunkTooLargeError = (error) => {
   );
 };
 
-const isChunkTranscribeTimeoutError = (error) => {
-  const status = Number(error?.status);
-  if (status === 408 || status === 504) {
-    return true;
-  }
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error?.message === "string"
-        ? error.message
-        : "";
-  return /timeout|timed out|etimedout|deadline exceeded|request timeout/i.test(
-    message
-  );
-};
-
-const isUnsupportedChunkDecodeError = (error) => {
-  const status = Number(error?.status);
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error?.message === "string"
-        ? error.message
-        : "";
-  if (status === 400 && /audio file could not be decoded|format is not supported/i.test(message)) {
-    return true;
-  }
-  return /audio file could not be decoded|format is not supported/i.test(message);
-};
-
-const runFfmpeg = async (args, label) =>
+const runProcess = async (command, args, label) =>
   new Promise((resolve, reject) => {
-    const ffmpeg = spawn("ffmpeg", args);
+    const proc = spawn(command, args);
+    let stdout = "";
     let stderr = "";
-    ffmpeg.stderr.on("data", (data) => {
+
+    proc.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    proc.stderr.on("data", (data) => {
       stderr += data.toString();
     });
-    ffmpeg.on("close", (code) => {
+
+    proc.on("close", (code) => {
       resolve({
         label,
         code: Number.isFinite(code) ? code : -1,
+        stdout,
         stderr,
       });
     });
-    ffmpeg.on("error", (error) => {
-      reject(new Error(`ffmpeg spawn error (${label}): ${error.message}`));
+
+    proc.on("error", (error) => {
+      reject(new Error(`${command} spawn error (${label}): ${error.message}`));
     });
   });
 
-const getDurationSeconds = async (filePath) =>
-  new Promise((resolve) => {
-    const ffprobe = spawn("ffprobe", [
-      "-v",
-      "quiet",
-      "-print_format",
-      "json",
-      "-show_format",
-      filePath,
-    ]);
-    let stdout = "";
-    ffprobe.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    ffprobe.on("close", (code) => {
-      if (code !== 0) {
-        resolve(null);
-        return;
-      }
-      try {
-        const parsed = JSON.parse(stdout);
-        const duration = Number(parsed?.format?.duration);
-        resolve(Number.isFinite(duration) && duration > 0 ? duration : null);
-      } catch {
-        resolve(null);
-      }
-    });
-    ffprobe.on("error", () => resolve(null));
-  });
+const runFfmpeg = (args, label) => runProcess("ffmpeg", args, label);
 
-const getAudioStreamIndices = async (filePath) =>
-  new Promise((resolve) => {
-    const ffprobe = spawn("ffprobe", [
+const getAudioStreamIndices = async (filePath) => {
+  const result = await runProcess(
+    "ffprobe",
+    [
       "-v",
       "quiet",
       "-print_format",
       "json",
       "-show_streams",
       filePath,
-    ]);
-    let stdout = "";
-    ffprobe.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    ffprobe.on("close", (code) => {
-      if (code !== 0) {
-        resolve([null]);
-        return;
-      }
-      try {
-        const parsed = JSON.parse(stdout);
-        const audioStreams = Array.isArray(parsed?.streams)
-          ? parsed.streams.filter((stream) => stream?.codec_type === "audio")
-          : [];
-        const indices = audioStreams
-          .map((stream) =>
-            Number.isFinite(stream?.index) ? Number(stream.index) : null
-          )
-          .filter((value) => value != null);
-        const normalized = [...new Set(indices)].sort((a, b) => a - b);
-        resolve(normalized);
-      } catch {
-        resolve([]);
-      }
-    });
-    ffprobe.on("error", () => resolve([]));
-  });
+    ],
+    "ffprobe-streams"
+  ).catch(() => null);
+
+  if (!result || result.code !== 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const streams = Array.isArray(parsed?.streams)
+      ? parsed.streams.filter((stream) => stream?.codec_type === "audio")
+      : [];
+    return [...new Set(
+      streams
+        .map((stream) => (Number.isFinite(stream?.index) ? Number(stream.index) : null))
+        .filter((value) => value != null)
+    )].sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
+};
+
+const getDurationSeconds = async (filePath) => {
+  const result = await runProcess(
+    "ffprobe",
+    [
+      "-v",
+      "quiet",
+      "-print_format",
+      "json",
+      "-show_format",
+      filePath,
+    ],
+    "ffprobe-duration"
+  ).catch(() => null);
+
+  if (!result || result.code !== 0) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const duration = Number(parsed?.format?.duration);
+    return Number.isFinite(duration) && duration > 0 ? duration : null;
+  } catch {
+    return null;
+  }
+};
 
 const listSegmentFiles = async (directory, prefix) => {
   const names = await fs.readdir(directory).catch(() => []);
@@ -273,16 +271,20 @@ const listSegmentFiles = async (directory, prefix) => {
     .map((name) => path.join(directory, name));
 };
 
-const pickBestAudioCandidate = (next, current) => {
+const chooseBestExtraction = (next, current) => {
   if (!current) {
     return true;
   }
-  if (next.code === 0 && current.code !== 0) {
+
+  const nextOk = next.code === 0;
+  const currentOk = current.code === 0;
+  if (nextOk && !currentOk) {
     return true;
   }
-  if (next.code !== 0 && current.code === 0) {
+  if (!nextOk && currentOk) {
     return false;
   }
+
   const nextDuration = Number.isFinite(next.duration) ? next.duration : -1;
   const currentDuration = Number.isFinite(current.duration) ? current.duration : -1;
   if (nextDuration > currentDuration + 1) {
@@ -291,67 +293,32 @@ const pickBestAudioCandidate = (next, current) => {
   if (currentDuration > nextDuration + 1) {
     return false;
   }
-  const nextWarnings = Number(next.decodeWarnings) || 0;
-  const currentWarnings = Number(current.decodeWarnings) || 0;
-  if (nextWarnings < currentWarnings) {
-    return true;
-  }
-  if (currentWarnings < nextWarnings) {
-    return false;
-  }
-  const nextIsPrimary = next.streamIndex == null;
-  const currentIsPrimary = current.streamIndex == null;
-  if (nextIsPrimary && !currentIsPrimary) {
-    return true;
-  }
-  if (!nextIsPrimary && currentIsPrimary) {
-    return false;
-  }
+
   return next.size > current.size;
 };
 
-const extractCleanAudio = async ({
+const extractNormalizedAudio = async ({
   videoPath,
   outputDir,
   audioBitrate,
-  requestedStreamIndices,
 }) => {
-  const streamIndices =
-    [
-      null,
-      ...[
-        ...new Set(
-          (Array.isArray(requestedStreamIndices) ? requestedStreamIndices : [])
-            .map((value) => (Number.isFinite(value) ? Number(value) : null))
-            .filter((value) => value != null)
-        ),
-      ],
-    ];
-  const profiles = [
-    {
-      label: "mono",
-      audioFilter: "aresample=16000:async=1:first_pts=0",
-    },
-    {
-      label: "pan-first-channel",
-      audioFilter: "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0",
-    },
-  ];
+  const streamIndices = await getAudioStreamIndices(videoPath);
+  const mapSpecs = [
+    "0:a:0?",
+    ...streamIndices.map((index) => `0:${index}`),
+  ].filter((value, index, all) => all.indexOf(value) === index);
 
-  let bestCandidate = null;
-  const generatedPaths = [];
+  let best = null;
+  const tempOutputs = [];
 
-  for (const streamIndex of streamIndices) {
-    for (const profile of profiles) {
-      const candidateName =
-        streamIndex == null
-          ? `audio_${profile.label}.mp3`
-          : `audio_stream_${String(streamIndex)}_${profile.label}.mp3`;
-      const candidatePath = path.join(outputDir, candidateName);
-      generatedPaths.push(candidatePath);
-      await fs.unlink(candidatePath).catch(() => {});
+  for (const mapSpec of mapSpecs) {
+    const safeName = String(mapSpec).replace(/[^a-zA-Z0-9]+/g, "_");
+    const candidatePath = path.join(outputDir, `audio_${safeName}.mp3`);
+    tempOutputs.push(candidatePath);
+    await fs.unlink(candidatePath).catch(() => {});
 
-      const args = [
+    const result = await runFfmpeg(
+      [
         "-hide_banner",
         "-loglevel",
         "error",
@@ -363,117 +330,84 @@ const extractCleanAudio = async ({
         "-y",
         "-i",
         videoPath,
-        ...(streamIndex != null ? ["-map", `0:${streamIndex}`] : ["-map", "0:a:0?"]),
+        "-map",
+        mapSpec,
         "-vn",
         "-sn",
         "-dn",
-        "-af",
-        profile.audioFilter,
         "-ac",
         "1",
         "-ar",
         "16000",
+        "-af",
+        "aresample=16000:async=1:first_pts=0",
         "-c:a",
         "libmp3lame",
         "-b:a",
         audioBitrate,
         candidatePath,
-      ];
+      ],
+      `extract-${safeName}`
+    );
 
-      const result = await runFfmpeg(args, `extract-${profile.label}`);
-      const stats = await fs.stat(candidatePath).catch(() => null);
-      if (!stats || stats.size <= MIN_AUDIO_BYTES) {
-        continue;
-      }
-      const duration = await getDurationSeconds(candidatePath);
-      const candidate = {
-        path: candidatePath,
-        profile: profile.label,
-        streamIndex,
-        code: result.code,
-        stderr: result.stderr,
-        decodeWarnings: countDecodeWarnings(result.stderr),
-        size: stats.size,
-        duration,
-      };
-      if (pickBestAudioCandidate(candidate, bestCandidate)) {
-        bestCandidate = candidate;
-      }
+    const stats = await fs.stat(candidatePath).catch(() => null);
+    if (!stats || stats.size <= MIN_AUDIO_BYTES) {
+      continue;
+    }
+
+    const duration = await getDurationSeconds(candidatePath);
+    const candidate = {
+      path: candidatePath,
+      mapSpec,
+      code: result.code,
+      stderr: result.stderr,
+      size: stats.size,
+      duration,
+    };
+
+    if (chooseBestExtraction(candidate, best)) {
+      best = candidate;
     }
   }
 
-  if (!bestCandidate) {
+  if (!best) {
     throw new Error("Audio extraction produced no usable output.");
   }
 
-  for (const filePath of generatedPaths) {
-    if (filePath !== bestCandidate.path) {
-      await fs.unlink(filePath).catch(() => {});
-    }
-  }
-
-  if (bestCandidate.code !== 0) {
+  if (best.code !== 0) {
     console.warn(
-      `[transcribe] selected ${bestCandidate.profile} extraction with partial output (exit ${bestCandidate.code}). ${compactFfmpegMessage(
-        bestCandidate.stderr
+      `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}). ${compactMessage(
+        best.stderr
       )}`
     );
   }
 
-  return bestCandidate;
+  const normalizedPath = path.join(outputDir, "audio_clean.mp3");
+  await fs.copyFile(best.path, normalizedPath);
+
+  for (const filePath of tempOutputs) {
+    await fs.unlink(filePath).catch(() => {});
+  }
+
+  return normalizedPath;
 };
 
-const splitAudioToSegments = async ({
+const splitNormalizedAudio = async ({
   inputPath,
   outputDir,
-  segmentSeconds,
+  chunkSeconds,
   audioBitrate,
-  prefix = "segment",
 }) => {
   await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
   await fs.mkdir(outputDir, { recursive: true });
 
-  const outputPattern = path.join(outputDir, `${prefix}_%04d.mp3`);
+  const outputPattern = path.join(outputDir, "segment_%04d.mp3");
 
-  const copyResult = await runFfmpeg(
+  const result = await runFfmpeg(
     [
       "-hide_banner",
       "-loglevel",
       "error",
-      "-y",
-      "-i",
-      inputPath,
-      "-vn",
-      "-sn",
-      "-dn",
-      "-c:a",
-      "copy",
-      "-f",
-      "segment",
-      "-segment_time",
-      String(segmentSeconds),
-      "-reset_timestamps",
-      "1",
-      outputPattern,
-    ],
-    `${prefix}-split-copy`
-  );
-
-  let files = await listSegmentFiles(outputDir, prefix);
-  if (files.length > 0) {
-    return { files, result: copyResult };
-  }
-
-  const encodeResult = await runFfmpeg(
-    [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-fflags",
-      "+discardcorrupt",
-      "-err_detect",
-      "ignore_err",
-      "-ignore_unknown",
       "-y",
       "-i",
       inputPath,
@@ -493,128 +427,28 @@ const splitAudioToSegments = async ({
       "-f",
       "segment",
       "-segment_time",
-      String(segmentSeconds),
+      String(chunkSeconds),
       "-reset_timestamps",
       "1",
       outputPattern,
     ],
-    `${prefix}-split-encode`
+    "segment-audio"
   );
 
-  files = await listSegmentFiles(outputDir, prefix);
+  const files = await listSegmentFiles(outputDir, "segment");
   if (files.length === 0) {
-    throw new Error(
-      `Audio segmentation failed. ${compactFfmpegMessage(copyResult.stderr)} | ${compactFfmpegMessage(
-        encodeResult.stderr
-      )}`
-    );
-  }
-
-  return { files, result: encodeResult };
-};
-
-const transcodeSegmentToWav = async ({ segmentPath, outputPath }) => {
-  await fs.unlink(outputPath).catch(() => {});
-  const result = await runFfmpeg(
-    [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-fflags",
-      "+discardcorrupt",
-      "-err_detect",
-      "ignore_err",
-      "-ignore_unknown",
-      "-y",
-      "-i",
-      segmentPath,
-      "-map",
-      "0:a:0?",
-      "-vn",
-      "-sn",
-      "-dn",
-      "-af",
-      "pan=mono|c0=c0,aresample=16000:async=1:first_pts=0",
-      "-c:a",
-      "pcm_s16le",
-      outputPath,
-    ],
-    "segment-decode-fallback"
-  );
-
-  const stats = await fs.stat(outputPath).catch(() => null);
-  if (!stats || stats.size <= MIN_AUDIO_BYTES) {
-    throw new Error(
-      `Segment decode fallback produced no usable audio. ${compactFfmpegMessage(result.stderr)}`
-    );
+    throw new Error(`Audio segmentation failed. ${compactMessage(result.stderr)}`);
   }
 
   if (result.code !== 0) {
     console.warn(
-      `[transcribe] segment decode fallback exited with code ${result.code}; using partial output. ${compactFfmpegMessage(
+      `[transcribe] segmentation exited with code ${result.code}; using partial output. ${compactMessage(
         result.stderr
       )}`
     );
   }
 
-  return outputPath;
-};
-
-const buildOffsetTranscription = (transcription, offsetSeconds) => {
-  const segments = normalizeSegments(transcription?.segments).map((segment) => ({
-    ...segment,
-    start: segment.start + offsetSeconds,
-    end: segment.end + offsetSeconds,
-  }));
-  const words = normalizeWords(transcription?.words).map((word) => ({
-    ...word,
-    start: word.start + offsetSeconds,
-    end: word.end + offsetSeconds,
-  }));
-  const text = typeof transcription?.text === "string" ? transcription.text.trim() : "";
-  const language =
-    typeof transcription?.language === "string" && transcription.language.trim()
-      ? transcription.language
-      : null;
-  return {
-    segments,
-    words,
-    text,
-    language,
-  };
-};
-
-const mergeTranscriptionSlices = (slices) => {
-  const segments = [];
-  const words = [];
-  let text = "";
-  let language = null;
-
-  for (const slice of slices) {
-    if (!slice) {
-      continue;
-    }
-    if (Array.isArray(slice.segments) && slice.segments.length > 0) {
-      segments.push(...slice.segments);
-    }
-    if (Array.isArray(slice.words) && slice.words.length > 0) {
-      words.push(...slice.words);
-    }
-    const snippet = typeof slice.text === "string" ? slice.text.trim() : "";
-    if (snippet) {
-      text = text ? `${text} ${snippet}` : snippet;
-    }
-    if (!language && typeof slice.language === "string" && slice.language.trim()) {
-      language = slice.language;
-    }
-  }
-
-  return {
-    segments,
-    words,
-    text,
-    language,
-  };
+  return files;
 };
 
 const transcribeFileWithRetry = async ({
@@ -636,6 +470,7 @@ const transcribeFileWithRetry = async ({
       const timeoutHandle = setTimeout(() => {
         controller.abort();
       }, openaiTimeoutMs);
+
       try {
         const transcription = await openai.audio.transcriptions.create(
           {
@@ -695,6 +530,7 @@ const transcribeFileWithRetry = async ({
           Math.round(delayMs / 1000)
         )}s.`
       );
+
       await wait(delayMs);
     }
   }
@@ -702,139 +538,32 @@ const transcribeFileWithRetry = async ({
   throw lastError || new Error("OpenAI transcription failed.");
 };
 
-const transcribeSegmentWithFallback = async ({
+const transcribeSegment = async ({
   openai,
   segmentPath,
-  segmentDuration,
   requestedLanguage,
-  tmpDir,
-  uploadSegmentSeconds,
-  audioBitrate,
   openaiTimeoutMs,
   openaiMaxAttempts,
   openaiConnectionMaxAttempts,
   openaiConnectionBackoffMs,
   openaiConnectionMaxBackoffMs,
 }) => {
-  let lastError = null;
+  const transcription = await transcribeFileWithRetry({
+    openai,
+    filePath: segmentPath,
+    requestedLanguage,
+    openaiTimeoutMs,
+    openaiMaxAttempts,
+    openaiConnectionMaxAttempts,
+    openaiConnectionBackoffMs,
+    openaiConnectionMaxBackoffMs,
+  });
 
-  const runTranscribe = async (filePath) =>
-    transcribeFileWithRetry({
-      openai,
-      filePath,
-      requestedLanguage,
-      openaiTimeoutMs,
-      openaiMaxAttempts,
-      openaiConnectionMaxAttempts,
-      openaiConnectionBackoffMs,
-      openaiConnectionMaxBackoffMs,
-    });
-
-  try {
-    const direct = await runTranscribe(segmentPath);
-    if (hasTranscriptionContent(direct)) {
-      return direct;
-    }
-    lastError = new Error("Segment transcription returned no usable text.");
-  } catch (error) {
-    lastError = error;
+  if (!hasTranscriptionContent(transcription)) {
+    throw new Error("OpenAI returned no usable transcript text.");
   }
 
-  if (isUnsupportedChunkDecodeError(lastError)) {
-    const wavPath = path.join(
-      tmpDir,
-      `${path.basename(segmentPath, path.extname(segmentPath))}_decode_fallback.wav`
-    );
-    try {
-      await transcodeSegmentToWav({
-        segmentPath,
-        outputPath: wavPath,
-      });
-      const fallback = await runTranscribe(wavPath);
-      if (hasTranscriptionContent(fallback)) {
-        return fallback;
-      }
-      lastError = new Error("Decode fallback returned no usable text.");
-    } catch (error) {
-      lastError = error;
-    } finally {
-      await fs.unlink(wavPath).catch(() => {});
-    }
-  }
-
-  if (
-    isChunkTooLargeError(lastError) ||
-    isChunkTranscribeTimeoutError(lastError)
-  ) {
-    const splitDir = path.join(
-      tmpDir,
-      `${path.basename(segmentPath, path.extname(segmentPath))}_retry_split`
-    );
-    const targetSeconds = Math.max(
-      45,
-      Math.min(
-        uploadSegmentSeconds,
-        Number.isFinite(segmentDuration) && segmentDuration > 0
-          ? Math.max(45, Math.floor(segmentDuration / 2))
-          : uploadSegmentSeconds
-      )
-    );
-
-    try {
-      const { files } = await splitAudioToSegments({
-        inputPath: segmentPath,
-        outputDir: splitDir,
-        segmentSeconds: targetSeconds,
-        audioBitrate,
-        prefix: "part",
-      });
-
-      const slices = [];
-      let localOffset = 0;
-      let successfulParts = 0;
-      const partErrors = [];
-
-      for (let index = 0; index < files.length; index += 1) {
-        const partPath = files[index];
-        const partDuration =
-          (await getDurationSeconds(partPath)) ?? Math.max(30, targetSeconds);
-        try {
-          const partResult = await runTranscribe(partPath);
-          if (!hasTranscriptionContent(partResult)) {
-            partErrors.push(`part ${index + 1}: no usable text`);
-            console.warn(
-              `[transcribe] skipping segmented upload part ${index + 1}/${files.length}: no usable text.`
-            );
-            localOffset += partDuration;
-            continue;
-          }
-          slices.push(buildOffsetTranscription(partResult, localOffset));
-          successfulParts += 1;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          partErrors.push(`part ${index + 1}: ${message}`);
-          console.warn(
-            `[transcribe] skipping segmented upload part ${index + 1}/${files.length}: ${message}`
-          );
-        }
-        localOffset += partDuration;
-      }
-
-      if (successfulParts > 0) {
-        return mergeTranscriptionSlices(slices);
-      }
-
-      const detail =
-        partErrors.length > 0 ? ` ${partErrors[0]}` : " No segment could be transcribed.";
-      throw new Error(`Segmented upload transcription failed.${detail}`);
-    } catch (error) {
-      lastError = error;
-    } finally {
-      await fs.rm(splitDir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
-
-  throw lastError || new Error("Segment transcription failed.");
+  return transcription;
 };
 
 const buildTranscriptionPipeline = (config) => {
@@ -846,11 +575,12 @@ const buildTranscriptionPipeline = (config) => {
 
   return async ({ sessionId, videoKey, language, onProgress }) => {
     const requestedLanguage =
-      typeof language === "string" && language.trim().length > 0 ? language : undefined;
+      typeof language === "string" && language.trim().length > 0
+        ? language.trim()
+        : undefined;
 
     const runDir = path.join(config.tempDir, `${sessionId}_tx_${Date.now()}`);
     const videoPath = path.join(runDir, "input.mp4");
-    const audioPath = path.join(runDir, "audio_clean.mp3");
     const segmentsDir = path.join(runDir, "segments");
 
     await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
@@ -858,6 +588,7 @@ const buildTranscriptionPipeline = (config) => {
 
     try {
       progress(onProgress, { stage: "Downloading source video", progress: 5 });
+
       const { data: videoData, error: downloadError } = await config.supabase.storage
         .from(config.bucket)
         .download(videoKey);
@@ -866,33 +597,29 @@ const buildTranscriptionPipeline = (config) => {
       }
       await fs.writeFile(videoPath, Buffer.from(await videoData.arrayBuffer()));
 
-      progress(onProgress, { stage: "Extracting clean audio", progress: 15 });
-      const streamIndices = await getAudioStreamIndices(videoPath);
-      const extracted = await extractCleanAudio({
+      progress(onProgress, { stage: "Normalizing audio", progress: 15 });
+      const normalizedAudioPath = await extractNormalizedAudio({
         videoPath,
         outputDir: runDir,
         audioBitrate: config.audioBitrate,
-        requestedStreamIndices: streamIndices,
       });
-      await fs.copyFile(extracted.path, audioPath);
 
-      progress(onProgress, { stage: "Segmenting audio", progress: 20 });
-      const { files: segmentFiles } = await splitAudioToSegments({
-        inputPath: audioPath,
+      progress(onProgress, { stage: "Segmenting audio", progress: 22 });
+      const segmentFiles = await splitNormalizedAudio({
+        inputPath: normalizedAudioPath,
         outputDir: segmentsDir,
-        segmentSeconds: config.chunkSeconds,
+        chunkSeconds: config.chunkSeconds,
         audioBitrate: config.audioBitrate,
-        prefix: "segment",
       });
 
-      if (!segmentFiles.length) {
+      if (segmentFiles.length === 0) {
         throw new Error("No audio segments were created for transcription.");
       }
 
       const totalSegments = segmentFiles.length;
       progress(onProgress, {
         stage: `Transcribing audio segments (0/${totalSegments})`,
-        progress: 22,
+        progress: 24,
         totalChunks: totalSegments,
         completedChunks: 0,
       });
@@ -908,14 +635,10 @@ const buildTranscriptionPipeline = (config) => {
           (await getDurationSeconds(segmentPath)) ?? config.chunkSeconds;
 
         try {
-          const transcription = await transcribeSegmentWithFallback({
+          const transcription = await transcribeSegment({
             openai: config.openai,
             segmentPath,
-            segmentDuration,
             requestedLanguage,
-            tmpDir: runDir,
-            uploadSegmentSeconds: config.uploadSegmentSeconds,
-            audioBitrate: config.uploadFallbackBitrate,
             openaiTimeoutMs: config.openaiTimeoutMs,
             openaiMaxAttempts: config.openaiMaxAttempts,
             openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
@@ -923,24 +646,26 @@ const buildTranscriptionPipeline = (config) => {
             openaiConnectionMaxBackoffMs: config.openaiConnectionMaxBackoffMs,
           });
 
-          if (!hasTranscriptionContent(transcription)) {
-            skippedErrors.push(`segment ${index + 1}: no usable text`);
-            console.warn(
-              `[transcribe] skipping segment ${index + 1}/${totalSegments}: no usable text.`
-            );
-          } else {
-            slices.push(buildOffsetTranscription(transcription, offsetSeconds));
-            successfulSegments += 1;
-          }
+          slices.push(buildOffsetTranscription(transcription, offsetSeconds));
+          successfulSegments += 1;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+
+          // Fail fast on OpenAI outages so queue-level retry can restart cleanly.
+          if (isOpenAIConnectionError(error) && successfulSegments === 0) {
+            throw error;
+          }
+
+          if (isChunkTooLargeError(error)) {
+            throw new Error(
+              `Chunk ${index + 1} exceeded OpenAI size limit. Reduce AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS.`
+            );
+          }
+
           skippedErrors.push(`segment ${index + 1}: ${message}`);
           console.warn(
             `[transcribe] skipping segment ${index + 1}/${totalSegments}: ${message}`
           );
-          if (isOpenAIConnectionError(error) && successfulSegments === 0) {
-            throw error;
-          }
         }
 
         offsetSeconds += segmentDuration;
@@ -950,7 +675,7 @@ const buildTranscriptionPipeline = (config) => {
             skippedErrors.length > 0
               ? `Transcribing audio segments (${completedSegments}/${totalSegments}, skipped ${skippedErrors.length})`
               : `Transcribing audio segments (${completedSegments}/${totalSegments})`,
-          progress: Math.min(95, 22 + Math.round((completedSegments / totalSegments) * 70)),
+          progress: Math.min(95, 24 + Math.round((completedSegments / totalSegments) * 70)),
           totalChunks: totalSegments,
           completedChunks: completedSegments,
         });
@@ -1001,10 +726,13 @@ export const createTranscriptionManager = ({
     openai,
     maxConcurrency: Math.max(1, Number(maxConcurrency) || 1),
     chunkSeconds: Math.max(45, Number(chunkSeconds) || 180),
-    audioBitrate: typeof audioBitrate === "string" && audioBitrate.trim() ? audioBitrate : "64k",
+    audioBitrate:
+      typeof audioBitrate === "string" && audioBitrate.trim()
+        ? audioBitrate.trim()
+        : "64k",
     uploadFallbackBitrate:
       typeof uploadFallbackBitrate === "string" && uploadFallbackBitrate.trim()
-        ? uploadFallbackBitrate
+        ? uploadFallbackBitrate.trim()
         : "32k",
     uploadSegmentSeconds: Math.max(45, Number(uploadSegmentSeconds) || 120),
     openaiTimeoutMs: Math.max(30000, Number(openaiTimeoutMs) || 300000),
@@ -1034,10 +762,11 @@ export const createTranscriptionManager = ({
 
   const clearCleanupTimer = (jobId) => {
     const existing = cleanupTimers.get(jobId);
-    if (existing) {
-      clearTimeout(existing);
-      cleanupTimers.delete(jobId);
+    if (!existing) {
+      return;
     }
+    clearTimeout(existing);
+    cleanupTimers.delete(jobId);
   };
 
   const scheduleCleanup = (jobId) => {
@@ -1090,12 +819,14 @@ export const createTranscriptionManager = ({
       return;
     }
     queueRunning = true;
+
     try {
       while (activeCount < config.maxConcurrency) {
         const nextId = queue.shift();
         if (!nextId) {
           break;
         }
+
         const job = jobs.get(nextId);
         if (!job || job.status !== "queued") {
           continue;
@@ -1131,13 +862,12 @@ export const createTranscriptionManager = ({
             const message =
               error instanceof Error ? error.message : "Transcription failed.";
             const latestJob = jobs.get(job.id) || job;
-            const isTransientConnectionFailure = isOpenAIConnectionError(error);
             const retryCount = Number.isFinite(latestJob.retryCount)
               ? latestJob.retryCount
               : 0;
 
             if (
-              isTransientConnectionFailure &&
+              isOpenAIConnectionError(error) &&
               retryCount < config.transientJobRetryLimit
             ) {
               const nextRetry = retryCount + 1;
@@ -1145,12 +875,14 @@ export const createTranscriptionManager = ({
                 180000,
                 config.transientJobRetryDelayMs * Math.pow(2, nextRetry - 1)
               );
+
               console.warn(
                 `[transcribe] transient OpenAI connection failure for job ${job.id}; scheduling retry ${nextRetry}/${config.transientJobRetryLimit} in ${Math.max(
                   1,
                   Math.round(retryDelayMs / 1000)
                 )}s. ${message}`
               );
+
               updateJob(job.id, {
                 status: "queued",
                 stage: `Retrying transcription after network issue (${nextRetry}/${config.transientJobRetryLimit})`,
@@ -1159,6 +891,7 @@ export const createTranscriptionManager = ({
                 retryCount: nextRetry,
                 completedAt: null,
               });
+
               setTimeout(() => {
                 const latest = jobs.get(job.id);
                 if (!latest || latest.status !== "queued") {
@@ -1167,6 +900,7 @@ export const createTranscriptionManager = ({
                 queue.push(job.id);
                 processQueue();
               }, retryDelayMs);
+
               return;
             }
 
@@ -1244,11 +978,13 @@ export const createTranscriptionManager = ({
     if (!id) {
       return null;
     }
+
     const job = jobs.get(id);
     if (!job) {
       jobBySession.delete(sessionId);
       return null;
     }
+
     return job;
   };
 
