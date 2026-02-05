@@ -1,9 +1,11 @@
 import { spawn } from "child_process";
-import { createReadStream, promises as fs } from "fs";
+import { promises as fs } from "fs";
+import { toFile } from "openai/uploads";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 
 const MIN_AUDIO_BYTES = 4096;
+const MAX_TRANSCRIBE_UPLOAD_BYTES = 24 * 1024 * 1024;
 
 const wait = (ms) =>
   new Promise((resolve) => {
@@ -88,6 +90,26 @@ const formatErrorDetail = (error) => {
 const safeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const contentTypeForAudioFile = (filePath) => {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".wav") {
+    return "audio/wav";
+  }
+  if (ext === ".m4a") {
+    return "audio/mp4";
+  }
+  if (ext === ".mp4") {
+    return "audio/mp4";
+  }
+  if (ext === ".webm") {
+    return "audio/webm";
+  }
+  if (ext === ".ogg") {
+    return "audio/ogg";
+  }
+  return "audio/mpeg";
 };
 
 const normalizeSegments = (segments) =>
@@ -577,6 +599,19 @@ const transcribeFileWithRetry = async ({
   openaiConnectionBackoffMs,
   openaiConnectionMaxBackoffMs,
 }) => {
+  const stats = await fs.stat(filePath).catch(() => null);
+  if (!stats || stats.size <= MIN_AUDIO_BYTES) {
+    throw new Error(`Transcription input missing or too small: ${filePath}`);
+  }
+  if (stats.size > MAX_TRANSCRIBE_UPLOAD_BYTES) {
+    throw new Error(
+      `Chunk exceeds upload limit (${stats.size} bytes > ${MAX_TRANSCRIBE_UPLOAD_BYTES}). Reduce AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS.`
+    );
+  }
+
+  const fileBuffer = await fs.readFile(filePath);
+  const fileName = path.basename(filePath);
+  const fileType = contentTypeForAudioFile(filePath);
   const hardMaxAttempts = Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts);
   let lastError = null;
 
@@ -588,9 +623,12 @@ const transcribeFileWithRetry = async ({
       }, openaiTimeoutMs);
 
       try {
+        const uploadFile = await toFile(fileBuffer, fileName, {
+          type: fileType,
+        });
         const transcription = await openai.audio.transcriptions.create(
           {
-            file: createReadStream(filePath),
+            file: uploadFile,
             model: "whisper-1",
             language: requestedLanguage,
             response_format: "verbose_json",
@@ -863,21 +901,21 @@ export const createTranscriptionManager = ({
     bucket,
     openai,
     maxConcurrency: Math.max(1, Number(maxConcurrency) || 1),
-    chunkSeconds: Math.max(45, Number(chunkSeconds) || 180),
+    chunkSeconds: Math.max(45, Math.min(120, Number(chunkSeconds) || 120)),
     audioBitrate:
       typeof audioBitrate === "string" && audioBitrate.trim()
         ? audioBitrate.trim()
-        : "64k",
+        : "48k",
     uploadFallbackBitrate:
       typeof uploadFallbackBitrate === "string" && uploadFallbackBitrate.trim()
         ? uploadFallbackBitrate.trim()
         : "32k",
     uploadSegmentSeconds: Math.max(45, Number(uploadSegmentSeconds) || 120),
     openaiTimeoutMs: Math.max(30000, Number(openaiTimeoutMs) || 300000),
-    openaiMaxAttempts: Math.max(1, Number(openaiMaxAttempts) || 3),
+    openaiMaxAttempts: Math.max(1, Math.min(2, Number(openaiMaxAttempts) || 2)),
     openaiConnectionMaxAttempts: Math.max(
       1,
-      Math.min(4, Number(openaiConnectionMaxAttempts) || 4)
+      Math.min(3, Number(openaiConnectionMaxAttempts) || 3)
     ),
     openaiConnectionBackoffMs: Math.max(500, Number(openaiConnectionBackoffMs) || 3000),
     openaiConnectionMaxBackoffMs: Math.max(
@@ -885,7 +923,7 @@ export const createTranscriptionManager = ({
       Math.min(15000, Number(openaiConnectionMaxBackoffMs) || 15000)
     ),
     jobRetentionMs: Math.max(60000, Number(jobRetentionMs) || 60 * 60 * 1000),
-    transientJobRetryLimit: Math.max(0, Number(transientJobRetryLimit) || 3),
+    transientJobRetryLimit: Math.max(0, Math.min(2, Number(transientJobRetryLimit) || 2)),
     transientJobRetryDelayMs: Math.max(1000, Number(transientJobRetryDelayMs) || 15000),
   };
 
