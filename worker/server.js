@@ -4,6 +4,7 @@ import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { spawn } from "child_process";
 import { createReadStream, promises as fs } from "fs";
+import https from "https";
 import os from "os";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
@@ -106,10 +107,10 @@ const MAX_RENDER_HEIGHT = toPositiveInt(
 );
 const TRANSCRIBE_CHUNK_SECONDS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS,
-  90
+  60
 );
 const TRANSCRIBE_AUDIO_BITRATE =
-  process.env.AUTOCLIP_TRANSCRIBE_BITRATE || "48k";
+  process.env.AUTOCLIP_TRANSCRIBE_BITRATE || "32k";
 const RENDER_PRESET = process.env.AUTOCLIP_FFMPEG_PRESET || "veryfast";
 const SCALE_FLAGS = process.env.AUTOCLIP_SCALE_FLAGS || "lanczos";
 const RENDER_HEIGHT = toEven(MAX_RENDER_HEIGHT);
@@ -201,7 +202,7 @@ const OPENAI_HTTP_TIMEOUT_MS = toPositiveInt(
 );
 const OPENAI_HTTP_MAX_RETRIES = toNonNegativeInt(
   process.env.AUTOCLIP_OPENAI_HTTP_MAX_RETRIES,
-  0
+  2
 );
 
 const exportQueue = [];
@@ -216,11 +217,23 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Custom HTTPS agent with TCP keep-alive.  Railway's proxy / NAT gateway
+// aggressively resets idle TCP connections.  Without keep-alive probes the
+// OS won't notice the dead socket until the next write triggers ECONNRESET.
+const openaiHttpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 5000,
+  maxSockets: 10,
+  maxFreeSockets: 3,
+  timeout: 120000,
+});
+
 // OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   timeout: OPENAI_HTTP_TIMEOUT_MS,
   maxRetries: OPENAI_HTTP_MAX_RETRIES,
+  httpAgent: openaiHttpsAgent,
 });
 
 // Middleware

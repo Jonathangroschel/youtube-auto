@@ -955,13 +955,13 @@ export const createTranscriptionManager = ({
     bucket,
     openai,
     maxConcurrency: Math.max(1, Number(maxConcurrency) || 1),
-    // Smaller default chunks (90 s) produce ~540 KB files at 48 kbps.
-    // Smaller uploads are far less likely to hit ECONNRESET mid-transfer.
-    chunkSeconds: Math.max(30, Math.min(180, Number(chunkSeconds) || 90)),
+    // 60 s chunks at 32 kbps ≈ 240 KB per upload.  Small payloads complete
+    // fast enough that Railway's proxy can't reset the connection mid-transfer.
+    chunkSeconds: Math.max(30, Math.min(180, Number(chunkSeconds) || 60)),
     audioBitrate:
       typeof audioBitrate === "string" && audioBitrate.trim()
         ? audioBitrate.trim()
-        : "48k",
+        : "32k",
     uploadFallbackBitrate:
       typeof uploadFallbackBitrate === "string" && uploadFallbackBitrate.trim()
         ? uploadFallbackBitrate.trim()
