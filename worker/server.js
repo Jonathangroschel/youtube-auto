@@ -83,6 +83,20 @@ const toNonNegativeInt = (value, fallback) => {
   return fallback;
 };
 
+const toBoolean = (value, fallback = false) => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+};
+
 const toEven = (value) => {
   const safe = Math.max(2, Math.floor(value));
   return safe - (safe % 2);
@@ -276,6 +290,25 @@ const authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Unauthorized" });
   }
   next();
+};
+
+const getCorrelationIdFromRequest = (req) => {
+  const raw = req.get("x-correlation-id");
+  if (typeof raw === "string" && raw.trim()) {
+    return raw.trim().slice(0, 120);
+  }
+  return uuidv4().slice(0, 12);
+};
+
+const logWorkerEvent = (event, fields = {}) => {
+  const payload = {
+    ts: new Date().toISOString(),
+    event,
+    ...Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== undefined)
+    ),
+  };
+  console.log(`[worker] ${JSON.stringify(payload)}`);
 };
 
 // Multer for file uploads
@@ -1172,6 +1205,10 @@ const TRANSCRIBE_JOB_TRANSIENT_RETRY_DELAY_MS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_JOB_TRANSIENT_RETRY_DELAY_MS,
   15000
 );
+const TRANSCRIBE_ALLOW_PARTIAL = toBoolean(
+  process.env.AUTOCLIP_TRANSCRIBE_ALLOW_PARTIAL,
+  false
+);
 
 const transcriptionManager = createTranscriptionManager({
   tempDir: TEMP_DIR,
@@ -1194,9 +1231,11 @@ const transcriptionManager = createTranscriptionManager({
   jobRetentionMs: TRANSCRIBE_JOB_RETENTION_MS,
   transientJobRetryLimit: TRANSCRIBE_JOB_TRANSIENT_RETRY_LIMIT,
   transientJobRetryDelayMs: TRANSCRIBE_JOB_TRANSIENT_RETRY_DELAY_MS,
+  allowPartialTranscription: TRANSCRIBE_ALLOW_PARTIAL,
 });
 
 app.post("/transcribe/queue", authMiddleware, async (req, res) => {
+  const correlationId = getCorrelationIdFromRequest(req);
   try {
     const { sessionId, videoKey, language = "en" } = req.body || {};
     if (!sessionId || typeof sessionId !== "string") {
@@ -1209,9 +1248,18 @@ app.post("/transcribe/queue", authMiddleware, async (req, res) => {
       sessionId,
       videoKey,
       language: typeof language === "string" ? language : "en",
+      correlationId,
     });
     const includeResult = job.status === "complete";
     const statusCode = includeResult ? 200 : 202;
+    logWorkerEvent("transcribe_queue", {
+      correlationId,
+      sessionId,
+      jobId: job.id,
+      status: job.status,
+      language: job.language,
+      queueResponseStatus: statusCode,
+    });
     return res
       .status(statusCode)
       .json(transcriptionManager.toJobPayload(job, includeResult));
@@ -1220,22 +1268,44 @@ app.post("/transcribe/queue", authMiddleware, async (req, res) => {
       error instanceof Error
         ? error.message
         : "Failed to queue transcription.";
+    logWorkerEvent("transcribe_queue_error", {
+      correlationId,
+      error: message,
+    });
     return res.status(500).json({ error: message });
   }
 });
 
 app.get("/transcribe/status/:sessionId", authMiddleware, (req, res) => {
+  const correlationId = getCorrelationIdFromRequest(req);
   const sessionId = req.params.sessionId;
   if (!sessionId) {
     return res.status(400).json({ error: "Missing sessionId" });
   }
   const job = transcriptionManager.getJobBySession(sessionId);
   if (!job) {
+    logWorkerEvent("transcribe_status_not_found", {
+      correlationId,
+      sessionId,
+    });
     return res.status(404).json({ error: "Transcription job not found." });
   }
   const includeResult = job.status === "complete";
   const statusCode =
     job.status === "complete" || job.status === "error" ? 200 : 202;
+  if (statusCode === 200) {
+    logWorkerEvent("transcribe_status_terminal", {
+      correlationId,
+      sessionId,
+      jobId: job.id,
+      status: job.status,
+      retryCount: Number.isFinite(job.retryCount) ? job.retryCount : 0,
+      totalChunks: Number.isFinite(job.totalChunks) ? job.totalChunks : 0,
+      completedChunks:
+        Number.isFinite(job.completedChunks) ? job.completedChunks : 0,
+      hasError: Boolean(job.error),
+    });
+  }
   return res
     .status(statusCode)
     .json(transcriptionManager.toJobPayload(job, includeResult));
@@ -1243,21 +1313,40 @@ app.get("/transcribe/status/:sessionId", authMiddleware, (req, res) => {
 
 // Transcribe video synchronously (legacy endpoint).
 app.post("/transcribe", authMiddleware, async (req, res) => {
+  const correlationId = getCorrelationIdFromRequest(req);
   try {
     const { sessionId, videoKey, language = "en" } = req.body || {};
     if (!sessionId || !videoKey) {
       return res.status(400).json({ error: "Missing sessionId or videoKey" });
     }
+    logWorkerEvent("transcribe_legacy_start", {
+      correlationId,
+      sessionId,
+      language: typeof language === "string" ? language : "en",
+    });
     const result = await transcriptionManager.runLegacyTranscription({
       sessionId,
       videoKey,
       language,
+      correlationId,
+    });
+    logWorkerEvent("transcribe_legacy_complete", {
+      correlationId,
+      sessionId,
+      segments: Array.isArray(result?.segments) ? result.segments.length : 0,
+      words: Array.isArray(result?.words) ? result.words.length : 0,
     });
     return res.json(result);
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Transcription failed.";
+    logWorkerEvent("transcribe_legacy_error", {
+      correlationId,
+      error: message,
+    });
     console.error("Transcribe error:", error);
     return res.status(500).json({
-      error: error instanceof Error ? error.message : "Transcription failed.",
+      error: message,
     });
   }
 });
@@ -1776,7 +1865,7 @@ app.listen(PORT, () => {
     `[worker] transcription concurrency=${MAX_TRANSCRIBE_CONCURRENCY} chunkSeconds=${TRANSCRIBE_CHUNK_SECONDS} chunkBitrate=${TRANSCRIBE_AUDIO_BITRATE}`
   );
   console.log(
-    `[worker] transcription openai timeoutMs=${TRANSCRIBE_OPENAI_TIMEOUT_MS} attempts=${TRANSCRIBE_OPENAI_MAX_ATTEMPTS} connectionAttempts=${TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS} uploadSegmentSeconds=${TRANSCRIBE_UPLOAD_SEGMENT_SECONDS} sdkRetries=${OPENAI_HTTP_MAX_RETRIES} configuredSdkRetries=${OPENAI_HTTP_MAX_RETRIES_CONFIGURED}`
+    `[worker] transcription openai timeoutMs=${TRANSCRIBE_OPENAI_TIMEOUT_MS} attempts=${TRANSCRIBE_OPENAI_MAX_ATTEMPTS} connectionAttempts=${TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS} uploadSegmentSeconds=${TRANSCRIBE_UPLOAD_SEGMENT_SECONDS} allowPartial=${TRANSCRIBE_ALLOW_PARTIAL} sdkRetries=${OPENAI_HTTP_MAX_RETRIES} configuredSdkRetries=${OPENAI_HTTP_MAX_RETRIES_CONFIGURED}`
   );
   console.log(
     `[worker] OpenAI transport primary=${openaiTransportName} fallback=${openaiFallbackTransportName}`

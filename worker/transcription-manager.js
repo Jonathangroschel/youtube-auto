@@ -72,6 +72,35 @@ const formatErrorDetail = (error) => {
   return out || "Unknown error";
 };
 
+const serializeLogFields = (fields) => {
+  const out = {};
+  Object.entries(fields || {}).forEach(([key, value]) => {
+    if (value === undefined) {
+      return;
+    }
+    out[key] = value;
+  });
+  return out;
+};
+
+const logTranscribe = (level, event, fields = {}) => {
+  const payload = {
+    ts: nowIso(),
+    event,
+    ...serializeLogFields(fields),
+  };
+  const line = `[transcribe] ${JSON.stringify(payload)}`;
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+  if (level === "warn") {
+    console.warn(line);
+    return;
+  }
+  console.log(line);
+};
+
 const safeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -250,6 +279,14 @@ const runProcess = async (command, args, label) =>
   });
 
 const runFfmpeg = (args, label) => runProcess("ffmpeg", args, label);
+
+const getFileSizeBytes = async (filePath) => {
+  const stats = await fs.stat(filePath).catch(() => null);
+  if (!stats || !Number.isFinite(stats.size)) {
+    return null;
+  }
+  return Number(stats.size);
+};
 
 const checkOpenAIConnectivity = async ({
   openai,
@@ -589,12 +626,26 @@ const transcribeFileWithRetry = async ({
   openaiConnectionMaxAttempts,
   openaiConnectionBackoffMs,
   openaiConnectionMaxBackoffMs,
+  logContext,
 }) => {
   const hardMaxAttempts = Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts);
   const primaryTransportLabel = String(openaiTransportName || "primary");
   const fallbackTransportLabel = String(openaiFallbackTransportName || "fallback");
   let useFallbackTransport = false;
   let lastError = null;
+  const baseLogContext = serializeLogFields(logContext || {});
+  const fileBytes = await getFileSizeBytes(filePath);
+
+  logTranscribe("info", "openai_segment_start", {
+    ...baseLogContext,
+    fileName: path.basename(filePath),
+    fileBytes,
+    timeoutMs: openaiTimeoutMs,
+    attemptLimit: hardMaxAttempts,
+    requestedLanguage: requestedLanguage || "auto",
+    primaryTransport: primaryTransportLabel,
+    fallbackTransport: openaiFallback ? fallbackTransportLabel : null,
+  });
 
   for (let attempt = 1; attempt <= hardMaxAttempts; attempt += 1) {
     const activeOpenAI =
@@ -603,6 +654,15 @@ const transcribeFileWithRetry = async ({
       useFallbackTransport && openaiFallback
         ? fallbackTransportLabel
         : primaryTransportLabel;
+    const attemptStartedAt = Date.now();
+
+    logTranscribe("info", "openai_attempt_start", {
+      ...baseLogContext,
+      attempt,
+      maxAttempts: hardMaxAttempts,
+      transport: activeTransportLabel,
+      fileBytes,
+    });
 
     try {
       const controller = new AbortController();
@@ -622,6 +682,22 @@ const transcribeFileWithRetry = async ({
           { signal: controller.signal }
         );
 
+        const segmentsCount = normalizeSegments(transcription?.segments).length;
+        const wordsCount = normalizeWords(transcription?.words).length;
+        const textChars =
+          typeof transcription?.text === "string"
+            ? transcription.text.trim().length
+            : 0;
+        logTranscribe("info", "openai_attempt_success", {
+          ...baseLogContext,
+          attempt,
+          maxAttempts: hardMaxAttempts,
+          transport: activeTransportLabel,
+          durationMs: Date.now() - attemptStartedAt,
+          segmentsCount,
+          wordsCount,
+          textChars,
+        });
         return transcription;
       } catch (error) {
         if (
@@ -648,12 +724,33 @@ const transcribeFileWithRetry = async ({
       const maxAttemptsForError = connectionError
         ? Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts)
         : openaiMaxAttempts;
+      const detail = formatErrorDetail(error);
+      const durationMs = Date.now() - attemptStartedAt;
 
       if (connectionError && openaiFallback) {
         useFallbackTransport = !useFallbackTransport;
+        logTranscribe("warn", "openai_transport_switch", {
+          ...baseLogContext,
+          attempt,
+          fromTransport: activeTransportLabel,
+          toTransport: useFallbackTransport
+            ? fallbackTransportLabel
+            : primaryTransportLabel,
+          reason: detail,
+        });
       }
 
       if (!retryable || attempt >= maxAttemptsForError) {
+        logTranscribe("error", "openai_attempt_failed_terminal", {
+          ...baseLogContext,
+          attempt,
+          maxAttempts: maxAttemptsForError,
+          transport: activeTransportLabel,
+          durationMs,
+          retryable,
+          connectionError,
+          error: detail,
+        });
         throw error;
       }
 
@@ -666,18 +763,26 @@ const transcribeFileWithRetry = async ({
         delayMs += Math.floor(Math.random() * 1200);
       }
 
-      const detail = formatErrorDetail(error);
-      console.warn(
-        `[transcribe] OpenAI attempt ${attempt}/${maxAttemptsForError} failed (${connectionError ? "connection" : "retryable"}) [transport=${activeTransportLabel}]: ${detail}. Retrying in ${Math.max(
-          1,
-          Math.round(delayMs / 1000)
-        )}s.`
-      );
+      logTranscribe("warn", "openai_attempt_failed_retry", {
+        ...baseLogContext,
+        attempt,
+        maxAttempts: maxAttemptsForError,
+        transport: activeTransportLabel,
+        durationMs,
+        retryable,
+        connectionError,
+        retryDelayMs: delayMs,
+        error: detail,
+      });
 
       await wait(delayMs);
     }
   }
 
+  logTranscribe("error", "openai_segment_failed_exhausted", {
+    ...baseLogContext,
+    error: formatErrorDetail(lastError),
+  });
   throw lastError || new Error("OpenAI transcription failed.");
 };
 
@@ -693,6 +798,7 @@ const transcribeSegment = async ({
   openaiConnectionMaxAttempts,
   openaiConnectionBackoffMs,
   openaiConnectionMaxBackoffMs,
+  logContext,
 }) => {
   const transcription = await transcribeFileWithRetry({
     openai,
@@ -706,6 +812,7 @@ const transcribeSegment = async ({
     openaiConnectionMaxAttempts,
     openaiConnectionBackoffMs,
     openaiConnectionMaxBackoffMs,
+    logContext,
   });
 
   if (!hasTranscriptionContent(transcription)) {
@@ -722,18 +829,46 @@ const buildTranscriptionPipeline = (config) => {
     }
   };
 
-  return async ({ sessionId, videoKey, language, onProgress }) => {
+  return async ({
+    jobId,
+    sessionId,
+    videoKey,
+    language,
+    onProgress,
+    correlationId = null,
+  }) => {
+    const pipelineStartedAt = Date.now();
     const requestedLanguage =
       typeof language === "string" && language.trim().length > 0
         ? language.trim()
         : undefined;
+    const logBase = {
+      jobId: jobId || null,
+      sessionId,
+      videoKey,
+      correlationId: correlationId || null,
+    };
 
     const runDir = path.join(config.tempDir, `${sessionId}_tx_${Date.now()}`);
     const videoPath = path.join(runDir, "input.mp4");
     const segmentsDir = path.join(runDir, "segments");
+    let totalSegments = 0;
+    let successfulSegments = 0;
+    const skippedErrors = [];
 
     await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
     await fs.mkdir(runDir, { recursive: true });
+    logTranscribe("info", "pipeline_started", {
+      ...logBase,
+      runDir,
+      requestedLanguage: requestedLanguage || "auto",
+      chunkSeconds: config.chunkSeconds,
+      audioBitrate: config.audioBitrate,
+      allowPartialTranscription: config.allowPartialTranscription,
+      openaiTimeoutMs: config.openaiTimeoutMs,
+      openaiMaxAttempts: config.openaiMaxAttempts,
+      openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
+    });
 
     try {
       progress(onProgress, {
@@ -750,6 +885,7 @@ const buildTranscriptionPipeline = (config) => {
         openaiConnectionBackoffMs: config.openaiConnectionBackoffMs,
         openaiConnectionMaxBackoffMs: config.openaiConnectionMaxBackoffMs,
       });
+      logTranscribe("info", "openai_connectivity_ok", logBase);
 
       progress(onProgress, { stage: "Downloading source video", progress: 5 });
 
@@ -759,13 +895,33 @@ const buildTranscriptionPipeline = (config) => {
       if (downloadError) {
         throw downloadError;
       }
-      await fs.writeFile(videoPath, Buffer.from(await videoData.arrayBuffer()));
+      const sourceBuffer = Buffer.from(await videoData.arrayBuffer());
+      await fs.writeFile(videoPath, sourceBuffer);
+      const sourceDurationSec = await getDurationSeconds(videoPath);
+      logTranscribe("info", "source_downloaded", {
+        ...logBase,
+        sourceBytes: sourceBuffer.length,
+        sourceDurationSec:
+          Number.isFinite(sourceDurationSec) && sourceDurationSec != null
+            ? Number(sourceDurationSec.toFixed(3))
+            : null,
+      });
 
       progress(onProgress, { stage: "Normalizing audio", progress: 15 });
       const normalizedAudioPath = await extractNormalizedAudio({
         videoPath,
         outputDir: runDir,
         audioBitrate: config.audioBitrate,
+      });
+      const normalizedAudioBytes = await getFileSizeBytes(normalizedAudioPath);
+      const normalizedDurationSec = await getDurationSeconds(normalizedAudioPath);
+      logTranscribe("info", "audio_normalized", {
+        ...logBase,
+        normalizedAudioBytes,
+        normalizedDurationSec:
+          Number.isFinite(normalizedDurationSec) && normalizedDurationSec != null
+            ? Number(normalizedDurationSec.toFixed(3))
+            : null,
       });
 
       progress(onProgress, { stage: "Segmenting audio", progress: 22 });
@@ -780,7 +936,11 @@ const buildTranscriptionPipeline = (config) => {
         throw new Error("No audio segments were created for transcription.");
       }
 
-      const totalSegments = segmentFiles.length;
+      totalSegments = segmentFiles.length;
+      logTranscribe("info", "audio_segmented", {
+        ...logBase,
+        totalSegments,
+      });
       progress(onProgress, {
         stage: `Transcribing audio segments (0/${totalSegments})`,
         progress: 24,
@@ -789,14 +949,23 @@ const buildTranscriptionPipeline = (config) => {
       });
 
       const slices = [];
-      const skippedErrors = [];
-      let successfulSegments = 0;
       let offsetSeconds = 0;
 
       for (let index = 0; index < segmentFiles.length; index += 1) {
         const segmentPath = segmentFiles[index];
+        const segmentIndex = index + 1;
         const segmentDuration =
           (await getDurationSeconds(segmentPath)) ?? config.chunkSeconds;
+        const segmentBytes = await getFileSizeBytes(segmentPath);
+        const segmentStartedAt = Date.now();
+        logTranscribe("info", "segment_transcribe_start", {
+          ...logBase,
+          segmentIndex,
+          totalSegments,
+          segmentBytes,
+          segmentDurationSec: Number(segmentDuration.toFixed(3)),
+          offsetSec: Number(offsetSeconds.toFixed(3)),
+        });
 
         try {
           const transcription = await transcribeSegment({
@@ -811,32 +980,77 @@ const buildTranscriptionPipeline = (config) => {
             openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
             openaiConnectionBackoffMs: config.openaiConnectionBackoffMs,
             openaiConnectionMaxBackoffMs: config.openaiConnectionMaxBackoffMs,
+            logContext: {
+              ...logBase,
+              segmentIndex,
+              totalSegments,
+              segmentBytes,
+            },
           });
 
-          slices.push(buildOffsetTranscription(transcription, offsetSeconds));
+          const slice = buildOffsetTranscription(transcription, offsetSeconds);
+          slices.push(slice);
           successfulSegments += 1;
+          logTranscribe("info", "segment_transcribe_success", {
+            ...logBase,
+            segmentIndex,
+            totalSegments,
+            durationMs: Date.now() - segmentStartedAt,
+            sliceSegments: Array.isArray(slice.segments) ? slice.segments.length : 0,
+            sliceWords: Array.isArray(slice.words) ? slice.words.length : 0,
+            sliceTextChars: typeof slice.text === "string" ? slice.text.length : 0,
+          });
         } catch (error) {
           const message = formatErrorDetail(error);
-
-          // Fail fast on OpenAI outages so queue-level retry can restart cleanly.
-          if (isOpenAIConnectionError(error) && successfulSegments === 0) {
-            throw error;
-          }
+          logTranscribe("warn", "segment_transcribe_error", {
+            ...logBase,
+            segmentIndex,
+            totalSegments,
+            durationMs: Date.now() - segmentStartedAt,
+            isConnectionError: isOpenAIConnectionError(error),
+            isChunkTooLarge: isChunkTooLargeError(error),
+            error: message,
+          });
 
           if (isChunkTooLargeError(error)) {
             throw new Error(
-              `Chunk ${index + 1} exceeded OpenAI size limit. Reduce AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS.`
+              `Chunk ${segmentIndex} exceeded OpenAI size limit. Reduce AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS.`
             );
           }
 
-          skippedErrors.push(`segment ${index + 1}: ${message}`);
-          console.warn(
-            `[transcribe] skipping segment ${index + 1}/${totalSegments}: ${message}`
-          );
+          if (!config.allowPartialTranscription) {
+            logTranscribe("error", "pipeline_abort_partial_disabled", {
+              ...logBase,
+              segmentIndex,
+              totalSegments,
+              error: message,
+            });
+            throw error;
+          }
+
+          // Fail fast on OpenAI outages so queue-level retry can restart cleanly.
+          if (isOpenAIConnectionError(error) && successfulSegments === 0) {
+            logTranscribe("error", "pipeline_abort_first_segment_connection_failure", {
+              ...logBase,
+              segmentIndex,
+              totalSegments,
+              error: message,
+            });
+            throw error;
+          }
+
+          skippedErrors.push(`segment ${segmentIndex}: ${message}`);
+          logTranscribe("warn", "segment_skipped", {
+            ...logBase,
+            segmentIndex,
+            totalSegments,
+            skippedCount: skippedErrors.length,
+            error: message,
+          });
         }
 
         offsetSeconds += segmentDuration;
-        const completedSegments = index + 1;
+        const completedSegments = segmentIndex;
         progress(onProgress, {
           stage:
             skippedErrors.length > 0
@@ -860,9 +1074,44 @@ const buildTranscriptionPipeline = (config) => {
         completedChunks: totalSegments,
       });
 
-      return mergeTranscriptionSlices(slices);
+      const merged = mergeTranscriptionSlices(slices);
+      const transcriptEndSec = normalizeSegments(merged.segments).reduce(
+        (maxEnd, segment) => Math.max(maxEnd, segment.end),
+        0
+      );
+      logTranscribe("info", "pipeline_complete", {
+        ...logBase,
+        durationMs: Date.now() - pipelineStartedAt,
+        totalSegments,
+        successfulSegments,
+        skippedSegments: skippedErrors.length,
+        coverageRatio:
+          totalSegments > 0
+            ? Number((successfulSegments / totalSegments).toFixed(3))
+            : 0,
+        mergedSegments: normalizeSegments(merged.segments).length,
+        mergedWords: normalizeWords(merged.words).length,
+        mergedTextChars:
+          typeof merged.text === "string" ? merged.text.length : 0,
+        transcriptEndSec: Number(transcriptEndSec.toFixed(3)),
+      });
+      return merged;
+    } catch (error) {
+      logTranscribe("error", "pipeline_failed", {
+        ...logBase,
+        durationMs: Date.now() - pipelineStartedAt,
+        totalSegments,
+        successfulSegments,
+        skippedSegments: skippedErrors.length,
+        error: formatErrorDetail(error),
+      });
+      throw error;
     } finally {
       await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
+      logTranscribe("info", "pipeline_cleanup", {
+        ...logBase,
+        runDir,
+      });
     }
   };
 };
@@ -888,6 +1137,7 @@ export const createTranscriptionManager = ({
   jobRetentionMs,
   transientJobRetryLimit,
   transientJobRetryDelayMs,
+  allowPartialTranscription,
 }) => {
   const config = {
     tempDir,
@@ -929,6 +1179,10 @@ export const createTranscriptionManager = ({
     jobRetentionMs: Math.max(60000, Number(jobRetentionMs) || 60 * 60 * 1000),
     transientJobRetryLimit: Math.max(0, Number(transientJobRetryLimit) || 3),
     transientJobRetryDelayMs: Math.max(1000, Number(transientJobRetryDelayMs) || 15000),
+    allowPartialTranscription:
+      typeof allowPartialTranscription === "boolean"
+        ? allowPartialTranscription
+        : false,
   };
 
   const runPipeline = buildTranscriptionPipeline(config);
@@ -984,6 +1238,7 @@ export const createTranscriptionManager = ({
   const toJobPayload = (job, includeResult = false) => ({
     jobId: job.id,
     sessionId: job.sessionId,
+    correlationId: job.correlationId || null,
     status: job.status,
     stage: job.stage,
     progress: job.progress,
@@ -1018,13 +1273,41 @@ export const createTranscriptionManager = ({
           stage: "Starting transcription",
           progress: Math.max(job.progress || 0, 1),
         });
+        logTranscribe("info", "job_started", {
+          jobId: job.id,
+          sessionId: job.sessionId,
+          correlationId: job.correlationId || null,
+          queueDepth: queue.length,
+          activeCount,
+          retryCount: Number.isFinite(job.retryCount) ? job.retryCount : 0,
+        });
 
         runPipeline({
+          jobId: job.id,
           sessionId: job.sessionId,
           videoKey: job.videoKey,
           language: job.language,
+          correlationId: job.correlationId || null,
           onProgress: (patch) => {
             updateJob(job.id, patch);
+            if (patch && typeof patch.stage === "string") {
+              logTranscribe("info", "job_progress", {
+                jobId: job.id,
+                sessionId: job.sessionId,
+                correlationId: job.correlationId || null,
+                stage: patch.stage,
+                progress:
+                  typeof patch.progress === "number" ? patch.progress : null,
+                totalChunks:
+                  typeof patch.totalChunks === "number"
+                    ? patch.totalChunks
+                    : null,
+                completedChunks:
+                  typeof patch.completedChunks === "number"
+                    ? patch.completedChunks
+                    : null,
+              });
+            }
           },
         })
           .then((result) => {
@@ -1035,6 +1318,26 @@ export const createTranscriptionManager = ({
               result,
               error: null,
               completedAt: nowIso(),
+            });
+            const completed = jobs.get(job.id) || job;
+            logTranscribe("info", "job_completed", {
+              jobId: completed.id,
+              sessionId: completed.sessionId,
+              correlationId: completed.correlationId || null,
+              retryCount:
+                Number.isFinite(completed.retryCount)
+                  ? completed.retryCount
+                  : 0,
+              totalChunks:
+                Number.isFinite(completed.totalChunks)
+                  ? completed.totalChunks
+                  : 0,
+              completedChunks:
+                Number.isFinite(completed.completedChunks)
+                  ? completed.completedChunks
+                  : 0,
+              resultSegments: normalizeSegments(result?.segments).length,
+              resultWords: normalizeWords(result?.words).length,
             });
             scheduleCleanup(job.id);
           })
@@ -1055,12 +1358,15 @@ export const createTranscriptionManager = ({
                 config.transientJobRetryDelayMs * Math.pow(2, nextRetry - 1)
               );
 
-              console.warn(
-                `[transcribe] transient OpenAI connection failure for job ${job.id}; scheduling retry ${nextRetry}/${config.transientJobRetryLimit} in ${Math.max(
-                  1,
-                  Math.round(retryDelayMs / 1000)
-                )}s. ${message}`
-              );
+              logTranscribe("warn", "job_retry_scheduled", {
+                jobId: latestJob.id,
+                sessionId: latestJob.sessionId,
+                correlationId: latestJob.correlationId || null,
+                retryAttempt: nextRetry,
+                retryLimit: config.transientJobRetryLimit,
+                retryDelayMs,
+                reason: message,
+              });
 
               updateJob(job.id, {
                 status: "queued",
@@ -1083,7 +1389,13 @@ export const createTranscriptionManager = ({
               return;
             }
 
-            console.error("Transcribe job error:", job.id, message);
+            logTranscribe("error", "job_failed", {
+              jobId: latestJob.id,
+              sessionId: latestJob.sessionId,
+              correlationId: latestJob.correlationId || null,
+              retryCount,
+              reason: message,
+            });
             updateJob(job.id, {
               status: "error",
               stage: "Transcription failed",
@@ -1094,6 +1406,13 @@ export const createTranscriptionManager = ({
           })
           .finally(() => {
             activeCount = Math.max(0, activeCount - 1);
+            logTranscribe("info", "job_slot_released", {
+              jobId: job.id,
+              sessionId: job.sessionId,
+              correlationId: job.correlationId || null,
+              queueDepth: queue.length,
+              activeCount,
+            });
             processQueue();
           });
       }
@@ -1102,16 +1421,31 @@ export const createTranscriptionManager = ({
     }
   };
 
-  const enqueueTranscribeJob = ({ sessionId, videoKey, language = "en" }) => {
+  const enqueueTranscribeJob = ({
+    sessionId,
+    videoKey,
+    language = "en",
+    correlationId = null,
+  }) => {
     const normalizedLanguage =
       typeof language === "string" && language.trim().length > 0
         ? language.trim()
         : "en";
+    const normalizedCorrelationId =
+      typeof correlationId === "string" && correlationId.trim().length > 0
+        ? correlationId.trim().slice(0, 120)
+        : null;
 
     const existingId = jobBySession.get(sessionId);
     if (existingId) {
       const existing = jobs.get(existingId);
       if (existing && (existing.status === "queued" || existing.status === "processing")) {
+        logTranscribe("info", "job_reused_inflight", {
+          jobId: existing.id,
+          sessionId,
+          correlationId: existing.correlationId || normalizedCorrelationId,
+          status: existing.status,
+        });
         return existing;
       }
       if (
@@ -1120,6 +1454,12 @@ export const createTranscriptionManager = ({
         existing.videoKey === videoKey &&
         existing.language === normalizedLanguage
       ) {
+        logTranscribe("info", "job_reused_complete", {
+          jobId: existing.id,
+          sessionId,
+          correlationId: existing.correlationId || normalizedCorrelationId,
+          status: existing.status,
+        });
         return existing;
       }
     }
@@ -1131,6 +1471,7 @@ export const createTranscriptionManager = ({
       sessionId,
       videoKey,
       language: normalizedLanguage,
+      correlationId: normalizedCorrelationId,
       status: "queued",
       stage: "Queued",
       progress: 0,
@@ -1147,6 +1488,14 @@ export const createTranscriptionManager = ({
     jobs.set(id, job);
     jobBySession.set(sessionId, id);
     queue.push(id);
+    logTranscribe("info", "job_queued", {
+      jobId: id,
+      sessionId,
+      correlationId: normalizedCorrelationId,
+      queueDepth: queue.length,
+      maxConcurrency: config.maxConcurrency,
+      language: normalizedLanguage,
+    });
     processQueue();
 
     return job;
@@ -1167,11 +1516,18 @@ export const createTranscriptionManager = ({
     return job;
   };
 
-  const runLegacyTranscription = async ({ sessionId, videoKey, language = "en" }) =>
+  const runLegacyTranscription = async ({
+    sessionId,
+    videoKey,
+    language = "en",
+    correlationId = null,
+  }) =>
     runPipeline({
+      jobId: `legacy-${sessionId}`,
       sessionId,
       videoKey,
       language,
+      correlationId,
       onProgress: null,
     });
 
@@ -1190,6 +1546,7 @@ export const createTranscriptionManager = ({
     openaiTimeoutMs: config.openaiTimeoutMs,
     openaiMaxAttempts: config.openaiMaxAttempts,
     openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
+    allowPartialTranscription: config.allowPartialTranscription,
     uploadSegmentSeconds: config.uploadSegmentSeconds,
   });
 
