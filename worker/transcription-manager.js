@@ -426,7 +426,11 @@ const getDurationSeconds = async (filePath) => {
 const listSegmentFiles = async (directory, prefix) => {
   const names = await fs.readdir(directory).catch(() => []);
   return names
-    .filter((name) => new RegExp(`^${prefix}_\\d+\\.mp3$`, "i").test(name))
+    .filter((name) =>
+      new RegExp(`^${prefix}_\\d+\\.(mp3|mp4|m4a|wav|webm|ogg|aac)$`, "i").test(
+        name
+      )
+    )
     .sort()
     .map((name) => path.join(directory, name));
 };
@@ -734,6 +738,64 @@ const splitNormalizedAudio = async ({
   return files;
 };
 
+const splitSourceAudioWithCopy = async ({
+  videoPath,
+  outputDir,
+  chunkSeconds,
+  logContext,
+}) => {
+  await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+  await fs.mkdir(outputDir, { recursive: true });
+
+  const outputPattern = path.join(outputDir, "segment_%04d.mp4");
+  const result = await runFfmpeg(
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      videoPath,
+      "-map",
+      "0:a:0?",
+      "-vn",
+      "-sn",
+      "-dn",
+      "-c:a",
+      "copy",
+      "-f",
+      "segment",
+      "-segment_time",
+      String(chunkSeconds),
+      "-reset_timestamps",
+      "1",
+      outputPattern,
+    ],
+    "segment-audio-copy"
+  );
+
+  const files = await listSegmentFiles(outputDir, "segment");
+  if (files.length === 0) {
+    throw new Error(
+      `Audio copy segmentation failed. ${compactMessage(result.stderr)}`
+    );
+  }
+
+  const totalSegmentBytes = (
+    await Promise.all(files.map((filePath) => getFileSizeBytes(filePath)))
+  ).reduce((sum, value) => sum + (Number.isFinite(value) ? Number(value) : 0), 0);
+  logTranscribe("warn", "audio_copy_segmented", {
+    ...serializeLogFields(logContext || {}),
+    ffmpegExitCode: result.code,
+    totalSegments: files.length,
+    totalSegmentBytes,
+    stderrSummary:
+      result.code !== 0 ? compactMessage(result.stderr) : null,
+  });
+
+  return files;
+};
+
 const transcribeFileWithRetry = async ({
   openai,
   openaiFallback,
@@ -1027,31 +1089,54 @@ const buildTranscriptionPipeline = (config) => {
             : null,
       });
 
-      progress(onProgress, { stage: "Normalizing audio", progress: 15 });
-      const normalizedAudioPath = await extractNormalizedAudio({
-        videoPath,
-        outputDir: runDir,
-        audioBitrate: config.audioBitrate,
-        logContext: logBase,
-      });
-      const normalizedAudioBytes = await getFileSizeBytes(normalizedAudioPath);
-      const normalizedDurationSec = await getDurationSeconds(normalizedAudioPath);
-      logTranscribe("info", "audio_normalized", {
-        ...logBase,
-        normalizedAudioBytes,
-        normalizedDurationSec:
-          Number.isFinite(normalizedDurationSec) && normalizedDurationSec != null
-            ? Number(normalizedDurationSec.toFixed(3))
-            : null,
-      });
+      let normalizedDurationSec = null;
+      let segmentFiles = [];
+      let segmentSource = "normalized";
 
-      progress(onProgress, { stage: "Segmenting audio", progress: 22 });
-      const segmentFiles = await splitNormalizedAudio({
-        inputPath: normalizedAudioPath,
-        outputDir: segmentsDir,
-        chunkSeconds: config.chunkSeconds,
-        audioBitrate: config.audioBitrate,
-      });
+      progress(onProgress, { stage: "Normalizing audio", progress: 15 });
+      try {
+        const normalizedAudioPath = await extractNormalizedAudio({
+          videoPath,
+          outputDir: runDir,
+          audioBitrate: config.audioBitrate,
+          logContext: logBase,
+        });
+        const normalizedAudioBytes = await getFileSizeBytes(normalizedAudioPath);
+        normalizedDurationSec = await getDurationSeconds(normalizedAudioPath);
+        logTranscribe("info", "audio_normalized", {
+          ...logBase,
+          normalizedAudioBytes,
+          normalizedDurationSec:
+            Number.isFinite(normalizedDurationSec) && normalizedDurationSec != null
+              ? Number(normalizedDurationSec.toFixed(3))
+              : null,
+        });
+
+        progress(onProgress, { stage: "Segmenting audio", progress: 22 });
+        segmentFiles = await splitNormalizedAudio({
+          inputPath: normalizedAudioPath,
+          outputDir: segmentsDir,
+          chunkSeconds: config.chunkSeconds,
+          audioBitrate: config.audioBitrate,
+        });
+      } catch (error) {
+        segmentSource = "source_copy";
+        logTranscribe("warn", "audio_segmentation_fallback_copy", {
+          ...logBase,
+          reason: formatErrorDetail(error),
+          chunkSeconds: config.chunkSeconds,
+        });
+        progress(onProgress, {
+          stage: "Segmenting source audio (fallback)",
+          progress: 22,
+        });
+        segmentFiles = await splitSourceAudioWithCopy({
+          videoPath,
+          outputDir: segmentsDir,
+          chunkSeconds: config.chunkSeconds,
+          logContext: logBase,
+        });
+      }
 
       if (segmentFiles.length === 0) {
         throw new Error("No audio segments were created for transcription.");
@@ -1061,6 +1146,11 @@ const buildTranscriptionPipeline = (config) => {
       logTranscribe("info", "audio_segmented", {
         ...logBase,
         totalSegments,
+        segmentSource,
+        normalizedDurationSec:
+          Number.isFinite(normalizedDurationSec) && normalizedDurationSec != null
+            ? Number(normalizedDurationSec.toFixed(3))
+            : null,
       });
       progress(onProgress, {
         stage: `Transcribing audio segments (0/${totalSegments})`,
@@ -1242,6 +1332,7 @@ const buildTranscriptionPipeline = (config) => {
         totalSegments,
         successfulSegments,
         skippedSegments: skippedErrors.length,
+        segmentSource,
         expectedDurationSec:
           expectedDurationSec && Number.isFinite(expectedDurationSec)
             ? Number(expectedDurationSec.toFixed(3))
