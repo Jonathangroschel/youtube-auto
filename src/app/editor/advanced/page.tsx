@@ -3893,10 +3893,16 @@ function AdvancedEditorContent() {
         next.push({ id: clip.laneId, type: getLaneType(asset) });
       });
       // Keep subtitles/text above video, with audio at the bottom.
-      next.sort((a, b) => {
-        return laneTypePriority[a.type] - laneTypePriority[b.type];
-      });
-      return next;
+      return next
+        .map((lane, index) => ({ lane, index }))
+        .sort((a, b) => {
+          const delta = laneTypePriority[a.lane.type] - laneTypePriority[b.lane.type];
+          if (delta !== 0) {
+            return delta;
+          }
+          return a.index - b.index;
+        })
+        .map((entry) => entry.lane);
     });
   }, [timeline, isExportMode]);
 
@@ -5233,6 +5239,36 @@ function AdvancedEditorContent() {
         startTime,
         laneId,
       };
+    },
+    []
+  );
+
+  const orderTimelineByLane = useCallback(
+    (clips: TimelineClip[], laneOrder: TimelineLane[]) => {
+      if (clips.length < 2 || laneOrder.length < 2) {
+        return clips;
+      }
+      const laneIndex = new Map(
+        laneOrder.map((lane, index) => [lane.id, index] as const)
+      );
+      const fallbackIndex = Number.MAX_SAFE_INTEGER;
+      return [...clips].sort((a, b) => {
+        const laneDelta =
+          (laneIndex.get(a.laneId) ?? fallbackIndex) -
+          (laneIndex.get(b.laneId) ?? fallbackIndex);
+        if (laneDelta !== 0) {
+          return laneDelta;
+        }
+        const startDelta = a.startTime - b.startTime;
+        if (Math.abs(startDelta) > timelineClipEpsilon) {
+          return startDelta;
+        }
+        const durationDelta = a.duration - b.duration;
+        if (Math.abs(durationDelta) > timelineClipEpsilon) {
+          return durationDelta;
+        }
+        return a.id.localeCompare(b.id);
+      });
     },
     []
   );
@@ -12927,7 +12963,7 @@ function AdvancedEditorContent() {
         }
         return next;
       });
-      setTimeline([...bgClips, mainClip]);
+      setTimeline(orderTimelineByLane([...bgClips, mainClip], nextLanes));
       setClipTransforms(() => {
         const next: Record<string, ClipTransform> = {
           [mainClip.id]: mainTransform,
@@ -13007,7 +13043,7 @@ function AdvancedEditorContent() {
 	        durationMs: Date.now() - importStartedAt,
 	      });
 	    },
-	    [createLaneId, pushHistory]
+	    [createLaneId, orderTimelineByLane, pushHistory]
 	  );
 
   const applyStreamerVideoImport = useCallback(
@@ -13336,7 +13372,9 @@ function AdvancedEditorContent() {
         }
         return next;
       });
-      setTimeline([backgroundClip, mainClip, titleClip]);
+      setTimeline(
+        orderTimelineByLane([backgroundClip, mainClip, titleClip], nextLanes)
+      );
       setClipTransforms(() => ({
         [backgroundClip.id]: coverTransform,
         [mainClip.id]: containTransform,
@@ -13403,7 +13441,7 @@ function AdvancedEditorContent() {
         requestAnimationFrame(() => setStreamerVideoImportOverlayOpen(false));
       }
     },
-    [createLaneId, pushHistory]
+    [createLaneId, orderTimelineByLane, pushHistory]
   );
 
   const applyRedditVideoImport = useCallback(
@@ -14670,13 +14708,18 @@ function AdvancedEditorContent() {
         addIfMissing(gameplayAsset);
         return next;
       });
-      setTimeline([
-        ...normalizedGameplayClips,
-        ...(introCardClip ? [introCardClip] : []),
-        ...(introVoiceClip ? [introVoiceClip] : []),
-        scriptVoiceClip,
-        ...normalizedMusicClips,
-      ]);
+      setTimeline(
+        orderTimelineByLane(
+          [
+            ...(introCardClip ? [introCardClip] : []),
+            ...normalizedGameplayClips,
+            ...(introVoiceClip ? [introVoiceClip] : []),
+            scriptVoiceClip,
+            ...normalizedMusicClips,
+          ],
+          nextLanes
+        )
+      );
       setClipTransforms(() => {
         const next: Record<string, ClipTransform> = {};
         normalizedGameplayClips.forEach((clip) => {
@@ -14756,7 +14799,7 @@ function AdvancedEditorContent() {
         requestAnimationFrame(() => setRedditVideoImportOverlayOpen(false));
       }
     },
-    [createLaneId, pushHistory]
+    [createLaneId, orderTimelineByLane, pushHistory]
   );
 
   const applySplitScreenImportRef = useRef(applySplitScreenImport);
