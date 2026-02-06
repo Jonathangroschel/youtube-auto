@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { uploadAssetFile } from "@/lib/assets/library";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
   type RedditVideoImportPayloadV1,
@@ -31,6 +32,8 @@ type PublicAudioItem = {
 };
 
 const DEFAULT_INTRO_SECONDS = 3;
+const GAMEPLAY_LIST_LIMIT = 120;
+const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 
 const DEFAULT_REDDIT_PFPS = [
   "/reddit-default-pfp/0qoqln2f5bu71.webp",
@@ -457,6 +460,8 @@ function ScriptGeneratorModal({
 export default function RedditVideoWizard() {
   const router = useRouter();
   const pfpUploadRef = useRef<HTMLInputElement | null>(null);
+  const gameplayUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const gameplaySupabase = useMemo(() => createClient(), []);
 
   const [step, setStep] = useState<WizardStep>(1);
 
@@ -534,6 +539,10 @@ export default function RedditVideoWizard() {
 
   const [gameplayLoading, setGameplayLoading] = useState(false);
   const [gameplayError, setGameplayError] = useState<string | null>(null);
+  const [gameplayUploadError, setGameplayUploadError] = useState<string | null>(
+    null
+  );
+  const [gameplayUploading, setGameplayUploading] = useState(false);
   const [gameplayItems, setGameplayItems] = useState<GameplayItem[]>([]);
   const [gameplaySelected, setGameplaySelected] = useState<GameplayItem | null>(null);
 
@@ -558,13 +567,134 @@ export default function RedditVideoWizard() {
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
+  const triggerGameplayUploadPicker = useCallback(() => {
+    gameplayUploadInputRef.current?.click();
+  }, []);
+
+  const handleGameplayUpload = useCallback(
+    async (file: File) => {
+      const lowerName = file.name.toLowerCase();
+      const looksLikeVideo =
+        file.type.startsWith("video/") ||
+        lowerName.endsWith(".mp4") ||
+        lowerName.endsWith(".mov") ||
+        lowerName.endsWith(".m4v") ||
+        lowerName.endsWith(".webm");
+
+      if (!looksLikeVideo) {
+        setGameplayUploadError("Please upload an MP4, MOV, M4V, or WEBM file.");
+        return;
+      }
+
+      const contentType = file.type.startsWith("video/") ? file.type : "video/mp4";
+      setGameplayUploading(true);
+      setGameplayUploadError(null);
+      setGameplayError(null);
+
+      try {
+        const uploadUrlResponse = await fetch("/api/gameplay-footage/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType,
+          }),
+        });
+        const uploadUrlData = await uploadUrlResponse.json().catch(() => ({}));
+        if (!uploadUrlResponse.ok) {
+          throw new Error(uploadUrlData?.error || "Failed to initialize upload.");
+        }
+
+        const storagePath =
+          typeof uploadUrlData?.path === "string" ? uploadUrlData.path.trim() : "";
+        const uploadToken =
+          typeof uploadUrlData?.token === "string" ? uploadUrlData.token.trim() : "";
+        if (!storagePath || !uploadToken) {
+          throw new Error("Upload token missing. Please try again.");
+        }
+
+        const { error: uploadError } = await gameplaySupabase.storage
+          .from("gameplay-footage")
+          .uploadToSignedUrl(storagePath, uploadToken, file, {
+            contentType,
+            upsert: false,
+          });
+        if (uploadError) {
+          throw new Error(uploadError.message || "Failed to upload gameplay video.");
+        }
+
+        const signResponse = await fetch(
+          `/api/gameplay-footage/sign?path=${encodeURIComponent(storagePath)}`,
+          { method: "GET" }
+        );
+        const signData = await signResponse.json().catch(() => ({}));
+        if (!signResponse.ok) {
+          throw new Error(signData?.error || "Upload succeeded but preview URL failed.");
+        }
+
+        const signedUrl =
+          typeof signData?.url === "string"
+            ? signData.url
+            : typeof signData?.signedUrl === "string"
+              ? signData.signedUrl
+              : "";
+        if (!signedUrl) {
+          throw new Error("Upload succeeded but preview URL is missing.");
+        }
+
+        const uploadedItem: GameplayItem = {
+          name: file.name.trim() || "Uploaded gameplay footage",
+          path: storagePath,
+          publicUrl: signedUrl,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        setGameplayItems((prev) => [
+          uploadedItem,
+          ...prev.filter((item) => item.path !== uploadedItem.path),
+        ]);
+        setGameplaySelected(uploadedItem);
+      } catch (error) {
+        setGameplayUploadError(
+          error instanceof Error ? error.message : "Failed to upload gameplay footage."
+        );
+      } finally {
+        setGameplayUploading(false);
+      }
+    },
+    [gameplaySupabase]
+  );
+
+  const handleGameplayUploadInputChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) {
+        return;
+      }
+      await handleGameplayUpload(file);
+    },
+    [handleGameplayUpload]
+  );
+
   const loadGameplay = useCallback(async () => {
     setGameplayLoading(true);
     setGameplayError(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+    }, GAMEPLAY_FETCH_TIMEOUT_MS);
+
     try {
-      const response = await fetch("/api/gameplay-footage/list", {
+      const response = await fetch(
+        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}`,
+        {
         method: "GET",
-      });
+        cache: "no-store",
+        signal: controller.signal,
+      }
+      );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data?.error || "Failed to load gameplay footage.");
@@ -572,10 +702,17 @@ export default function RedditVideoWizard() {
       const items = Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
       setGameplayItems(items);
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        setGameplayError(
+          "Loading gameplay footage timed out. Try Refresh or upload your own footage."
+        );
+        return;
+      }
       setGameplayError(
         error instanceof Error ? error.message : "Failed to load gameplay footage."
       );
     } finally {
+      window.clearTimeout(timeoutId);
       setGameplayLoading(false);
     }
   }, []);
@@ -1417,6 +1554,13 @@ export default function RedditVideoWizard() {
 
           {step === 3 && (
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+              <input
+                ref={gameplayUploadInputRef}
+                type="file"
+                accept="video/*,.mp4,.mov,.m4v,.webm"
+                className="hidden"
+                onChange={handleGameplayUploadInputChange}
+              />
               <div className="flex items-start justify-between gap-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-4">
                 <div className="flex flex-col gap-1">
                   <h2 className="text-lg font-medium text-[#f7f7f8] md:text-xl">
@@ -1429,6 +1573,13 @@ export default function RedditVideoWizard() {
                 </div>
                 <div className="flex gap-2">
                   <Button
+                    type="button"
+                    onClick={triggerGameplayUploadPicker}
+                    disabled={gameplayUploading}
+                  >
+                    {gameplayUploading ? "Uploading..." : "Upload footage"}
+                  </Button>
+                  <Button
                     variant="outline"
                     onClick={loadGameplay}
                     disabled={gameplayLoading}
@@ -1437,6 +1588,23 @@ export default function RedditVideoWizard() {
                   </Button>
                 </div>
               </div>
+
+              <div className="rounded-xl border border-[rgba(255,190,76,0.3)] bg-[rgba(255,190,76,0.12)] px-4 py-3">
+                <p className="text-sm font-medium text-[#f1c40f]">
+                  Use your own gameplay footage when possible.
+                </p>
+                <p className="mt-1 text-sm text-[#f7f7f8]">
+                  Shared footage can be reused by other creators and YouTube may flag
+                  it as duplicate or reuploaded content. Uploading original gameplay
+                  gives the best results.
+                </p>
+              </div>
+
+              {gameplayUploadError ? (
+                <div className="rounded-xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-4 text-sm text-[#e72930]">
+                  {gameplayUploadError}
+                </div>
+              ) : null}
 
               {gameplayError ? (
                 <div className="rounded-xl border border-[rgba(231,41,48,0.2)] bg-[rgba(231,41,48,0.1)] p-4 text-sm text-[#e72930]">
@@ -1452,9 +1620,9 @@ export default function RedditVideoWizard() {
 
               {!gameplayLoading && gameplayItems.length === 0 ? (
                 <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
-                  No gameplay footage yet. Once the{" "}
-                  <code className="rounded bg-[#252729] px-1">gameplay-footage</code>{" "}
-                  bucket finishes uploading, videos will show up here.
+                  No gameplay footage yet. Upload your own clip to continue, or wait
+                  for the <code className="rounded bg-[#252729] px-1">gameplay-footage</code>{" "}
+                  bucket to finish syncing.
                 </div>
               ) : null}
 

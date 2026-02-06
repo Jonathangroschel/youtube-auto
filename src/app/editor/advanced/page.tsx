@@ -1033,6 +1033,7 @@ const logAssetDebug = (...args: unknown[]) => {
 };
 
 const IMPORT_TIMEOUT_MS = 240_000;
+const SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS = 25_000;
 const REDDIT_VOICEOVER_TIMEOUT_MS = 90_000;
 const REDDIT_VOICEOVER_MAX_ATTEMPTS = 2;
 const TRANSCRIPTION_SOURCE_FETCH_TIMEOUT_MS = 45_000;
@@ -12286,7 +12287,31 @@ function AdvancedEditorContent() {
 	        }
 	      };
 
-	      const persistedMain = await persistMainVideoIfNeeded();
+	      const getVideoMetaSafe = async (url: string, label: string) => {
+	        try {
+	          return await withPromiseTimeout(
+	            getMediaMeta("video", url),
+	            SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
+	            label
+	          );
+	        } catch (error) {
+	          console.warn("[split-screen] video metadata fallback", {
+	            label,
+	            url,
+	            error,
+	          });
+	          return {} as Awaited<ReturnType<typeof getMediaMeta>>;
+	        }
+	      };
+
+	      const persistedMain = await withPromiseTimeout(
+	        persistMainVideoIfNeeded(),
+	        SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
+	        "Preparing split-screen source video"
+	      ).catch((error) => {
+	        console.warn("[split-screen] source video persist fallback", error);
+	        return null;
+	      });
 	      let mainMeta: Awaited<ReturnType<typeof getMediaMeta>>;
 	      if (persistedMain) {
 	        resolvedMainUrl = persistedMain.url;
@@ -12294,7 +12319,10 @@ function AdvancedEditorContent() {
 	        resolvedMainAssetId = persistedMain.assetId;
 	        mainMeta = persistedMain.meta;
 	      } else {
-	        mainMeta = await getMediaMeta("video", resolvedMainUrl);
+	        mainMeta = await getVideoMetaSafe(
+	          resolvedMainUrl,
+	          "Reading source video metadata"
+	        );
 	      }
 
 	      // Split screen is primarily used for vertical short-form output.
@@ -12317,9 +12345,9 @@ function AdvancedEditorContent() {
         error: null,
       });
 
-	      const backgroundMeta = await getMediaMeta(
-	        "video",
-	        payload.backgroundVideo.url
+	      const backgroundMeta = await getVideoMetaSafe(
+	        payload.backgroundVideo.url,
+	        "Reading background video metadata"
 	      );
 
       const mainWidth =
@@ -12366,15 +12394,22 @@ function AdvancedEditorContent() {
           : undefined;
       const bgAspectRatio = bgWidth && bgHeight ? bgWidth / bgHeight : undefined;
 
-      const bgLibraryAsset = await createExternalAssetSafe({
-        url: payload.backgroundVideo.url,
-        name: payload.backgroundVideo.name?.trim() || "Gameplay footage",
-        kind: "video",
-        source: "stock",
-        duration: bgDuration,
-        width: bgWidth,
-        height: bgHeight,
-        aspectRatio: bgAspectRatio,
+      const bgLibraryAsset = await withPromiseTimeout(
+        createExternalAssetSafe({
+          url: payload.backgroundVideo.url,
+          name: payload.backgroundVideo.name?.trim() || "Gameplay footage",
+          kind: "video",
+          source: "stock",
+          duration: bgDuration,
+          width: bgWidth,
+          height: bgHeight,
+          aspectRatio: bgAspectRatio,
+        }),
+        SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
+        "Saving background video asset"
+      ).catch((error) => {
+        console.warn("[split-screen] background asset save fallback", error);
+        return null;
       });
 
       const backgroundAsset: MediaAsset = {
@@ -14216,6 +14251,8 @@ function AdvancedEditorContent() {
       return;
     }
 
+    setSubtitleStatus("idle");
+    setSubtitleError(null);
     setSplitScreenImportOverlayStage("preparing");
     setSplitScreenImportOverlayOpen(true);
 
@@ -14283,7 +14320,14 @@ function AdvancedEditorContent() {
       } catch (error) {
         console.error("[split-screen] import failed", error);
         if (!cancelled) {
-          setSplitScreenImportOverlayOpen(false);
+          setSubtitleStatus("error");
+          setSubtitleError(
+            error instanceof Error
+              ? error.message
+              : "Split-screen import failed."
+          );
+          setSplitScreenImportOverlayStage("finalizing");
+          setSplitScreenImportOverlayOpen(true);
         }
       } finally {
         if (!cancelled) {
