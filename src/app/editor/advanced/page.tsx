@@ -206,6 +206,12 @@ const getSupabaseClient = async (): Promise<SupabaseClient> => {
   return supabaseClientPromise;
 };
 
+const laneTypePriority: Record<LaneType, number> = {
+  text: 0,
+  video: 1,
+  audio: 2,
+};
+
 type SubtitleLanguageOption = {
   code: string;
   label: string;
@@ -1677,6 +1683,9 @@ function AdvancedEditorContent() {
   const [subtitleStyleId, setSubtitleStyleId] = useState<string | null>(
     defaultSubtitleStyleId
   );
+  const [editorProfile, setEditorProfile] = useState<
+    "default" | "reddit" | "split" | "streamer"
+  >("default");
   const [subtitleStyleOverrides, setSubtitleStyleOverrides] = useState<
     Record<string, { settings?: Partial<TextClipSettings>; preview?: TextStylePreset["preview"] }>
   >({});
@@ -1747,16 +1756,17 @@ function AdvancedEditorContent() {
   );
   const [topCreateZoneActive, setTopCreateZoneActive] = useState(false);
   const [dragOverCanvas, setDragOverCanvas] = useState(false);
-  const [dragOverTimeline, setDragOverTimeline] = useState(false);
-  const canvasDragDepthRef = useRef(0);
-  const timelineDragDepthRef = useRef(0);
+	  const [dragOverTimeline, setDragOverTimeline] = useState(false);
+	  const canvasDragDepthRef = useRef(0);
+	  const timelineDragDepthRef = useRef(0);
   const [trimState, setTrimState] = useState<TrimState | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const replaceInputRef = useRef<HTMLInputElement | null>(null);
-  const replaceMediaInputRef = useRef<HTMLInputElement | null>(null);
-  const assetsRef = useRef<MediaAsset[]>([]);
-  const assetLibraryBootstrappedRef = useRef(false);
-  const timelineRef = useRef<TimelineClip[]>([]);
+	  const replaceInputRef = useRef<HTMLInputElement | null>(null);
+	  const replaceMediaInputRef = useRef<HTMLInputElement | null>(null);
+	  const assetsRef = useRef<MediaAsset[]>([]);
+	  const assetCacheRef = useRef<Map<string, MediaAsset>>(new Map());
+	  const assetLibraryBootstrappedRef = useRef(false);
+	  const timelineRef = useRef<TimelineClip[]>([]);
   const lanesRef = useRef<TimelineLane[]>([]);
   const laneRowsRef = useRef<
     Array<{ id: string; type: LaneType; label: string; height: number }>
@@ -2119,10 +2129,11 @@ function AdvancedEditorContent() {
             return prev;
           }
           const clip = prev[clipIndex];
-          const asset = assetsRef.current.find((a) => a.id === assetId);
-          // Only update if current clip duration seems to be using fallback (8 seconds or less)
-          // and the video is actually longer
-          if (asset?.duration == null || asset.duration <= 8) {
+          // Only auto-expand clips that are still using the default fallback
+          // duration. This avoids overriding intentionally trimmed imports
+          // (like Reddit gameplay clips capped to voiceover length).
+          const clipUsesFallbackDuration = Math.abs(clip.duration - 8) <= 0.05;
+          if (clipUsesFallbackDuration) {
             const newDuration = Math.max(0, videoDuration - clip.startOffset);
             if (Math.abs(clip.duration - newDuration) > 0.05) {
               const next = [...prev];
@@ -2917,9 +2928,54 @@ function AdvancedEditorContent() {
     }
   }, [selectedClipId, selectedClipIds.length]);
 
-  useEffect(() => {
-    assetsRef.current = assets;
-  }, [assets]);
+	  useEffect(() => {
+	    assetsRef.current = assets;
+	    assets.forEach((asset) => {
+	      assetCacheRef.current.set(asset.id, asset);
+	    });
+	  }, [assets]);
+
+	  useEffect(() => {
+	    if (!projectReady) {
+	      return;
+	    }
+	    const assetIds = new Set(assets.map((asset) => asset.id));
+	    const missingAssetIds = Array.from(
+	      new Set(
+	        timeline
+	          .map((clip) => clip.assetId)
+	          .filter((assetId) => !assetIds.has(assetId))
+	      )
+	    );
+	    if (missingAssetIds.length === 0) {
+	      return;
+	    }
+	    const recoveredAssets = missingAssetIds
+	      .map((assetId) => assetCacheRef.current.get(assetId) ?? null)
+	      .filter((asset): asset is MediaAsset => Boolean(asset));
+	    if (recoveredAssets.length === 0) {
+	      splitImportLog("timeline missing assets (cache miss)", {
+	        timelineClipCount: timeline.length,
+	        assetCount: assets.length,
+	        missingAssetIds,
+	      });
+	      return;
+	    }
+	    splitImportLog("restoring missing timeline assets from cache", {
+	      timelineClipCount: timeline.length,
+	      assetCount: assets.length,
+	      missingAssetIds,
+	      recoveredCount: recoveredAssets.length,
+	    });
+	    setAssets((prev) => {
+	      const existing = new Set(prev.map((asset) => asset.id));
+	      const additions = recoveredAssets.filter((asset) => !existing.has(asset.id));
+	      if (additions.length === 0) {
+	        return prev;
+	      }
+	      return [...additions, ...prev];
+	    });
+	  }, [assets, projectReady, timeline]);
 
   useEffect(() => {
     clipTransformsRef.current = clipTransforms;
@@ -3460,12 +3516,34 @@ function AdvancedEditorContent() {
     }
     let cancelled = false;
     const loadProject = async () => {
+      const resolveEditorProfileFromProjectName = (
+        value: unknown
+      ): "default" | "reddit" | "split" | "streamer" => {
+        if (typeof value !== "string") {
+          return "default";
+        }
+        const normalized = value.trim().toLowerCase();
+        if (normalized.startsWith("reddit video")) {
+          return "reddit";
+        }
+        if (normalized.startsWith("split screen")) {
+          return "split";
+        }
+        if (normalized.startsWith("streamer video")) {
+          return "streamer";
+        }
+        return "default";
+      };
       const queryProjectId = searchParams.get("projectId");
       if (!queryProjectId) {
         if (isReloadNavigation()) {
           const reloadSession = readEditorReloadSessionState();
           if (!cancelled && reloadSession?.state) {
             applyProjectState(reloadSession.state);
+            const reloadProjectName = reloadSession.state?.project?.name ?? "";
+            setEditorProfile(
+              resolveEditorProfileFromProjectName(reloadProjectName)
+            );
             if (reloadSession.projectId) {
               setProjectId(reloadSession.projectId);
             }
@@ -3474,6 +3552,9 @@ function AdvancedEditorContent() {
           }
         } else {
           clearEditorReloadSessionState();
+        }
+        if (!cancelled) {
+          setEditorProfile("default");
         }
       }
       const supabase = await getSupabaseClient();
@@ -3507,6 +3588,22 @@ function AdvancedEditorContent() {
 
       if (!cancelled && project?.project_state) {
         applyProjectState(project.project_state as EditorProjectState);
+        const projectStateName =
+          project.project_state &&
+          typeof project.project_state === "object" &&
+          "project" in project.project_state &&
+          project.project_state.project &&
+          typeof project.project_state.project === "object" &&
+          "name" in project.project_state.project
+            ? project.project_state.project.name
+            : null;
+        const profileNameCandidate =
+          typeof projectStateName === "string" && projectStateName.trim().length > 0
+            ? projectStateName
+            : project.title ?? "";
+        setEditorProfile(
+          resolveEditorProfileFromProjectName(profileNameCandidate)
+        );
         const hasPersistedExportState =
           project.project_state &&
           typeof project.project_state === "object" &&
@@ -3541,6 +3638,10 @@ function AdvancedEditorContent() {
         ) {
           setProjectName(project.title);
         }
+      } else if (!cancelled) {
+        setEditorProfile(
+          resolveEditorProfileFromProjectName(project?.title ?? "")
+        );
       }
 
       if (!cancelled) {
@@ -3791,10 +3892,9 @@ function AdvancedEditorContent() {
         );
         next.push({ id: clip.laneId, type: getLaneType(asset) });
       });
-      // Sort lanes to enforce ordering: video first, then text, then audio at bottom
+      // Keep subtitles/text above video, with audio at the bottom.
       next.sort((a, b) => {
-        const order: Record<string, number> = { video: 0, text: 1, audio: 2 };
-        return (order[a.type] ?? 0) - (order[b.type] ?? 0);
+        return laneTypePriority[a.type] - laneTypePriority[b.type];
       });
       return next;
     });
@@ -5205,29 +5305,20 @@ function AdvancedEditorContent() {
 
   const canInsertLaneBetween = useCallback(
     (laneType: LaneType, beforeType: LaneType, afterType: LaneType) => {
-      const order: Record<LaneType, number> = {
-        text: 0,
-        video: 1,
-        audio: 2,
-      };
       return (
-        order[beforeType] <= order[laneType] &&
-        order[laneType] <= order[afterType]
+        laneTypePriority[beforeType] <= laneTypePriority[laneType] &&
+        laneTypePriority[laneType] <= laneTypePriority[afterType]
       );
     },
     []
   );
 
   const sortLanesByType = useCallback((items: TimelineLane[]) => {
-    const priority: Record<LaneType, number> = {
-      text: 0,
-      video: 1,
-      audio: 2,
-    };
     return items
       .map((lane, index) => ({ lane, index }))
       .sort((a, b) => {
-        const delta = priority[a.lane.type] - priority[b.lane.type];
+        const delta =
+          laneTypePriority[a.lane.type] - laneTypePriority[b.lane.type];
         if (delta !== 0) {
           return delta;
         }
@@ -8889,7 +8980,7 @@ function AdvancedEditorContent() {
         resolvedSubtitleStylePresets.find((preset) => preset.id === subtitleStyleId) ??
         null;
       const preview = style?.preview;
-      return {
+      const resolved: TextClipSettings = {
         ...subtitleBaseSettings,
         ...style?.settings,
         fontFamily: preview?.fontFamily ?? subtitleBaseSettings.fontFamily,
@@ -8903,8 +8994,17 @@ function AdvancedEditorContent() {
         // for CSS text wrapping.
         autoSize: false,
       };
+      if (editorProfile === "reddit") {
+        resolved.wordHighlightEnabled = true;
+      }
+      return resolved;
     },
-    [subtitleBaseSettings, subtitleStyleId, resolvedSubtitleStylePresets]
+    [
+      editorProfile,
+      subtitleBaseSettings,
+      subtitleStyleId,
+      resolvedSubtitleStylePresets,
+    ]
   );
 
   const resolveSubtitleStyleTargets = useCallback(
@@ -10127,6 +10227,22 @@ function AdvancedEditorContent() {
 	      subtitleDebugLog("subtitle generation skipped: already loading");
 	      return;
 	    }
+	    const existingSubtitleClipIdsAtStart = new Set(
+	      subtitleSegments.map((segment) => segment.clipId)
+	    );
+	    const nonSubtitleClipsAtStart = timelineRef.current
+	      .filter((clip) => !existingSubtitleClipIdsAtStart.has(clip.id))
+	      .map((clip) => ({ ...clip }));
+	    const nonSubtitleAssetsAtStart = Array.from(
+	      new Set(nonSubtitleClipsAtStart.map((clip) => clip.assetId))
+	    )
+	      .map(
+	        (assetId) =>
+	          assetCacheRef.current.get(assetId) ??
+	          assetsRef.current.find((asset) => asset.id === assetId) ??
+	          null
+	      )
+	      .filter((asset): asset is MediaAsset => Boolean(asset));
 	    const sourceEntries =
 	      subtitleSource === "project"
 	        ? subtitleSourceClips
@@ -10151,11 +10267,8 @@ function AdvancedEditorContent() {
 	      subtitleDebugLog("subtitle transcript entries resolved", {
 	        segmentCount: transcriptEntries.length,
 	      });
-      const laneId = resolveSubtitleLaneId();
-      ensureSubtitleTextLane(laneId);
-      const existingSubtitleClipIds = new Set(
-        subtitleSegments.map((segment) => segment.clipId)
-      );
+	      const laneId = resolveSubtitleLaneId();
+	      ensureSubtitleTextLane(laneId);
       const nextAssets: MediaAsset[] = [];
       const nextClips: TimelineClip[] = [];
       const nextTextSettings: Record<string, TextClipSettings> = {};
@@ -10181,66 +10294,100 @@ function AdvancedEditorContent() {
           endTime: segment.endTime,
           sourceClipId: segment.sourceClipId,
           words: segment.words,
-        });
-      });
-      setAssets((prev) => [...nextAssets, ...prev]);
-      setTimeline((prev) => {
-        const filtered = prev.filter(
-          (clip) => !existingSubtitleClipIds.has(clip.id)
-        );
-        const nextTimeline = [...filtered, ...nextClips];
-        const kindByAssetId = new Map<string, MediaKind>(
-          assetsRef.current.map((asset) => [asset.id, asset.kind])
-        );
-        nextAssets.forEach((asset) => {
-          kindByAssetId.set(asset.id, asset.kind);
-        });
-        let videoClipCount = 0;
-        let textClipCount = 0;
-        let audioClipCount = 0;
-        let missingAssetClipCount = 0;
-        nextTimeline.forEach((clip) => {
-          const kind = kindByAssetId.get(clip.assetId);
-          if (kind === "video") {
-            videoClipCount += 1;
-            return;
+	        });
+	      });
+	      setAssets((prev) => {
+	        const existing = new Set(prev.map((asset) => asset.id));
+	        const additions: MediaAsset[] = [];
+	        nonSubtitleAssetsAtStart.forEach((asset) => {
+	          if (existing.has(asset.id)) {
+	            return;
+	          }
+	          existing.add(asset.id);
+	          additions.push(asset);
+	        });
+	        nextAssets.forEach((asset) => {
+	          if (existing.has(asset.id)) {
+	            return;
+	          }
+	          existing.add(asset.id);
+	          additions.push(asset);
+	        });
+	        if (additions.length === 0) {
+	          return prev;
+	        }
+	        return [...additions, ...prev];
+	      });
+	      setTimeline((prev) => {
+	        const byId = new Map(prev.map((clip) => [clip.id, clip]));
+	        let recoveredNonSubtitleClipCount = 0;
+	        nonSubtitleClipsAtStart.forEach((clip) => {
+	          if (byId.has(clip.id)) {
+	            return;
+	          }
+	          byId.set(clip.id, clip);
+	          recoveredNonSubtitleClipCount += 1;
+	        });
+	        const baseline = Array.from(byId.values());
+	        const filtered = baseline.filter(
+	          (clip) => !existingSubtitleClipIdsAtStart.has(clip.id)
+	        );
+	        const nextTimeline = [...filtered, ...nextClips];
+	        const kindByAssetId = new Map<string, MediaKind>(
+	          assetsRef.current.map((asset) => [asset.id, asset.kind])
+	        );
+	        nonSubtitleAssetsAtStart.forEach((asset) => {
+	          kindByAssetId.set(asset.id, asset.kind);
+	        });
+	        nextAssets.forEach((asset) => {
+	          kindByAssetId.set(asset.id, asset.kind);
+	        });
+		        let videoClipCount = 0;
+		        let textClipCount = 0;
+	        let audioClipCount = 0;
+	        let missingAssetClipCount = 0;
+	        const missingAssetIds: string[] = [];
+	        nextTimeline.forEach((clip) => {
+	          const kind = kindByAssetId.get(clip.assetId);
+	          if (kind === "video") {
+	            videoClipCount += 1;
+	            return;
           }
           if (kind === "text") {
             textClipCount += 1;
             return;
           }
-          if (kind === "audio") {
-            audioClipCount += 1;
-            return;
-          }
-          missingAssetClipCount += 1;
-        });
-        subtitleDebugLog("subtitle timeline merge", {
-          beforeClipCount: prev.length,
-          removedSubtitleClipCount: prev.length - filtered.length,
-          addedSubtitleClipCount: nextClips.length,
-          afterClipCount: nextTimeline.length,
-          videoClipCount,
-          textClipCount,
-          audioClipCount,
-          missingAssetClipCount,
-        });
-        return nextTimeline;
-      });
-      setTextSettings((prev) => {
-        const next = { ...prev };
-        existingSubtitleClipIds.forEach((clipId) => {
-          delete next[clipId];
-        });
-        return { ...next, ...nextTextSettings };
-      });
-      setClipTransforms((prev) => {
-        const next = { ...prev };
-        existingSubtitleClipIds.forEach((clipId) => {
-          delete next[clipId];
-        });
-        return { ...next, ...nextClipTransforms };
-      });
+	          if (kind === "audio") {
+	            audioClipCount += 1;
+	            return;
+	          }
+	          missingAssetClipCount += 1;
+	          missingAssetIds.push(clip.assetId);
+	        });
+		        subtitleDebugLog(
+		          `subtitle timeline merge counts before=${prev.length} baseline=${baseline.length} after=${nextTimeline.length} recoveredNonSubtitle=${recoveredNonSubtitleClipCount} videos=${videoClipCount} text=${textClipCount} audio=${audioClipCount} missing=${missingAssetClipCount}`
+		        );
+	        if (missingAssetIds.length > 0) {
+	          subtitleDebugLog("subtitle timeline merge missing asset ids", {
+	            missingAssetIds: Array.from(new Set(missingAssetIds)),
+	          });
+	        }
+	        return nextTimeline;
+	      });
+	      setTextSettings((prev) => {
+	        const next = { ...prev };
+	        existingSubtitleClipIdsAtStart.forEach((clipId) => {
+	          delete next[clipId];
+	        });
+	        return { ...next, ...nextTextSettings };
+	      });
+	      setClipTransforms((prev) => {
+	        const next = { ...prev };
+	        existingSubtitleClipIdsAtStart.forEach((clipId) => {
+	          delete next[clipId];
+	        });
+	        return { ...next, ...nextClipTransforms };
+	      });
 	      setSubtitleSegments(
 	        nextSegments.sort((a, b) => a.startTime - b.startTime)
 	      );
@@ -12462,7 +12609,12 @@ function AdvancedEditorContent() {
 	      setSplitScreenImportOverlayOpen(true);
 	      splitImportLog("overlay stage -> preparing");
 	      setIsBackgroundSelected(false);
+	      setEditorProfile("split");
 	      pushHistory();
+	      pendingSplitScreenSubtitleRef.current = null;
+	      pendingStreamerVideoSubtitleRef.current = null;
+	      pendingRedditVideoSubtitleRef.current = null;
+	      subtitleLaneIdRef.current = null;
 
 	      let resolvedMainUrl = payload.mainVideo.url;
 	      let resolvedMainName =
@@ -12872,10 +13024,15 @@ function AdvancedEditorContent() {
         return;
       }
 
-      setStreamerVideoImportOverlayStage("preparing");
-      setStreamerVideoImportOverlayOpen(true);
-      setIsBackgroundSelected(false);
-      pushHistory();
+	      setStreamerVideoImportOverlayStage("preparing");
+	      setStreamerVideoImportOverlayOpen(true);
+	      setIsBackgroundSelected(false);
+	      setEditorProfile("streamer");
+	      pushHistory();
+	      pendingSplitScreenSubtitleRef.current = null;
+	      pendingStreamerVideoSubtitleRef.current = null;
+	      pendingRedditVideoSubtitleRef.current = null;
+	      subtitleLaneIdRef.current = null;
 
       let resolvedMainUrl =
         typeof payload.mainVideo.url === "string" ? payload.mainVideo.url.trim() : "";
@@ -13204,12 +13361,13 @@ function AdvancedEditorContent() {
         },
         [mainClip.id]: createDefaultVideoSettings(),
       }));
-      setTextSettings(() => ({
-        [titleClip.id]: titleSettings,
-      }));
-      setSubtitleSegments([]);
-      setDetachedSubtitleIds(new Set());
-      setSubtitleStatus("idle");
+	      setTextSettings(() => ({
+	        [titleClip.id]: titleSettings,
+	      }));
+	      setSubtitleSegments([]);
+	      subtitleLaneIdRef.current = null;
+	      setDetachedSubtitleIds(new Set());
+	      setSubtitleStatus("idle");
       setSubtitleError(null);
       setTranscriptSegments([]);
       setTranscriptStatus("idle");
@@ -13254,10 +13412,15 @@ function AdvancedEditorContent() {
         return;
       }
 
-      setRedditVideoImportOverlayStage("preparing");
-      setRedditVideoImportOverlayOpen(true);
-      setIsBackgroundSelected(false);
-      pushHistory();
+	      setRedditVideoImportOverlayStage("preparing");
+	      setRedditVideoImportOverlayOpen(true);
+	      setIsBackgroundSelected(false);
+	      setEditorProfile("reddit");
+	      pushHistory();
+	      pendingSplitScreenSubtitleRef.current = null;
+	      pendingStreamerVideoSubtitleRef.current = null;
+	      pendingRedditVideoSubtitleRef.current = null;
+	      subtitleLaneIdRef.current = null;
 
       const safeTitle =
         typeof payload.post?.title === "string" && payload.post.title.trim().length > 0
@@ -13282,6 +13445,31 @@ function AdvancedEditorContent() {
         downloadUrl: null,
         error: null,
       });
+      // Temporarily pause autosave while the new Reddit project is being assembled.
+      setProjectStarted(false);
+      // Start from a clean composition so imported Reddit clips never append to
+      // whatever was previously open in the editor.
+      setLanes([]);
+      setTimeline([]);
+      setClipTransforms({});
+      setBackgroundTransforms({});
+      setClipSettings({});
+      setTextSettings({});
+      setSubtitleSegments([]);
+      setDetachedSubtitleIds(new Set());
+      setSubtitleStatus("idle");
+      setSubtitleError(null);
+      setTranscriptSegments([]);
+      setTranscriptStatus("idle");
+      setTranscriptError(null);
+      setTimelineThumbnails({});
+      setAudioWaveforms({});
+      setClipOrder({});
+      setCurrentTime(0);
+      setActiveAssetId(null);
+      setActiveCanvasClipId(null);
+      setSelectedClipId(null);
+      setSelectedClipIds([]);
 
       const generateVoiceoverUrl = async (text: string, voice: string) => {
         let lastError: Error | null = null;
@@ -14175,8 +14363,9 @@ function AdvancedEditorContent() {
         }),
       ]);
 
-      const introAudioDuration = introVoiceAsset?.duration ?? 0;
-      const scriptAudioDuration = scriptVoiceAsset.duration ?? 0;
+      const introAudioDuration = introVoiceAsset
+        ? Math.max(0.01, getAssetDurationSeconds(introVoiceAsset))
+        : 0;
       const minIntroSeconds =
         typeof payload.timing?.introSeconds === "number" && Number.isFinite(payload.timing.introSeconds)
           ? Math.max(0, payload.timing.introSeconds)
@@ -14199,11 +14388,9 @@ function AdvancedEditorContent() {
         showIntroCard ? minIntroSeconds : 0,
         introAudioDuration
       );
-      const totalDurationSeconds = Math.max(
-        0.5,
-        introOffsetSeconds + Math.max(0.1, scriptAudioDuration || 0.1)
-      );
-      const introCardDurationSeconds = showIntroCard ? Math.max(0.01, minIntroSeconds) : 0;
+      const introCardDurationSeconds = showIntroCard
+        ? Math.max(0.01, introOffsetSeconds)
+        : 0;
 
       const resolveGameplayUrl = async (url: string) => {
         if (!url) {
@@ -14321,37 +14508,14 @@ function AdvancedEditorContent() {
       // `introCardAsset`, `showIntroCard`, and `introCardDurationSeconds` already resolved above.
 
       const nextLanes: TimelineLane[] = [];
-      const gameplayLaneId = createLaneId("video", nextLanes);
       const introCardLaneId = showIntroCard
         ? createLaneId("video", nextLanes, { placement: "top" })
         : null;
+      const gameplayLaneId = createLaneId("video", nextLanes);
 
       const introVoiceLaneId = introVoiceAsset ? createLaneId("audio", nextLanes) : null;
       const scriptVoiceLaneId = createLaneId("audio", nextLanes);
       const musicLaneId = musicAsset ? createLaneId("audio", nextLanes) : null;
-
-      const gameplayBaseDuration = Math.max(
-        0.01,
-        gameplayDuration ?? getAssetDurationSeconds(gameplayAsset) ?? totalDurationSeconds
-      );
-      const gameplayClips: TimelineClip[] = [];
-      let cursor = 0;
-      while (cursor < totalDurationSeconds - timelineClipEpsilon) {
-        const remaining = totalDurationSeconds - cursor;
-        const duration = Math.max(0.01, Math.min(gameplayBaseDuration, remaining));
-        gameplayClips.push({
-          id: crypto.randomUUID(),
-          assetId: gameplayAsset.id,
-          duration,
-          startOffset: 0,
-          startTime: cursor,
-          laneId: gameplayLaneId,
-        });
-        cursor += duration;
-        if (gameplayClips.length > 400) {
-          break;
-        }
-      }
 
       const introCardClip: TimelineClip | null =
         introCardAsset && introCardLaneId
@@ -14386,15 +14550,44 @@ function AdvancedEditorContent() {
         laneId: scriptVoiceLaneId,
       };
 
+      // Use the actual voiceover end as the authoritative timeline end.
+      const timelineEndSeconds = Math.max(
+        0.5,
+        scriptVoiceClip.startTime + scriptVoiceClip.duration
+      );
+
+      const gameplayBaseDuration = Math.max(
+        0.01,
+        gameplayDuration ?? getAssetDurationSeconds(gameplayAsset) ?? timelineEndSeconds
+      );
+      const gameplayClips: TimelineClip[] = [];
+      let cursor = 0;
+      while (cursor < timelineEndSeconds - timelineClipEpsilon) {
+        const remaining = timelineEndSeconds - cursor;
+        const duration = Math.max(0.01, Math.min(gameplayBaseDuration, remaining));
+        gameplayClips.push({
+          id: crypto.randomUUID(),
+          assetId: gameplayAsset.id,
+          duration,
+          startOffset: 0,
+          startTime: cursor,
+          laneId: gameplayLaneId,
+        });
+        cursor += duration;
+        if (gameplayClips.length > 400) {
+          break;
+        }
+      }
+
       const musicClips: TimelineClip[] = [];
       if (musicAsset && musicLaneId) {
         const base = Math.max(
           0.01,
-          musicAsset.duration ?? getAssetDurationSeconds(musicAsset) ?? totalDurationSeconds
+          musicAsset.duration ?? getAssetDurationSeconds(musicAsset) ?? timelineEndSeconds
         );
         let musicCursor = 0;
-        while (musicCursor < totalDurationSeconds - timelineClipEpsilon) {
-          const remaining = totalDurationSeconds - musicCursor;
+        while (musicCursor < timelineEndSeconds - timelineClipEpsilon) {
+          const remaining = timelineEndSeconds - musicCursor;
           const duration = Math.max(0.01, Math.min(base, remaining));
           musicClips.push({
             id: crypto.randomUUID(),
@@ -14411,19 +14604,49 @@ function AdvancedEditorContent() {
         }
       }
 
+      const clampClipToTimelineEnd = (clip: TimelineClip): TimelineClip | null => {
+        const remaining = timelineEndSeconds - clip.startTime;
+        if (remaining <= timelineClipEpsilon) {
+          return null;
+        }
+        if (clip.duration <= remaining + timelineClipEpsilon) {
+          return clip;
+        }
+        return {
+          ...clip,
+          duration: Math.max(0.01, remaining),
+        };
+      };
+      const normalizedGameplayClips = gameplayClips
+        .map(clampClipToTimelineEnd)
+        .filter((clip): clip is TimelineClip => clip !== null);
+      const normalizedMusicClips = musicClips
+        .map(clampClipToTimelineEnd)
+        .filter((clip): clip is TimelineClip => clip !== null);
+
       const stageAspectRatio = 9 / 16;
       const gameplayTransform: ClipTransform = { x: 0, y: 0, width: 1, height: 1 };
       const introTransform: ClipTransform | null =
         introCardClip
           ? (() => {
               const base = createDefaultTransform(introCardAsset?.aspectRatio, stageAspectRatio);
-              // Smaller + higher placement by default (match the intended "overlay card" look).
-              const scale = 0.76;
-              const width = base.width * scale;
-              const height = base.height * scale;
-              const x = 0.5 - width / 2;
-              const desiredCenterY = 0.33;
-              const y = clamp(desiredCenterY - height / 2, 0, Math.max(0, 1 - height));
+              // Make the card much larger by default while keeping it anchored near the top.
+              const targetWidth = 0.9;
+              const scale = Math.max(
+                0.05,
+                targetWidth / Math.max(0.001, base.width)
+              );
+              let width = clamp(base.width * scale, 0.01, 1);
+              let height = clamp(base.height * scale, 0.01, 1);
+              const maxHeight = 0.34;
+              if (height > maxHeight) {
+                const shrink = maxHeight / height;
+                width = clamp(width * shrink, 0.01, 1);
+                height = maxHeight;
+              }
+              const x = clamp(0.5 - width / 2, 0, Math.max(0, 1 - width));
+              const desiredTop = 0.09;
+              const y = clamp(desiredTop, 0, Math.max(0, 1 - height));
               return { x, y, width, height };
             })()
           : null;
@@ -14448,15 +14671,15 @@ function AdvancedEditorContent() {
         return next;
       });
       setTimeline([
-        ...gameplayClips,
+        ...normalizedGameplayClips,
         ...(introCardClip ? [introCardClip] : []),
         ...(introVoiceClip ? [introVoiceClip] : []),
         scriptVoiceClip,
-        ...musicClips,
+        ...normalizedMusicClips,
       ]);
       setClipTransforms(() => {
         const next: Record<string, ClipTransform> = {};
-        gameplayClips.forEach((clip) => {
+        normalizedGameplayClips.forEach((clip) => {
           next[clip.id] = gameplayTransform;
         });
         if (introCardClip && introTransform) {
@@ -14465,13 +14688,13 @@ function AdvancedEditorContent() {
         return next;
       });
       clipTransformTouchedRef.current = new Set([
-        ...gameplayClips.map((clip) => clip.id),
+        ...normalizedGameplayClips.map((clip) => clip.id),
         ...(introCardClip ? [introCardClip.id] : []),
       ]);
       setBackgroundTransforms({});
       setClipSettings(() => {
         const next: Record<string, VideoClipSettings> = {};
-        gameplayClips.forEach((clip) => {
+        normalizedGameplayClips.forEach((clip) => {
           next[clip.id] = {
             ...createDefaultVideoSettings(),
             muted: true,
@@ -14485,7 +14708,7 @@ function AdvancedEditorContent() {
           next[introVoiceClip.id] = createDefaultVideoSettings();
         }
         next[scriptVoiceClip.id] = createDefaultVideoSettings();
-        musicClips.forEach((clip) => {
+        normalizedMusicClips.forEach((clip) => {
           next[clip.id] = {
             ...createDefaultVideoSettings(),
             volume: musicVolume,
@@ -14494,10 +14717,11 @@ function AdvancedEditorContent() {
         return next;
       });
 
-      setTextSettings({});
-      setSubtitleSegments([]);
-      setDetachedSubtitleIds(new Set());
-      setSubtitleStatus("idle");
+	      setTextSettings({});
+	      setSubtitleSegments([]);
+	      subtitleLaneIdRef.current = null;
+	      setDetachedSubtitleIds(new Set());
+	      setSubtitleStatus("idle");
       setSubtitleError(null);
       setTranscriptSegments([]);
       setTranscriptStatus("idle");
@@ -14508,9 +14732,11 @@ function AdvancedEditorContent() {
       setCurrentTime(0);
 
       setActiveAssetId(gameplayAsset.id);
-      setActiveCanvasClipId(gameplayClips[0]?.id ?? null);
-      setSelectedClipId(gameplayClips[0]?.id ?? null);
-      setSelectedClipIds(gameplayClips[0]?.id ? [gameplayClips[0].id] : []);
+      setActiveCanvasClipId(normalizedGameplayClips[0]?.id ?? null);
+      setSelectedClipId(normalizedGameplayClips[0]?.id ?? null);
+      setSelectedClipIds(
+        normalizedGameplayClips[0]?.id ? [normalizedGameplayClips[0].id] : []
+      );
 
       const desiredStyleId = payload.subtitles?.styleId;
       if (typeof desiredStyleId === "string" && desiredStyleId.trim().length > 0) {
