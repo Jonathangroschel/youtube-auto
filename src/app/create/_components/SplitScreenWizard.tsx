@@ -444,6 +444,7 @@ export default function SplitScreenWizard({
     if (!sourceVideo || !gameplaySelected || !subtitleStyleId) {
       return;
     }
+    const startedAt = Date.now();
     if (!sourceVideo.assetId) {
       setSourceError("Please upload or download a video first.");
       setStep(1);
@@ -468,6 +469,22 @@ export default function SplitScreenWizard({
     };
     setGenerateBusy(true);
     try {
+      console.info("[split-screen][wizard] creating import payload", {
+        layout,
+        mainVideo: {
+          name: sourceVideo.name,
+          hasAssetId: Boolean(sourceVideo.assetId),
+          urlPreview: sourceVideo.url.slice(0, 120),
+        },
+        backgroundVideo: {
+          name: gameplaySelected.name,
+          path: gameplaySelected.path,
+        },
+        subtitles: {
+          autoGenerate: autoGenerateSubtitles,
+          styleId: subtitleStyleId,
+        },
+      });
       const response = await fetch("/api/editor/import-payload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -491,10 +508,15 @@ export default function SplitScreenWizard({
       if (!payloadId) {
         throw new Error("Import payload id missing.");
       }
+      console.info("[split-screen][wizard] payload created", {
+        payloadId,
+        durationMs: Date.now() - startedAt,
+      });
       router.push(
         `/editor/advanced?import=splitscreen&payloadId=${encodeURIComponent(payloadId)}&ts=${Date.now()}`
       );
     } catch (error) {
+      console.error("[split-screen][wizard] failed to start import", error);
       setSourceError(
         error instanceof Error ? error.message : "Unable to continue."
       );

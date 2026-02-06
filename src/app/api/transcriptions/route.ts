@@ -11,6 +11,33 @@ const WORKER_POLL_INTERVAL_MS = 2_000;
 const WORKER_POLL_TIMEOUT_MS = 240_000;
 const WORKER_TRANSCRIPTION_BUCKET = "autoclip-files";
 
+const transcriptionApiLog = (event: string, details?: Record<string, unknown>) => {
+  if (details) {
+    console.info("[transcriptions][api]", event, details);
+    return;
+  }
+  console.info("[transcriptions][api]", event);
+};
+
+const transcriptionApiWarn = (event: string, details?: Record<string, unknown>) => {
+  if (details) {
+    console.warn("[transcriptions][api]", event, details);
+    return;
+  }
+  console.warn("[transcriptions][api]", event);
+};
+
+const resolveUrlHost = (value: string | null) => {
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return null;
+  }
+};
+
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -390,9 +417,13 @@ const transcribeViaWorkerFallback = async (params: {
 };
 
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID().slice(0, 8);
   const workerConfig = resolveWorkerRuntimeConfig();
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
   if (!workerConfig && !apiKey) {
+    transcriptionApiWarn("request rejected: transcription not configured", {
+      requestId,
+    });
     return NextResponse.json(
       {
         error:
@@ -430,6 +461,16 @@ export async function POST(request: Request) {
         ? "diarized_json"
         : "json";
   const timestampGranularities = incoming.getAll("timestamp_granularities[]");
+  transcriptionApiLog("request received", {
+    requestId,
+    hasFile: file instanceof File,
+    hasUrl: Boolean(remoteUrl),
+    remoteHost: resolveUrlHost(remoteUrl),
+    model: normalizedModel,
+    responseFormat,
+    language: languageValue ?? "auto",
+    timestampGranularityCount: timestampGranularities.length,
+  });
 
   let uploadedFile: File | Blob;
   let uploadedFileName: string | null = null;
@@ -440,12 +481,16 @@ export async function POST(request: Request) {
     try {
       parsedUrl = assertSafeRemoteUrl(remoteUrl);
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Invalid transcription URL.";
+      transcriptionApiWarn("request rejected: invalid remote URL", {
+        requestId,
+        remoteHost: resolveUrlHost(remoteUrl),
+        error: message,
+      });
       return NextResponse.json(
         {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Invalid transcription URL.",
+          error: message,
         },
         { status: 400 }
       );
@@ -458,8 +503,14 @@ export async function POST(request: Request) {
         method: "GET",
         signal: controller.signal,
       });
-    } catch {
+    } catch (error) {
       clearTimeout(timeoutId);
+      transcriptionApiWarn("request rejected: remote fetch failed", {
+        requestId,
+        remoteHost: parsedUrl.hostname,
+        error:
+          error instanceof Error ? error.message : "Failed to fetch transcription URL.",
+      });
       return NextResponse.json(
         { error: "Failed to fetch transcription URL." },
         { status: 400 }
@@ -468,6 +519,11 @@ export async function POST(request: Request) {
       clearTimeout(timeoutId);
     }
     if (!response.ok) {
+      transcriptionApiWarn("request rejected: remote fetch non-ok response", {
+        requestId,
+        remoteHost: parsedUrl.hostname,
+        status: response.status,
+      });
       return NextResponse.json(
         { error: "Failed to fetch transcription URL." },
         { status: 400 }
@@ -480,6 +536,12 @@ export async function POST(request: Request) {
       Number.isFinite(contentLength) &&
       contentLength > MAX_REMOTE_FILE_BYTES
     ) {
+      transcriptionApiWarn("request rejected: remote file too large (header)", {
+        requestId,
+        remoteHost: parsedUrl.hostname,
+        contentLength,
+        maxBytes: MAX_REMOTE_FILE_BYTES,
+      });
       return NextResponse.json(
         { error: "Remote file is too large to transcribe." },
         { status: 413 }
@@ -488,6 +550,12 @@ export async function POST(request: Request) {
     const contentType = response.headers.get("content-type") ?? "";
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > MAX_REMOTE_FILE_BYTES) {
+      transcriptionApiWarn("request rejected: remote file too large (body)", {
+        requestId,
+        remoteHost: parsedUrl.hostname,
+        contentLength: buffer.byteLength,
+        maxBytes: MAX_REMOTE_FILE_BYTES,
+      });
       return NextResponse.json(
         { error: "Remote file is too large to transcribe." },
         { status: 413 }
@@ -499,6 +567,7 @@ export async function POST(request: Request) {
     uploadedFile = blob;
     uploadedFileName = inferFilename(parsedUrl, contentType);
   } else {
+    transcriptionApiWarn("request rejected: missing audio file", { requestId });
     return NextResponse.json({ error: "Missing audio file." }, { status: 400 });
   }
 
@@ -507,21 +576,35 @@ export async function POST(request: Request) {
   if (workerConfig && preferWorkerPipeline) {
     attemptedWorker = true;
     try {
+      transcriptionApiLog("worker transcription attempt", {
+        requestId,
+        uploadedFileName,
+      });
       const workerData = await transcribeViaWorkerFallback({
         uploadedFile,
         uploadedFileName,
         language: languageValue,
       });
+      transcriptionApiLog("worker transcription success", { requestId });
       return NextResponse.json(workerData);
     } catch (workerError) {
       workerErrorMessage =
         workerError instanceof Error
           ? workerError.message
           : "Worker transcription failed.";
+      transcriptionApiWarn("worker transcription failed", {
+        requestId,
+        error: workerErrorMessage,
+      });
     }
   }
 
   if (!apiKey) {
+    transcriptionApiWarn("request rejected: OpenAI fallback unavailable", {
+      requestId,
+      preferWorkerPipeline,
+      workerErrorMessage,
+    });
     return NextResponse.json(
       {
         error: preferWorkerPipeline
@@ -659,6 +742,11 @@ export async function POST(request: Request) {
   }
 
   if (response?.ok) {
+    transcriptionApiLog("openai transcription success", {
+      requestId,
+      model,
+      fallbackUsed: model !== "whisper-1" && response.url.includes("openai.com"),
+    });
     const contentType = response.headers.get("content-type") ?? "";
     if (contentType.includes("application/json")) {
       const data = await response.json();
@@ -678,6 +766,13 @@ export async function POST(request: Request) {
       ? `Worker transcription failed: ${workerErrorMessage} OpenAI fallback failed: ${directErrorMessage}`
       : `Worker transcription failed: ${workerErrorMessage}`
     : directErrorMessage || "OpenAI transcription failed.";
+  transcriptionApiWarn("transcription failed", {
+    requestId,
+    attemptedWorker,
+    workerErrorMessage,
+    directErrorStatus,
+    directErrorMessage: directErrorMessage ?? null,
+  });
 
   return NextResponse.json({ error: combinedError }, { status: directErrorStatus ?? 504 });
 }

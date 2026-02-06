@@ -1034,6 +1034,9 @@ const logAssetDebug = (...args: unknown[]) => {
 
 const IMPORT_TIMEOUT_MS = 240_000;
 const SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS = 25_000;
+const IMPORT_PAYLOAD_FETCH_MAX_ATTEMPTS = 4;
+const IMPORT_PAYLOAD_FETCH_RETRY_DELAY_MS = 300;
+const IMPORT_PREPARING_WATCHDOG_MS = 45_000;
 const REDDIT_VOICEOVER_TIMEOUT_MS = 90_000;
 const REDDIT_VOICEOVER_MAX_ATTEMPTS = 2;
 const TRANSCRIPTION_SOURCE_FETCH_TIMEOUT_MS = 45_000;
@@ -1079,6 +1082,14 @@ const withPromiseTimeout = async <T,>(
         reject(error);
       });
   });
+
+const splitImportLog = (...args: unknown[]) => {
+  console.info("[split-screen][editor]", ...args);
+};
+
+const subtitleDebugLog = (...args: unknown[]) => {
+  console.info("[subtitles][editor]", ...args);
+};
 
 const fetchWithTimeout = async (
   input: string,
@@ -1677,7 +1688,6 @@ function AdvancedEditorContent() {
     mainClipId: string;
     styleId: string;
   } | null>(null);
-  const splitScreenImportTokenRef = useRef<string | null>(null);
   const [splitScreenImportOverlayOpen, setSplitScreenImportOverlayOpen] =
     useState(false);
   const [splitScreenImportOverlayStage, setSplitScreenImportOverlayStage] =
@@ -1688,7 +1698,6 @@ function AdvancedEditorContent() {
     sourceClipId: string;
     styleId: string;
   } | null>(null);
-  const streamerVideoImportTokenRef = useRef<string | null>(null);
   const [streamerVideoImportOverlayOpen, setStreamerVideoImportOverlayOpen] =
     useState(false);
   const [
@@ -1701,7 +1710,6 @@ function AdvancedEditorContent() {
     sourceClipId: string;
     styleId: string;
   } | null>(null);
-  const redditVideoImportTokenRef = useRef<string | null>(null);
   const [redditVideoImportOverlayOpen, setRedditVideoImportOverlayOpen] =
     useState(false);
   const [redditVideoImportOverlayStage, setRedditVideoImportOverlayStage] =
@@ -9296,26 +9304,54 @@ function AdvancedEditorContent() {
   );
 
   const transcribeSourceEntries = useCallback(
-    async (
-      sourceEntries: Array<{ clip: TimelineClip; asset: MediaAsset }>
-    ): Promise<TranscriptSegment[]> => {
-      const sortedSources = [...sourceEntries].sort(
-        (a, b) => a.clip.startTime - b.clip.startTime
-      );
-      type TranscriptionSource = { file: File } | { url: string };
-      const requestTranscription = async (
-        source: TranscriptionSource,
-        options: {
-          model: string;
-          responseFormat: string;
-          includeTimestampGranularities: boolean;
-          chunkingStrategy?: string;
-        }
-      ) => {
-        let lastError: Error | null = null;
-        for (
-          let attempt = 1;
-          attempt <= TRANSCRIPTION_REQUEST_MAX_ATTEMPTS;
+	    async (
+	      sourceEntries: Array<{ clip: TimelineClip; asset: MediaAsset }>
+	    ): Promise<TranscriptSegment[]> => {
+	      const sortedSources = [...sourceEntries].sort(
+	        (a, b) => a.clip.startTime - b.clip.startTime
+	      );
+	      subtitleDebugLog("transcription run start", {
+	        sourceCount: sortedSources.length,
+	        language: subtitleLanguage?.code ?? "auto",
+	      });
+	      type TranscriptionSource = { file: File } | { url: string };
+	      type TranscriptionTrace = {
+	        clipId: string;
+	        assetId: string;
+	        chunkIndex: number;
+	        chunkCount: number;
+	      };
+	      const parseTranscriptionErrorMessage = (
+	        responseStatus: number,
+	        rawMessage: string
+	      ) => {
+	        if (!rawMessage) {
+	          return `Unable to generate subtitles for this clip (${responseStatus}).`;
+	        }
+	        try {
+	          const parsed = JSON.parse(rawMessage) as { error?: unknown };
+	          if (typeof parsed?.error === "string" && parsed.error.trim().length > 0) {
+	            return parsed.error.trim();
+	          }
+	        } catch {
+	          // Keep raw text fallback.
+	        }
+	        return rawMessage;
+	      };
+	      const requestTranscription = async (
+	        source: TranscriptionSource,
+	        options: {
+	          model: string;
+	          responseFormat: string;
+	          includeTimestampGranularities: boolean;
+	          chunkingStrategy?: string;
+	        },
+	        trace?: TranscriptionTrace
+	      ) => {
+	        let lastError: Error | null = null;
+	        for (
+	          let attempt = 1;
+	          attempt <= TRANSCRIPTION_REQUEST_MAX_ATTEMPTS;
           attempt += 1
         ) {
           try {
@@ -9337,32 +9373,72 @@ function AdvancedEditorContent() {
             if (subtitleLanguage?.code) {
               formData.append("language", subtitleLanguage.code);
             }
-            const response = await fetchWithTimeout(
-              "/api/transcriptions",
-              {
-                method: "POST",
-                body: formData,
+	            const response = await fetchWithTimeout(
+	              "/api/transcriptions",
+	              {
+	                method: "POST",
+	                body: formData,
               },
-              TRANSCRIPTION_REQUEST_TIMEOUT_MS,
-              "Subtitle transcription"
-            );
-            if (!response.ok) {
-              const message = await response.text().catch(() => "");
-              throw new Error(
-                message || `Unable to generate subtitles for this clip (${response.status}).`
-              );
-            }
-            return response.json();
-          } catch (error) {
-            const normalized =
-              error instanceof Error
-                ? error
-                : new Error("Unable to generate subtitles for this clip.");
-            lastError = normalized;
-            if (
-              attempt >= TRANSCRIPTION_REQUEST_MAX_ATTEMPTS ||
-              !isTransientErrorMessage(normalized.message)
-            ) {
+	              TRANSCRIPTION_REQUEST_TIMEOUT_MS,
+	              "Subtitle transcription"
+	            );
+	            if (!response.ok) {
+	              const rawMessage = await response.text().catch(() => "");
+	              const message = parseTranscriptionErrorMessage(
+	                response.status,
+	                rawMessage
+	              );
+	              subtitleDebugLog("transcription request failed", {
+	                clipId: trace?.clipId ?? null,
+	                assetId: trace?.assetId ?? null,
+	                chunkIndex: trace?.chunkIndex ?? null,
+	                chunkCount: trace?.chunkCount ?? null,
+	                sourceKind: "file" in source ? "file" : "url",
+	                model: options.model,
+	                attempt,
+	                status: response.status,
+	                error: message,
+	              });
+	              throw new Error(message);
+	            }
+	            const payload = await response.json();
+	            subtitleDebugLog("transcription request succeeded", {
+	              clipId: trace?.clipId ?? null,
+	              assetId: trace?.assetId ?? null,
+	              chunkIndex: trace?.chunkIndex ?? null,
+	              chunkCount: trace?.chunkCount ?? null,
+	              sourceKind: "file" in source ? "file" : "url",
+	              model: options.model,
+	              attempt,
+	              segmentCount: Array.isArray(payload?.segments)
+	                ? payload.segments.length
+	                : 0,
+	              wordCount: Array.isArray(payload?.words) ? payload.words.length : 0,
+	            });
+	            return payload;
+	          } catch (error) {
+	            const normalized =
+	              error instanceof Error
+	                ? error
+	                : new Error("Unable to generate subtitles for this clip.");
+	            lastError = normalized;
+	            const willRetry =
+	              attempt < TRANSCRIPTION_REQUEST_MAX_ATTEMPTS &&
+	              isTransientErrorMessage(normalized.message);
+	            subtitleDebugLog("transcription request error", {
+	              clipId: trace?.clipId ?? null,
+	              assetId: trace?.assetId ?? null,
+	              chunkIndex: trace?.chunkIndex ?? null,
+	              chunkCount: trace?.chunkCount ?? null,
+	              model: options.model,
+	              attempt,
+	              willRetry,
+	              error: normalized.message,
+	            });
+	            if (
+	              attempt >= TRANSCRIPTION_REQUEST_MAX_ATTEMPTS ||
+	              !isTransientErrorMessage(normalized.message)
+	            ) {
               throw normalized;
             }
             await delay(attempt === 1 ? 800 : 1400);
@@ -9381,57 +9457,96 @@ function AdvancedEditorContent() {
         responseFormat: "verbose_json",
         includeTimestampGranularities: true,
       };
-      const requestTranscriptionWithRetry = async (
-        source: TranscriptionSource,
-        options: {
-          model: string;
-          responseFormat: string;
-          includeTimestampGranularities: boolean;
-          chunkingStrategy?: string;
-        },
-        allowFallback = true
-      ) => {
-        try {
-          return await requestTranscription(source, options);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "";
-          if (
-            options.includeTimestampGranularities &&
-            /timestamp|granularit/i.test(message)
-          ) {
-            return requestTranscriptionWithRetry(
-              source,
-              {
-                ...options,
-                includeTimestampGranularities: false,
-              },
-              allowFallback
-            );
-          }
-          if (
-            /internal_error|internal server error/i.test(message) ||
-            isTransientErrorMessage(message)
-          ) {
-            try {
-              await new Promise((resolve) => window.setTimeout(resolve, 800));
-              return await requestTranscription(source, options);
-            } catch (retryError) {
-              if (allowFallback && options.model !== fallbackTranscription.model) {
-                return requestTranscriptionWithRetry(
-                  source,
-                  fallbackTranscription,
-                  false
-                );
-              }
-              throw retryError;
-            }
-          }
-          if (allowFallback && options.model !== fallbackTranscription.model) {
-            return requestTranscriptionWithRetry(source, fallbackTranscription, false);
-          }
-          throw error;
-        }
-      };
+	      const requestTranscriptionWithRetry = async (
+	        source: TranscriptionSource,
+	        options: {
+	          model: string;
+	          responseFormat: string;
+	          includeTimestampGranularities: boolean;
+	          chunkingStrategy?: string;
+	        },
+	        allowFallback = true,
+	        trace?: TranscriptionTrace
+	      ) => {
+	        try {
+	          return await requestTranscription(source, options, trace);
+	        } catch (error) {
+	          const message = error instanceof Error ? error.message : "";
+	          if (
+	            options.includeTimestampGranularities &&
+	            /timestamp|granularit/i.test(message)
+	          ) {
+	            subtitleDebugLog("retrying transcription without timestamp granularity", {
+	              clipId: trace?.clipId ?? null,
+	              assetId: trace?.assetId ?? null,
+	              chunkIndex: trace?.chunkIndex ?? null,
+	              chunkCount: trace?.chunkCount ?? null,
+	              model: options.model,
+	            });
+	            return requestTranscriptionWithRetry(
+	              source,
+	              {
+	                ...options,
+	                includeTimestampGranularities: false,
+	              },
+	              allowFallback,
+	              trace
+	            );
+	          }
+	          if (
+	            /internal_error|internal server error/i.test(message) ||
+	            isTransientErrorMessage(message)
+	          ) {
+	            try {
+	              subtitleDebugLog("retrying transcription after transient error", {
+	                clipId: trace?.clipId ?? null,
+	                assetId: trace?.assetId ?? null,
+	                chunkIndex: trace?.chunkIndex ?? null,
+	                chunkCount: trace?.chunkCount ?? null,
+	                model: options.model,
+	                error: message,
+	              });
+	              await new Promise((resolve) => window.setTimeout(resolve, 800));
+	              return await requestTranscription(source, options, trace);
+	            } catch (retryError) {
+	              if (allowFallback && options.model !== fallbackTranscription.model) {
+	                subtitleDebugLog("switching to fallback transcription model", {
+	                  clipId: trace?.clipId ?? null,
+	                  assetId: trace?.assetId ?? null,
+	                  chunkIndex: trace?.chunkIndex ?? null,
+	                  chunkCount: trace?.chunkCount ?? null,
+	                  fromModel: options.model,
+	                  toModel: fallbackTranscription.model,
+	                });
+	                return requestTranscriptionWithRetry(
+	                  source,
+	                  fallbackTranscription,
+	                  false,
+	                  trace
+	                );
+	              }
+	              throw retryError;
+	            }
+	          }
+	          if (allowFallback && options.model !== fallbackTranscription.model) {
+	            subtitleDebugLog("falling back to whisper transcription model", {
+	              clipId: trace?.clipId ?? null,
+	              assetId: trace?.assetId ?? null,
+	              chunkIndex: trace?.chunkIndex ?? null,
+	              chunkCount: trace?.chunkCount ?? null,
+	              fromModel: options.model,
+	              toModel: fallbackTranscription.model,
+	            });
+	            return requestTranscriptionWithRetry(
+	              source,
+	              fallbackTranscription,
+	              false,
+	              trace
+	            );
+	          }
+	          throw error;
+	        }
+	      };
       const normalizeWordEntries = (entries: TimedEntry[]): TimedWord[] =>
         entries
           .map((entry) => ({
@@ -9731,11 +9846,17 @@ function AdvancedEditorContent() {
         }
         throw lastError ?? new Error("Unable to read media for subtitle generation.");
       };
-      for (const entry of sortedSources) {
-        const blob = await fetchSourceBlob(
-          entry.asset.url,
-          entry.asset.name || "clip"
-        );
+	      for (const entry of sortedSources) {
+	        subtitleDebugLog("clip transcription start", {
+	          clipId: entry.clip.id,
+	          assetId: entry.asset.id,
+	          assetKind: entry.asset.kind,
+	          clipDuration: entry.clip.duration,
+	        });
+	        const blob = await fetchSourceBlob(
+	          entry.asset.url,
+	          entry.asset.name || "clip"
+	        );
         const clipStartOffset = entry.clip.startOffset ?? 0;
         const speedSetting = clipSettings[entry.clip.id]?.speed ?? 1;
         const playbackRate = clamp(speedSetting, 0.1, 4);
@@ -9747,20 +9868,35 @@ function AdvancedEditorContent() {
           entry.clip.duration,
           playbackRate,
           assetDuration,
-          entry.asset.kind === "video",
-          entry.asset.url
-        );
-        const clipSegments: TimedSegment[] = [];
-        for (const chunk of chunks) {
-          const source: TranscriptionSource =
-            "file" in chunk ? { file: chunk.file } : { url: chunk.remoteUrl };
-          let data = await requestTranscriptionWithRetry(
-            source,
-            primaryTranscription
-          );
-          let segments: TimedEntry[] = Array.isArray(data?.segments)
-            ? (data.segments as TimedEntry[])
-            : [];
+	          entry.asset.kind === "video",
+	          entry.asset.url
+	        );
+	        subtitleDebugLog("clip chunks prepared", {
+	          clipId: entry.clip.id,
+	          assetId: entry.asset.id,
+	          chunkCount: chunks.length,
+	          usesRemoteSource: chunks.some((chunk) => "remoteUrl" in chunk),
+	        });
+	        const clipSegments: TimedSegment[] = [];
+	        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+	          const chunk = chunks[chunkIndex];
+	          const trace: TranscriptionTrace = {
+	            clipId: entry.clip.id,
+	            assetId: entry.asset.id,
+	            chunkIndex: chunkIndex + 1,
+	            chunkCount: chunks.length,
+	          };
+	          const source: TranscriptionSource =
+	            "file" in chunk ? { file: chunk.file } : { url: chunk.remoteUrl };
+	          let data = await requestTranscriptionWithRetry(
+	            source,
+	            primaryTranscription,
+	            true,
+	            trace
+	          );
+	          let segments: TimedEntry[] = Array.isArray(data?.segments)
+	            ? (data.segments as TimedEntry[])
+	            : [];
           let words: TimedEntry[] = Array.isArray(data?.words)
             ? (data.words as TimedEntry[])
             : [];
@@ -9788,14 +9924,16 @@ function AdvancedEditorContent() {
               normalizedWords = extractedWords;
             }
           }
-          if (normalizedSegments.length === 0 && normalizedWords.length === 0) {
-            data = await requestTranscriptionWithRetry(
-              source,
-              fallbackTranscription
-            );
-            segments = Array.isArray(data?.segments)
-              ? (data.segments as TimedEntry[])
-              : [];
+	          if (normalizedSegments.length === 0 && normalizedWords.length === 0) {
+	            data = await requestTranscriptionWithRetry(
+	              source,
+	              fallbackTranscription,
+	              false,
+	              trace
+	            );
+	            segments = Array.isArray(data?.segments)
+	              ? (data.segments as TimedEntry[])
+	              : [];
             words = Array.isArray(data?.words)
               ? (data.words as TimedEntry[])
               : [];
@@ -9824,14 +9962,22 @@ function AdvancedEditorContent() {
               }
             }
           }
-          if (normalizedSegments.length === 0 && normalizedWords.length === 0) {
-            throw new Error(
-              "Transcription did not return timestamps. Try another model or check API response."
-            );
-          }
-          // Word-level timestamps are more precise for subtitle alignment
-          // Prefer them over segment-level timestamps when available
-          const wordSegments =
+	          if (normalizedSegments.length === 0 && normalizedWords.length === 0) {
+	            throw new Error(
+	              "Transcription did not return timestamps. Try another model or check API response."
+	            );
+	          }
+	          subtitleDebugLog("chunk transcription computed", {
+	            clipId: entry.clip.id,
+	            assetId: entry.asset.id,
+	            chunkIndex: trace.chunkIndex,
+	            chunkCount: trace.chunkCount,
+	            segmentCount: normalizedSegments.length,
+	            wordCount: normalizedWords.length,
+	          });
+	          // Word-level timestamps are more precise for subtitle alignment
+	          // Prefer them over segment-level timestamps when available
+	          const wordSegments =
             normalizedWords.length > 0
               ? buildSubtitleSegmentsFromWords(normalizedWords)
               : [];
@@ -9849,11 +9995,16 @@ function AdvancedEditorContent() {
                 : normalizedSegments;
           if (computedSegments.length === 0) {
             continue;
-          }
-          clipSegments.push(...computedSegments);
-        }
-        clipSegments.sort((a, b) => a.start - b.start);
-        clipSegments.forEach((segment) => {
+	          }
+	          clipSegments.push(...computedSegments);
+	        }
+	        subtitleDebugLog("clip transcription complete", {
+	          clipId: entry.clip.id,
+	          assetId: entry.asset.id,
+	          segmentCount: clipSegments.length,
+	        });
+	        clipSegments.sort((a, b) => a.start - b.start);
+	        clipSegments.forEach((segment) => {
           const rawText = String(segment.text ?? "").trim();
           if (!rawText) {
             return;
@@ -9922,11 +10073,15 @@ function AdvancedEditorContent() {
             endTime: timelineEnd,
             sourceClipId: entry.clip.id,
             words: wordEntries && wordEntries.length > 0 ? wordEntries : undefined,
-          });
-        });
-      }
-      return nextSegments.sort((a, b) => a.startTime - b.startTime);
-    },
+	          });
+	        });
+	      }
+	      const sortedSegments = nextSegments.sort((a, b) => a.startTime - b.startTime);
+	      subtitleDebugLog("transcription run complete", {
+	        outputSegmentCount: sortedSegments.length,
+	      });
+	      return sortedSegments;
+	    },
     [
       buildSubtitleSegmentsFromWords,
       clipSettings,
@@ -9936,27 +10091,36 @@ function AdvancedEditorContent() {
     ]
   );
 
-  const handleGenerateSubtitles = useCallback(async () => {
-    if (subtitleStatus === "loading") {
-      return;
-    }
-    const sourceEntries =
-      subtitleSource === "project"
-        ? subtitleSourceClips
+	  const handleGenerateSubtitles = useCallback(async () => {
+	    if (subtitleStatus === "loading") {
+	      subtitleDebugLog("subtitle generation skipped: already loading");
+	      return;
+	    }
+	    const sourceEntries =
+	      subtitleSource === "project"
+	        ? subtitleSourceClips
         : subtitleSourceClips.filter(
             (entry) => entry.clip.id === subtitleSource
-          );
-    if (sourceEntries.length === 0) {
-      setSubtitleStatus("error");
-      setSubtitleError("Add an audio or video clip to transcribe.");
-      return;
-    }
-    setSubtitleStatus("loading");
-    setSubtitleError(null);
-    pushHistory();
-    try {
-      const transcriptEntries = await transcribeSourceEntries(sourceEntries);
-      const nextLanes = [...lanesRef.current];
+	          );
+	    subtitleDebugLog("subtitle generation start", {
+	      source: subtitleSource,
+	      sourceCount: sourceEntries.length,
+	    });
+	    if (sourceEntries.length === 0) {
+	      setSubtitleStatus("error");
+	      setSubtitleError("Add an audio or video clip to transcribe.");
+	      subtitleDebugLog("subtitle generation failed: no source entries");
+	      return;
+	    }
+	    setSubtitleStatus("loading");
+	    setSubtitleError(null);
+	    pushHistory();
+	    try {
+	      const transcriptEntries = await transcribeSourceEntries(sourceEntries);
+	      subtitleDebugLog("subtitle transcript entries resolved", {
+	        segmentCount: transcriptEntries.length,
+	      });
+	      const nextLanes = [...lanesRef.current];
       const laneId =
         subtitleLaneIdRef.current &&
         nextLanes.some((lane) => lane.id === subtitleLaneIdRef.current)
@@ -10015,18 +10179,25 @@ function AdvancedEditorContent() {
         });
         return { ...next, ...nextClipTransforms };
       });
-      setSubtitleSegments(
-        nextSegments.sort((a, b) => a.startTime - b.startTime)
-      );
-      setSubtitleActiveTab("style");
-      setSubtitleStatus("ready");
-    } catch (error) {
-      setSubtitleStatus("error");
-      setSubtitleError(
-        error instanceof Error ? error.message : "Subtitle generation failed."
-      );
-    }
-  }, [
+	      setSubtitleSegments(
+	        nextSegments.sort((a, b) => a.startTime - b.startTime)
+	      );
+	      setSubtitleActiveTab("style");
+	      setSubtitleStatus("ready");
+	      subtitleDebugLog("subtitle generation complete", {
+	        outputClipCount: nextClips.length,
+	        outputSegmentCount: nextSegments.length,
+	      });
+	    } catch (error) {
+	      const message =
+	        error instanceof Error ? error.message : "Subtitle generation failed.";
+	      subtitleDebugLog("subtitle generation error", {
+	        error: message,
+	      });
+	      setSubtitleStatus("error");
+	      setSubtitleError(message);
+	    }
+	  }, [
     createClip,
     createLaneId,
     pushHistory,
@@ -10056,30 +10227,41 @@ function AdvancedEditorContent() {
     if (!subtitleSourceClips.some((entry) => entry.clip.id === pending.mainClipId)) {
       return;
     }
-    pendingSplitScreenSubtitleRef.current = null;
-    setSplitScreenImportOverlayStage("subtitles");
-    setSplitScreenImportOverlayOpen(true);
-    withPromiseTimeout(
-      handleGenerateSubtitles(),
-      IMPORT_SUBTITLE_TIMEOUT_MS,
-      "Subtitle generation"
-    )
-      .catch((error) => {
-        if (subtitleStatusRef.current === "error") {
-          return;
-        }
-        setSubtitleStatus("error");
-        setSubtitleError(
-          error instanceof Error ? error.message : "Subtitle generation failed."
-        );
-      })
-      .finally(() => {
-        setSplitScreenImportOverlayStage("finalizing");
-        requestAnimationFrame(() => {
-          if (subtitleStatusRef.current === "error") {
-            return;
-          }
-          setSplitScreenImportOverlayOpen(false);
+	    pendingSplitScreenSubtitleRef.current = null;
+	    setSplitScreenImportOverlayStage("subtitles");
+	    setSplitScreenImportOverlayOpen(true);
+	    splitImportLog("split subtitle generation triggered", {
+	      mainClipId: pending.mainClipId,
+	      styleId: pending.styleId,
+	    });
+	    withPromiseTimeout(
+	      handleGenerateSubtitles(),
+	      IMPORT_SUBTITLE_TIMEOUT_MS,
+	      "Subtitle generation"
+	    )
+	      .catch((error) => {
+	        if (subtitleStatusRef.current === "error") {
+	          return;
+	        }
+	        splitImportLog("split subtitle generation failed", {
+	          error:
+	            error instanceof Error ? error.message : "Subtitle generation failed.",
+	        });
+	        setSubtitleStatus("error");
+	        setSubtitleError(
+	          error instanceof Error ? error.message : "Subtitle generation failed."
+	        );
+	      })
+	      .finally(() => {
+	        setSplitScreenImportOverlayStage("finalizing");
+	        splitImportLog("split subtitle generation finalized", {
+	          subtitleStatus: subtitleStatusRef.current,
+	        });
+	        requestAnimationFrame(() => {
+	          if (subtitleStatusRef.current === "error") {
+	            return;
+	          }
+	          setSplitScreenImportOverlayOpen(false);
         });
       });
   }, [
@@ -12200,11 +12382,22 @@ function AdvancedEditorContent() {
 	  const applySplitScreenImport = useCallback(
 	    async (payload: SplitScreenImportPayloadV1) => {
 	      if (!payload?.mainVideo?.url || !payload?.backgroundVideo?.url) {
+	        splitImportLog("apply aborted: missing required URLs", payload);
 	        return;
 	      }
+	      const importStartedAt = Date.now();
+	      splitImportLog("apply start", {
+	        layout: payload.layout,
+	        mainVideoName: payload.mainVideo.name,
+	        hasMainAssetId:
+	          typeof payload.mainVideo.assetId === "string" &&
+	          payload.mainVideo.assetId.trim().length > 0,
+	        backgroundVideoName: payload.backgroundVideo.name,
+	      });
 
 	      setSplitScreenImportOverlayStage("preparing");
 	      setSplitScreenImportOverlayOpen(true);
+	      splitImportLog("overlay stage -> preparing");
 	      setIsBackgroundSelected(false);
 	      pushHistory();
 
@@ -12233,9 +12426,11 @@ function AdvancedEditorContent() {
 	          !resolvedMainUrl.startsWith("blob:") &&
 	          !resolvedMainUrl.startsWith("data:")
 	        ) {
+	          splitImportLog("source video already persisted; skipping blob upload");
 	          return null;
 	        }
 	        setSplitScreenImportOverlayStage("uploading");
+	        splitImportLog("overlay stage -> uploading");
 	        try {
 	          const meta = await getMediaMeta("video", resolvedMainUrl);
 	          const response = await fetch(resolvedMainUrl);
@@ -12270,14 +12465,19 @@ function AdvancedEditorContent() {
 	            height: meta.height,
 	            aspectRatio: resolvedAspectRatio,
 	          });
-	          if (!stored?.url || !stored.id) {
-	            return null;
-	          }
-	          return {
-	            url: stored.url,
-	            name: stored.name || resolvedMainName,
-	            assetId: stored.id,
-	            meta,
+		          if (!stored?.url || !stored.id) {
+		            splitImportLog("blob upload returned empty asset");
+		            return null;
+		          }
+		          splitImportLog("blob upload success", {
+		            storedAssetId: stored.id,
+		            storedName: stored.name,
+		          });
+		          return {
+		            url: stored.url,
+		            name: stored.name || resolvedMainName,
+		            assetId: stored.id,
+		            meta,
 	          };
 	        } catch (error) {
 	          console.error("[split-screen] failed to persist main video", error);
@@ -12304,13 +12504,16 @@ function AdvancedEditorContent() {
 	        }
 	      };
 
-	      const persistedMain = await withPromiseTimeout(
-	        persistMainVideoIfNeeded(),
-	        SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
-	        "Preparing split-screen source video"
-	      ).catch((error) => {
-	        console.warn("[split-screen] source video persist fallback", error);
-	        return null;
+		      const persistedMain = await withPromiseTimeout(
+		        persistMainVideoIfNeeded(),
+		        SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
+		        "Preparing split-screen source video"
+		      ).catch((error) => {
+		        console.warn("[split-screen] source video persist fallback", error);
+		        return null;
+		      });
+	      splitImportLog("source video persistence resolved", {
+	        usedPersistedAsset: Boolean(persistedMain?.assetId),
 	      });
 	      let mainMeta: Awaited<ReturnType<typeof getMediaMeta>>;
 	      if (persistedMain) {
@@ -12345,10 +12548,22 @@ function AdvancedEditorContent() {
         error: null,
       });
 
-	      const backgroundMeta = await getVideoMetaSafe(
-	        payload.backgroundVideo.url,
-	        "Reading background video metadata"
-	      );
+		      const backgroundMeta = await getVideoMetaSafe(
+		        payload.backgroundVideo.url,
+		        "Reading background video metadata"
+		      );
+	      splitImportLog("metadata resolved", {
+	        mainDuration:
+	          typeof mainMeta.duration === "number" &&
+	          Number.isFinite(mainMeta.duration)
+	            ? mainMeta.duration
+	            : null,
+	        backgroundDuration:
+	          typeof backgroundMeta.duration === "number" &&
+	          Number.isFinite(backgroundMeta.duration)
+	            ? backgroundMeta.duration
+	            : null,
+	      });
 
       const mainWidth =
         typeof mainMeta.width === "number" && Number.isFinite(mainMeta.width)
@@ -12394,8 +12609,8 @@ function AdvancedEditorContent() {
           : undefined;
       const bgAspectRatio = bgWidth && bgHeight ? bgWidth / bgHeight : undefined;
 
-      const bgLibraryAsset = await withPromiseTimeout(
-        createExternalAssetSafe({
+	      const bgLibraryAsset = await withPromiseTimeout(
+	        createExternalAssetSafe({
           url: payload.backgroundVideo.url,
           name: payload.backgroundVideo.name?.trim() || "Gameplay footage",
           kind: "video",
@@ -12407,10 +12622,14 @@ function AdvancedEditorContent() {
         }),
         SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
         "Saving background video asset"
-      ).catch((error) => {
-        console.warn("[split-screen] background asset save fallback", error);
-        return null;
-      });
+	      ).catch((error) => {
+	        console.warn("[split-screen] background asset save fallback", error);
+	        return null;
+	      });
+	      splitImportLog("background asset resolved", {
+	        persistedToLibrary: Boolean(bgLibraryAsset?.id),
+	        backgroundAssetId: bgLibraryAsset?.id ?? null,
+	      });
 
       const backgroundAsset: MediaAsset = {
         id: bgLibraryAsset?.id ?? crypto.randomUUID(),
@@ -12448,8 +12667,8 @@ function AdvancedEditorContent() {
         0.01,
         bgDuration ?? getAssetDurationSeconds(resolvedBgAsset) ?? targetDuration
       );
-      const bgClips: TimelineClip[] = [];
-      let cursor = 0;
+	      const bgClips: TimelineClip[] = [];
+	      let cursor = 0;
       while (cursor < targetDuration - timelineClipEpsilon) {
         const remaining = targetDuration - cursor;
         const duration = Math.max(0.01, Math.min(bgBaseDuration, remaining));
@@ -12464,7 +12683,12 @@ function AdvancedEditorContent() {
         cursor += duration;
         if (bgClips.length > 200) {
           break;
-        }
+	      }
+	      splitImportLog("timeline composition computed", {
+	        mainClipDuration: mainClip.duration,
+	        backgroundClipCount: bgClips.length,
+	        targetDuration,
+	      });
       }
 
       const mainTransform: ClipTransform =
@@ -12530,8 +12754,13 @@ function AdvancedEditorContent() {
       setCurrentTime(0);
       setActiveAssetId(resolvedMainAsset.id);
       setActiveCanvasClipId(mainClip.id);
-      setSelectedClipId(mainClip.id);
-      setSelectedClipIds([mainClip.id]);
+	      setSelectedClipId(mainClip.id);
+	      setSelectedClipIds([mainClip.id]);
+	      splitImportLog("timeline committed", {
+	        mainClipId: mainClip.id,
+	        mainAssetId: resolvedMainAsset.id,
+	        backgroundAssetId: resolvedBgAsset.id,
+	      });
 
       const desiredStyleId = payload.subtitles?.styleId;
       if (typeof desiredStyleId === "string" && desiredStyleId.trim().length > 0) {
@@ -12540,22 +12769,29 @@ function AdvancedEditorContent() {
       setSubtitleSource(mainClip.id);
       setTranscriptSource(mainClip.id);
 
-      if (
-        payload.subtitles?.autoGenerate &&
-        typeof desiredStyleId === "string" &&
-        desiredStyleId.trim().length > 0
-      ) {
-        setSplitScreenImportOverlayStage("subtitles");
-        pendingSplitScreenSubtitleRef.current = {
-          mainClipId: mainClip.id,
-          styleId: desiredStyleId.trim(),
-        };
-      } else {
-        setSplitScreenImportOverlayStage("finalizing");
-        requestAnimationFrame(() => setSplitScreenImportOverlayOpen(false));
-      }
-    },
-    [createLaneId, pushHistory]
+	      if (
+	        payload.subtitles?.autoGenerate &&
+	        typeof desiredStyleId === "string" &&
+	        desiredStyleId.trim().length > 0
+	      ) {
+	        setSplitScreenImportOverlayStage("subtitles");
+	        splitImportLog("overlay stage -> subtitles", {
+	          styleId: desiredStyleId.trim(),
+	        });
+	        pendingSplitScreenSubtitleRef.current = {
+	          mainClipId: mainClip.id,
+	          styleId: desiredStyleId.trim(),
+	        };
+	      } else {
+	        setSplitScreenImportOverlayStage("finalizing");
+	        splitImportLog("overlay stage -> finalizing (no auto subtitles)");
+	        requestAnimationFrame(() => setSplitScreenImportOverlayOpen(false));
+	      }
+	      splitImportLog("apply complete", {
+	        durationMs: Date.now() - importStartedAt,
+	      });
+	    },
+	    [createLaneId, pushHistory]
 	  );
 
   const applyStreamerVideoImport = useCallback(
@@ -14255,6 +14491,10 @@ function AdvancedEditorContent() {
     setSubtitleError(null);
     setSplitScreenImportOverlayStage("preparing");
     setSplitScreenImportOverlayOpen(true);
+    splitImportLog("import effect start", {
+      payloadId: importPayloadId,
+      ts: importTs,
+    });
 
     const clearImportQuery = () => {
       if (importQuery !== "splitscreen") {
@@ -14273,14 +14513,6 @@ function AdvancedEditorContent() {
       }
     };
 
-    if (importQuery === "splitscreen") {
-      const token = importTs || "no-ts";
-      if (splitScreenImportTokenRef.current === token) {
-        return;
-      }
-      splitScreenImportTokenRef.current = token;
-    }
-
     if (!importPayloadId) {
       console.warn("[split-screen] import requested but payloadId missing");
       setSplitScreenImportOverlayOpen(false);
@@ -14291,32 +14523,70 @@ function AdvancedEditorContent() {
     let cancelled = false;
     const run = async () => {
       try {
-        const response = await fetch(
-          `/api/editor/import-payload?type=splitscreen&id=${encodeURIComponent(importPayloadId)}`
-        );
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(
+        let payloadEnvelope: unknown = null;
+        for (let attempt = 1; attempt <= IMPORT_PAYLOAD_FETCH_MAX_ATTEMPTS; attempt += 1) {
+          splitImportLog("payload fetch attempt", {
+            payloadId: importPayloadId,
+            attempt,
+            maxAttempts: IMPORT_PAYLOAD_FETCH_MAX_ATTEMPTS,
+          });
+          const response = await fetch(
+            `/api/editor/import-payload?type=splitscreen&id=${encodeURIComponent(importPayloadId)}`,
+            { cache: "no-store" }
+          );
+          const data = await response.json().catch(() => ({}));
+          splitImportLog("payload fetch response", {
+            payloadId: importPayloadId,
+            attempt,
+            status: response.status,
+            ok: response.ok,
+            error: typeof data?.error === "string" ? data.error : null,
+          });
+          if (response.ok) {
+            payloadEnvelope = data?.payload ?? null;
+            break;
+          }
+          const resolvedError =
             typeof data?.error === "string" && data.error
               ? data.error
-              : "Split-screen payload could not be loaded."
-          );
+              : "Split-screen payload could not be loaded.";
+          if (
+            response.status === 404 &&
+            attempt < IMPORT_PAYLOAD_FETCH_MAX_ATTEMPTS
+          ) {
+            await delay(IMPORT_PAYLOAD_FETCH_RETRY_DELAY_MS * attempt);
+            continue;
+          }
+          throw new Error(resolvedError);
+        }
+        if (!payloadEnvelope) {
+          splitImportLog("payload fetch exhausted without envelope", {
+            payloadId: importPayloadId,
+          });
+          throw new Error("Split-screen payload could not be loaded.");
         }
         const payload = parseSplitScreenImportPayload(
-          JSON.stringify(data?.payload ?? null)
+          JSON.stringify(payloadEnvelope)
         );
         if (!payload) {
           throw new Error("Split-screen payload is invalid.");
         }
         if (cancelled) {
+          splitImportLog("import run cancelled before apply");
           return;
         }
-        console.info("[split-screen] applying import", payload);
+        splitImportLog("applying payload", {
+          payloadId: importPayloadId,
+          layout: payload.layout,
+          autoGenerateSubtitles: Boolean(payload.subtitles?.autoGenerate),
+          subtitleStyleId: payload.subtitles?.styleId ?? null,
+        });
         await withPromiseTimeout(
           applySplitScreenImport(payload),
           IMPORT_TIMEOUT_MS,
           "Split-screen import"
         );
+        splitImportLog("apply promise resolved");
       } catch (error) {
         console.error("[split-screen] import failed", error);
         if (!cancelled) {
@@ -14345,6 +14615,96 @@ function AdvancedEditorContent() {
     importPayloadId,
     importQuery,
     importTs,
+  ]);
+
+  useEffect(() => {
+    splitImportLog("overlay state update", {
+      open: splitScreenImportOverlayOpen,
+      stage: splitScreenImportOverlayStage,
+      subtitleStatus,
+      subtitleError: subtitleError ?? null,
+    });
+  }, [
+    splitScreenImportOverlayOpen,
+    splitScreenImportOverlayStage,
+    subtitleError,
+    subtitleStatus,
+  ]);
+
+	  useEffect(() => {
+	    if (!splitScreenImportOverlayOpen) {
+	      return;
+	    }
+	    if (splitScreenImportOverlayStage !== "finalizing") {
+	      return;
+	    }
+	    if (subtitleStatus === "loading" || subtitleStatus === "error") {
+	      return;
+	    }
+	    splitImportLog("finalizing overlay auto-close armed", {
+	      subtitleStatus,
+	    });
+	    const timeoutId = window.setTimeout(() => {
+	      const currentStatus = subtitleStatusRef.current;
+	      if (currentStatus === "loading" || currentStatus === "error") {
+	        splitImportLog("finalizing overlay auto-close skipped", {
+	          subtitleStatus: currentStatus,
+	        });
+	        return;
+	      }
+	      splitImportLog("finalizing overlay auto-close executed", {
+	        subtitleStatus: currentStatus,
+	      });
+	      setSplitScreenImportOverlayOpen(false);
+	    }, 180);
+	    return () => {
+	      window.clearTimeout(timeoutId);
+	    };
+	  }, [
+	    splitScreenImportOverlayOpen,
+	    splitScreenImportOverlayStage,
+	    subtitleStatus,
+	  ]);
+
+	  useEffect(() => {
+	    if (!splitScreenImportOverlayOpen) {
+	      return;
+	    }
+	    if (subtitleStatus === "error") {
+	      return;
+	    }
+	    if (
+	      splitScreenImportOverlayStage === "finalizing" &&
+	      subtitleStatus !== "loading"
+	    ) {
+	      splitImportLog("watchdog skipped", {
+	        stage: splitScreenImportOverlayStage,
+	        subtitleStatus,
+	      });
+	      return;
+	    }
+	    splitImportLog("watchdog armed", {
+	      stage: splitScreenImportOverlayStage,
+	      timeoutMs: IMPORT_PREPARING_WATCHDOG_MS,
+    });
+    const timeoutId = window.setTimeout(() => {
+      splitImportLog("watchdog timeout reached", {
+        stage: splitScreenImportOverlayStage,
+        subtitleStatus,
+      });
+      setSubtitleStatus("error");
+      setSubtitleError(
+        "Split-screen import is taking longer than expected. Check [split-screen][editor] logs in the console."
+      );
+      setSplitScreenImportOverlayStage("finalizing");
+    }, IMPORT_PREPARING_WATCHDOG_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    splitScreenImportOverlayOpen,
+    splitScreenImportOverlayStage,
+    subtitleStatus,
   ]);
 
   useEffect(() => {
@@ -14381,14 +14741,6 @@ function AdvancedEditorContent() {
         // Ignore URL failures.
       }
     };
-
-    if (importQuery === "streamer-video") {
-      const token = importTs || "no-ts";
-      if (streamerVideoImportTokenRef.current === token) {
-        return;
-      }
-      streamerVideoImportTokenRef.current = token;
-    }
 
     const assetId =
       typeof searchParams.get("assetId") === "string"
@@ -14495,14 +14847,6 @@ function AdvancedEditorContent() {
       }
     };
 
-    if (importQuery === "reddit-video") {
-      const token = importTs || "no-ts";
-      if (redditVideoImportTokenRef.current === token) {
-        return;
-      }
-      redditVideoImportTokenRef.current = token;
-    }
-
     if (!importPayloadId) {
       console.warn("[reddit-video] import requested but payloadId missing");
       setRedditVideoImportOverlayOpen(false);
@@ -14513,19 +14857,35 @@ function AdvancedEditorContent() {
     let cancelled = false;
     const run = async () => {
       try {
-        const response = await fetch(
-          `/api/editor/import-payload?type=reddit-video&id=${encodeURIComponent(importPayloadId)}`
-        );
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(
+        let payloadEnvelope: unknown = null;
+        for (let attempt = 1; attempt <= IMPORT_PAYLOAD_FETCH_MAX_ATTEMPTS; attempt += 1) {
+          const response = await fetch(
+            `/api/editor/import-payload?type=reddit-video&id=${encodeURIComponent(importPayloadId)}`,
+            { cache: "no-store" }
+          );
+          const data = await response.json().catch(() => ({}));
+          if (response.ok) {
+            payloadEnvelope = data?.payload ?? null;
+            break;
+          }
+          const resolvedError =
             typeof data?.error === "string" && data.error
               ? data.error
-              : "Reddit payload could not be loaded."
-          );
+              : "Reddit payload could not be loaded.";
+          if (
+            response.status === 404 &&
+            attempt < IMPORT_PAYLOAD_FETCH_MAX_ATTEMPTS
+          ) {
+            await delay(IMPORT_PAYLOAD_FETCH_RETRY_DELAY_MS * attempt);
+            continue;
+          }
+          throw new Error(resolvedError);
+        }
+        if (!payloadEnvelope) {
+          throw new Error("Reddit payload could not be loaded.");
         }
         const payload = parseRedditVideoImportPayload(
-          JSON.stringify(data?.payload ?? null)
+          JSON.stringify(payloadEnvelope)
         );
         if (!payload) {
           throw new Error("Reddit payload is invalid.");
