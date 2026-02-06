@@ -5,7 +5,7 @@ import type {
 import { safeParseJson } from "@/lib/autoclip/utils";
 
 const MIN_HIGHLIGHT_SECONDS = 15;
-const MAX_HIGHLIGHT_SECONDS = 120;
+const MAX_HIGHLIGHT_SECONDS = 60;
 const MIN_EDIT_HIGHLIGHT_SECONDS = 1;
 const DEFAULT_HIGHLIGHT_COUNT = 6;
 const MIN_HIGHLIGHT_COUNT = 4;
@@ -910,7 +910,11 @@ export const selectHighlight = async (
     segments,
     options?.durationSeconds ?? null
   );
-  const model = process.env.AUTOCLIP_HIGHLIGHT_MODEL || "gpt-5-mini";
+  const model =
+    (typeof process.env.AUTOCLIP_HIGHLIGHT_MODEL === "string" &&
+    process.env.AUTOCLIP_HIGHLIGHT_MODEL.trim()
+      ? process.env.AUTOCLIP_HIGHLIGHT_MODEL.trim()
+      : null) || "gpt-5.2-2025-12-11";
   const transcription = buildTranscriptText(segments);
   const languageHint = options?.language
     ? `Transcript language code: ${options.language}.`
@@ -946,17 +950,16 @@ export const selectHighlight = async (
       ? "If there are fewer than requested, return as many strong options as possible."
       : `If you cannot find ${requestedHighlights}, return as many strong options as possible (minimum ${minHighlights} if the transcript allows).`;
   const systemPrompt = [
-    "You are a world-class short-form video clipping editor (YouTube Shorts, TikTok, Reels).",
-    "The input contains a timestamped transcription of a video.",
-    "Your goal is to select only moments that are truly clip-worthy and likely to perform.",
-    "Every selected clip must stand on its own and make sense to someone who has not seen the rest of the video.",
-    "Each clip should include enough setup/context, a clear hook, and a payoff or strong takeaway.",
-    "Prefer moments that are surprising, emotionally charged, funny, controversial, high-tension, or deliver a sharp insight.",
-    "Avoid random snippets, weak transitions, greetings, sponsor reads, housekeeping, repeated info, and low-energy filler.",
-    "Consider the full timeline and prefer highlights from different sections when possible, not just the opening.",
-    `Select each segment between ${limits.minLength.toFixed(0)} and ${limits.maxLength.toFixed(0)} seconds.`,
-    "Prefer 18-45 second clips for short-form performance unless a longer setup is truly required for context/payoff.",
-    "Only return clips longer than 55 seconds when there is no shorter option that still preserves the hook and payoff.",
+    "You are an expert long-form to short-form clipping strategist for YouTube Shorts, TikTok, and Reels.",
+    "Your primary goal is to choose clips that can go viral by evoking multiple emotions, with curiosity as the strongest emotion.",
+    "The input contains a timestamped transcript of one video. Evaluate the full timeline, not just the opening section.",
+    "Every selected clip must stand on its own, make sense without extra context, and include a clear hook plus payoff.",
+    "Prefer moments that are surprising, funny, emotionally charged, controversial, rage-inducing, or deliver a sharp insight.",
+    "Avoid weak transitions, greetings, sponsor reads, housekeeping, repeated info, and low-energy filler.",
+    `Select each clip between ${limits.minLength.toFixed(0)} and ${limits.maxLength.toFixed(0)} seconds.`,
+    "Target short-form length: 15-60 seconds.",
+    "Use the shortest range that still preserves context and meaning. 20-45 seconds is usually ideal.",
+    "Only use 46-60 seconds when extra setup is required for the hook/payoff to make sense.",
     "Start shortly before the moment gets interesting and end shortly after the payoff lands.",
     "The selected text should contain complete sentences and a complete thought.",
     "Choose start and end times that align with transcript segment boundaries.",
