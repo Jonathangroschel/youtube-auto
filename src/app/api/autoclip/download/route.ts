@@ -24,11 +24,26 @@ async function getSignedUrl(key: string): Promise<string | null> {
   }
 }
 
+const sanitizeFilename = (value: string | null | undefined, fallback: string) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  const safe = raw
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  return safe || fallback;
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get("sessionId");
   const clipIndexParam = searchParams.get("clipIndex");
   const clipIndexesParam = searchParams.get("clipIndexes");
+  const dispositionRaw = (searchParams.get("disposition") || "attachment")
+    .trim()
+    .toLowerCase();
+  const disposition =
+    dispositionRaw === "inline" ? "inline" : "attachment";
+  const filenameParam = searchParams.get("filename");
   const clipIndex = clipIndexParam != null ? Number(clipIndexParam) : null;
 
   if (!sessionId) {
@@ -68,7 +83,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ downloads: available });
   }
 
-  // Single clip - redirect to signed URL
+  // Single clip
   const resolvedIndex =
     clipIndexes.length === 1 ? clipIndexes[0] : clipIndex;
   const output =
@@ -87,6 +102,44 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Download URL not available." }, { status: 404 });
   }
 
-  // Redirect to the signed URL
-  return NextResponse.redirect(downloadUrl);
+  if (disposition === "inline") {
+    return NextResponse.redirect(downloadUrl);
+  }
+
+  const fallbackFilename =
+    typeof output.filename === "string" && output.filename.trim()
+      ? output.filename
+      : `clip-${(Number.isFinite(resolvedIndex) ? Number(resolvedIndex) : 0) + 1}.mp4`;
+  const filename = sanitizeFilename(filenameParam, fallbackFilename);
+
+  try {
+    const upstream = await fetch(downloadUrl);
+    if (!upstream.ok || !upstream.body) {
+      return NextResponse.json(
+        { error: "Unable to fetch clip for download." },
+        { status: 502 }
+      );
+    }
+
+    const headers = new Headers();
+    const contentType =
+      upstream.headers.get("content-type") || "application/octet-stream";
+    headers.set("Content-Type", contentType);
+    const contentLength = upstream.headers.get("content-length");
+    if (contentLength) {
+      headers.set("Content-Length", contentLength);
+    }
+    headers.set("Cache-Control", "private, no-store, max-age=0");
+    headers.set("Content-Disposition", `attachment; filename="${filename}"`);
+
+    return new Response(upstream.body, {
+      status: 200,
+      headers,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Unable to stream clip for download." },
+      { status: 502 }
+    );
+  }
 }

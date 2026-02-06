@@ -892,9 +892,9 @@ export default function AutoClipPage() {
     [highlights, removedHighlightSet]
   );
   const getOutputDownloadUrl = useCallback(
-    (clipIndex: number) =>
+    (clipIndex: number, disposition: "attachment" | "inline" = "attachment") =>
       sessionId
-        ? `/api/autoclip/download?sessionId=${sessionId}&clipIndex=${clipIndex}`
+        ? `/api/autoclip/download?sessionId=${sessionId}&clipIndex=${clipIndex}&disposition=${disposition}`
         : null,
     [sessionId]
   );
@@ -1031,13 +1031,14 @@ export default function AutoClipPage() {
         )}`
       : "--";
     const title = resolveHighlightTitle(outputHighlight ?? null);
-    const downloadUrl = getOutputDownloadUrl(outputIndex);
+    const downloadUrl = getOutputDownloadUrl(outputIndex, "attachment");
+    const previewUrl = getOutputDownloadUrl(outputIndex, "inline");
     return {
       id: outputIndex,
       outputIndex,
       title,
       range,
-      previewUrl: downloadUrl ? `${downloadUrl}&disposition=inline` : null,
+      previewUrl,
       downloadUrl,
     };
   });
@@ -1998,13 +1999,26 @@ export default function AutoClipPage() {
 
   const handleDownload = useCallback(
     (outputIndex: number) => {
-      const url = getOutputDownloadUrl(outputIndex);
+      const output = outputs[outputIndex];
+      const url = getOutputDownloadUrl(outputIndex, "attachment");
       if (!url) {
         return;
       }
-      window.open(url, "_blank", "noopener,noreferrer");
+      const params = new URLSearchParams({
+        outputIndex: String(outputIndex),
+      });
+      if (output?.filename) {
+        params.set("filename", output.filename);
+      }
+      const anchor = document.createElement("a");
+      anchor.href = `${url}&${params.toString()}`;
+      anchor.setAttribute("download", output?.filename || `clip-${outputIndex + 1}.mp4`);
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
     },
-    [getOutputDownloadUrl]
+    [getOutputDownloadUrl, outputs]
   );
 
   const buildClipAsset = useCallback(
@@ -2069,20 +2083,12 @@ export default function AutoClipPage() {
       return;
     }
     const unique = Array.from(new Set(selectedClipIds)).sort((a, b) => a - b);
-    if (unique.length === 1) {
-      handleDownload(unique[0]);
-      return;
-    }
-    if (!sessionId) {
-      return;
-    }
-    const params = new URLSearchParams({
-      sessionId,
-      clipIndexes: unique.join(","),
+    unique.forEach((index, position) => {
+      window.setTimeout(() => {
+        handleDownload(index);
+      }, position * 250);
     });
-    const url = `/api/autoclip/download?${params.toString()}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, [handleDownload, selectedClipIds, sessionId]);
+  }, [handleDownload, selectedClipIds]);
 
   const handleOpenSelectedInEditor = useCallback(() => {
     if (!selectedClipIds.length) {

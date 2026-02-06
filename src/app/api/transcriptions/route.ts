@@ -390,10 +390,14 @@ const transcribeViaWorkerFallback = async (params: {
 };
 
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  const workerConfig = resolveWorkerRuntimeConfig();
+  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+  if (!workerConfig && !apiKey) {
     return NextResponse.json(
-      { error: "Missing OPENAI_API_KEY." },
+      {
+        error:
+          "Transcription is not configured. Set worker env vars (AUTOCLIP_TRANSCRIBE_WORKER_URL/SECRET or AUTOCLIP_WORKER_URL/SECRET) or OPENAI_API_KEY.",
+      },
       { status: 500 }
     );
   }
@@ -409,6 +413,8 @@ export async function POST(request: Request) {
   const model = String(
     incoming.get("model") ?? "gpt-4o-transcribe-diarize"
   );
+  const normalizedModel = model.trim().toLowerCase();
+  const preferWorkerPipeline = normalizedModel === "whisper-1";
   const language = incoming.get("language");
   const languageValue =
     typeof language === "string" && language.trim().length > 0
@@ -494,6 +500,37 @@ export async function POST(request: Request) {
     uploadedFileName = inferFilename(parsedUrl, contentType);
   } else {
     return NextResponse.json({ error: "Missing audio file." }, { status: 400 });
+  }
+
+  let workerErrorMessage: string | null = null;
+  let attemptedWorker = false;
+  if (workerConfig && preferWorkerPipeline) {
+    attemptedWorker = true;
+    try {
+      const workerData = await transcribeViaWorkerFallback({
+        uploadedFile,
+        uploadedFileName,
+        language: languageValue,
+      });
+      return NextResponse.json(workerData);
+    } catch (workerError) {
+      workerErrorMessage =
+        workerError instanceof Error
+          ? workerError.message
+          : "Worker transcription failed.";
+    }
+  }
+
+  if (!apiKey) {
+    return NextResponse.json(
+      {
+        error: preferWorkerPipeline
+          ? workerErrorMessage ??
+            "Worker transcription failed and OPENAI_API_KEY is not configured for fallback."
+          : "OPENAI_API_KEY is required for this transcription model.",
+      },
+      { status: 502 }
+    );
   }
   const resolvedChunkingStrategy =
     typeof chunkingStrategy === "string" && chunkingStrategy.length > 0
@@ -636,29 +673,11 @@ export async function POST(request: Request) {
     directErrorMessage = await response.text();
   }
 
-  const workerConfig = resolveWorkerRuntimeConfig();
-  if (workerConfig) {
-    try {
-      const workerData = await transcribeViaWorkerFallback({
-        uploadedFile,
-        uploadedFileName,
-        language: languageValue,
-      });
-      return NextResponse.json(workerData);
-    } catch (workerError) {
-      const workerMessage =
-        workerError instanceof Error
-          ? workerError.message
-          : "Worker fallback transcription failed.";
-      const message = directErrorMessage
-        ? `${directErrorMessage} Worker fallback failed: ${workerMessage}`
-        : workerMessage;
-      return NextResponse.json({ error: message }, { status: 502 });
-    }
-  }
+  const combinedError = attemptedWorker && workerErrorMessage
+    ? directErrorMessage
+      ? `Worker transcription failed: ${workerErrorMessage} OpenAI fallback failed: ${directErrorMessage}`
+      : `Worker transcription failed: ${workerErrorMessage}`
+    : directErrorMessage || "OpenAI transcription failed.";
 
-  return NextResponse.json(
-    { error: directErrorMessage || "OpenAI transcription failed." },
-    { status: directErrorStatus ?? 504 }
-  );
+  return NextResponse.json({ error: combinedError }, { status: directErrorStatus ?? 504 });
 }
