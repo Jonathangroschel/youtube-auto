@@ -9096,19 +9096,50 @@ function AdvancedEditorContent() {
     [isPlaying]
   );
 
+  const ensureSubtitleTextLane = useCallback((laneId: string) => {
+    setLanes((prev) => {
+      if (prev.some((lane) => lane.id === laneId)) {
+        return prev;
+      }
+      const next = [...prev];
+      const lane: TimelineLane = { id: laneId, type: "text" };
+      const firstNonTextIndex = next.findIndex((item) => item.type !== "text");
+      if (firstNonTextIndex === -1) {
+        next.push(lane);
+      } else {
+        next.splice(firstNonTextIndex, 0, lane);
+      }
+      return next;
+    });
+  }, []);
+
+  const resolveSubtitleLaneId = useCallback(() => {
+    const laneSnapshot = lanesRef.current;
+    const currentLane = subtitleLaneIdRef.current
+      ? laneSnapshot.find((lane) => lane.id === subtitleLaneIdRef.current)
+      : null;
+    if (currentLane?.type === "text") {
+      return currentLane.id;
+    }
+    const existingTextLaneId =
+      laneSnapshot.find((lane) => lane.type === "text")?.id ?? null;
+    if (existingTextLaneId) {
+      subtitleLaneIdRef.current = existingTextLaneId;
+      return existingTextLaneId;
+    }
+    const newLaneId = crypto.randomUUID();
+    subtitleLaneIdRef.current = newLaneId;
+    return newLaneId;
+  }, []);
+
   const handleSubtitleAddLine = useCallback((options?: {
     startTime?: number;
     endTime?: number;
     text?: string;
   }) => {
     pushHistory();
-    const nextLanes = [...lanesRef.current];
-    const laneId =
-      subtitleLaneIdRef.current &&
-      nextLanes.some((lane) => lane.id === subtitleLaneIdRef.current)
-        ? subtitleLaneIdRef.current
-        : createLaneId("text", nextLanes);
-    subtitleLaneIdRef.current = laneId;
+    const laneId = resolveSubtitleLaneId();
+    ensureSubtitleTextLane(laneId);
     const lastSegment = subtitleSegments[subtitleSegments.length - 1];
     const fallbackTime = playbackTimeRef.current;
     const explicitStart = options?.startTime;
@@ -9138,7 +9169,6 @@ function AdvancedEditorContent() {
       sourceClipId: null,
       words: undefined,
     };
-    setLanes(nextLanes);
     setAssets((prev) => [asset, ...prev]);
     setTimeline((prev) => [...prev, clip]);
     setTextSettings((prev) => ({
@@ -9161,12 +9191,13 @@ function AdvancedEditorContent() {
     setCurrentTime(baseStart);
   }, [
     createClip,
-    createLaneId,
-    resolveSubtitleSettings,
-    subtitleSegments,
-    pushHistory,
-    stageAspectRatio,
+    ensureSubtitleTextLane,
     isPlaying,
+    pushHistory,
+    resolveSubtitleLaneId,
+    resolveSubtitleSettings,
+    stageAspectRatio,
+    subtitleSegments,
   ]);
 
   const handleSubtitleDelete = useCallback(
@@ -10120,13 +10151,8 @@ function AdvancedEditorContent() {
 	      subtitleDebugLog("subtitle transcript entries resolved", {
 	        segmentCount: transcriptEntries.length,
 	      });
-	      const nextLanes = [...lanesRef.current];
-      const laneId =
-        subtitleLaneIdRef.current &&
-        nextLanes.some((lane) => lane.id === subtitleLaneIdRef.current)
-          ? subtitleLaneIdRef.current
-          : createLaneId("text", nextLanes);
-      subtitleLaneIdRef.current = laneId;
+      const laneId = resolveSubtitleLaneId();
+      ensureSubtitleTextLane(laneId);
       const existingSubtitleClipIds = new Set(
         subtitleSegments.map((segment) => segment.clipId)
       );
@@ -10157,13 +10183,49 @@ function AdvancedEditorContent() {
           words: segment.words,
         });
       });
-      setLanes(nextLanes);
       setAssets((prev) => [...nextAssets, ...prev]);
       setTimeline((prev) => {
         const filtered = prev.filter(
           (clip) => !existingSubtitleClipIds.has(clip.id)
         );
-        return [...filtered, ...nextClips];
+        const nextTimeline = [...filtered, ...nextClips];
+        const kindByAssetId = new Map<string, MediaKind>(
+          assetsRef.current.map((asset) => [asset.id, asset.kind])
+        );
+        nextAssets.forEach((asset) => {
+          kindByAssetId.set(asset.id, asset.kind);
+        });
+        let videoClipCount = 0;
+        let textClipCount = 0;
+        let audioClipCount = 0;
+        let missingAssetClipCount = 0;
+        nextTimeline.forEach((clip) => {
+          const kind = kindByAssetId.get(clip.assetId);
+          if (kind === "video") {
+            videoClipCount += 1;
+            return;
+          }
+          if (kind === "text") {
+            textClipCount += 1;
+            return;
+          }
+          if (kind === "audio") {
+            audioClipCount += 1;
+            return;
+          }
+          missingAssetClipCount += 1;
+        });
+        subtitleDebugLog("subtitle timeline merge", {
+          beforeClipCount: prev.length,
+          removedSubtitleClipCount: prev.length - filtered.length,
+          addedSubtitleClipCount: nextClips.length,
+          afterClipCount: nextTimeline.length,
+          videoClipCount,
+          textClipCount,
+          audioClipCount,
+          missingAssetClipCount,
+        });
+        return nextTimeline;
       });
       setTextSettings((prev) => {
         const next = { ...prev };
@@ -10197,10 +10259,11 @@ function AdvancedEditorContent() {
 	      setSubtitleStatus("error");
 	      setSubtitleError(message);
 	    }
-	  }, [
+  }, [
     createClip,
-    createLaneId,
+    ensureSubtitleTextLane,
     pushHistory,
+    resolveSubtitleLaneId,
     resolveSubtitleSettings,
     stageAspectRatio,
     subtitleSegments,
@@ -12742,6 +12805,7 @@ function AdvancedEditorContent() {
       });
       setTextSettings({});
       setSubtitleSegments([]);
+      subtitleLaneIdRef.current = null;
       setDetachedSubtitleIds(new Set());
       setSubtitleStatus("idle");
       setSubtitleError(null);
@@ -14469,6 +14533,22 @@ function AdvancedEditorContent() {
     [createLaneId, pushHistory]
   );
 
+  const applySplitScreenImportRef = useRef(applySplitScreenImport);
+  const applyStreamerVideoImportRef = useRef(applyStreamerVideoImport);
+  const applyRedditVideoImportRef = useRef(applyRedditVideoImport);
+
+  useEffect(() => {
+    applySplitScreenImportRef.current = applySplitScreenImport;
+  }, [applySplitScreenImport]);
+
+  useEffect(() => {
+    applyStreamerVideoImportRef.current = applyStreamerVideoImport;
+  }, [applyStreamerVideoImport]);
+
+  useEffect(() => {
+    applyRedditVideoImportRef.current = applyRedditVideoImport;
+  }, [applyRedditVideoImport]);
+
   const importQuery = searchParams.get("import");
   const importTs = searchParams.get("ts") ?? "";
   const importPayloadId =
@@ -14582,7 +14662,7 @@ function AdvancedEditorContent() {
           subtitleStyleId: payload.subtitles?.styleId ?? null,
         });
         await withPromiseTimeout(
-          applySplitScreenImport(payload),
+          applySplitScreenImportRef.current(payload),
           IMPORT_TIMEOUT_MS,
           "Split-screen import"
         );
@@ -14611,7 +14691,6 @@ function AdvancedEditorContent() {
       cancelled = true;
     };
   }, [
-    applySplitScreenImport,
     importPayloadId,
     importQuery,
     importTs,
@@ -14800,7 +14879,7 @@ function AdvancedEditorContent() {
       try {
         console.info("[streamer-video] applying import", payload);
         await withPromiseTimeout(
-          applyStreamerVideoImport(payload),
+          applyStreamerVideoImportRef.current(payload),
           IMPORT_TIMEOUT_MS,
           "Streamer video import"
         );
@@ -14813,7 +14892,7 @@ function AdvancedEditorContent() {
     };
 
     void run();
-  }, [applyStreamerVideoImport, importQuery, importTs, searchParams]);
+  }, [importQuery, importTs, searchParams]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -14895,7 +14974,7 @@ function AdvancedEditorContent() {
         }
         console.info("[reddit-video] applying import", payload);
         await withPromiseTimeout(
-          applyRedditVideoImport(payload),
+          applyRedditVideoImportRef.current(payload),
           IMPORT_TIMEOUT_MS,
           "Reddit video import"
         );
@@ -14918,7 +14997,7 @@ function AdvancedEditorContent() {
     return () => {
       cancelled = true;
     };
-  }, [applyRedditVideoImport, importPayloadId, importQuery, importTs]);
+  }, [importPayloadId, importQuery, importTs]);
 
   useEffect(() => {
     if (!assetLibraryReady) {
@@ -20185,7 +20264,9 @@ function AdvancedEditorContent() {
         return;
       }
       if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
+        if (event.cancelable) {
+          event.preventDefault();
+        }
         const rect = scrollEl.getBoundingClientRect();
         const offsetX = event.clientX - rect.left;
         const contentX = scrollEl.scrollLeft + offsetX - timelinePadding;
@@ -20216,7 +20297,9 @@ function AdvancedEditorContent() {
         return;
       }
       scrollEl.scrollLeft += deltaY;
-      event.preventDefault();
+      if (event.cancelable) {
+        event.preventDefault();
+      }
     },
     [timelineDuration, timelineScale]
   );
@@ -20230,7 +20313,9 @@ function AdvancedEditorContent() {
       if (!event.ctrlKey && !event.metaKey) {
         return;
       }
-      event.preventDefault();
+      if (event.cancelable) {
+        event.preventDefault();
+      }
       event.stopPropagation();
       handleTimelineWheel(event);
     };
