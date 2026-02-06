@@ -4,6 +4,8 @@ import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { spawn } from "child_process";
 import { createReadStream, promises as fs } from "fs";
+import https from "https";
+import nodeFetch from "node-fetch";
 import os from "os";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
@@ -73,6 +75,14 @@ const toPositiveInt = (value, fallback) => {
   return fallback;
 };
 
+const toNonNegativeInt = (value, fallback) => {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return Math.floor(parsed);
+  }
+  return fallback;
+};
+
 const toEven = (value) => {
   const safe = Math.max(2, Math.floor(value));
   return safe - (safe % 2);
@@ -98,10 +108,10 @@ const MAX_RENDER_HEIGHT = toPositiveInt(
 );
 const TRANSCRIBE_CHUNK_SECONDS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS,
-  600
+  45
 );
 const TRANSCRIBE_AUDIO_BITRATE =
-  process.env.AUTOCLIP_TRANSCRIBE_BITRATE || "64k";
+  process.env.AUTOCLIP_TRANSCRIBE_BITRATE || "24k";
 const RENDER_PRESET = process.env.AUTOCLIP_FFMPEG_PRESET || "veryfast";
 const SCALE_FLAGS = process.env.AUTOCLIP_SCALE_FLAGS || "lanczos";
 const RENDER_HEIGHT = toEven(MAX_RENDER_HEIGHT);
@@ -191,10 +201,16 @@ const OPENAI_HTTP_TIMEOUT_MS = toPositiveInt(
   process.env.AUTOCLIP_OPENAI_HTTP_TIMEOUT_MS,
   300000
 );
-const OPENAI_HTTP_MAX_RETRIES = toPositiveInt(
+const OPENAI_HTTP_MAX_RETRIES_CONFIGURED = toNonNegativeInt(
   process.env.AUTOCLIP_OPENAI_HTTP_MAX_RETRIES,
-  2
+  0
 );
+const OPENAI_HTTP_MAX_RETRIES = 0;
+const OPENAI_TRANSPORT_MODE = String(
+  process.env.AUTOCLIP_OPENAI_TRANSPORT_MODE || "keepalive"
+)
+  .trim()
+  .toLowerCase();
 
 const exportQueue = [];
 const exportJobs = new Map();
@@ -208,12 +224,46 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// OpenAI client
-const openai = new OpenAI({
+const buildOpenAIFetch = (agent) => (url, init = {}) =>
+  nodeFetch(url, { ...init, agent });
+
+const openaiKeepAliveAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 5000,
+  maxSockets: 12,
+  maxFreeSockets: 6,
+  timeout: 120000,
+});
+
+const openaiStatelessAgent = new https.Agent({
+  keepAlive: false,
+  maxSockets: 48,
+  timeout: 120000,
+});
+
+const openaiClientBaseConfig = {
   apiKey: process.env.OPENAI_API_KEY,
   timeout: OPENAI_HTTP_TIMEOUT_MS,
   maxRetries: OPENAI_HTTP_MAX_RETRIES,
+};
+
+const openaiKeepAlive = new OpenAI({
+  ...openaiClientBaseConfig,
+  fetch: buildOpenAIFetch(openaiKeepAliveAgent),
 });
+
+const openaiStateless = new OpenAI({
+  ...openaiClientBaseConfig,
+  fetch: buildOpenAIFetch(openaiStatelessAgent),
+});
+
+const useStatelessPrimary = OPENAI_TRANSPORT_MODE === "stateless";
+const openai = useStatelessPrimary ? openaiStateless : openaiKeepAlive;
+const openaiFallback = useStatelessPrimary ? openaiKeepAlive : openaiStateless;
+const openaiTransportName = useStatelessPrimary ? "stateless" : "keepalive";
+const openaiFallbackTransportName = useStatelessPrimary
+  ? "keepalive"
+  : "stateless";
 
 // Middleware
 app.use(cors());
@@ -1098,7 +1148,7 @@ const TRANSCRIBE_OPENAI_MAX_ATTEMPTS = toPositiveInt(
 );
 const TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS,
-  4
+  5
 );
 const TRANSCRIBE_OPENAI_CONNECTION_BACKOFF_MS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_CONNECTION_BACKOFF_MS,
@@ -1106,7 +1156,7 @@ const TRANSCRIBE_OPENAI_CONNECTION_BACKOFF_MS = toPositiveInt(
 );
 const TRANSCRIBE_OPENAI_CONNECTION_MAX_BACKOFF_MS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_CONNECTION_MAX_BACKOFF_MS,
-  15000
+  45000
 );
 const TRANSCRIBE_UPLOAD_FALLBACK_BITRATE =
   process.env.AUTOCLIP_TRANSCRIBE_UPLOAD_FALLBACK_BITRATE || "32k";
@@ -1128,6 +1178,9 @@ const transcriptionManager = createTranscriptionManager({
   supabase,
   bucket: BUCKET,
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   maxConcurrency: MAX_TRANSCRIBE_CONCURRENCY,
   chunkSeconds: TRANSCRIBE_CHUNK_SECONDS,
   audioBitrate: TRANSCRIBE_AUDIO_BITRATE,
@@ -1723,7 +1776,10 @@ app.listen(PORT, () => {
     `[worker] transcription concurrency=${MAX_TRANSCRIBE_CONCURRENCY} chunkSeconds=${TRANSCRIBE_CHUNK_SECONDS} chunkBitrate=${TRANSCRIBE_AUDIO_BITRATE}`
   );
   console.log(
-    `[worker] transcription openai timeoutMs=${TRANSCRIBE_OPENAI_TIMEOUT_MS} attempts=${TRANSCRIBE_OPENAI_MAX_ATTEMPTS} connectionAttempts=${TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS} uploadSegmentSeconds=${TRANSCRIBE_UPLOAD_SEGMENT_SECONDS}`
+    `[worker] transcription openai timeoutMs=${TRANSCRIBE_OPENAI_TIMEOUT_MS} attempts=${TRANSCRIBE_OPENAI_MAX_ATTEMPTS} connectionAttempts=${TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS} uploadSegmentSeconds=${TRANSCRIBE_UPLOAD_SEGMENT_SECONDS} sdkRetries=${OPENAI_HTTP_MAX_RETRIES} configuredSdkRetries=${OPENAI_HTTP_MAX_RETRIES_CONFIGURED}`
+  );
+  console.log(
+    `[worker] OpenAI transport primary=${openaiTransportName} fallback=${openaiFallbackTransportName}`
   );
   console.log(
     `[worker] editor export quality preset=${EXPORT_VIDEO_PRESET} crf=${EXPORT_VIDEO_CRF} audioBitrate=${EXPORT_AUDIO_BITRATE} frameFormat=${EXPORT_FRAME_FORMAT}`

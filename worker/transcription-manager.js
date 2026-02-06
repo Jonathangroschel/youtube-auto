@@ -253,6 +253,9 @@ const runFfmpeg = (args, label) => runProcess("ffmpeg", args, label);
 
 const checkOpenAIConnectivity = async ({
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   openaiTimeoutMs,
   openaiConnectionMaxAttempts,
   openaiConnectionBackoffMs,
@@ -260,37 +263,56 @@ const checkOpenAIConnectivity = async ({
 }) => {
   const maxAttempts = Math.max(1, Math.min(3, openaiConnectionMaxAttempts));
   const timeoutMs = Math.max(5000, Math.min(20000, openaiTimeoutMs));
-  let lastError = null;
+  const primaryLabel = String(openaiTransportName || "primary");
+  const fallbackLabel = String(openaiFallbackTransportName || "fallback");
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const controller = new AbortController();
-      const timeoutHandle = setTimeout(() => {
-        controller.abort();
-      }, timeoutMs);
+  const runConnectivityCheck = async (client, label) => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        await openai.models.list({ signal: controller.signal });
-      } finally {
-        clearTimeout(timeoutHandle);
-      }
-      return;
-    } catch (error) {
-      lastError = error;
-      if (!isOpenAIConnectionError(error) || attempt >= maxAttempts) {
-        break;
-      }
+        const controller = new AbortController();
+        const timeoutHandle = setTimeout(() => {
+          controller.abort();
+        }, timeoutMs);
+        try {
+          await client.models.list({ signal: controller.signal });
+        } finally {
+          clearTimeout(timeoutHandle);
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!isOpenAIConnectionError(error) || attempt >= maxAttempts) {
+          break;
+        }
 
-      const delayMs = Math.min(
-        openaiConnectionMaxBackoffMs,
-        openaiConnectionBackoffMs * Math.pow(2, Math.max(0, attempt - 1))
-      );
-      await wait(delayMs);
+        const delayMs = Math.min(
+          openaiConnectionMaxBackoffMs,
+          openaiConnectionBackoffMs * Math.pow(2, Math.max(0, attempt - 1))
+        );
+        await wait(delayMs);
+      }
     }
-  }
 
-  throw new Error(
-    `OpenAI connectivity check failed: ${formatErrorDetail(lastError)}`
-  );
+    throw new Error(
+      `OpenAI connectivity check failed (${label}): ${formatErrorDetail(lastError)}`
+    );
+  };
+
+  try {
+    await runConnectivityCheck(openai, primaryLabel);
+    return;
+  } catch (primaryError) {
+    if (!openaiFallback) {
+      throw primaryError;
+    }
+    console.warn(
+      `[transcribe] OpenAI connectivity failed on ${primaryLabel}; retrying on ${fallbackLabel}. ${formatErrorDetail(
+        primaryError
+      )}`
+    );
+    await runConnectivityCheck(openaiFallback, fallbackLabel);
+  }
 };
 
 const getAudioStreamIndices = async (filePath) => {
@@ -557,6 +579,9 @@ const splitNormalizedAudio = async ({
 
 const transcribeFileWithRetry = async ({
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   filePath,
   requestedLanguage,
   openaiTimeoutMs,
@@ -566,9 +591,19 @@ const transcribeFileWithRetry = async ({
   openaiConnectionMaxBackoffMs,
 }) => {
   const hardMaxAttempts = Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts);
+  const primaryTransportLabel = String(openaiTransportName || "primary");
+  const fallbackTransportLabel = String(openaiFallbackTransportName || "fallback");
+  let useFallbackTransport = false;
   let lastError = null;
 
   for (let attempt = 1; attempt <= hardMaxAttempts; attempt += 1) {
+    const activeOpenAI =
+      useFallbackTransport && openaiFallback ? openaiFallback : openai;
+    const activeTransportLabel =
+      useFallbackTransport && openaiFallback
+        ? fallbackTransportLabel
+        : primaryTransportLabel;
+
     try {
       const controller = new AbortController();
       const timeoutHandle = setTimeout(() => {
@@ -576,7 +611,7 @@ const transcribeFileWithRetry = async ({
       }, openaiTimeoutMs);
 
       try {
-        const transcription = await openai.audio.transcriptions.create(
+        const transcription = await activeOpenAI.audio.transcriptions.create(
           {
             file: createReadStream(filePath),
             model: "whisper-1",
@@ -614,6 +649,10 @@ const transcribeFileWithRetry = async ({
         ? Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts)
         : openaiMaxAttempts;
 
+      if (connectionError && openaiFallback) {
+        useFallbackTransport = !useFallbackTransport;
+      }
+
       if (!retryable || attempt >= maxAttemptsForError) {
         throw error;
       }
@@ -629,7 +668,7 @@ const transcribeFileWithRetry = async ({
 
       const detail = formatErrorDetail(error);
       console.warn(
-        `[transcribe] OpenAI attempt ${attempt}/${maxAttemptsForError} failed (${connectionError ? "connection" : "retryable"}): ${detail}. Retrying in ${Math.max(
+        `[transcribe] OpenAI attempt ${attempt}/${maxAttemptsForError} failed (${connectionError ? "connection" : "retryable"}) [transport=${activeTransportLabel}]: ${detail}. Retrying in ${Math.max(
           1,
           Math.round(delayMs / 1000)
         )}s.`
@@ -644,6 +683,9 @@ const transcribeFileWithRetry = async ({
 
 const transcribeSegment = async ({
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   segmentPath,
   requestedLanguage,
   openaiTimeoutMs,
@@ -654,6 +696,9 @@ const transcribeSegment = async ({
 }) => {
   const transcription = await transcribeFileWithRetry({
     openai,
+    openaiFallback,
+    openaiTransportName,
+    openaiFallbackTransportName,
     filePath: segmentPath,
     requestedLanguage,
     openaiTimeoutMs,
@@ -697,6 +742,9 @@ const buildTranscriptionPipeline = (config) => {
       });
       await checkOpenAIConnectivity({
         openai: config.openai,
+        openaiFallback: config.openaiFallback,
+        openaiTransportName: config.openaiTransportName,
+        openaiFallbackTransportName: config.openaiFallbackTransportName,
         openaiTimeoutMs: config.openaiTimeoutMs,
         openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
         openaiConnectionBackoffMs: config.openaiConnectionBackoffMs,
@@ -753,6 +801,9 @@ const buildTranscriptionPipeline = (config) => {
         try {
           const transcription = await transcribeSegment({
             openai: config.openai,
+            openaiFallback: config.openaiFallback,
+            openaiTransportName: config.openaiTransportName,
+            openaiFallbackTransportName: config.openaiFallbackTransportName,
             segmentPath,
             requestedLanguage,
             openaiTimeoutMs: config.openaiTimeoutMs,
@@ -821,6 +872,9 @@ export const createTranscriptionManager = ({
   supabase,
   bucket,
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   maxConcurrency,
   chunkSeconds,
   audioBitrate,
@@ -840,6 +894,16 @@ export const createTranscriptionManager = ({
     supabase,
     bucket,
     openai,
+    openaiFallback,
+    openaiTransportName:
+      typeof openaiTransportName === "string" && openaiTransportName.trim()
+        ? openaiTransportName.trim()
+        : "primary",
+    openaiFallbackTransportName:
+      typeof openaiFallbackTransportName === "string" &&
+      openaiFallbackTransportName.trim()
+        ? openaiFallbackTransportName.trim()
+        : "fallback",
     maxConcurrency: Math.max(1, Number(maxConcurrency) || 1),
     chunkSeconds: Math.max(45, Number(chunkSeconds) || 180),
     audioBitrate:
@@ -855,12 +919,12 @@ export const createTranscriptionManager = ({
     openaiMaxAttempts: Math.max(1, Number(openaiMaxAttempts) || 3),
     openaiConnectionMaxAttempts: Math.max(
       1,
-      Math.min(4, Number(openaiConnectionMaxAttempts) || 4)
+      Math.min(8, Number(openaiConnectionMaxAttempts) || 5)
     ),
     openaiConnectionBackoffMs: Math.max(500, Number(openaiConnectionBackoffMs) || 3000),
     openaiConnectionMaxBackoffMs: Math.max(
       2000,
-      Math.min(15000, Number(openaiConnectionMaxBackoffMs) || 15000)
+      Math.min(45000, Number(openaiConnectionMaxBackoffMs) || 45000)
     ),
     jobRetentionMs: Math.max(60000, Number(jobRetentionMs) || 60 * 60 * 1000),
     transientJobRetryLimit: Math.max(0, Number(transientJobRetryLimit) || 3),
@@ -1119,6 +1183,8 @@ export const createTranscriptionManager = ({
   });
 
   const getConfig = () => ({
+    openaiTransportName: config.openaiTransportName,
+    openaiFallbackTransportName: config.openaiFallbackTransportName,
     chunkSeconds: config.chunkSeconds,
     audioBitrate: config.audioBitrate,
     openaiTimeoutMs: config.openaiTimeoutMs,
