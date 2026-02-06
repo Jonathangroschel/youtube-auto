@@ -16,6 +16,8 @@ const WORKER_SECRET =
   process.env.AUTOCLIP_WORKER_SECRET ||
   "dev-secret";
 const WORKER_REQUEST_TIMEOUT_MS = 25_000;
+const MIN_TRANSCRIPT_COVERAGE_RATIO = 0.9;
+const MAX_TRANSCRIPT_COVERAGE_GAP_SECONDS = 45;
 
 type WorkerWord = {
   start: number;
@@ -189,6 +191,24 @@ const resolveTranscriptSegments = (
     .sort((a, b) => a.start - b.start || a.end - b.end);
 };
 
+const resolveTranscriptEndSeconds = (
+  segments: Array<{ start: number; end: number }>
+) => {
+  let maxEnd = 0;
+  segments.forEach((segment) => {
+    if (Number.isFinite(segment.end)) {
+      maxEnd = Math.max(maxEnd, segment.end);
+    }
+  });
+  return maxEnd;
+};
+
+const resolveAllowedCoverageGapSeconds = (expectedDurationSeconds: number) =>
+  Math.max(
+    8,
+    Math.min(MAX_TRANSCRIPT_COVERAGE_GAP_SECONDS, expectedDurationSeconds * 0.08)
+  );
+
 const applyWorkerTranscriptToSession = async (
   session: Awaited<ReturnType<typeof getSession>>,
   workerResult: WorkerTranscriptionResult
@@ -200,6 +220,22 @@ const applyWorkerTranscriptToSession = async (
   const segments = resolveTranscriptSegments(workerResult, fallbackDurationSeconds);
   if (!segments.length) {
     throw new Error("Transcription returned no usable segments.");
+  }
+  if (Number.isFinite(fallbackDurationSeconds) && fallbackDurationSeconds > 0) {
+    const transcriptEndSeconds = resolveTranscriptEndSeconds(segments);
+    const coverageRatio = transcriptEndSeconds / fallbackDurationSeconds;
+    const missingSeconds = Math.max(0, fallbackDurationSeconds - transcriptEndSeconds);
+    const allowedGapSeconds = resolveAllowedCoverageGapSeconds(fallbackDurationSeconds);
+    if (
+      coverageRatio < MIN_TRANSCRIPT_COVERAGE_RATIO &&
+      missingSeconds > allowedGapSeconds
+    ) {
+      throw new Error(
+        `Transcript coverage too low (${transcriptEndSeconds.toFixed(
+          2
+        )}s of ${fallbackDurationSeconds.toFixed(2)}s).`
+      );
+    }
   }
   session.transcript = {
     language:

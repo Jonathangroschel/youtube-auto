@@ -1191,6 +1191,17 @@ const TRANSCRIBE_OPENAI_CONNECTION_MAX_BACKOFF_MS = toPositiveInt(
   process.env.AUTOCLIP_TRANSCRIBE_OPENAI_CONNECTION_MAX_BACKOFF_MS,
   45000
 );
+const TRANSCRIBE_MIN_COVERAGE_RATIO = Math.max(
+  0.5,
+  Math.min(
+    1,
+    Number(process.env.AUTOCLIP_TRANSCRIBE_MIN_COVERAGE_RATIO || "0.9")
+  )
+);
+const TRANSCRIBE_MAX_COVERAGE_GAP_SECONDS = toPositiveInt(
+  process.env.AUTOCLIP_TRANSCRIBE_MAX_COVERAGE_GAP_SECONDS,
+  45
+);
 const TRANSCRIBE_UPLOAD_FALLBACK_BITRATE =
   process.env.AUTOCLIP_TRANSCRIBE_UPLOAD_FALLBACK_BITRATE || "32k";
 const TRANSCRIBE_UPLOAD_SEGMENT_SECONDS = toPositiveInt(
@@ -1232,6 +1243,8 @@ const transcriptionManager = createTranscriptionManager({
   transientJobRetryLimit: TRANSCRIBE_JOB_TRANSIENT_RETRY_LIMIT,
   transientJobRetryDelayMs: TRANSCRIBE_JOB_TRANSIENT_RETRY_DELAY_MS,
   allowPartialTranscription: TRANSCRIBE_ALLOW_PARTIAL,
+  minTranscriptCoverageRatio: TRANSCRIBE_MIN_COVERAGE_RATIO,
+  maxTranscriptCoverageGapSeconds: TRANSCRIBE_MAX_COVERAGE_GAP_SECONDS,
 });
 
 app.post("/transcribe/queue", authMiddleware, async (req, res) => {
@@ -1865,7 +1878,7 @@ app.listen(PORT, () => {
     `[worker] transcription concurrency=${MAX_TRANSCRIBE_CONCURRENCY} chunkSeconds=${TRANSCRIBE_CHUNK_SECONDS} chunkBitrate=${TRANSCRIBE_AUDIO_BITRATE}`
   );
   console.log(
-    `[worker] transcription openai timeoutMs=${TRANSCRIBE_OPENAI_TIMEOUT_MS} attempts=${TRANSCRIBE_OPENAI_MAX_ATTEMPTS} connectionAttempts=${TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS} uploadSegmentSeconds=${TRANSCRIBE_UPLOAD_SEGMENT_SECONDS} allowPartial=${TRANSCRIBE_ALLOW_PARTIAL} sdkRetries=${OPENAI_HTTP_MAX_RETRIES} configuredSdkRetries=${OPENAI_HTTP_MAX_RETRIES_CONFIGURED}`
+    `[worker] transcription openai timeoutMs=${TRANSCRIBE_OPENAI_TIMEOUT_MS} attempts=${TRANSCRIBE_OPENAI_MAX_ATTEMPTS} connectionAttempts=${TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS} uploadSegmentSeconds=${TRANSCRIBE_UPLOAD_SEGMENT_SECONDS} allowPartial=${TRANSCRIBE_ALLOW_PARTIAL} minCoverageRatio=${TRANSCRIBE_MIN_COVERAGE_RATIO} maxCoverageGapSec=${TRANSCRIBE_MAX_COVERAGE_GAP_SECONDS} sdkRetries=${OPENAI_HTTP_MAX_RETRIES} configuredSdkRetries=${OPENAI_HTTP_MAX_RETRIES_CONFIGURED}`
   );
   console.log(
     `[worker] OpenAI transport primary=${openaiTransportName} fallback=${openaiFallbackTransportName}`

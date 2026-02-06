@@ -203,6 +203,17 @@ const mergeTranscriptionSlices = (slices) => {
   };
 };
 
+const resolveTranscriptEndSeconds = (transcription) => {
+  let maxEnd = 0;
+  normalizeSegments(transcription?.segments).forEach((segment) => {
+    maxEnd = Math.max(maxEnd, segment.end);
+  });
+  normalizeWords(transcription?.words).forEach((word) => {
+    maxEnd = Math.max(maxEnd, word.end);
+  });
+  return maxEnd;
+};
+
 const isRetryableOpenAIError = (error) => {
   const status = Number(error?.status);
   if (Number.isFinite(status) && (status === 408 || status === 429 || status >= 500)) {
@@ -420,9 +431,39 @@ const listSegmentFiles = async (directory, prefix) => {
     .map((name) => path.join(directory, name));
 };
 
-const chooseBestExtraction = (next, current) => {
+const MIN_LONG_VIDEO_AUDIO_COVERAGE_RATIO = 0.5;
+const MIN_LONG_VIDEO_SECONDS = 180;
+const MIN_TRANSCRIPT_COVERAGE_RATIO = 0.9;
+const MAX_TRANSCRIPT_COVERAGE_GAP_SECONDS = 45;
+
+const resolveAllowedCoverageGapSeconds = (expectedDurationSec, maxGapSec) =>
+  Math.max(8, Math.min(maxGapSec, expectedDurationSec * 0.08));
+
+const chooseBestExtraction = (next, current, sourceDurationSec = null) => {
   if (!current) {
     return true;
+  }
+
+  const hasSourceDuration =
+    Number.isFinite(sourceDurationSec) && sourceDurationSec != null && sourceDurationSec > 0;
+  const nextCoverage = hasSourceDuration
+    ? safeNumber(next.duration, 0) / safeNumber(sourceDurationSec, 1)
+    : null;
+  const currentCoverage = hasSourceDuration
+    ? safeNumber(current.duration, 0) / safeNumber(sourceDurationSec, 1)
+    : null;
+
+  if (
+    hasSourceDuration &&
+    Number.isFinite(nextCoverage) &&
+    Number.isFinite(currentCoverage)
+  ) {
+    if (nextCoverage > currentCoverage + 0.1) {
+      return true;
+    }
+    if (currentCoverage > nextCoverage + 0.1) {
+      return false;
+    }
   }
 
   const nextOk = next.code === 0;
@@ -463,7 +504,18 @@ const extractNormalizedAudio = async ({
   videoPath,
   outputDir,
   audioBitrate,
+  logContext,
 }) => {
+  const baseLogContext = serializeLogFields(logContext || {});
+  const sourceDurationSec = await getDurationSeconds(videoPath);
+  logTranscribe("info", "audio_extraction_start", {
+    ...baseLogContext,
+    sourceDurationSec:
+      Number.isFinite(sourceDurationSec) && sourceDurationSec != null
+        ? Number(sourceDurationSec.toFixed(3))
+        : null,
+  });
+
   const streamIndices = await getAudioStreamIndices(videoPath);
   const mapSpecs = [
     "0:a:0?",
@@ -527,8 +579,29 @@ const extractNormalizedAudio = async ({
       size: stats.size,
       duration,
     };
+    const coverageRatio =
+      Number.isFinite(sourceDurationSec) &&
+      sourceDurationSec != null &&
+      sourceDurationSec > 0 &&
+      Number.isFinite(duration) &&
+      duration != null &&
+      duration > 0
+        ? Number((duration / sourceDurationSec).toFixed(4))
+        : null;
+    logTranscribe("info", "audio_extraction_candidate", {
+      ...baseLogContext,
+      mapSpec,
+      ffmpegExitCode: result.code,
+      decodeWarnings: candidate.decodeWarnings,
+      candidateBytes: stats.size,
+      candidateDurationSec:
+        Number.isFinite(duration) && duration != null
+          ? Number(duration.toFixed(3))
+          : null,
+      coverageRatio,
+    });
 
-    if (chooseBestExtraction(candidate, best)) {
+    if (chooseBestExtraction(candidate, best, sourceDurationSec)) {
       best = candidate;
     }
   }
@@ -538,11 +611,58 @@ const extractNormalizedAudio = async ({
   }
 
   if (best.code !== 0) {
-    console.log(
-      `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}, decodeWarnings=${best.decodeWarnings || 0}). ${compactMessage(
-        best.stderr
-      )}`
-    );
+    logTranscribe("warn", "audio_extraction_selected_partial", {
+      ...baseLogContext,
+      selectedMapSpec: best.mapSpec,
+      ffmpegExitCode: best.code,
+      decodeWarnings: best.decodeWarnings || 0,
+      stderrSummary: compactMessage(best.stderr),
+    });
+  }
+
+  const selectedCoverageRatio =
+    Number.isFinite(sourceDurationSec) &&
+    sourceDurationSec != null &&
+    sourceDurationSec > 0 &&
+    Number.isFinite(best.duration) &&
+    best.duration != null &&
+    best.duration > 0
+      ? Number((best.duration / sourceDurationSec).toFixed(4))
+      : null;
+  logTranscribe("info", "audio_extraction_selected", {
+    ...baseLogContext,
+    selectedMapSpec: best.mapSpec,
+    selectedDurationSec:
+      Number.isFinite(best.duration) && best.duration != null
+        ? Number(best.duration.toFixed(3))
+        : null,
+    selectedBytes: best.size,
+    decodeWarnings: best.decodeWarnings || 0,
+    selectedCoverageRatio,
+  });
+
+  if (
+    Number.isFinite(sourceDurationSec) &&
+    sourceDurationSec != null &&
+    sourceDurationSec >= MIN_LONG_VIDEO_SECONDS &&
+    Number.isFinite(best.duration) &&
+    best.duration != null &&
+    best.duration < sourceDurationSec * MIN_LONG_VIDEO_AUDIO_COVERAGE_RATIO
+  ) {
+    const message = `Extracted audio duration (${best.duration.toFixed(
+      2
+    )}s) is too short for source video (${sourceDurationSec.toFixed(
+      2
+    )}s).`;
+    logTranscribe("error", "audio_extraction_rejected_short", {
+      ...baseLogContext,
+      selectedMapSpec: best.mapSpec,
+      selectedDurationSec: Number(best.duration.toFixed(3)),
+      sourceDurationSec: Number(sourceDurationSec.toFixed(3)),
+      selectedCoverageRatio,
+      reason: message,
+    });
+    throw new Error(message);
   }
 
   const normalizedPath = path.join(outputDir, "audio_clean.mp3");
@@ -912,6 +1032,7 @@ const buildTranscriptionPipeline = (config) => {
         videoPath,
         outputDir: runDir,
         audioBitrate: config.audioBitrate,
+        logContext: logBase,
       });
       const normalizedAudioBytes = await getFileSizeBytes(normalizedAudioPath);
       const normalizedDurationSec = await getDurationSeconds(normalizedAudioPath);
@@ -1075,16 +1196,56 @@ const buildTranscriptionPipeline = (config) => {
       });
 
       const merged = mergeTranscriptionSlices(slices);
-      const transcriptEndSec = normalizeSegments(merged.segments).reduce(
-        (maxEnd, segment) => Math.max(maxEnd, segment.end),
-        0
-      );
+      const transcriptEndSec = resolveTranscriptEndSeconds(merged);
+      const expectedDurationSec =
+        Number.isFinite(sourceDurationSec) && sourceDurationSec != null
+          ? sourceDurationSec
+          : Number.isFinite(normalizedDurationSec) && normalizedDurationSec != null
+            ? normalizedDurationSec
+            : null;
+      if (
+        !config.allowPartialTranscription &&
+        expectedDurationSec &&
+        expectedDurationSec > 0
+      ) {
+        const coverageRatio = transcriptEndSec / expectedDurationSec;
+        const missingSeconds = Math.max(0, expectedDurationSec - transcriptEndSec);
+        const allowedGapSeconds = resolveAllowedCoverageGapSeconds(
+          expectedDurationSec,
+          config.maxTranscriptCoverageGapSeconds
+        );
+        if (
+          coverageRatio < config.minTranscriptCoverageRatio &&
+          missingSeconds > allowedGapSeconds
+        ) {
+          const message = `Transcript coverage too low (${transcriptEndSec.toFixed(
+            2
+          )}s of ${expectedDurationSec.toFixed(
+            2
+          )}s, coverage ${(coverageRatio * 100).toFixed(1)}%).`;
+          logTranscribe("error", "pipeline_coverage_failed", {
+            ...logBase,
+            expectedDurationSec: Number(expectedDurationSec.toFixed(3)),
+            transcriptEndSec: Number(transcriptEndSec.toFixed(3)),
+            coverageRatio: Number(coverageRatio.toFixed(4)),
+            missingSeconds: Number(missingSeconds.toFixed(3)),
+            allowedGapSeconds: Number(allowedGapSeconds.toFixed(3)),
+            minCoverageRatio: config.minTranscriptCoverageRatio,
+            reason: message,
+          });
+          throw new Error(message);
+        }
+      }
       logTranscribe("info", "pipeline_complete", {
         ...logBase,
         durationMs: Date.now() - pipelineStartedAt,
         totalSegments,
         successfulSegments,
         skippedSegments: skippedErrors.length,
+        expectedDurationSec:
+          expectedDurationSec && Number.isFinite(expectedDurationSec)
+            ? Number(expectedDurationSec.toFixed(3))
+            : null,
         coverageRatio:
           totalSegments > 0
             ? Number((successfulSegments / totalSegments).toFixed(3))
@@ -1138,6 +1299,8 @@ export const createTranscriptionManager = ({
   transientJobRetryLimit,
   transientJobRetryDelayMs,
   allowPartialTranscription,
+  minTranscriptCoverageRatio,
+  maxTranscriptCoverageGapSeconds,
 }) => {
   const config = {
     tempDir,
@@ -1183,6 +1346,20 @@ export const createTranscriptionManager = ({
       typeof allowPartialTranscription === "boolean"
         ? allowPartialTranscription
         : false,
+    minTranscriptCoverageRatio: Math.max(
+      0.5,
+      Math.min(
+        1,
+        Number.isFinite(Number(minTranscriptCoverageRatio))
+          ? Number(minTranscriptCoverageRatio)
+          : MIN_TRANSCRIPT_COVERAGE_RATIO
+      )
+    ),
+    maxTranscriptCoverageGapSeconds: Math.max(
+      8,
+      Number(maxTranscriptCoverageGapSeconds) ||
+        MAX_TRANSCRIPT_COVERAGE_GAP_SECONDS
+    ),
   };
 
   const runPipeline = buildTranscriptionPipeline(config);
@@ -1547,6 +1724,8 @@ export const createTranscriptionManager = ({
     openaiMaxAttempts: config.openaiMaxAttempts,
     openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
     allowPartialTranscription: config.allowPartialTranscription,
+    minTranscriptCoverageRatio: config.minTranscriptCoverageRatio,
+    maxTranscriptCoverageGapSeconds: config.maxTranscriptCoverageGapSeconds,
     uploadSegmentSeconds: config.uploadSegmentSeconds,
   });
 
