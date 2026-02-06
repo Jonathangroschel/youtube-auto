@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { spawn } from "child_process";
 import { createReadStream, promises as fs } from "fs";
 import https from "https";
+import nodeFetch from "node-fetch";
 import os from "os";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
@@ -220,6 +221,9 @@ const supabase = createClient(
 // Custom HTTPS agent with TCP keep-alive.  Railway's proxy / NAT gateway
 // aggressively resets idle TCP connections.  Without keep-alive probes the
 // OS won't notice the dead socket until the next write triggers ECONNRESET.
+//
+// IMPORTANT: Node 20's native fetch (undici) silently ignores httpAgent.
+// We force the SDK to use node-fetch instead, which actually respects it.
 const openaiHttpsAgent = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 5000,
@@ -228,12 +232,12 @@ const openaiHttpsAgent = new https.Agent({
   timeout: 120000,
 });
 
-// OpenAI client
+// OpenAI client — explicitly uses node-fetch so the HTTPS agent is honoured.
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   timeout: OPENAI_HTTP_TIMEOUT_MS,
   maxRetries: OPENAI_HTTP_MAX_RETRIES,
-  httpAgent: openaiHttpsAgent,
+  fetch: (url, init) => nodeFetch(url, { ...init, agent: openaiHttpsAgent }),
 });
 
 // Middleware

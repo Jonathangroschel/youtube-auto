@@ -1,6 +1,5 @@
 import { spawn } from "child_process";
-import { promises as fs } from "fs";
-import { toFile } from "openai/uploads";
+import { createReadStream, promises as fs } from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 
@@ -650,30 +649,25 @@ const transcribeFileWithRetry = async ({
     );
   }
 
-  const fileName = path.basename(filePath);
-  const fileType = contentTypeForAudioFile(filePath);
   const hardMaxAttempts = Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts);
   let lastError = null;
 
   for (let attempt = 1; attempt <= hardMaxAttempts; attempt += 1) {
     try {
-      // Read the file fresh on every attempt.  This avoids reusing a
-      // potentially stale Node Buffer reference and ensures the kernel
-      // re-reads from disk (matters if the segment was just written).
-      const fileBuffer = await fs.readFile(filePath);
-
       const controller = new AbortController();
       const timeoutHandle = setTimeout(() => {
         controller.abort();
       }, openaiTimeoutMs);
 
       try {
-        const uploadFile = await toFile(fileBuffer, fileName, {
-          type: fileType,
-        });
+        // Use createReadStream exactly as the official OpenAI docs recommend.
+        // This streams file data progressively through the TCP socket instead
+        // of buffering it all in memory and writing it in one shot.  The
+        // continuous data flow keeps the connection active and avoids proxy
+        // idle-timeout resets (the root cause of the ECONNRESET on Railway).
         const transcription = await openai.audio.transcriptions.create(
           {
-            file: uploadFile,
+            file: createReadStream(filePath),
             model: "whisper-1",
             language: requestedLanguage,
             response_format: "verbose_json",
