@@ -10,7 +10,6 @@ const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 5000;
 const PAGE_SIZE = 1000;
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24;
-const CLEARLY_HORIZONTAL_RATIO = 1.08;
 const SQUARE_TOLERANCE_PX = 2;
 
 const isVideoPath = (value: string) => {
@@ -68,7 +67,7 @@ const isClearlyNonVertical = (width: number, height: number) => {
   if (Math.abs(width - height) <= SQUARE_TOLERANCE_PX) {
     return true;
   }
-  return width > height * CLEARLY_HORIZONTAL_RATIO;
+  return width > height + SQUARE_TOLERANCE_PX;
 };
 
 type StorageListEntry = {
@@ -229,5 +228,12 @@ export async function GET(request: Request) {
     })
     .sort((a, b) => a.path.localeCompare(b.path));
 
-  return NextResponse.json({ items: resolvedItems });
+  return NextResponse.json(
+    { items: resolvedItems },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    }
+  );
 }

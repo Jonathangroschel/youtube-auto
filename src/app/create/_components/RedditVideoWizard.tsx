@@ -37,7 +37,7 @@ const DEFAULT_INTRO_SECONDS = 3;
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
-const CLEARLY_HORIZONTAL_RATIO = 1.08;
+const GAMEPLAY_PROBE_CONCURRENCY = 6;
 const SQUARE_TOLERANCE_PX = 2;
 
 const DEFAULT_REDDIT_PFPS = [
@@ -584,7 +584,7 @@ export default function RedditVideoWizard() {
     if (Math.abs(width - height) <= SQUARE_TOLERANCE_PX) {
       return true;
     }
-    return width > height * CLEARLY_HORIZONTAL_RATIO;
+    return width > height + SQUARE_TOLERANCE_PX;
   }, []);
 
   const probeVideoIsVertical = useCallback((url: string) => {
@@ -648,15 +648,33 @@ export default function RedditVideoWizard() {
 
   const filterVerticalGameplayItems = useCallback(
     async (items: GameplayItem[]) => {
-      const checks = await Promise.all(
-        items.map(async (item) => ({
-          item,
-          isVertical: await ensureVerticalGameplayItem(item),
-        }))
+      if (items.length === 0) {
+        return [];
+      }
+      const verdictByPath = new Map<string, boolean>();
+      let cursor = 0;
+      const workerCount = Math.max(
+        1,
+        Math.min(GAMEPLAY_PROBE_CONCURRENCY, items.length)
       );
-      return checks
-        .filter((entry) => entry.isVertical)
-        .map((entry) => entry.item);
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (true) {
+            const index = cursor;
+            cursor += 1;
+            if (index >= items.length) {
+              return;
+            }
+            const item = items[index];
+            if (!item) {
+              return;
+            }
+            const isVertical = await ensureVerticalGameplayItem(item);
+            verdictByPath.set(item.path, isVertical);
+          }
+        })
+      );
+      return items.filter((item) => verdictByPath.get(item.path) ?? true);
     },
     [ensureVerticalGameplayItem]
   );
@@ -793,12 +811,12 @@ export default function RedditVideoWizard() {
 
     try {
       const response = await fetch(
-        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}&orientation=vertical`,
+        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}&orientation=vertical&t=${Date.now()}`,
         {
-        method: "GET",
-        cache: "no-store",
-        signal: controller.signal,
-      }
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        }
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {

@@ -212,6 +212,54 @@ const laneTypePriority: Record<LaneType, number> = {
   audio: 2,
 };
 
+const REDDIT_STAGE_ASPECT_RATIO = 9 / 16;
+const REDDIT_INTRO_CARD_TARGET_WIDTH = 0.65;
+const REDDIT_INTRO_CARD_MAX_HEIGHT = 0.2;
+const REDDIT_INTRO_CARD_CENTER_Y = 1 - 2 / 3;
+
+const isRedditIntroCardAsset = (asset: MediaAsset | null | undefined) =>
+  Boolean(
+    asset &&
+      asset.kind === "image" &&
+      typeof asset.name === "string" &&
+      /reddit intro card/i.test(asset.name)
+  );
+
+const areTransformsClose = (
+  first: ClipTransform,
+  second: ClipTransform,
+  tolerance = 0.002
+) =>
+  Math.abs(first.width - second.width) <= tolerance &&
+  Math.abs(first.height - second.height) <= tolerance &&
+  Math.abs(first.x - second.x) <= tolerance &&
+  Math.abs(first.y - second.y) <= tolerance;
+
+const createRedditIntroCardTransform = (
+  assetAspectRatio: number | undefined,
+  stageAspectRatio = REDDIT_STAGE_ASPECT_RATIO
+): ClipTransform => {
+  const base = createDefaultTransform(assetAspectRatio, stageAspectRatio);
+  const scale = Math.max(
+    0.05,
+    REDDIT_INTRO_CARD_TARGET_WIDTH / Math.max(0.001, base.width)
+  );
+  let width = clamp(base.width * scale, 0.01, 1);
+  let height = clamp(base.height * scale, 0.01, 1);
+  if (height > REDDIT_INTRO_CARD_MAX_HEIGHT) {
+    const shrink = REDDIT_INTRO_CARD_MAX_HEIGHT / height;
+    width = clamp(width * shrink, 0.01, 1);
+    height = REDDIT_INTRO_CARD_MAX_HEIGHT;
+  }
+  const x = clamp(0.5 - width / 2, 0, Math.max(0, 1 - width));
+  const y = clamp(
+    REDDIT_INTRO_CARD_CENTER_Y - height / 2,
+    0,
+    Math.max(0, 1 - height)
+  );
+  return { x, y, width, height };
+};
+
 type SubtitleLanguageOption = {
   code: string;
   label: string;
@@ -7746,6 +7794,42 @@ function AdvancedEditorContent() {
     timelineLayout,
   ]);
 
+  useEffect(() => {
+    if (isExportMode || editorProfile !== "reddit" || timelineClips.length === 0) {
+      return;
+    }
+    setClipTransforms((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      timelineClips.forEach(({ clip, asset }) => {
+        if (!isRedditIntroCardAsset(asset)) {
+          return;
+        }
+        const current = prev[clip.id];
+        const defaultTransform = createDefaultTransform(
+          asset.aspectRatio,
+          stageAspectRatio
+        );
+        const shouldApplyDefaultFix =
+          !current || areTransformsClose(current, defaultTransform, 0.02);
+        if (!shouldApplyDefaultFix) {
+          return;
+        }
+        const desired = createRedditIntroCardTransform(
+          asset.aspectRatio,
+          stageAspectRatio
+        );
+        if (current && areTransformsClose(current, desired)) {
+          return;
+        }
+        next[clip.id] = desired;
+        clipTransformTouchedRef.current.add(clip.id);
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [editorProfile, isExportMode, stageAspectRatio, timelineClips]);
+
   const contentTimelineTotal = useMemo(() => {
     return timeline.reduce(
       (max, clip) =>
@@ -14677,36 +14761,14 @@ function AdvancedEditorContent() {
         normalizedGameplayClips.map((clip) => clip.id)
       );
 
-      const stageAspectRatio = 9 / 16;
+      const stageAspectRatio = REDDIT_STAGE_ASPECT_RATIO;
       const gameplayTransform: ClipTransform = { x: 0, y: 0, width: 1, height: 1 };
       const introTransform: ClipTransform | null =
         introCardClip
-          ? (() => {
-              const base = createDefaultTransform(introCardAsset?.aspectRatio, stageAspectRatio);
-              // Match reference sizing: card should be noticeably smaller and centered.
-              const targetWidth = 0.5;
-              const scale = Math.max(
-                0.05,
-                targetWidth / Math.max(0.001, base.width)
-              );
-              let width = clamp(base.width * scale, 0.01, 1);
-              let height = clamp(base.height * scale, 0.01, 1);
-              const maxHeight = 0.18;
-              if (height > maxHeight) {
-                const shrink = maxHeight / height;
-                width = clamp(width * shrink, 0.01, 1);
-                height = maxHeight;
-              }
-              const x = clamp(0.5 - width / 2, 0, Math.max(0, 1 - width));
-              // Place roughly "2/3 up from bottom" (about 1/3 from top).
-              const desiredCenterY = 1 - 2 / 3;
-              const y = clamp(
-                desiredCenterY - height / 2,
-                0,
-                Math.max(0, 1 - height)
-              );
-              return { x, y, width, height };
-            })()
+          ? createRedditIntroCardTransform(
+              introCardAsset?.aspectRatio,
+              stageAspectRatio
+            )
           : null;
 
       setLanes(nextLanes);
@@ -15747,15 +15809,28 @@ function AdvancedEditorContent() {
 
   const resolveClipTransform = useCallback(
     (clipId: string, asset: MediaAsset) => {
-      if (clipTransforms[clipId]) {
-        return clipTransforms[clipId];
+      const existing = clipTransforms[clipId];
+      const resolved =
+        existing ??
+        (asset.kind === "text"
+          ? createDefaultTextTransform(stageAspectRatio)
+          : createDefaultTransform(asset.aspectRatio, stageAspectRatio));
+      if (editorProfile !== "reddit" || !isRedditIntroCardAsset(asset)) {
+        return resolved;
       }
-      if (asset.kind === "text") {
-        return createDefaultTextTransform(stageAspectRatio);
+      const defaultTransform = createDefaultTransform(
+        asset.aspectRatio,
+        stageAspectRatio
+      );
+      if (!existing || areTransformsClose(existing, defaultTransform, 0.02)) {
+        return createRedditIntroCardTransform(
+          asset.aspectRatio,
+          stageAspectRatio
+        );
       }
-      return createDefaultTransform(asset.aspectRatio, stageAspectRatio);
+      return resolved;
     },
-    [clipTransforms, stageAspectRatio]
+    [clipTransforms, editorProfile, stageAspectRatio]
   );
 
   const getStageSelectionIds = useCallback(
@@ -21306,9 +21381,7 @@ function AdvancedEditorContent() {
                       entry.asset
                     );
                     const isActive = activeCanvasClipId === entry.clip.id;
-                    const isRedditIntroCard =
-                      entry.asset.kind === "image" &&
-                      /reddit intro card/i.test(entry.asset.name);
+                    const isRedditIntroCard = isRedditIntroCardAsset(entry.asset);
                     const videoSettings =
                       entry.asset.kind === "video"
                         ? clipSettings[entry.clip.id] ?? fallbackVideoSettings
