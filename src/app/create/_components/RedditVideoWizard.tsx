@@ -21,6 +21,8 @@ type GameplayItem = {
   publicUrl: string;
   createdAt: string | null;
   updatedAt: string | null;
+  width?: number | null;
+  height?: number | null;
 };
 
 type PublicAudioItem = {
@@ -34,6 +36,7 @@ type PublicAudioItem = {
 const DEFAULT_INTRO_SECONDS = 3;
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
+const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
 
 const DEFAULT_REDDIT_PFPS = [
   "/reddit-default-pfp/0qoqln2f5bu71.webp",
@@ -545,6 +548,7 @@ export default function RedditVideoWizard() {
   const [gameplayUploading, setGameplayUploading] = useState(false);
   const [gameplayItems, setGameplayItems] = useState<GameplayItem[]>([]);
   const [gameplaySelected, setGameplaySelected] = useState<GameplayItem | null>(null);
+  const gameplayOrientationCacheRef = useRef<Map<string, boolean>>(new Map());
 
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -571,6 +575,74 @@ export default function RedditVideoWizard() {
     gameplayUploadInputRef.current?.click();
   }, []);
 
+  const probeVideoIsVertical = useCallback((url: string) => {
+    return new Promise<boolean>((resolve) => {
+      const video = document.createElement("video");
+      let settled = false;
+      const cleanup = () => {
+        video.onloadedmetadata = null;
+        video.onerror = null;
+        video.src = "";
+      };
+      const finish = (value: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(value);
+      };
+      const timeoutId = window.setTimeout(() => finish(false), GAMEPLAY_PROBE_TIMEOUT_MS);
+      video.preload = "metadata";
+      video.playsInline = true;
+      video.muted = true;
+      video.onloadedmetadata = () => {
+        window.clearTimeout(timeoutId);
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        finish(width > 0 && height > 0 && height >= width);
+      };
+      video.onerror = () => {
+        window.clearTimeout(timeoutId);
+        finish(false);
+      };
+      video.src = url;
+    });
+  }, []);
+
+  const ensureVerticalGameplayItem = useCallback(
+    async (item: GameplayItem) => {
+      if (typeof item.width === "number" && typeof item.height === "number") {
+        if (Number.isFinite(item.width) && Number.isFinite(item.height)) {
+          return item.height >= item.width;
+        }
+      }
+      const cached = gameplayOrientationCacheRef.current.get(item.path);
+      if (typeof cached === "boolean") {
+        return cached;
+      }
+      const isVertical = await probeVideoIsVertical(item.publicUrl);
+      gameplayOrientationCacheRef.current.set(item.path, isVertical);
+      return isVertical;
+    },
+    [probeVideoIsVertical]
+  );
+
+  const filterVerticalGameplayItems = useCallback(
+    async (items: GameplayItem[]) => {
+      const checks = await Promise.all(
+        items.map(async (item) => ({
+          item,
+          isVertical: await ensureVerticalGameplayItem(item),
+        }))
+      );
+      return checks
+        .filter((entry) => entry.isVertical)
+        .map((entry) => entry.item);
+    },
+    [ensureVerticalGameplayItem]
+  );
+
   const handleGameplayUpload = useCallback(
     async (file: File) => {
       const lowerName = file.name.toLowerCase();
@@ -587,6 +659,20 @@ export default function RedditVideoWizard() {
       }
 
       const contentType = file.type.startsWith("video/") ? file.type : "video/mp4";
+      const localObjectUrl = URL.createObjectURL(file);
+      const isVerticalUpload = await (async () => {
+        try {
+          return await probeVideoIsVertical(localObjectUrl);
+        } finally {
+          URL.revokeObjectURL(localObjectUrl);
+        }
+      })();
+      if (!isVerticalUpload) {
+        setGameplayUploadError(
+          "Please upload vertical gameplay footage (portrait / 9:16)."
+        );
+        return;
+      }
       setGameplayUploading(true);
       setGameplayUploadError(null);
       setGameplayError(null);
@@ -649,6 +735,7 @@ export default function RedditVideoWizard() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
+        gameplayOrientationCacheRef.current.set(uploadedItem.path, true);
 
         setGameplayItems((prev) => [
           uploadedItem,
@@ -663,7 +750,7 @@ export default function RedditVideoWizard() {
         setGameplayUploading(false);
       }
     },
-    [gameplaySupabase]
+    [gameplaySupabase, probeVideoIsVertical]
   );
 
   const handleGameplayUploadInputChange = useCallback(
@@ -688,7 +775,7 @@ export default function RedditVideoWizard() {
 
     try {
       const response = await fetch(
-        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}`,
+        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}&orientation=vertical`,
         {
         method: "GET",
         cache: "no-store",
@@ -700,7 +787,16 @@ export default function RedditVideoWizard() {
         throw new Error(data?.error || "Failed to load gameplay footage.");
       }
       const items = Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
-      setGameplayItems(items);
+      const verticalItems = await filterVerticalGameplayItems(items);
+      setGameplayItems(verticalItems);
+      setGameplaySelected((prev) =>
+        prev && verticalItems.some((item) => item.path === prev.path) ? prev : null
+      );
+      if (items.length > 0 && verticalItems.length === 0) {
+        setGameplayError(
+          "No vertical gameplay footage found. Upload a portrait (9:16) clip to continue."
+        );
+      }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         setGameplayError(
@@ -715,7 +811,7 @@ export default function RedditVideoWizard() {
       window.clearTimeout(timeoutId);
       setGameplayLoading(false);
     }
-  }, []);
+  }, [filterVerticalGameplayItems]);
 
   const loadVoices = useCallback(async () => {
     setVoiceLoading(true);

@@ -21,6 +21,52 @@ const isVideoPath = (value: string) => {
   );
 };
 
+const parseFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const extractVideoDimensions = (
+  metadata: unknown
+): { width: number; height: number } | null => {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const record = metadata as Record<string, unknown>;
+  const width =
+    parseFiniteNumber(record.width) ??
+    parseFiniteNumber(record.videoWidth) ??
+    parseFiniteNumber(record.frameWidth) ??
+    parseFiniteNumber(record.resolution_width) ??
+    parseFiniteNumber(record.resolutionWidth);
+  const height =
+    parseFiniteNumber(record.height) ??
+    parseFiniteNumber(record.videoHeight) ??
+    parseFiniteNumber(record.frameHeight) ??
+    parseFiniteNumber(record.resolution_height) ??
+    parseFiniteNumber(record.resolutionHeight);
+  if (!width || !height) {
+    return null;
+  }
+  return { width, height };
+};
+
+type StorageListEntry = {
+  name?: string | null;
+  id?: string | null;
+  metadata?: unknown;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 export async function GET(request: Request) {
   const supabase = await createClient();
   const {
@@ -41,6 +87,8 @@ export async function GET(request: Request) {
     typeof limit === "number" && Number.isFinite(limit)
       ? Math.floor(limit)
       : DEFAULT_LIMIT;
+  const orientation = (searchParams.get("orientation") ?? "").trim().toLowerCase();
+  const verticalOnly = orientation === "vertical" || orientation === "portrait";
 
   const items: Array<{
     name: string;
@@ -48,6 +96,8 @@ export async function GET(request: Request) {
     createdAt: string | null;
     updatedAt: string | null;
     metadata: unknown | null;
+    width: number | null;
+    height: number | null;
   }> = [];
 
   const folderQueue: string[] = [prefix];
@@ -77,7 +127,9 @@ export async function GET(request: Request) {
         );
       }
 
-      const entries = Array.isArray(data) ? data : [];
+      const entries: StorageListEntry[] = Array.isArray(data)
+        ? (data as StorageListEntry[])
+        : [];
       if (entries.length === 0) {
         break;
       }
@@ -86,24 +138,32 @@ export async function GET(request: Request) {
         if (items.length >= safeLimit) {
           break;
         }
-        if (typeof (entry as any)?.name !== "string" || (entry as any).name.length === 0) {
+        const name = typeof entry.name === "string" ? entry.name : "";
+        if (name.length === 0) {
           continue;
         }
 
-        const path = currentPrefix ? `${currentPrefix}/${(entry as any).name}` : (entry as any).name;
+        const path = currentPrefix ? `${currentPrefix}/${name}` : name;
         if (isVideoPath(path)) {
+          const metadata = entry.metadata ?? null;
+          const dimensions = extractVideoDimensions(metadata);
+          if (verticalOnly && dimensions && dimensions.height < dimensions.width) {
+            continue;
+          }
           items.push({
-            name: (entry as any).name,
+            name,
             path,
-            createdAt: typeof (entry as any)?.created_at === "string" ? (entry as any).created_at : null,
-            updatedAt: typeof (entry as any)?.updated_at === "string" ? (entry as any).updated_at : null,
-            metadata: (entry as any)?.metadata ?? null,
+            createdAt: typeof entry.created_at === "string" ? entry.created_at : null,
+            updatedAt: typeof entry.updated_at === "string" ? entry.updated_at : null,
+            metadata,
+            width: dimensions?.width ?? null,
+            height: dimensions?.height ?? null,
           });
           continue;
         }
 
         const looksLikeFolder =
-          (entry as any)?.id == null && ((entry as any)?.metadata == null || (entry as any)?.metadata === "");
+          entry.id == null && (entry.metadata == null || entry.metadata === "");
         if (looksLikeFolder) {
           folderQueue.push(path);
         }

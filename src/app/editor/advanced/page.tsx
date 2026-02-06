@@ -1767,6 +1767,7 @@ function AdvancedEditorContent() {
 	  const assetCacheRef = useRef<Map<string, MediaAsset>>(new Map());
 	  const assetLibraryBootstrappedRef = useRef(false);
 	  const timelineRef = useRef<TimelineClip[]>([]);
+  const clipDurationLocksRef = useRef<Set<string>>(new Set());
   const lanesRef = useRef<TimelineLane[]>([]);
   const laneRowsRef = useRef<
     Array<{ id: string; type: LaneType; label: string; height: number }>
@@ -2129,6 +2130,13 @@ function AdvancedEditorContent() {
             return prev;
           }
           const clip = prev[clipIndex];
+          if (clipDurationLocksRef.current.has(clip.id)) {
+            return prev;
+          }
+          const clipsOnSameAsset = prev.filter((item) => item.assetId === clip.assetId);
+          if (clipsOnSameAsset.length > 1) {
+            return prev;
+          }
           // Only auto-expand clips that are still using the default fallback
           // duration. This avoids overriding intentionally trimmed imports
           // (like Reddit gameplay clips capped to voiceover length).
@@ -2426,6 +2434,7 @@ function AdvancedEditorContent() {
 
   const applySnapshot = useCallback((snapshot: EditorSnapshot) => {
     historyRef.current.locked = true;
+    clipDurationLocksRef.current = new Set();
     setAssets(snapshot.assets);
     setTimeline(snapshot.timeline);
     setLanes(snapshot.lanes);
@@ -12646,6 +12655,7 @@ function AdvancedEditorContent() {
 	      splitImportLog("overlay stage -> preparing");
 	      setIsBackgroundSelected(false);
 	      setEditorProfile("split");
+	      clipDurationLocksRef.current = new Set();
 	      pushHistory();
 	      pendingSplitScreenSubtitleRef.current = null;
 	      pendingStreamerVideoSubtitleRef.current = null;
@@ -13064,6 +13074,7 @@ function AdvancedEditorContent() {
 	      setStreamerVideoImportOverlayOpen(true);
 	      setIsBackgroundSelected(false);
 	      setEditorProfile("streamer");
+	      clipDurationLocksRef.current = new Set();
 	      pushHistory();
 	      pendingSplitScreenSubtitleRef.current = null;
 	      pendingStreamerVideoSubtitleRef.current = null;
@@ -13454,6 +13465,7 @@ function AdvancedEditorContent() {
 	      setRedditVideoImportOverlayOpen(true);
 	      setIsBackgroundSelected(false);
 	      setEditorProfile("reddit");
+	      clipDurationLocksRef.current = new Set();
 	      pushHistory();
 	      pendingSplitScreenSubtitleRef.current = null;
 	      pendingStreamerVideoSubtitleRef.current = null;
@@ -14661,6 +14673,9 @@ function AdvancedEditorContent() {
       const normalizedMusicClips = musicClips
         .map(clampClipToTimelineEnd)
         .filter((clip): clip is TimelineClip => clip !== null);
+      clipDurationLocksRef.current = new Set(
+        normalizedGameplayClips.map((clip) => clip.id)
+      );
 
       const stageAspectRatio = 9 / 16;
       const gameplayTransform: ClipTransform = { x: 0, y: 0, width: 1, height: 1 };
@@ -14668,22 +14683,22 @@ function AdvancedEditorContent() {
         introCardClip
           ? (() => {
               const base = createDefaultTransform(introCardAsset?.aspectRatio, stageAspectRatio);
-              // Make the card much larger by default while keeping it anchored near the top.
-              const targetWidth = 0.9;
+              // Keep card readable while preserving more gameplay visibility.
+              const targetWidth = 0.76;
               const scale = Math.max(
                 0.05,
                 targetWidth / Math.max(0.001, base.width)
               );
               let width = clamp(base.width * scale, 0.01, 1);
               let height = clamp(base.height * scale, 0.01, 1);
-              const maxHeight = 0.34;
+              const maxHeight = 0.24;
               if (height > maxHeight) {
                 const shrink = maxHeight / height;
                 width = clamp(width * shrink, 0.01, 1);
                 height = maxHeight;
               }
               const x = clamp(0.5 - width / 2, 0, Math.max(0, 1 - width));
-              const desiredTop = 0.09;
+              const desiredTop = 0.07;
               const y = clamp(desiredTop, 0, Math.max(0, 1 - height));
               return { x, y, width, height };
             })()
