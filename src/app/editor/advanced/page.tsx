@@ -1767,6 +1767,8 @@ function AdvancedEditorContent() {
     sourceClipId: string;
     styleId: string;
   } | null>(null);
+  const subtitleGenerationRunIdRef = useRef(0);
+  const redditImportRunIdRef = useRef(0);
   const [redditVideoImportOverlayOpen, setRedditVideoImportOverlayOpen] =
     useState(false);
   const [redditVideoImportOverlayStage, setRedditVideoImportOverlayStage] =
@@ -10356,6 +10358,10 @@ function AdvancedEditorContent() {
 	      subtitleDebugLog("subtitle generation skipped: already loading");
 	      return;
 	    }
+	    const subtitleRunId = subtitleGenerationRunIdRef.current + 1;
+	    subtitleGenerationRunIdRef.current = subtitleRunId;
+	    const isStaleSubtitleRun = () =>
+	      subtitleGenerationRunIdRef.current !== subtitleRunId;
 	    const existingSubtitleClipIdsAtStart = new Set(
 	      subtitleSegments.map((segment) => segment.clipId)
 	    );
@@ -10393,6 +10399,12 @@ function AdvancedEditorContent() {
 	    pushHistory();
 	    try {
 	      const transcriptEntries = await transcribeSourceEntries(sourceEntries);
+	      if (isStaleSubtitleRun()) {
+	        subtitleDebugLog("subtitle generation ignored: stale run", {
+	          subtitleRunId,
+	        });
+	        return;
+	      }
 	      subtitleDebugLog("subtitle transcript entries resolved", {
 	        segmentCount: transcriptEntries.length,
 	      });
@@ -10527,6 +10539,12 @@ function AdvancedEditorContent() {
 	        outputSegmentCount: nextSegments.length,
 	      });
 	    } catch (error) {
+	      if (isStaleSubtitleRun()) {
+	        subtitleDebugLog("subtitle generation error ignored: stale run", {
+	          subtitleRunId,
+	        });
+	        return;
+	      }
 	      const message =
 	        error instanceof Error ? error.message : "Subtitle generation failed.";
 	      subtitleDebugLog("subtitle generation error", {
@@ -12744,6 +12762,7 @@ function AdvancedEditorContent() {
 	      pendingSplitScreenSubtitleRef.current = null;
 	      pendingStreamerVideoSubtitleRef.current = null;
 	      pendingRedditVideoSubtitleRef.current = null;
+	      subtitleGenerationRunIdRef.current += 1;
 	      subtitleLaneIdRef.current = null;
 
 	      let resolvedMainUrl = payload.mainVideo.url;
@@ -12882,6 +12901,7 @@ function AdvancedEditorContent() {
       // existing `projectId` (common when the editor route is cached).
       projectIdRef.current = null;
       setProjectId(null);
+      clearEditorReloadSessionState();
       exportPersistedRef.current = null;
       setExportUi({
         open: false,
@@ -13163,6 +13183,7 @@ function AdvancedEditorContent() {
 	      pendingSplitScreenSubtitleRef.current = null;
 	      pendingStreamerVideoSubtitleRef.current = null;
 	      pendingRedditVideoSubtitleRef.current = null;
+	      subtitleGenerationRunIdRef.current += 1;
 	      subtitleLaneIdRef.current = null;
 
       let resolvedMainUrl =
@@ -13331,6 +13352,7 @@ function AdvancedEditorContent() {
       // existing `projectId` (common when the editor route is cached).
       projectIdRef.current = null;
       setProjectId(null);
+      clearEditorReloadSessionState();
       exportPersistedRef.current = null;
       setExportUi({
         open: false,
@@ -13544,6 +13566,10 @@ function AdvancedEditorContent() {
       if (!payload?.gameplay?.url || !payload?.script) {
         return;
       }
+      const redditImportRunId = redditImportRunIdRef.current + 1;
+      redditImportRunIdRef.current = redditImportRunId;
+      const isStaleRedditImport = () =>
+        redditImportRunIdRef.current !== redditImportRunId;
 
 	      setRedditVideoImportOverlayStage("preparing");
 	      setRedditVideoImportOverlayOpen(true);
@@ -13554,6 +13580,7 @@ function AdvancedEditorContent() {
 	      pendingSplitScreenSubtitleRef.current = null;
 	      pendingStreamerVideoSubtitleRef.current = null;
 	      pendingRedditVideoSubtitleRef.current = null;
+	      subtitleGenerationRunIdRef.current += 1;
 	      subtitleLaneIdRef.current = null;
 
       const safeTitle =
@@ -13569,6 +13596,7 @@ function AdvancedEditorContent() {
       // existing `projectId` (common when the editor route is cached).
       projectIdRef.current = null;
       setProjectId(null);
+      clearEditorReloadSessionState();
       exportPersistedRef.current = null;
       setExportUi({
         open: false,
@@ -14760,6 +14788,9 @@ function AdvancedEditorContent() {
       clipDurationLocksRef.current = new Set(
         normalizedGameplayClips.map((clip) => clip.id)
       );
+      if (isStaleRedditImport()) {
+        return;
+      }
 
       const stageAspectRatio = REDDIT_STAGE_ASPECT_RATIO;
       const gameplayTransform: ClipTransform = { x: 0, y: 0, width: 1, height: 1 };
@@ -24068,8 +24099,8 @@ function AdvancedEditorContent() {
 		        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#1a1c1e]/70 px-4 backdrop-blur-sm">
 		          <div className="w-full max-w-md rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
 		            <div className="flex items-start gap-4">
-		              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#9aed00]">
-		                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+		              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+		                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 		              </div>
 		              <div className="min-w-0 flex-1">
 		                <h3 className="text-lg font-semibold text-[#f7f7f8]">
@@ -24096,7 +24127,7 @@ function AdvancedEditorContent() {
 		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
 		                    redditVideoImportError
 		                      ? "bg-[rgba(231,41,48,0.1)] text-[#e72930]"
-		                      : "bg-[#E7EDFF] text-[#9aed00]"
+		                      : "bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)]"
 		                  }`}
 		                >
 		                  {redditVideoImportError ? (
@@ -24111,7 +24142,7 @@ function AdvancedEditorContent() {
 		                    </svg>
 		                  ) : redditVideoImportOverlayStage === "preparing" ||
 		                      redditVideoImportOverlayStage === "voiceover" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 		                  ) : (
 		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 		                      <path
@@ -24133,7 +24164,7 @@ function AdvancedEditorContent() {
 		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
 		                    subtitleStatus === "error"
 		                      ? "bg-[rgba(231,41,48,0.1)] text-[#e72930]"
-		                      : "bg-[#E7EDFF] text-[#9aed00]"
+		                      : "bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)]"
 		                  }`}
 		                >
 		                  {subtitleStatus === "error" ? (
@@ -24147,7 +24178,7 @@ function AdvancedEditorContent() {
 		                      />
 		                    </svg>
 		                  ) : redditVideoImportOverlayStage === "subtitles" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 		                  ) : redditVideoImportOverlayStage === "finalizing" ? (
 		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 		                      <path
@@ -24159,19 +24190,19 @@ function AdvancedEditorContent() {
 		                      />
 		                    </svg>
 		                  ) : (
-		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.55)]" />
 		                  )}
 		                </div>
 		                <span className="text-[#f7f7f8]">Generate subtitles</span>
 		              </div>
 		              <div className="flex items-center gap-3">
-		                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
+		                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)]">
 		                  {redditVideoImportOverlayStage === "finalizing" &&
 		                  !redditVideoImportError &&
 		                  subtitleStatus !== "error" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 		                  ) : (
-		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.55)]" />
 		                  )}
 		                </div>
 		                <span className="text-[#f7f7f8]">Finalize timeline</span>
