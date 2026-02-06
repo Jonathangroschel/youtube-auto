@@ -14683,23 +14683,28 @@ function AdvancedEditorContent() {
         introCardClip
           ? (() => {
               const base = createDefaultTransform(introCardAsset?.aspectRatio, stageAspectRatio);
-              // Keep card readable while preserving more gameplay visibility.
-              const targetWidth = 0.76;
+              // Match reference sizing: card should be noticeably smaller and centered.
+              const targetWidth = 0.5;
               const scale = Math.max(
                 0.05,
                 targetWidth / Math.max(0.001, base.width)
               );
               let width = clamp(base.width * scale, 0.01, 1);
               let height = clamp(base.height * scale, 0.01, 1);
-              const maxHeight = 0.24;
+              const maxHeight = 0.18;
               if (height > maxHeight) {
                 const shrink = maxHeight / height;
                 width = clamp(width * shrink, 0.01, 1);
                 height = maxHeight;
               }
               const x = clamp(0.5 - width / 2, 0, Math.max(0, 1 - width));
-              const desiredTop = 0.07;
-              const y = clamp(desiredTop, 0, Math.max(0, 1 - height));
+              // Place roughly "2/3 up from bottom" (about 1/3 from top).
+              const desiredCenterY = 1 - 2 / 3;
+              const y = clamp(
+                desiredCenterY - height / 2,
+                0,
+                Math.max(0, 1 - height)
+              );
               return { x, y, width, height };
             })()
           : null;

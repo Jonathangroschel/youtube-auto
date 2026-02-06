@@ -10,6 +10,8 @@ const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 5000;
 const PAGE_SIZE = 1000;
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24;
+const CLEARLY_HORIZONTAL_RATIO = 1.08;
+const SQUARE_TOLERANCE_PX = 2;
 
 const isVideoPath = (value: string) => {
   const lower = value.toLowerCase();
@@ -57,6 +59,16 @@ const extractVideoDimensions = (
     return null;
   }
   return { width, height };
+};
+
+const isClearlyNonVertical = (width: number, height: number) => {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return false;
+  }
+  if (Math.abs(width - height) <= SQUARE_TOLERANCE_PX) {
+    return true;
+  }
+  return width > height * CLEARLY_HORIZONTAL_RATIO;
 };
 
 type StorageListEntry = {
@@ -147,7 +159,11 @@ export async function GET(request: Request) {
         if (isVideoPath(path)) {
           const metadata = entry.metadata ?? null;
           const dimensions = extractVideoDimensions(metadata);
-          if (verticalOnly && dimensions && dimensions.height < dimensions.width) {
+          if (
+            verticalOnly &&
+            dimensions &&
+            isClearlyNonVertical(dimensions.width, dimensions.height)
+          ) {
             continue;
           }
           items.push({

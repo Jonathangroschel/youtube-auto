@@ -37,6 +37,8 @@ const DEFAULT_INTRO_SECONDS = 3;
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
+const CLEARLY_HORIZONTAL_RATIO = 1.08;
+const SQUARE_TOLERANCE_PX = 2;
 
 const DEFAULT_REDDIT_PFPS = [
   "/reddit-default-pfp/0qoqln2f5bu71.webp",
@@ -575,6 +577,16 @@ export default function RedditVideoWizard() {
     gameplayUploadInputRef.current?.click();
   }, []);
 
+  const isClearlyNonVertical = useCallback((width: number, height: number) => {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return false;
+    }
+    if (Math.abs(width - height) <= SQUARE_TOLERANCE_PX) {
+      return true;
+    }
+    return width > height * CLEARLY_HORIZONTAL_RATIO;
+  }, []);
+
   const probeVideoIsVertical = useCallback((url: string) => {
     return new Promise<boolean>((resolve) => {
       const video = document.createElement("video");
@@ -592,7 +604,7 @@ export default function RedditVideoWizard() {
         cleanup();
         resolve(value);
       };
-      const timeoutId = window.setTimeout(() => finish(false), GAMEPLAY_PROBE_TIMEOUT_MS);
+      const timeoutId = window.setTimeout(() => finish(true), GAMEPLAY_PROBE_TIMEOUT_MS);
       video.preload = "metadata";
       video.playsInline = true;
       video.muted = true;
@@ -600,21 +612,27 @@ export default function RedditVideoWizard() {
         window.clearTimeout(timeoutId);
         const width = video.videoWidth;
         const height = video.videoHeight;
-        finish(width > 0 && height > 0 && height >= width);
+        if (width > 0 && height > 0) {
+          finish(!isClearlyNonVertical(width, height));
+          return;
+        }
+        // Keep unknown cases so we only remove clearly incompatible footage.
+        finish(true);
       };
       video.onerror = () => {
         window.clearTimeout(timeoutId);
-        finish(false);
+        // Keep unknown cases so we only remove clearly incompatible footage.
+        finish(true);
       };
       video.src = url;
     });
-  }, []);
+  }, [isClearlyNonVertical]);
 
   const ensureVerticalGameplayItem = useCallback(
     async (item: GameplayItem) => {
       if (typeof item.width === "number" && typeof item.height === "number") {
         if (Number.isFinite(item.width) && Number.isFinite(item.height)) {
-          return item.height >= item.width;
+          return !isClearlyNonVertical(item.width, item.height);
         }
       }
       const cached = gameplayOrientationCacheRef.current.get(item.path);
@@ -625,7 +643,7 @@ export default function RedditVideoWizard() {
       gameplayOrientationCacheRef.current.set(item.path, isVertical);
       return isVertical;
     },
-    [probeVideoIsVertical]
+    [isClearlyNonVertical, probeVideoIsVertical]
   );
 
   const filterVerticalGameplayItems = useCallback(
@@ -794,7 +812,7 @@ export default function RedditVideoWizard() {
       );
       if (items.length > 0 && verticalItems.length === 0) {
         setGameplayError(
-          "No vertical gameplay footage found. Upload a portrait (9:16) clip to continue."
+          "No suitable gameplay footage found. Upload a portrait (9:16) clip to continue."
         );
       }
     } catch (error) {
