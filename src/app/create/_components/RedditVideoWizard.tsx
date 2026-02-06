@@ -566,7 +566,7 @@ export default function RedditVideoWizard() {
   const [musicError, setMusicError] = useState<string | null>(null);
   const [musicTracks, setMusicTracks] = useState<PublicAudioItem[]>([]);
   const [selectedMusic, setSelectedMusic] = useState<PublicAudioItem | null>(null);
-  const [musicVolume, setMusicVolume] = useState(25);
+  const [musicVolume, setMusicVolume] = useState(20);
   const [generateBusy, setGenerateBusy] = useState(false);
 
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);

@@ -14615,7 +14615,7 @@ function AdvancedEditorContent() {
       const musicVolume =
         typeof music?.volume === "number" && Number.isFinite(music.volume)
           ? Math.min(100, Math.max(0, music.volume))
-          : 25;
+          : 20;
 
       const musicAsset = musicUrl
         ? await (async (): Promise<MediaAsset> => {
