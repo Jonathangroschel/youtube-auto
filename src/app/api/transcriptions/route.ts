@@ -38,6 +38,12 @@ type WorkerTranscriptionResult = {
 
 type WorkerTranscribeStatusPayload = {
   status?: "queued" | "processing" | "complete" | "error";
+  attemptStats?: {
+    totalAttempts?: number;
+    connectionRetries?: number;
+    lastErrorCode?: string | null;
+    lastTransport?: string | null;
+  };
   error?: string | null;
   result?: WorkerTranscriptionResult;
 };
@@ -116,8 +122,13 @@ const inferFilename = (url: URL, contentType: string) => {
 };
 
 const resolveWorkerRuntimeConfig = (): WorkerRuntimeConfig | null => {
-  const workerUrl = (process.env.AUTOCLIP_WORKER_URL ?? "").trim();
+  const workerUrl = (
+    process.env.AUTOCLIP_TRANSCRIBE_WORKER_URL ??
+    process.env.AUTOCLIP_WORKER_URL ??
+    ""
+  ).trim();
   const workerSecret = (
+    process.env.AUTOCLIP_TRANSCRIBE_WORKER_SECRET ??
     process.env.AUTOCLIP_WORKER_SECRET ??
     process.env.WORKER_SECRET ??
     ""
@@ -168,21 +179,25 @@ const inferWorkerUploadExtension = (
 const workerFetch = async (
   config: WorkerRuntimeConfig,
   endpoint: string,
-  options: RequestInit = {}
+  options: (RequestInit & { correlationId?: string | null }) = {}
 ) => {
+  const { correlationId = null, headers, ...requestInit } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(
     () => controller.abort(),
     WORKER_REQUEST_TIMEOUT_MS
   );
   try {
+    const requestHeaders = new Headers(headers);
+    requestHeaders.set("Authorization", `Bearer ${config.workerSecret}`);
+    if (typeof correlationId === "string" && correlationId.trim()) {
+      requestHeaders.set("x-correlation-id", correlationId.trim().slice(0, 120));
+    }
+
     return await fetch(`${config.workerUrl}${endpoint}`, {
-      ...options,
+      ...requestInit,
       signal: controller.signal,
-      headers: {
-        ...options.headers,
-        Authorization: `Bearer ${config.workerSecret}`,
-      },
+      headers: requestHeaders,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
@@ -249,9 +264,10 @@ const transcribeViaWorkerFallback = async (params: {
   const config = resolveWorkerRuntimeConfig();
   if (!config) {
     throw new Error(
-      "Worker fallback unavailable (missing AUTOCLIP_WORKER_URL/secret or Supabase env)."
+      "Worker fallback unavailable (missing AUTOCLIP_TRANSCRIBE_WORKER_URL/secret or AUTOCLIP_WORKER_URL/secret, or Supabase env)."
     );
   }
+  const correlationId = crypto.randomUUID();
   const supabase = createClient(
     config.supabaseUrl,
     config.supabaseServiceRoleKey
@@ -289,6 +305,7 @@ const transcribeViaWorkerFallback = async (params: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: queueBody,
+      correlationId,
     });
     const queuePayload =
       (await queueResponse.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;
@@ -299,6 +316,7 @@ const transcribeViaWorkerFallback = async (params: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: queueBody,
+        correlationId,
       });
       const legacyPayload =
         (await legacyResponse.json().catch(() => ({}))) as WorkerTranscriptionResult & {
@@ -316,7 +334,7 @@ const transcribeViaWorkerFallback = async (params: {
 
     if (queueResponse.status === 401) {
       throw new Error(
-        "Worker authentication failed (check AUTOCLIP_WORKER_SECRET / WORKER_SECRET)."
+        "Worker authentication failed (check AUTOCLIP_TRANSCRIBE_WORKER_SECRET, AUTOCLIP_WORKER_SECRET, and WORKER_SECRET)."
       );
     }
     if (!queueResponse.ok) {
@@ -336,7 +354,8 @@ const transcribeViaWorkerFallback = async (params: {
       await wait(WORKER_POLL_INTERVAL_MS);
       const statusResponse = await workerFetch(
         config,
-        `/transcribe/status/${encodeURIComponent(workerSessionId)}`
+        `/transcribe/status/${encodeURIComponent(workerSessionId)}`,
+        { correlationId }
       );
       const statusPayload =
         (await statusResponse.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;

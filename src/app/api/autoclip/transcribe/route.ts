@@ -7,8 +7,14 @@ import {
 
 export const runtime = "nodejs";
 
-const WORKER_URL = process.env.AUTOCLIP_WORKER_URL || "http://localhost:3001";
-const WORKER_SECRET = process.env.AUTOCLIP_WORKER_SECRET || "dev-secret";
+const WORKER_URL =
+  process.env.AUTOCLIP_TRANSCRIBE_WORKER_URL ||
+  process.env.AUTOCLIP_WORKER_URL ||
+  "http://localhost:3001";
+const WORKER_SECRET =
+  process.env.AUTOCLIP_TRANSCRIBE_WORKER_SECRET ||
+  process.env.AUTOCLIP_WORKER_SECRET ||
+  "dev-secret";
 const WORKER_REQUEST_TIMEOUT_MS = 25_000;
 
 type WorkerWord = {
@@ -39,24 +45,46 @@ type WorkerTranscribeStatusPayload = {
   progress?: number;
   totalChunks?: number;
   completedChunks?: number;
+  attemptStats?: {
+    totalAttempts?: number;
+    connectionRetries?: number;
+    lastErrorCode?: string | null;
+    lastTransport?: string | null;
+  };
   error?: string | null;
   result?: WorkerTranscriptionResult;
 };
 
-async function workerFetch(endpoint: string, options: RequestInit = {}) {
+type WorkerFetchOptions = RequestInit & {
+  correlationId?: string | null;
+};
+
+const getCorrelationIdFromRequest = (request: Request) => {
+  const incoming = request.headers.get("x-correlation-id");
+  if (incoming && incoming.trim()) {
+    return incoming.trim().slice(0, 120);
+  }
+  return crypto.randomUUID();
+};
+
+async function workerFetch(endpoint: string, options: WorkerFetchOptions = {}) {
+  const { correlationId = null, headers, ...requestInit } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(
     () => controller.abort(),
     WORKER_REQUEST_TIMEOUT_MS
   );
   try {
+    const requestHeaders = new Headers(headers);
+    requestHeaders.set("Authorization", `Bearer ${WORKER_SECRET}`);
+    if (typeof correlationId === "string" && correlationId.trim()) {
+      requestHeaders.set("x-correlation-id", correlationId.trim().slice(0, 120));
+    }
+
     return await fetch(`${WORKER_URL}${endpoint}`, {
-      ...options,
+      ...requestInit,
       signal: controller.signal,
-      headers: {
-        ...options.headers,
-        Authorization: `Bearer ${WORKER_SECRET}`,
-      },
+      headers: requestHeaders,
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
@@ -186,7 +214,8 @@ const applyWorkerTranscriptToSession = async (
 
 const queueWorkerTranscription = async (
   session: Awaited<ReturnType<typeof getSession>>,
-  language: string
+  language: string,
+  correlationId: string
 ): Promise<WorkerTranscribeStatusPayload> => {
   if (!session?.workerSessionId || !session.input?.videoKey) {
     throw new Error("Worker session is not ready for transcription.");
@@ -202,6 +231,7 @@ const queueWorkerTranscription = async (
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: workerRequestBody,
+    correlationId,
   });
 
   const workerPayload =
@@ -213,6 +243,7 @@ const queueWorkerTranscription = async (
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: workerRequestBody,
+      correlationId,
     });
     const legacyPayload =
       (await legacyResponse.json().catch(() => ({}))) as WorkerTranscriptionResult & {
@@ -235,7 +266,7 @@ const queueWorkerTranscription = async (
 
   if (response.status === 401) {
     throw new Error(
-      "Worker authentication failed (check AUTOCLIP_WORKER_SECRET / WORKER_SECRET)."
+      "Worker authentication failed (check AUTOCLIP_TRANSCRIBE_WORKER_SECRET, AUTOCLIP_WORKER_SECRET, and WORKER_SECRET)."
     );
   }
 
@@ -251,6 +282,7 @@ const queueWorkerTranscription = async (
 };
 
 export async function POST(request: Request) {
+  const correlationId = getCorrelationIdFromRequest(request);
   const body = await request.json().catch(() => ({}));
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId : null;
   const language =
@@ -296,7 +328,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const workerPayload = await queueWorkerTranscription(session, language);
+    const workerPayload = await queueWorkerTranscription(
+      session,
+      language,
+      correlationId
+    );
 
     if (workerPayload.status === "complete" && workerPayload.result) {
       session.workerTranscribeJobId = null;
@@ -341,13 +377,14 @@ export async function POST(request: Request) {
           typeof workerPayload.completedChunks === "number"
             ? workerPayload.completedChunks
             : null,
+        attemptStats: workerPayload.attemptStats ?? null,
       },
       { status: 202 }
     );
   } catch (error) {
     const message = getTranscribeRouteErrorMessage(
       error,
-      "Transcription failed. Verify AUTOCLIP_WORKER_URL is reachable."
+      "Transcription failed. Verify AUTOCLIP_TRANSCRIBE_WORKER_URL (or AUTOCLIP_WORKER_URL) is reachable."
     );
     session.status = "error";
     session.error = message;
@@ -358,6 +395,7 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const correlationId = getCorrelationIdFromRequest(request);
   const sessionId = searchParams.get("sessionId");
 
   if (!sessionId) {
@@ -384,7 +422,8 @@ export async function GET(request: Request) {
 
   try {
     const response = await workerFetch(
-      `/transcribe/status/${encodeURIComponent(session.workerSessionId)}`
+      `/transcribe/status/${encodeURIComponent(session.workerSessionId)}`,
+      { correlationId }
     );
     const workerPayload =
       (await response.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;
@@ -395,7 +434,11 @@ export async function GET(request: Request) {
         session.workerTranscribeLanguage.trim().length > 0
           ? session.workerTranscribeLanguage.trim()
           : "en";
-      const requeuedPayload = await queueWorkerTranscription(session, requeueLanguage);
+      const requeuedPayload = await queueWorkerTranscription(
+        session,
+        requeueLanguage,
+        correlationId
+      );
       if (requeuedPayload.status === "complete" && requeuedPayload.result) {
         session.workerTranscribeJobId = null;
         session.workerTranscribeLanguage = requeueLanguage;
@@ -438,6 +481,7 @@ export async function GET(request: Request) {
             typeof requeuedPayload.completedChunks === "number"
               ? requeuedPayload.completedChunks
               : null,
+          attemptStats: requeuedPayload.attemptStats ?? null,
           requeued: true,
         },
         { status: 202 }
@@ -483,6 +527,7 @@ export async function GET(request: Request) {
           typeof workerPayload.completedChunks === "number"
             ? workerPayload.completedChunks
             : null,
+        attemptStats: workerPayload.attemptStats ?? null,
       },
       { status: 202 }
     );

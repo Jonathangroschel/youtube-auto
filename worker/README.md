@@ -31,6 +31,16 @@ WORKER_SECRET=generate-a-random-secret-here
 EDITOR_RENDER_URL=https://your-app-url.vercel.app
 EDITOR_EXPORT_BUCKET=autoclip-files
 
+# Transcription reliability defaults (recommended)
+AUTOCLIP_TRANSCRIBE_CONCURRENCY=1
+AUTOCLIP_TRANSCRIBE_CHUNK_SECONDS=45
+AUTOCLIP_TRANSCRIBE_BITRATE=24k
+AUTOCLIP_TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS=5
+AUTOCLIP_TRANSCRIBE_OPENAI_CONNECTION_BACKOFF_MS=3000
+AUTOCLIP_TRANSCRIBE_OPENAI_CONNECTION_MAX_BACKOFF_MS=45000
+# Optional: choose initial OpenAI transport ("stateless" default or "keepalive")
+# AUTOCLIP_OPENAI_TRANSPORT_MODE=stateless
+
 # Optional export tuning (recommended on Railway)
 # Hard override if you want a fixed value:
 # EDITOR_EXPORT_CONCURRENCY=3
@@ -67,6 +77,11 @@ In your Vercel project settings, add:
 ```
 AUTOCLIP_WORKER_URL=https://your-worker-production.up.railway.app
 AUTOCLIP_WORKER_SECRET=same-secret-from-railway
+
+# Optional: dedicated transcription worker service
+# (falls back to AUTOCLIP_WORKER_URL/SECRET when omitted)
+AUTOCLIP_TRANSCRIBE_WORKER_URL=https://your-transcribe-worker-production.up.railway.app
+AUTOCLIP_TRANSCRIBE_WORKER_SECRET=same-or-separate-secret
 ```
 
 ## Local Development
@@ -121,3 +136,12 @@ If you see OOM/restarts, lower concurrency with one of:
 
 - `EDITOR_EXPORT_CONCURRENCY=2` (hard cap)
 - or raise `EDITOR_EXPORT_MEMORY_PER_JOB_MB` (e.g. 2600-3000)
+
+## Dedicated Transcription Service (Recommended)
+
+Run a second Railway service from the same `worker/` Dockerfile and point only transcription traffic to it:
+
+1. Deploy a second Railway service from the same repo + Dockerfile.
+2. Set the same Supabase/OpenAI environment variables on that service.
+3. Set `AUTOCLIP_TRANSCRIBE_WORKER_URL` + `AUTOCLIP_TRANSCRIBE_WORKER_SECRET` in Vercel.
+4. Roll back instantly by unsetting the two transcribe-specific env vars.
