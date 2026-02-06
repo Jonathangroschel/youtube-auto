@@ -449,21 +449,36 @@ const extractNormalizedAudio = async ({
   let best = null;
   const tempOutputs = [];
 
+  // -------------------------------------------------------------------
+  // PASS 1 — Decode each candidate audio stream to raw PCM WAV.
+  //
+  // Decoding to PCM is the most error-tolerant output format: even when
+  // the source AAC/Opus/Vorbis stream contains corrupt frames, the PCM
+  // samples that *were* successfully decoded are written unchanged.
+  // Going directly to MP3 in a single pass means the LAME encoder sees
+  // garbage when the decoder emits warnings, producing audible glitches.
+  // -------------------------------------------------------------------
   for (const mapSpec of mapSpecs) {
     const safeName = String(mapSpec).replace(/[^a-zA-Z0-9]+/g, "_");
-    const candidatePath = path.join(outputDir, `audio_${safeName}.mp3`);
-    tempOutputs.push(candidatePath);
-    await fs.unlink(candidatePath).catch(() => {});
+    const wavPath = path.join(outputDir, `audio_${safeName}.wav`);
+    tempOutputs.push(wavPath);
+    await fs.unlink(wavPath).catch(() => {});
 
     const result = await runFfmpeg(
       [
         "-hide_banner",
         "-loglevel",
-        "error",
+        "warning",
         "-fflags",
-        "+discardcorrupt",
+        "+discardcorrupt+genpts",
         "-err_detect",
         "ignore_err",
+        "-max_error_rate",
+        "1.0",
+        "-analyzeduration",
+        "20000000",
+        "-probesize",
+        "20000000",
         "-ignore_unknown",
         "-y",
         "-i",
@@ -480,22 +495,22 @@ const extractNormalizedAudio = async ({
         "-af",
         "aresample=16000:async=1:first_pts=0",
         "-c:a",
-        "libmp3lame",
-        "-b:a",
-        audioBitrate,
-        candidatePath,
+        "pcm_s16le",
+        "-f",
+        "wav",
+        wavPath,
       ],
-      `extract-${safeName}`
+      `extract-wav-${safeName}`
     );
 
-    const stats = await fs.stat(candidatePath).catch(() => null);
+    const stats = await fs.stat(wavPath).catch(() => null);
     if (!stats || stats.size <= MIN_AUDIO_BYTES) {
       continue;
     }
 
-    const duration = await getDurationSeconds(candidatePath);
+    const duration = await getDurationSeconds(wavPath);
     const candidate = {
-      path: candidatePath,
+      path: wavPath,
       mapSpec,
       code: result.code,
       stderr: result.stderr,
@@ -513,16 +528,51 @@ const extractNormalizedAudio = async ({
     throw new Error("Audio extraction produced no usable output.");
   }
 
-  if (best.code !== 0) {
+  if (best.code !== 0 || best.decodeWarnings > 0) {
     const warningSummary = summarizeDecodeWarnings(best.stderr);
     console.log(
-      `[transcribe] selected stream ${best.mapSpec} with partial extraction (exit ${best.code}, decodeWarnings=${best.decodeWarnings || 0})${warningSummary ? `; warningTypes=${warningSummary}` : ""}.`
+      `[transcribe] decoded stream ${best.mapSpec} to WAV (exit ${best.code}, decodeWarnings=${best.decodeWarnings || 0})${warningSummary ? `; warningTypes=${warningSummary}` : ""}. Proceeding with clean PCM output.`
     );
   }
 
+  // -------------------------------------------------------------------
+  // PASS 2 — Encode the clean PCM WAV to MP3.
+  //
+  // Because the WAV already contains clean 16 kHz mono PCM, the LAME
+  // encoder receives a perfect input and produces a valid MP3 with no
+  // chance of inheriting decode-time corruption from the source.
+  // -------------------------------------------------------------------
   const normalizedPath = path.join(outputDir, "audio_clean.mp3");
-  await fs.copyFile(best.path, normalizedPath);
+  const encodeResult = await runFfmpeg(
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      best.path,
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      audioBitrate,
+      normalizedPath,
+    ],
+    "encode-wav-to-mp3"
+  );
 
+  if (encodeResult.code !== 0) {
+    const encodeStats = await fs.stat(normalizedPath).catch(() => null);
+    if (!encodeStats || encodeStats.size <= MIN_AUDIO_BYTES) {
+      throw new Error(
+        `MP3 encoding from clean WAV failed: ${compactMessage(encodeResult.stderr)}`
+      );
+    }
+    console.warn(
+      `[transcribe] MP3 encode exited with code ${encodeResult.code} but produced output; continuing. ${compactMessage(encodeResult.stderr)}`
+    );
+  }
+
+  // Clean up all intermediate WAV files.
   for (const filePath of tempOutputs) {
     await fs.unlink(filePath).catch(() => {});
   }
@@ -534,13 +584,15 @@ const splitNormalizedAudio = async ({
   inputPath,
   outputDir,
   chunkSeconds,
-  audioBitrate,
 }) => {
   await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
   await fs.mkdir(outputDir, { recursive: true });
 
   const outputPattern = path.join(outputDir, "segment_%04d.mp3");
 
+  // The input is already a clean 16 kHz mono MP3 from the extraction
+  // pass, so we can split with `-c copy` — no re-encoding needed.  This
+  // is significantly faster and avoids any generation-loss artefacts.
   const result = await runFfmpeg(
     [
       "-hide_banner",
@@ -549,19 +601,8 @@ const splitNormalizedAudio = async ({
       "-y",
       "-i",
       inputPath,
-      "-map",
-      "0:a:0?",
-      "-vn",
-      "-sn",
-      "-dn",
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-c:a",
-      "libmp3lame",
-      "-b:a",
-      audioBitrate,
+      "-c",
+      "copy",
       "-f",
       "segment",
       "-segment_time",
@@ -609,7 +650,6 @@ const transcribeFileWithRetry = async ({
     );
   }
 
-  const fileBuffer = await fs.readFile(filePath);
   const fileName = path.basename(filePath);
   const fileType = contentTypeForAudioFile(filePath);
   const hardMaxAttempts = Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts);
@@ -617,6 +657,11 @@ const transcribeFileWithRetry = async ({
 
   for (let attempt = 1; attempt <= hardMaxAttempts; attempt += 1) {
     try {
+      // Read the file fresh on every attempt.  This avoids reusing a
+      // potentially stale Node Buffer reference and ensures the kernel
+      // re-reads from disk (matters if the segment was just written).
+      const fileBuffer = await fs.readFile(filePath);
+
       const controller = new AbortController();
       const timeoutHandle = setTimeout(() => {
         controller.abort();
@@ -668,14 +713,20 @@ const transcribeFileWithRetry = async ({
         throw error;
       }
 
-      let delayMs = attempt === 1 ? 1000 : 1800;
-      if (connectionError) {
-        delayMs = Math.min(
-          openaiConnectionMaxBackoffMs,
-          openaiConnectionBackoffMs * Math.pow(2, Math.max(0, attempt - 1))
-        );
-        delayMs += Math.floor(Math.random() * 1200);
-      }
+      // ---------------------------------------------------------------
+      // Exponential back-off with jitter for ALL retryable errors.
+      //
+      // For connection errors (ECONNRESET, ETIMEDOUT, etc.) we use the
+      // dedicated connection backoff config.  For other retryable errors
+      // (429, 5xx) we start at 2 s and cap at 15 s.  Jitter is ±50 %
+      // of the base delay to avoid thundering-herd retries when many
+      // segments hit the same window.
+      // ---------------------------------------------------------------
+      const baseDelay = connectionError ? openaiConnectionBackoffMs : 2000;
+      const maxDelay = connectionError ? openaiConnectionMaxBackoffMs : 15000;
+      const exponential = baseDelay * Math.pow(2, attempt - 1);
+      const jitter = Math.floor(Math.random() * baseDelay) - Math.floor(baseDelay / 2);
+      const delayMs = Math.max(1000, Math.min(maxDelay, exponential + jitter));
 
       const detail = formatErrorDetail(error);
       console.warn(
@@ -775,7 +826,6 @@ const buildTranscriptionPipeline = (config) => {
         inputPath: normalizedAudioPath,
         outputDir: segmentsDir,
         chunkSeconds: config.chunkSeconds,
-        audioBitrate: config.audioBitrate,
       });
 
       if (segmentFiles.length === 0) {
@@ -825,9 +875,13 @@ const buildTranscriptionPipeline = (config) => {
           } else {
             consecutiveConnectionErrors = 0;
           }
+          // Each segment already retries up to openaiConnectionMaxAttempts
+          // times internally, so if we still land here it's a sustained
+          // outage.  Abort after 3 consecutive segment-level failures (or
+          // immediately if we haven't had a single success yet).
           if (
             isOpenAIConnectionError(error) &&
-            (successfulSegments === 0 || consecutiveConnectionErrors >= 2)
+            (successfulSegments === 0 || consecutiveConnectionErrors >= 3)
           ) {
             throw error;
           }
@@ -901,7 +955,9 @@ export const createTranscriptionManager = ({
     bucket,
     openai,
     maxConcurrency: Math.max(1, Number(maxConcurrency) || 1),
-    chunkSeconds: Math.max(45, Math.min(120, Number(chunkSeconds) || 120)),
+    // Smaller default chunks (90 s) produce ~540 KB files at 48 kbps.
+    // Smaller uploads are far less likely to hit ECONNRESET mid-transfer.
+    chunkSeconds: Math.max(30, Math.min(180, Number(chunkSeconds) || 90)),
     audioBitrate:
       typeof audioBitrate === "string" && audioBitrate.trim()
         ? audioBitrate.trim()
@@ -912,18 +968,22 @@ export const createTranscriptionManager = ({
         : "32k",
     uploadSegmentSeconds: Math.max(45, Number(uploadSegmentSeconds) || 120),
     openaiTimeoutMs: Math.max(30000, Number(openaiTimeoutMs) || 300000),
-    openaiMaxAttempts: Math.max(1, Math.min(2, Number(openaiMaxAttempts) || 2)),
+    // Raised from 2 → 3 for regular retryable errors (429 / 5xx).
+    openaiMaxAttempts: Math.max(1, Math.min(5, Number(openaiMaxAttempts) || 3)),
+    // Raised from 3 → 5 for connection-level errors (ECONNRESET, etc.).
     openaiConnectionMaxAttempts: Math.max(
       1,
-      Math.min(3, Number(openaiConnectionMaxAttempts) || 3)
+      Math.min(8, Number(openaiConnectionMaxAttempts) || 5)
     ),
     openaiConnectionBackoffMs: Math.max(500, Number(openaiConnectionBackoffMs) || 3000),
+    // Raised ceiling from 15 s → 30 s so exponential backoff has room.
     openaiConnectionMaxBackoffMs: Math.max(
       2000,
-      Math.min(15000, Number(openaiConnectionMaxBackoffMs) || 15000)
+      Math.min(60000, Number(openaiConnectionMaxBackoffMs) || 30000)
     ),
     jobRetentionMs: Math.max(60000, Number(jobRetentionMs) || 60 * 60 * 1000),
-    transientJobRetryLimit: Math.max(0, Math.min(2, Number(transientJobRetryLimit) || 2)),
+    // Raised from 2 → 3 for queue-level transient retries.
+    transientJobRetryLimit: Math.max(0, Math.min(5, Number(transientJobRetryLimit) || 3)),
     transientJobRetryDelayMs: Math.max(1000, Number(transientJobRetryDelayMs) || 15000),
   };
 
