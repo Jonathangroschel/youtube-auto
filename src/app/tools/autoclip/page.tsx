@@ -1356,7 +1356,7 @@ export default function AutoClipPage() {
           statusResponse = await fetchWithTransientRetry(
             `/api/autoclip/transcribe?sessionId=${encodeURIComponent(
               activeSessionId
-            )}`,
+            )}&recover=1`,
             {
               method: "GET",
               cache: "no-store",

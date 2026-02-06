@@ -397,6 +397,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const correlationId = getCorrelationIdFromRequest(request);
   const sessionId = searchParams.get("sessionId");
+  const allowRecoveryOnMissingJob = searchParams.get("recover") === "1";
 
   if (!sessionId) {
     return NextResponse.json({ error: "Missing sessionId." }, { status: 400 });
@@ -429,6 +430,24 @@ export async function GET(request: Request) {
       (await response.json().catch(() => ({}))) as WorkerTranscribeStatusPayload;
 
     if (response.status === 404) {
+      const hasInFlightTranscription = session.status === "transcribing";
+      if (!allowRecoveryOnMissingJob) {
+        return NextResponse.json({
+          status: "idle",
+          stage: "Transcription not started",
+          progress: 0,
+          totalChunks: null,
+          completedChunks: null,
+          attemptStats: null,
+        });
+      }
+      if (!hasInFlightTranscription) {
+        return NextResponse.json(
+          { error: "Transcription is not currently in progress." },
+          { status: 409 }
+        );
+      }
+
       const requeueLanguage =
         typeof session.workerTranscribeLanguage === "string" &&
         session.workerTranscribeLanguage.trim().length > 0
