@@ -205,6 +205,11 @@ const OPENAI_HTTP_MAX_RETRIES = toNonNegativeInt(
   process.env.AUTOCLIP_OPENAI_HTTP_MAX_RETRIES,
   2
 );
+const OPENAI_TRANSPORT_MODE = String(
+  process.env.AUTOCLIP_OPENAI_TRANSPORT_MODE || "stateless"
+)
+  .trim()
+  .toLowerCase();
 
 const exportQueue = [];
 const exportJobs = new Map();
@@ -218,13 +223,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Custom HTTPS agent with TCP keep-alive.  Railway's proxy / NAT gateway
-// aggressively resets idle TCP connections.  Without keep-alive probes the
-// OS won't notice the dead socket until the next write triggers ECONNRESET.
-//
-// IMPORTANT: Node 20's native fetch (undici) silently ignores httpAgent.
-// We force the SDK to use node-fetch instead, which actually respects it.
-const openaiHttpsAgent = new https.Agent({
+const buildOpenAIFetch = (agent) => (url, init = {}) =>
+  nodeFetch(url, { ...init, agent });
+
+// Keep-alive transport (higher throughput, but can reuse stale sockets on
+// some managed platforms).
+const openaiKeepAliveAgent = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 5000,
   maxSockets: 10,
@@ -232,13 +236,33 @@ const openaiHttpsAgent = new https.Agent({
   timeout: 120000,
 });
 
-// OpenAI client — explicitly uses node-fetch so the HTTPS agent is honoured.
-const openai = new OpenAI({
+// Stateless transport: every request uses a fresh socket to avoid repeated
+// ECONNRESET from stale pooled connections.
+const openaiStatelessAgent = new https.Agent({
+  keepAlive: false,
+  maxSockets: 50,
+  timeout: 120000,
+});
+
+const openaiKeepAlive = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   timeout: OPENAI_HTTP_TIMEOUT_MS,
   maxRetries: OPENAI_HTTP_MAX_RETRIES,
-  fetch: (url, init) => nodeFetch(url, { ...init, agent: openaiHttpsAgent }),
+  fetch: buildOpenAIFetch(openaiKeepAliveAgent),
 });
+
+const openaiStateless = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  timeout: OPENAI_HTTP_TIMEOUT_MS,
+  maxRetries: OPENAI_HTTP_MAX_RETRIES,
+  fetch: buildOpenAIFetch(openaiStatelessAgent),
+});
+
+const useKeepAlivePrimary = OPENAI_TRANSPORT_MODE === "keepalive";
+const openai = useKeepAlivePrimary ? openaiKeepAlive : openaiStateless;
+const openaiFallback = useKeepAlivePrimary ? openaiStateless : null;
+const openaiTransportName = useKeepAlivePrimary ? "keepalive" : "stateless";
+const openaiFallbackTransportName = useKeepAlivePrimary ? "stateless" : null;
 
 // Middleware
 app.use(cors());
@@ -1153,6 +1177,9 @@ const transcriptionManager = createTranscriptionManager({
   supabase,
   bucket: BUCKET,
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   maxConcurrency: MAX_TRANSCRIBE_CONCURRENCY,
   chunkSeconds: TRANSCRIBE_CHUNK_SECONDS,
   audioBitrate: TRANSCRIBE_AUDIO_BITRATE,
@@ -1749,6 +1776,9 @@ app.listen(PORT, () => {
   );
   console.log(
     `[worker] transcription openai timeoutMs=${TRANSCRIBE_OPENAI_TIMEOUT_MS} attempts=${TRANSCRIBE_OPENAI_MAX_ATTEMPTS} connectionAttempts=${TRANSCRIBE_OPENAI_CONNECTION_MAX_ATTEMPTS} uploadSegmentSeconds=${TRANSCRIBE_UPLOAD_SEGMENT_SECONDS}`
+  );
+  console.log(
+    `[worker] OpenAI transport primary=${openaiTransportName} fallback=${openaiFallbackTransportName || "disabled"} (set AUTOCLIP_OPENAI_TRANSPORT_MODE=keepalive to enable fallback=stateless)`
   );
   console.log(
     `[worker] editor export quality preset=${EXPORT_VIDEO_PRESET} crf=${EXPORT_VIDEO_CRF} audioBitrate=${EXPORT_AUDIO_BITRATE} frameFormat=${EXPORT_FRAME_FORMAT}`

@@ -287,6 +287,9 @@ const runFfmpeg = (args, label) => runProcess("ffmpeg", args, label);
 
 const checkOpenAIConnectivity = async ({
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   openaiTimeoutMs,
   openaiConnectionMaxAttempts,
   openaiConnectionBackoffMs,
@@ -294,37 +297,67 @@ const checkOpenAIConnectivity = async ({
 }) => {
   const maxAttempts = Math.max(1, Math.min(3, openaiConnectionMaxAttempts));
   const timeoutMs = Math.max(5000, Math.min(20000, openaiTimeoutMs));
-  let lastError = null;
+  const primaryLabel = String(openaiTransportName || "primary");
+  const fallbackLabel = String(openaiFallbackTransportName || "fallback");
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const controller = new AbortController();
-      const timeoutHandle = setTimeout(() => {
-        controller.abort();
-      }, timeoutMs);
+  const runConnectivityCheck = async (client, label) => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        await openai.models.list({ signal: controller.signal });
-      } finally {
-        clearTimeout(timeoutHandle);
-      }
-      return;
-    } catch (error) {
-      lastError = error;
-      if (!isOpenAIConnectionError(error) || attempt >= maxAttempts) {
-        break;
-      }
+        const controller = new AbortController();
+        const timeoutHandle = setTimeout(() => {
+          controller.abort();
+        }, timeoutMs);
+        try {
+          await client.models.list({ signal: controller.signal });
+        } finally {
+          clearTimeout(timeoutHandle);
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!isOpenAIConnectionError(error) || attempt >= maxAttempts) {
+          break;
+        }
 
-      const delayMs = Math.min(
-        openaiConnectionMaxBackoffMs,
-        openaiConnectionBackoffMs * Math.pow(2, Math.max(0, attempt - 1))
+        const delayMs = Math.min(
+          openaiConnectionMaxBackoffMs,
+          openaiConnectionBackoffMs * Math.pow(2, Math.max(0, attempt - 1))
+        );
+        await wait(delayMs);
+      }
+    }
+
+    throw new Error(
+      `OpenAI connectivity check failed (${label}): ${formatErrorDetail(lastError)}`
+    );
+  };
+
+  try {
+    await runConnectivityCheck(openai, primaryLabel);
+    return;
+  } catch (primaryError) {
+    if (!openaiFallback) {
+      throw primaryError;
+    }
+
+    console.warn(
+      `[transcribe] OpenAI connectivity failed on ${primaryLabel}; retrying on ${fallbackLabel}. ${formatErrorDetail(
+        primaryError
+      )}`
+    );
+
+    try {
+      await runConnectivityCheck(openaiFallback, fallbackLabel);
+      return;
+    } catch (fallbackError) {
+      throw new Error(
+        `OpenAI connectivity check failed on both transports. ${formatErrorDetail(
+          primaryError
+        )} | ${formatErrorDetail(fallbackError)}`
       );
-      await wait(delayMs);
     }
   }
-
-  throw new Error(
-    `OpenAI connectivity check failed: ${formatErrorDetail(lastError)}`
-  );
 };
 
 const getAudioStreamIndices = async (filePath) => {
@@ -631,6 +664,9 @@ const splitNormalizedAudio = async ({
 
 const transcribeFileWithRetry = async ({
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   filePath,
   requestedLanguage,
   openaiTimeoutMs,
@@ -650,9 +686,20 @@ const transcribeFileWithRetry = async ({
   }
 
   const hardMaxAttempts = Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts);
+  const primaryTransportLabel = String(openaiTransportName || "primary");
+  const fallbackTransportLabel = String(
+    openaiFallbackTransportName || "fallback"
+  );
+  let preferFallbackTransport = false;
   let lastError = null;
 
   for (let attempt = 1; attempt <= hardMaxAttempts; attempt += 1) {
+    const useFallbackTransport = preferFallbackTransport && Boolean(openaiFallback);
+    const activeOpenAI = useFallbackTransport ? openaiFallback : openai;
+    const activeTransportLabel = useFallbackTransport
+      ? fallbackTransportLabel
+      : primaryTransportLabel;
+
     try {
       const controller = new AbortController();
       const timeoutHandle = setTimeout(() => {
@@ -665,7 +712,7 @@ const transcribeFileWithRetry = async ({
         // of buffering it all in memory and writing it in one shot.  The
         // continuous data flow keeps the connection active and avoids proxy
         // idle-timeout resets (the root cause of the ECONNRESET on Railway).
-        const transcription = await openai.audio.transcriptions.create(
+        const transcription = await activeOpenAI.audio.transcriptions.create(
           {
             file: createReadStream(filePath),
             model: "whisper-1",
@@ -703,6 +750,13 @@ const transcribeFileWithRetry = async ({
         ? Math.max(openaiMaxAttempts, openaiConnectionMaxAttempts)
         : openaiMaxAttempts;
 
+      if (connectionError && openaiFallback && !preferFallbackTransport) {
+        preferFallbackTransport = true;
+        console.warn(
+          `[transcribe] switching OpenAI transport ${primaryTransportLabel} -> ${fallbackTransportLabel} after connection failure.`
+        );
+      }
+
       if (!retryable || attempt >= maxAttemptsForError) {
         throw error;
       }
@@ -724,7 +778,7 @@ const transcribeFileWithRetry = async ({
 
       const detail = formatErrorDetail(error);
       console.warn(
-        `[transcribe] OpenAI attempt ${attempt}/${maxAttemptsForError} failed (${connectionError ? "connection" : "retryable"}): ${detail}. Retrying in ${Math.max(
+        `[transcribe] OpenAI attempt ${attempt}/${maxAttemptsForError} failed (${connectionError ? "connection" : "retryable"}) [transport=${activeTransportLabel}]: ${detail}. Retrying in ${Math.max(
           1,
           Math.round(delayMs / 1000)
         )}s.`
@@ -739,6 +793,9 @@ const transcribeFileWithRetry = async ({
 
 const transcribeSegment = async ({
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   segmentPath,
   requestedLanguage,
   openaiTimeoutMs,
@@ -749,6 +806,9 @@ const transcribeSegment = async ({
 }) => {
   const transcription = await transcribeFileWithRetry({
     openai,
+    openaiFallback,
+    openaiTransportName,
+    openaiFallbackTransportName,
     filePath: segmentPath,
     requestedLanguage,
     openaiTimeoutMs,
@@ -792,6 +852,9 @@ const buildTranscriptionPipeline = (config) => {
       });
       await checkOpenAIConnectivity({
         openai: config.openai,
+        openaiFallback: config.openaiFallback,
+        openaiTransportName: config.openaiTransportName,
+        openaiFallbackTransportName: config.openaiFallbackTransportName,
         openaiTimeoutMs: config.openaiTimeoutMs,
         openaiConnectionMaxAttempts: config.openaiConnectionMaxAttempts,
         openaiConnectionBackoffMs: config.openaiConnectionBackoffMs,
@@ -848,6 +911,9 @@ const buildTranscriptionPipeline = (config) => {
         try {
           const transcription = await transcribeSegment({
             openai: config.openai,
+            openaiFallback: config.openaiFallback,
+            openaiTransportName: config.openaiTransportName,
+            openaiFallbackTransportName: config.openaiFallbackTransportName,
             segmentPath,
             requestedLanguage,
             openaiTimeoutMs: config.openaiTimeoutMs,
@@ -929,6 +995,9 @@ export const createTranscriptionManager = ({
   supabase,
   bucket,
   openai,
+  openaiFallback,
+  openaiTransportName,
+  openaiFallbackTransportName,
   maxConcurrency,
   chunkSeconds,
   audioBitrate,
@@ -948,6 +1017,16 @@ export const createTranscriptionManager = ({
     supabase,
     bucket,
     openai,
+    openaiFallback,
+    openaiTransportName:
+      typeof openaiTransportName === "string" && openaiTransportName.trim()
+        ? openaiTransportName.trim()
+        : "primary",
+    openaiFallbackTransportName:
+      typeof openaiFallbackTransportName === "string" &&
+      openaiFallbackTransportName.trim()
+        ? openaiFallbackTransportName.trim()
+        : "fallback",
     maxConcurrency: Math.max(1, Number(maxConcurrency) || 1),
     // 60 s chunks at 32 kbps ≈ 240 KB per upload.  Small payloads complete
     // fast enough that Railway's proxy can't reset the connection mid-transfer.
