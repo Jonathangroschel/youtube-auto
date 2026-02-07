@@ -148,7 +148,6 @@ const EXPORT_FRAME_FORMAT =
   EXPORT_FRAME_FORMAT_RAW === "jpeg" || EXPORT_FRAME_FORMAT_RAW === "jpg"
     ? "jpeg"
     : "png";
-const EXPORT_FRAME_CODEC = EXPORT_FRAME_FORMAT === "jpeg" ? "mjpeg" : "png";
 const EXPORT_SCALE_FLAGS = process.env.EDITOR_EXPORT_SCALE_FLAGS || "lanczos";
 const EXPORT_RENDER_MODE = (
   process.env.EDITOR_EXPORT_RENDER_MODE || "css"
@@ -656,6 +655,7 @@ const runEditorExportJob = async (job) => {
   let videoPath = null;
   let finalPath = null;
   let audioPath = null;
+  let framesDir = null;
   try {
     browser = await getOrCreateSharedExportBrowser();
     browserDisconnectHandler = () => {
@@ -791,6 +791,53 @@ const runEditorExportJob = async (job) => {
       EXPORT_FRAME_FORMAT === "jpeg"
         ? { type: "jpeg", quality: EXPORT_JPEG_QUALITY }
         : { type: "png" };
+    const frameExtension = EXPORT_FRAME_FORMAT === "jpeg" ? "jpg" : "png";
+    framesDir = path.join(exportTempDir, `${job.id}_frames`);
+    await fs.rm(framesDir, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(framesDir, { recursive: true });
+
+    for (let i = 0; i < framesTotal; i += 1) {
+      if (rendererClosed || page.isClosed()) {
+        throw new Error(`Renderer unavailable (${rendererCloseReason || "page closed"})`);
+      }
+      const time = i / fps;
+      await withTimeout(
+        page.evaluate((value) => window.__EDITOR_EXPORT_API__.setTime(value), time),
+        EXPORT_FRAME_TIMEOUT_MS,
+        `setTime frame ${i + 1}`
+      );
+      if (rendererClosed || page.isClosed()) {
+        throw new Error(`Renderer unavailable (${rendererCloseReason || "page closed"})`);
+      }
+      const framePath = path.join(
+        framesDir,
+        `frame_${String(i + 1).padStart(6, "0")}.${frameExtension}`
+      );
+      const buffer = await withTimeout(
+        stageHandle.screenshot({
+          ...screenshotOptions,
+          path: framePath,
+        }),
+        EXPORT_FRAME_TIMEOUT_MS,
+        `screenshot frame ${i + 1}`
+      );
+      if (!buffer || buffer.length < 100) {
+        throw new Error(`Empty frame buffer at frame ${i + 1}`);
+      }
+      const framesRendered = i + 1;
+      updateExportJob(job.id, {
+        framesRendered,
+        progress: 0.05 + (framesRendered / framesTotal) * 0.78,
+      });
+      maybeLogProgress(framesRendered);
+    }
+
+    updateExportJob(job.id, {
+      status: "encoding",
+      stage: "Encoding frames",
+      progress: 0.86,
+    });
+
     const needsScaleFilter =
       renderScaleMode === "device" ||
       viewportWidth !== width ||
@@ -798,10 +845,8 @@ const runEditorExportJob = async (job) => {
     const ffmpegArgs = [
       "-hide_banner", "-loglevel", "error",
       "-y",
-      "-f", "image2pipe",
-      "-vcodec", EXPORT_FRAME_CODEC,
-      "-r", String(fps),
-      "-i", "pipe:0",
+      "-framerate", String(fps),
+      "-i", path.join(framesDir, `frame_%06d.${frameExtension}`),
       "-an",
     ];
     if (needsScaleFilter) {
@@ -820,107 +865,49 @@ const runEditorExportJob = async (job) => {
       ffmpegArgs.push("-tune", EXPORT_VIDEO_TUNE);
     }
     ffmpegArgs.push(videoPath);
-    const ffmpeg = spawn("ffmpeg", ffmpegArgs);
-    let ffmpegStderr = "";
-    let ffmpegExitCode = null;
-    let ffmpegExitSignal = null;
-    let ffmpegSpawnError = null;
-    const appendFfmpegStderr = (chunk) => {
-      const text = chunk.toString();
-      ffmpegStderr = `${ffmpegStderr}${text}`.slice(-4000);
-    };
-    ffmpeg.stderr.on("data", appendFfmpegStderr);
-    ffmpeg.on("exit", (code, signal) => {
-      ffmpegExitCode = code;
-      ffmpegExitSignal = signal;
-    });
-    ffmpeg.on("error", (err) => {
-      ffmpegSpawnError = err;
-    });
-    ffmpeg.stdin.on("error", (err) => {
-      ffmpegSpawnError = err;
-    });
-
-    const writeFrame = (buffer) =>
-      new Promise((resolve, reject) => {
-        if (ffmpegExitCode !== null) {
-          const tail = ffmpegStderr ? `: ${ffmpegStderr.slice(-500)}` : "";
-          reject(
-            new Error(
-              `FFmpeg exited early with code ${ffmpegExitCode}${tail}`
-            )
-          );
-          return;
-        }
-        if (ffmpegExitSignal) {
-          reject(new Error(`FFmpeg exited early with signal ${ffmpegExitSignal}`));
-          return;
-        }
-        if (ffmpegSpawnError) {
-          reject(new Error(`FFmpeg error: ${ffmpegSpawnError.message}`));
-          return;
-        }
-        const canWrite = ffmpeg.stdin.write(buffer);
-        if (canWrite) {
-          resolve();
-        } else {
-          ffmpeg.stdin.once("drain", resolve);
-        }
-      });
-
-    try {
-      for (let i = 0; i < framesTotal; i += 1) {
-        if (rendererClosed || page.isClosed()) {
-          throw new Error(`Renderer unavailable (${rendererCloseReason || "page closed"})`);
-        }
-        const time = i / fps;
-        await withTimeout(
-          page.evaluate((value) => window.__EDITOR_EXPORT_API__.setTime(value), time),
-          EXPORT_FRAME_TIMEOUT_MS,
-          `setTime frame ${i + 1}`
-        );
-        if (rendererClosed || page.isClosed()) {
-          throw new Error(`Renderer unavailable (${rendererCloseReason || "page closed"})`);
-        }
-        const buffer = await withTimeout(
-          stageHandle.screenshot({
-            ...screenshotOptions,
-          }),
-          EXPORT_FRAME_TIMEOUT_MS,
-          `screenshot frame ${i + 1}`
-        );
-        if (!buffer || buffer.length < 100) {
-          throw new Error(`Empty frame buffer at frame ${i + 1}`);
-        }
-        await withTimeout(
-          writeFrame(buffer),
-          EXPORT_ENCODE_FRAME_TIMEOUT_MS,
-          `encode frame ${i + 1}`
-        );
-        const framesRendered = i + 1;
-        updateExportJob(job.id, {
-          framesRendered,
-          progress: 0.05 + (framesRendered / framesTotal) * 0.85,
-        });
-        maybeLogProgress(framesRendered);
-      }
-    } catch (error) {
-      try {
-        ffmpeg.stdin.end();
-      } catch {}
-      try {
-        ffmpeg.kill("SIGKILL");
-      } catch {}
-      throw error;
-    }
-
-    ffmpeg.stdin.end();
     await new Promise((resolve, reject) => {
+      const ffmpeg = spawn("ffmpeg", ffmpegArgs);
+      let stderr = "";
+      let settled = false;
+      const encodeTimeoutMs = Math.max(
+        EXPORT_ENCODE_FRAME_TIMEOUT_MS,
+        Math.ceil(duration * 6000)
+      );
+      const timeoutId = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        try {
+          ffmpeg.kill("SIGKILL");
+        } catch {}
+        reject(
+          new Error(`FFmpeg frame encode timed out after ${encodeTimeoutMs}ms`)
+        );
+      }, encodeTimeoutMs);
+      ffmpeg.stderr.on("data", (data) => {
+        stderr = `${stderr}${data.toString()}`.slice(-4000);
+      });
+      ffmpeg.on("error", (err) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeoutId);
+        reject(new Error(`FFmpeg spawn error: ${err.message}`));
+      });
       ffmpeg.on("close", (code, signal) => {
-        if (code === 0) return resolve();
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          resolve();
+          return;
+        }
         const reason = signal ? `signal ${signal}` : `code ${code}`;
-        const tail = ffmpegStderr ? `: ${ffmpegStderr.slice(-500)}` : "";
-        reject(new Error(`FFmpeg encode failed (${reason})${tail}`));
+        reject(new Error(`FFmpeg encode failed (${reason}): ${stderr.slice(-500)}`));
       });
     });
 
@@ -1005,6 +992,7 @@ const runEditorExportJob = async (job) => {
       finalPath && finalPath !== videoPath
         ? fs.unlink(finalPath).catch(() => {})
         : Promise.resolve(),
+      framesDir ? fs.rm(framesDir, { recursive: true, force: true }).catch(() => {}) : Promise.resolve(),
     ]);
   }
 };
