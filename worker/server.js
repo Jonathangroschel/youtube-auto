@@ -164,6 +164,10 @@ const EXPORT_FRAME_TIMEOUT_MS = toPositiveInt(
   process.env.EDITOR_EXPORT_FRAME_TIMEOUT_MS,
   20000
 );
+const EXPORT_ENCODE_FRAME_TIMEOUT_MS = toPositiveInt(
+  process.env.EDITOR_EXPORT_ENCODE_FRAME_TIMEOUT_MS,
+  120000
+);
 const EXPORT_PROGRESS_LOG_MS = toPositiveInt(
   process.env.EDITOR_EXPORT_PROGRESS_LOG_MS,
   5000
@@ -583,6 +587,7 @@ const runEditorExportJob = async (job) => {
   let page = null;
   let rendererClosed = false;
   let rendererCloseReason = "";
+  const loggedAbortedMediaUrls = new Set();
 
   if (!state || !output?.width || !output?.height || duration <= 0) {
     throw new Error("Invalid export payload.");
@@ -678,7 +683,19 @@ const runEditorExportJob = async (job) => {
       console.error("[export][pageerror]", err);
     });
     page.on("requestfailed", (request) => {
-      console.error("[export][requestfailed]", request.url(), request.failure()?.errorText);
+      const errorText = request.failure()?.errorText || "";
+      const isBenignMediaAbort =
+        errorText === "net::ERR_ABORTED" &&
+        (request.resourceType() === "media" || request.resourceType() === "other");
+      if (isBenignMediaAbort) {
+        const url = request.url();
+        if (!loggedAbortedMediaUrls.has(url)) {
+          loggedAbortedMediaUrls.add(url);
+          console.warn("[export][requestaborted]", url, errorText);
+        }
+        return;
+      }
+      console.error("[export][requestfailed]", request.url(), errorText);
     });
     page.on("response", (response) => {
       const status = response.status();
@@ -877,7 +894,7 @@ const runEditorExportJob = async (job) => {
         }
         await withTimeout(
           writeFrame(buffer),
-          EXPORT_FRAME_TIMEOUT_MS,
+          EXPORT_ENCODE_FRAME_TIMEOUT_MS,
           `encode frame ${i + 1}`
         );
         const framesRendered = i + 1;

@@ -21967,7 +21967,7 @@ function AdvancedEditorContent() {
                                     src={entry.asset.url}
                                     className="h-full w-full object-cover"
                                     playsInline
-                                    preload="metadata"
+                                    preload={isExportMode ? "auto" : "metadata"}
                                     // Disable browser features that add overhead for blob URLs
                                     disablePictureInPicture
                                     onLoadedMetadata={(event) =>
@@ -22153,7 +22153,7 @@ function AdvancedEditorContent() {
                   <p className="text-sm text-[#898a8b]">Audio preview ready</p>
                 </div>
               ) : null}
-              {audioStack.length > 0 && (
+              {!isExportMode && audioStack.length > 0 && (
                 <div className="absolute inset-0 pointer-events-none opacity-0">
                   {audioStack.map((entry) => {
                     return (
