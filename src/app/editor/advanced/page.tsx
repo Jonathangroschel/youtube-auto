@@ -1767,7 +1767,9 @@ function AdvancedEditorContent() {
     sourceClipId: string;
     styleId: string;
   } | null>(null);
+  const redditMusicClipDefaultsRef = useRef<Map<string, number>>(new Map());
   const subtitleGenerationRunIdRef = useRef(0);
+  const splitImportRunIdRef = useRef(0);
   const redditImportRunIdRef = useRef(0);
   const [redditVideoImportOverlayOpen, setRedditVideoImportOverlayOpen] =
     useState(false);
@@ -6226,6 +6228,30 @@ function AdvancedEditorContent() {
   }, [timelineLayout]);
 
   useEffect(() => {
+    if (isExportMode) {
+      return;
+    }
+    if (redditMusicClipDefaultsRef.current.size === 0) {
+      return;
+    }
+    setClipSettings((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      redditMusicClipDefaultsRef.current.forEach((volume, clipId) => {
+        if (next[clipId]) {
+          return;
+        }
+        next[clipId] = {
+          ...createDefaultVideoSettings(),
+          volume: clamp(volume, 0, 100),
+        };
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [isExportMode, timelineLayout]);
+
+  useEffect(() => {
     if (timelineLayout.length === 0) {
       return;
     }
@@ -6527,9 +6553,16 @@ function AdvancedEditorContent() {
       if (prev[selectedAudioEntry.clip.id]) {
         return prev;
       }
+      const redditMusicDefault = redditMusicClipDefaultsRef.current.get(
+        selectedAudioEntry.clip.id
+      );
+      const defaults = createDefaultVideoSettings();
+      if (typeof redditMusicDefault === "number" && Number.isFinite(redditMusicDefault)) {
+        defaults.volume = clamp(redditMusicDefault, 0, 100);
+      }
       return {
         ...prev,
-        [selectedAudioEntry.clip.id]: createDefaultVideoSettings(),
+        [selectedAudioEntry.clip.id]: defaults,
       };
     });
   }, [selectedAudioEntry]);
@@ -12743,6 +12776,10 @@ function AdvancedEditorContent() {
 	        return;
 	      }
 	      const importStartedAt = Date.now();
+	      const splitImportRunId = splitImportRunIdRef.current + 1;
+	      splitImportRunIdRef.current = splitImportRunId;
+	      const isStaleSplitImport = () =>
+	        splitImportRunIdRef.current !== splitImportRunId;
 	      splitImportLog("apply start", {
 	        layout: payload.layout,
 	        mainVideoName: payload.mainVideo.name,
@@ -12759,11 +12796,12 @@ function AdvancedEditorContent() {
 	      setEditorProfile("split");
 	      clipDurationLocksRef.current = new Set();
 	      pushHistory();
-	      pendingSplitScreenSubtitleRef.current = null;
-	      pendingStreamerVideoSubtitleRef.current = null;
-	      pendingRedditVideoSubtitleRef.current = null;
-	      subtitleGenerationRunIdRef.current += 1;
-	      subtitleLaneIdRef.current = null;
+		      pendingSplitScreenSubtitleRef.current = null;
+		      pendingStreamerVideoSubtitleRef.current = null;
+		      pendingRedditVideoSubtitleRef.current = null;
+		      redditMusicClipDefaultsRef.current = new Map();
+		      subtitleGenerationRunIdRef.current += 1;
+		      subtitleLaneIdRef.current = null;
 
 	      let resolvedMainUrl = payload.mainVideo.url;
 	      let resolvedMainName =
@@ -12776,6 +12814,128 @@ function AdvancedEditorContent() {
 	        payload.mainVideo.assetId.trim().length > 0
 	          ? payload.mainVideo.assetId.trim()
 	          : null;
+	      let mainMetaHint: {
+	        duration?: number;
+	        width?: number;
+	        height?: number;
+	        aspectRatio?: number;
+	      } | null = null;
+
+	      const resolveUserAssetUrl = async (assetId: string) => {
+	        const supabase = await getSupabaseClient();
+	        const { data: userData } = await supabase.auth.getUser();
+	        const user = userData?.user;
+	        if (!user) {
+	          throw new Error("Please sign in to access your uploaded video.");
+	        }
+	        const { data, error } = await supabase
+	          .from("assets")
+	          .select(
+	            "id,name,kind,storage_bucket,storage_path,external_url,mime_type,size_bytes,duration_seconds,width,height,aspect_ratio,created_at"
+	          )
+	          .eq("id", assetId)
+	          .eq("user_id", user.id)
+	          .limit(1);
+	        if (error) {
+	          throw new Error("Unable to load your uploaded video.");
+	        }
+	        const row = data?.[0] as
+	          | {
+	              id: string;
+	              name: string | null;
+	              kind: string | null;
+	              storage_bucket: string | null;
+	              storage_path: string | null;
+	              external_url: string | null;
+	              duration_seconds: number | null;
+	              width: number | null;
+	              height: number | null;
+	              aspect_ratio: number | null;
+	            }
+	          | undefined;
+	        if (!row) {
+	          throw new Error("Uploaded video not found. Please upload again.");
+	        }
+	        const name =
+	          typeof row.name === "string" && row.name.trim().length > 0
+	            ? row.name.trim()
+	            : resolvedMainName;
+	        const duration =
+	          typeof row.duration_seconds === "number" &&
+	          Number.isFinite(row.duration_seconds)
+	            ? row.duration_seconds
+	            : undefined;
+	        const width =
+	          typeof row.width === "number" && Number.isFinite(row.width)
+	            ? row.width
+	            : undefined;
+	        const height =
+	          typeof row.height === "number" && Number.isFinite(row.height)
+	            ? row.height
+	            : undefined;
+	        const aspectRatio =
+	          typeof row.aspect_ratio === "number" && Number.isFinite(row.aspect_ratio)
+	            ? row.aspect_ratio
+	            : width && height
+	              ? width / height
+	              : undefined;
+	        const storageBucket =
+	          typeof row.storage_bucket === "string" && row.storage_bucket.trim().length > 0
+	            ? row.storage_bucket.trim()
+	            : "";
+	        const storagePath =
+	          typeof row.storage_path === "string" && row.storage_path.trim().length > 0
+	            ? row.storage_path.trim()
+	            : "";
+	        if (storageBucket && storagePath) {
+	          const { data: signedData, error: signedError } = await supabase.storage
+	            .from(storageBucket)
+	            .createSignedUrl(storagePath, 60 * 60);
+	          if (signedError || !signedData?.signedUrl) {
+	            throw new Error("Unable to access your uploaded video.");
+	          }
+	          return {
+	            url: signedData.signedUrl,
+	            name,
+	            duration,
+	            width,
+	            height,
+	            aspectRatio,
+	          };
+	        }
+	        const externalUrl =
+	          typeof row.external_url === "string" ? row.external_url.trim() : "";
+	        if (externalUrl) {
+	          return {
+	            url: externalUrl,
+	            name,
+	            duration,
+	            width,
+	            height,
+	            aspectRatio,
+	          };
+	        }
+	        throw new Error("Unable to access your uploaded video.");
+	      };
+
+	      if (resolvedMainAssetId) {
+	        try {
+	          const resolved = await resolveUserAssetUrl(resolvedMainAssetId);
+	          if (isStaleSplitImport()) {
+	            return;
+	          }
+	          resolvedMainUrl = resolved.url;
+	          resolvedMainName = resolved.name || resolvedMainName;
+	          mainMetaHint = {
+	            duration: resolved.duration,
+	            width: resolved.width,
+	            height: resolved.height,
+	            aspectRatio: resolved.aspectRatio,
+	          };
+	        } catch (error) {
+	          console.warn("[split-screen] main asset URL refresh fallback", error);
+	        }
+	      }
 
 	      const persistMainVideoIfNeeded = async (): Promise<
 	        | {
@@ -12868,14 +13028,17 @@ function AdvancedEditorContent() {
 	        }
 	      };
 
-		      const persistedMain = await withPromiseTimeout(
-		        persistMainVideoIfNeeded(),
-		        SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
-		        "Preparing split-screen source video"
-		      ).catch((error) => {
-		        console.warn("[split-screen] source video persist fallback", error);
-		        return null;
-		      });
+	      const persistedMain = await withPromiseTimeout(
+	        persistMainVideoIfNeeded(),
+	        SPLIT_SCREEN_IMPORT_STEP_TIMEOUT_MS,
+	        "Preparing split-screen source video"
+	      ).catch((error) => {
+	        console.warn("[split-screen] source video persist fallback", error);
+	        return null;
+	      });
+	      if (isStaleSplitImport()) {
+	        return;
+	      }
 	      splitImportLog("source video persistence resolved", {
 	        usedPersistedAsset: Boolean(persistedMain?.assetId),
 	      });
@@ -12891,6 +13054,9 @@ function AdvancedEditorContent() {
 	          "Reading source video metadata"
 	        );
 	      }
+	      if (isStaleSplitImport()) {
+	        return;
+	      }
 
 	      // Split screen is primarily used for vertical short-form output.
 	      setProjectSizeId("9:16");
@@ -12903,20 +13069,48 @@ function AdvancedEditorContent() {
       setProjectId(null);
       clearEditorReloadSessionState();
       exportPersistedRef.current = null;
-      setExportUi({
-        open: false,
-        status: "idle",
-        stage: "",
-        progress: 0,
-        jobId: null,
-        downloadUrl: null,
-        error: null,
-      });
+	      setExportUi({
+	        open: false,
+	        status: "idle",
+	        stage: "",
+	        progress: 0,
+	        jobId: null,
+	        downloadUrl: null,
+	        error: null,
+	      });
+	      // Temporarily pause autosave while the new split-screen project is being assembled.
+	      setProjectStarted(false);
+	      // Start from a clean composition so imported split clips never append to
+	      // whatever was previously open in the editor.
+	      setLanes([]);
+	      setTimeline([]);
+	      setClipTransforms({});
+	      setBackgroundTransforms({});
+	      setClipSettings({});
+	      setTextSettings({});
+	      setSubtitleSegments([]);
+	      setDetachedSubtitleIds(new Set());
+	      setSubtitleStatus("idle");
+	      setSubtitleError(null);
+	      setTranscriptSegments([]);
+	      setTranscriptStatus("idle");
+	      setTranscriptError(null);
+	      setTimelineThumbnails({});
+	      setAudioWaveforms({});
+	      setClipOrder({});
+	      setCurrentTime(0);
+	      setActiveAssetId(null);
+	      setActiveCanvasClipId(null);
+	      setSelectedClipId(null);
+	      setSelectedClipIds([]);
 
-		      const backgroundMeta = await getVideoMetaSafe(
-		        payload.backgroundVideo.url,
-		        "Reading background video metadata"
-		      );
+	      const backgroundMeta = await getVideoMetaSafe(
+	        payload.backgroundVideo.url,
+	        "Reading background video metadata"
+	      );
+	      if (isStaleSplitImport()) {
+	        return;
+	      }
 	      splitImportLog("metadata resolved", {
 	        mainDuration:
 	          typeof mainMeta.duration === "number" &&
@@ -12933,17 +13127,20 @@ function AdvancedEditorContent() {
       const mainWidth =
         typeof mainMeta.width === "number" && Number.isFinite(mainMeta.width)
           ? mainMeta.width
-          : undefined;
+          : mainMetaHint?.width;
       const mainHeight =
         typeof mainMeta.height === "number" && Number.isFinite(mainMeta.height)
           ? mainMeta.height
-          : undefined;
+          : mainMetaHint?.height;
       const mainDuration =
         typeof mainMeta.duration === "number" && Number.isFinite(mainMeta.duration)
           ? mainMeta.duration
-          : undefined;
+          : mainMetaHint?.duration;
       const mainAspectRatio =
-        mainWidth && mainHeight ? mainWidth / mainHeight : undefined;
+        typeof mainMeta.aspectRatio === "number" && Number.isFinite(mainMeta.aspectRatio)
+          ? mainMeta.aspectRatio
+          : mainMetaHint?.aspectRatio ??
+            (mainWidth && mainHeight ? mainWidth / mainHeight : undefined);
 
 	      const mainAssetId = resolvedMainAssetId ?? crypto.randomUUID();
 
@@ -12976,7 +13173,7 @@ function AdvancedEditorContent() {
 
 	      const bgLibraryAsset = await withPromiseTimeout(
 	        createExternalAssetSafe({
-          url: payload.backgroundVideo.url,
+	          url: payload.backgroundVideo.url,
           name: payload.backgroundVideo.name?.trim() || "Gameplay footage",
           kind: "video",
           source: "stock",
@@ -12991,6 +13188,9 @@ function AdvancedEditorContent() {
 	        console.warn("[split-screen] background asset save fallback", error);
 	        return null;
 	      });
+	      if (isStaleSplitImport()) {
+	        return;
+	      }
 	      splitImportLog("background asset resolved", {
 	        persistedToLibrary: Boolean(bgLibraryAsset?.id),
 	        backgroundAssetId: bgLibraryAsset?.id ?? null,
@@ -13034,10 +13234,10 @@ function AdvancedEditorContent() {
       );
 	      const bgClips: TimelineClip[] = [];
 	      let cursor = 0;
-      while (cursor < targetDuration - timelineClipEpsilon) {
-        const remaining = targetDuration - cursor;
-        const duration = Math.max(0.01, Math.min(bgBaseDuration, remaining));
-        bgClips.push({
+	      while (cursor < targetDuration - timelineClipEpsilon) {
+	        const remaining = targetDuration - cursor;
+	        const duration = Math.max(0.01, Math.min(bgBaseDuration, remaining));
+	        bgClips.push({
           id: crypto.randomUUID(),
           assetId: resolvedBgAsset.id,
           duration,
@@ -13045,28 +13245,35 @@ function AdvancedEditorContent() {
           startTime: cursor,
           laneId: bgLaneId,
         });
-        cursor += duration;
-        if (bgClips.length > 200) {
-          break;
+	        cursor += duration;
+	        if (bgClips.length > 200) {
+	          break;
+	        }
+	      }
+	      clipDurationLocksRef.current = new Set(bgClips.map((clip) => clip.id));
+	      if (isStaleSplitImport()) {
+	        return;
 	      }
 	      splitImportLog("timeline composition computed", {
 	        mainClipDuration: mainClip.duration,
 	        backgroundClipCount: bgClips.length,
 	        targetDuration,
 	      });
-      }
 
       const mainTransform: ClipTransform =
         payload.layout === "side-by-side"
           ? { x: 0.5, y: 0, width: 0.5, height: 1 }
           : { x: 0, y: 0.5, width: 1, height: 0.5 };
-      const bgTransform: ClipTransform =
-        payload.layout === "side-by-side"
-          ? { x: 0, y: 0, width: 0.5, height: 1 }
-          : { x: 0, y: 0, width: 1, height: 0.5 };
+	      const bgTransform: ClipTransform =
+	        payload.layout === "side-by-side"
+	          ? { x: 0, y: 0, width: 0.5, height: 1 }
+	          : { x: 0, y: 0, width: 1, height: 0.5 };
+	      if (isStaleSplitImport()) {
+	        return;
+	      }
 
-      // Treat as a fresh editor composition (do not append to an existing timeline).
-      setLanes(nextLanes);
+	      // Treat as a fresh editor composition (do not append to an existing timeline).
+	      setLanes(nextLanes);
       setAssets((prev) => {
         const next = [...prev];
         if (!next.some((asset) => asset.id === resolvedBgAsset.id)) {
@@ -13180,11 +13387,12 @@ function AdvancedEditorContent() {
 	      setEditorProfile("streamer");
 	      clipDurationLocksRef.current = new Set();
 	      pushHistory();
-	      pendingSplitScreenSubtitleRef.current = null;
-	      pendingStreamerVideoSubtitleRef.current = null;
-	      pendingRedditVideoSubtitleRef.current = null;
-	      subtitleGenerationRunIdRef.current += 1;
-	      subtitleLaneIdRef.current = null;
+		      pendingSplitScreenSubtitleRef.current = null;
+		      pendingStreamerVideoSubtitleRef.current = null;
+		      pendingRedditVideoSubtitleRef.current = null;
+		      redditMusicClipDefaultsRef.current = new Map();
+		      subtitleGenerationRunIdRef.current += 1;
+		      subtitleLaneIdRef.current = null;
 
       let resolvedMainUrl =
         typeof payload.mainVideo.url === "string" ? payload.mainVideo.url.trim() : "";
@@ -13363,6 +13571,31 @@ function AdvancedEditorContent() {
         downloadUrl: null,
         error: null,
       });
+      // Temporarily pause autosave while the new streamer project is being assembled.
+      setProjectStarted(false);
+      // Start from a clean composition so imported streamer clips never append to
+      // whatever was previously open in the editor.
+      setLanes([]);
+      setTimeline([]);
+      setClipTransforms({});
+      setBackgroundTransforms({});
+      setClipSettings({});
+      setTextSettings({});
+      setSubtitleSegments([]);
+      setDetachedSubtitleIds(new Set());
+      setSubtitleStatus("idle");
+      setSubtitleError(null);
+      setTranscriptSegments([]);
+      setTranscriptStatus("idle");
+      setTranscriptError(null);
+      setTimelineThumbnails({});
+      setAudioWaveforms({});
+      setClipOrder({});
+      setCurrentTime(0);
+      setActiveAssetId(null);
+      setActiveCanvasClipId(null);
+      setSelectedClipId(null);
+      setSelectedClipIds([]);
 
       const mainWidth =
         typeof mainMeta.width === "number" && Number.isFinite(mainMeta.width)
@@ -13577,11 +13810,12 @@ function AdvancedEditorContent() {
 	      setEditorProfile("reddit");
 	      clipDurationLocksRef.current = new Set();
 	      pushHistory();
-	      pendingSplitScreenSubtitleRef.current = null;
-	      pendingStreamerVideoSubtitleRef.current = null;
-	      pendingRedditVideoSubtitleRef.current = null;
-	      subtitleGenerationRunIdRef.current += 1;
-	      subtitleLaneIdRef.current = null;
+		      pendingSplitScreenSubtitleRef.current = null;
+		      pendingStreamerVideoSubtitleRef.current = null;
+		      pendingRedditVideoSubtitleRef.current = null;
+		      redditMusicClipDefaultsRef.current = new Map();
+		      subtitleGenerationRunIdRef.current += 1;
+		      subtitleLaneIdRef.current = null;
 
       const safeTitle =
         typeof payload.post?.title === "string" && payload.post.title.trim().length > 0
@@ -14785,6 +15019,11 @@ function AdvancedEditorContent() {
       const normalizedMusicClips = musicClips
         .map(clampClipToTimelineEnd)
         .filter((clip): clip is TimelineClip => clip !== null);
+      const redditMusicDefaults = new Map<string, number>();
+      normalizedMusicClips.forEach((clip) => {
+        redditMusicDefaults.set(clip.id, musicVolume);
+      });
+      redditMusicClipDefaultsRef.current = redditMusicDefaults;
       clipDurationLocksRef.current = new Set(
         normalizedGameplayClips.map((clip) => clip.id)
       );
