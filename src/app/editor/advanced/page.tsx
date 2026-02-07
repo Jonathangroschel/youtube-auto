@@ -7686,6 +7686,13 @@ function AdvancedEditorContent() {
   }, [contentAspectRatio, projectAspectRatioOverride]);
 
   const stageDisplay = useMemo(() => {
+    if (isExportMode) {
+      const lockedWidth = exportPreview?.width ?? stageViewport.width;
+      const lockedHeight = exportPreview?.height ?? stageViewport.height;
+      if (lockedWidth > 0 && lockedHeight > 0) {
+        return { width: lockedWidth, height: lockedHeight };
+      }
+    }
     if (stageViewport.width === 0 || stageViewport.height === 0) {
       return { width: 0, height: 0 };
     }
@@ -7702,7 +7709,14 @@ function AdvancedEditorContent() {
     }
     const width = stageViewport.width;
     return { width, height: width / projectAspectRatio };
-  }, [projectAspectRatio, stageViewport.height, stageViewport.width]);
+  }, [
+    exportPreview?.height,
+    exportPreview?.width,
+    isExportMode,
+    projectAspectRatio,
+    stageViewport.height,
+    stageViewport.width,
+  ]);
 
   useEffect(() => {
     if (stageDisplay.width === 0 || stageDisplay.height === 0) {
@@ -8761,31 +8775,21 @@ function AdvancedEditorContent() {
 	          : exportDimensions;
 	      const previewWidth = ensureEven(previewSize.width);
 	      const previewHeight = ensureEven(previewSize.height);
-	      const payload = resolvedProjectId
-	        ? {
-	            projectId: resolvedProjectId,
-	            output: exportDimensions,
-	            preview: {
-	              width: previewWidth,
-	              height: previewHeight,
-	            },
-	            fps: 30,
-	            duration: projectDuration,
-	            fonts: exportFonts,
-	            name: projectName,
-	          }
-	        : {
-	            state: exportState,
-	            output: exportDimensions,
-	            preview: {
-	              width: previewWidth,
-	              height: previewHeight,
-	            },
-	            fps: 30,
-	            duration: projectDuration,
-	            fonts: exportFonts,
-	            name: projectName,
-	          };
+      // Always export from the current in-memory state so output matches
+      // exactly what the user sees in the editor at click time.
+      const payload = {
+        ...(resolvedProjectId ? { projectId: resolvedProjectId } : {}),
+        state: exportState,
+        output: exportDimensions,
+        preview: {
+          width: previewWidth,
+          height: previewHeight,
+        },
+        fps: 30,
+        duration: projectDuration,
+        fonts: exportFonts,
+        name: projectName,
+      };
 	      const response = await fetch("/api/editor/export", {
 	        method: "POST",
 	        headers: {
