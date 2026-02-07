@@ -189,7 +189,19 @@ const EXPORT_MEMORY_RESERVE_MB = toPositiveInt(
 );
 const EXPORT_CONCURRENCY_CAP = toPositiveInt(
   process.env.EDITOR_EXPORT_MAX_CONCURRENCY,
-  3
+  1
+);
+const EXPORT_BROWSER_DISCONNECT_RETRY_LIMIT = toNonNegativeInt(
+  process.env.EDITOR_EXPORT_BROWSER_RETRY_LIMIT,
+  2
+);
+const EXPORT_FFMPEG_NETWORK_TIMEOUT_US = toPositiveInt(
+  process.env.EDITOR_EXPORT_NETWORK_TIMEOUT_MS,
+  20000
+) * 1000;
+const EXPORT_AUDIO_MIX_RETRY_LIMIT = toNonNegativeInt(
+  process.env.EDITOR_EXPORT_AUDIO_MIX_RETRY_LIMIT,
+  1
 );
 const memoryBoundExportConcurrency = Math.max(
   1,
@@ -241,8 +253,9 @@ let sharedExportBrowserLaunch = null;
 const EXPORT_BROWSER_ARGS = [
   "--disable-dev-shm-usage",
   "--no-sandbox",
-  // Force HTTP/1.1 or HTTP/2 for media fetches; avoids flaky QUIC/HTTP3 paths.
+  // Avoid flaky HTTP/2 + HTTP/3 transport paths while rendering remote media.
   "--disable-quic",
+  "--disable-http2",
 ];
 
 // Supabase client
@@ -367,7 +380,11 @@ const getOrCreateSharedExportBrowser = async () => {
             sharedExportBrowser = null;
           }
           sharedExportBrowserLaunch = null;
-          console.error("[export][browser] shared browser disconnected");
+          if (activeExports > 0) {
+            console.error("[export][browser] shared browser disconnected");
+          } else {
+            console.warn("[export][browser] shared browser disconnected (idle)");
+          }
         });
         return browser;
       })
@@ -378,6 +395,92 @@ const getOrCreateSharedExportBrowser = async () => {
   }
   return sharedExportBrowserLaunch;
 };
+
+const resetSharedExportBrowser = async () => {
+  const browser = sharedExportBrowser;
+  sharedExportBrowser = null;
+  sharedExportBrowserLaunch = null;
+  if (browser) {
+    await browser.close().catch(() => {});
+  }
+};
+
+const isRetryableRendererError = (message) => {
+  if (!message || typeof message !== "string") {
+    return false;
+  }
+  return /browser disconnected|page crashed|renderer unavailable|target closed|browser has been closed|context closed|frame \d+ timed out|waitForReady timed out|waitForExportApi timed out|net::ERR_HTTP2_PROTOCOL_ERROR|net::ERR_QUIC_PROTOCOL_ERROR|net::ERR_CONNECTION_RESET|net::ERR_CONNECTION_CLOSED/i.test(
+    message
+  );
+};
+
+const isRemoteHttpUrl = (value) =>
+  typeof value === "string" && /^https?:\/\//i.test(value.trim());
+
+const buildFfmpegNetworkInputArgs = (value) => {
+  if (!isRemoteHttpUrl(value)) {
+    return [];
+  }
+  return [
+    "-rw_timeout", String(EXPORT_FFMPEG_NETWORK_TIMEOUT_US),
+    "-reconnect", "1",
+    "-reconnect_streamed", "1",
+    "-reconnect_delay_max", "2",
+  ];
+};
+
+const probeMediaHasAudioStream = async (url) =>
+  new Promise((resolve) => {
+    const ffprobe = spawn("ffprobe", [
+      "-v", "error",
+      ...buildFfmpegNetworkInputArgs(url),
+      "-select_streams", "a",
+      "-show_entries", "stream=index",
+      "-of", "json",
+      url,
+    ]);
+    let stdout = "";
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      try {
+        ffprobe.kill("SIGKILL");
+      } catch {}
+      resolve(null);
+    }, Math.max(5000, Math.floor(EXPORT_FFMPEG_NETWORK_TIMEOUT_US / 1000)));
+    ffprobe.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    ffprobe.on("error", () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(null);
+    });
+    ffprobe.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutId);
+      if (code !== 0) {
+        resolve(null);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(stdout || "{}");
+        const streams = Array.isArray(parsed?.streams) ? parsed.streams : [];
+        resolve(streams.length > 0);
+      } catch {
+        resolve(null);
+      }
+    });
+  });
 
 const uploadPathToStorage = async ({
   bucket,
@@ -440,6 +543,7 @@ const enqueueExportJob = (payload) => {
     createdAt: now,
     updatedAt: now,
     payload,
+    retryCount: 0,
     framesRendered: 0,
     framesTotal: 0,
     downloadUrl: null,
@@ -475,7 +579,7 @@ const buildAudioMix = async ({ jobId, state, duration }) => {
   }
   const assetsById = new Map(snapshot.assets.map((asset) => [asset.id, asset]));
   const clipSettings = snapshot.clipSettings ?? {};
-  const audioSources = snapshot.timeline
+  const candidateSources = snapshot.timeline
     .map((clip) => {
       const asset = assetsById.get(clip.assetId);
       if (!asset) {
@@ -501,6 +605,9 @@ const buildAudioMix = async ({ jobId, state, duration }) => {
       const fadeIn = typeof settings.fadeIn === "number" ? settings.fadeIn : 0;
       const fadeOut = typeof settings.fadeOut === "number" ? settings.fadeOut : 0;
       return {
+        clipId: clip.id,
+        assetId: asset.id,
+        kind: asset.kind,
         url: asset.url,
         startTime: clip.startTime ?? 0,
         startOffset: clip.startOffset ?? 0,
@@ -514,72 +621,157 @@ const buildAudioMix = async ({ jobId, state, duration }) => {
     })
     .filter(Boolean);
 
+  if (!candidateSources.length) {
+    return null;
+  }
+
+  const probeCache = new Map();
+  const resolveHasAudio = async (source) => {
+    if (source.kind === "audio") {
+      return true;
+    }
+    const cacheKey = source.url;
+    if (probeCache.has(cacheKey)) {
+      return probeCache.get(cacheKey);
+    }
+    const probeResult = await probeMediaHasAudioStream(source.url);
+    const hasAudio = probeResult === true;
+    probeCache.set(cacheKey, hasAudio);
+    return hasAudio;
+  };
+
+  const resolvedFlags = await Promise.all(
+    candidateSources.map((source) => resolveHasAudio(source))
+  );
+  const audioSources = candidateSources.filter((source, index) => {
+    const keep = resolvedFlags[index] === true;
+    if (!keep) {
+      console.warn(
+        `[export][audio] skipping source without audio stream clip=${source.clipId} asset=${source.assetId}`
+      );
+    }
+    return keep;
+  });
+
   if (!audioSources.length) {
     return null;
   }
 
   const audioPath = path.join(exportTempDir, `${jobId}_audio.wav`);
-  const filterParts = [];
-  audioSources.forEach((source, index) => {
-    const inputLabel = `[${index}:a]`;
-    const trimmedDuration = Math.max(0, source.duration * source.speed);
-    let filter = `${inputLabel}atrim=start=${source.startOffset}:duration=${trimmedDuration},asetpts=PTS-STARTPTS`;
-    const tempoFilters = buildAtempoFilters(source.speed);
-    if (tempoFilters.length) {
-      filter += `,${tempoFilters.join(",")}`;
-    }
-    const volume = Math.max(0, source.volume / 100);
-    if (Math.abs(volume - 1) > 0.001) {
-      filter += `,volume=${volume.toFixed(3)}`;
-    }
-    if (source.fadeEnabled) {
-      if (source.fadeIn > 0) {
-        filter += `,afade=t=in:st=0:d=${source.fadeIn}`;
+  const runMix = async (sources) => {
+    const filterParts = [];
+    sources.forEach((source, index) => {
+      const inputLabel = `[${index}:a]`;
+      const trimmedDuration = Math.max(0, source.duration * source.speed);
+      let filter = `${inputLabel}atrim=start=${source.startOffset}:duration=${trimmedDuration},asetpts=PTS-STARTPTS`;
+      const tempoFilters = buildAtempoFilters(source.speed);
+      if (tempoFilters.length) {
+        filter += `,${tempoFilters.join(",")}`;
       }
-      if (source.fadeOut > 0) {
-        const fadeOutStart = Math.max(0, source.duration - source.fadeOut);
-        if (fadeOutStart >= 0) {
-          filter += `,afade=t=out:st=${fadeOutStart}:d=${source.fadeOut}`;
+      const volume = Math.max(0, source.volume / 100);
+      if (Math.abs(volume - 1) > 0.001) {
+        filter += `,volume=${volume.toFixed(3)}`;
+      }
+      if (source.fadeEnabled) {
+        if (source.fadeIn > 0) {
+          filter += `,afade=t=in:st=0:d=${source.fadeIn}`;
+        }
+        if (source.fadeOut > 0) {
+          const fadeOutStart = Math.max(0, source.duration - source.fadeOut);
+          if (fadeOutStart >= 0) {
+            filter += `,afade=t=out:st=${fadeOutStart}:d=${source.fadeOut}`;
+          }
         }
       }
-    }
-    const delayMs = Math.max(0, Math.round(source.startTime * 1000));
-    if (delayMs > 0) {
-      filter += `,adelay=${delayMs}|${delayMs}`;
-    }
-    filter += `[a${index}]`;
-    filterParts.push(filter);
-  });
-  const mixInputs = audioSources.map((_, index) => `[a${index}]`).join("");
-  const mix = `${mixInputs}amix=inputs=${audioSources.length}:normalize=0[aout]`;
-  const filterComplex = [...filterParts, mix].join(";");
-
-  await new Promise((resolve, reject) => {
-    const ffmpeg = spawn("ffmpeg", [
-      "-hide_banner", "-loglevel", "error",
-      "-y",
-      ...audioSources.flatMap((source) => ["-i", source.url]),
-      "-filter_complex", filterComplex,
-      "-map", "[aout]",
-      "-t", String(duration),
-      "-ac", "2",
-      "-ar", "48000",
-      "-c:a", "pcm_s16le",
-      audioPath,
-    ]);
-    let stderr = "";
-    ffmpeg.stderr.on("data", (data) => (stderr += data.toString()));
-    ffmpeg.on("close", (code, signal) => {
-      if (code === 0) return resolve();
-      const reason = signal ? `signal ${signal}` : `code ${code}`;
-      reject(new Error(`Audio mix failed (${reason}): ${stderr.slice(-500)}`));
+      const delayMs = Math.max(0, Math.round(source.startTime * 1000));
+      if (delayMs > 0) {
+        filter += `,adelay=${delayMs}|${delayMs}`;
+      }
+      filter += `[a${index}]`;
+      filterParts.push(filter);
     });
-    ffmpeg.on("error", (err) =>
-      reject(new Error(`Audio mix spawn error: ${err.message}`))
-    );
-  });
+    const mixInputs = sources.map((_, index) => `[a${index}]`).join("");
+    const mix = `${mixInputs}amix=inputs=${sources.length}:normalize=0[aout]`;
+    const filterComplex = [...filterParts, mix].join(";");
 
-  return audioPath;
+    await new Promise((resolve, reject) => {
+      const ffmpeg = spawn("ffmpeg", [
+        "-hide_banner", "-loglevel", "error",
+        "-y",
+        ...sources.flatMap((source) => [
+          ...buildFfmpegNetworkInputArgs(source.url),
+          "-i",
+          source.url,
+        ]),
+        "-filter_complex", filterComplex,
+        "-map", "[aout]",
+        "-t", String(duration),
+        "-ac", "2",
+        "-ar", "48000",
+        "-c:a", "pcm_s16le",
+        audioPath,
+      ]);
+      let stderr = "";
+      ffmpeg.stderr.on("data", (data) => {
+        stderr = `${stderr}${data.toString()}`.slice(-4000);
+      });
+      ffmpeg.on("close", (code, signal) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        const reason = signal ? `signal ${signal}` : `code ${code}`;
+        reject(new Error(`Audio mix failed (${reason}): ${stderr.slice(-1000)}`));
+      });
+      ffmpeg.on("error", (err) =>
+        reject(new Error(`Audio mix spawn error: ${err.message}`))
+      );
+    });
+  };
+
+  let lastError = null;
+  let activeSources = audioSources;
+  for (let attempt = 0; attempt <= EXPORT_AUDIO_MIX_RETRY_LIMIT; attempt += 1) {
+    if (!activeSources.length) {
+      break;
+    }
+    try {
+      await runMix(activeSources);
+      return audioPath;
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const nextAttempt = attempt + 1;
+      const hasRetry = nextAttempt <= EXPORT_AUDIO_MIX_RETRY_LIMIT;
+      if (
+        hasRetry &&
+        /matches no streams|invalid data found|error while decoding stream/i.test(message)
+      ) {
+        const fallbackSources = activeSources.filter(
+          (source) => source.kind === "audio"
+        );
+        if (fallbackSources.length > 0 && fallbackSources.length < activeSources.length) {
+          console.warn(
+            `[export][audio] retrying mix with audio-only sources (${fallbackSources.length}/${activeSources.length})`
+          );
+          activeSources = fallbackSources;
+          continue;
+        }
+      }
+      if (hasRetry) {
+        console.warn(
+          `[export][audio] retrying mix attempt ${nextAttempt}/${EXPORT_AUDIO_MIX_RETRY_LIMIT + 1}`
+        );
+        continue;
+      }
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  return null;
 };
 
 const runEditorExportJob = async (job) => {
@@ -596,6 +788,7 @@ const runEditorExportJob = async (job) => {
   let page = null;
   let rendererClosed = false;
   let rendererCloseReason = "";
+  let closingPage = false;
   const loggedAbortedMediaUrls = new Set();
 
   if (!state || !output?.width || !output?.height || duration <= 0) {
@@ -694,9 +887,15 @@ const runEditorExportJob = async (job) => {
     });
     page.on("requestfailed", (request) => {
       const errorText = request.failure()?.errorText || "";
+      const benignMediaErrors = new Set([
+        "net::ERR_ABORTED",
+        "net::ERR_QUIC_PROTOCOL_ERROR",
+        "net::ERR_HTTP2_PROTOCOL_ERROR",
+        "net::ERR_CONNECTION_RESET",
+        "net::ERR_CONNECTION_CLOSED",
+      ]);
       const isBenignMediaFailure =
-        (errorText === "net::ERR_ABORTED" ||
-          errorText === "net::ERR_QUIC_PROTOCOL_ERROR") &&
+        benignMediaErrors.has(errorText) &&
         (request.resourceType() === "media" || request.resourceType() === "other");
       if (isBenignMediaFailure) {
         if (EXPORT_LOG_ABORTED_MEDIA) {
@@ -722,6 +921,9 @@ const runEditorExportJob = async (job) => {
       console.error("[export][page] crashed");
     });
     page.on("close", () => {
+      if (closingPage) {
+        return;
+      }
       rendererClosed = true;
       rendererCloseReason = "page closed";
       console.error("[export][page] closed");
@@ -926,7 +1128,18 @@ const runEditorExportJob = async (job) => {
       progress: 0.93,
     });
 
-    audioPath = await buildAudioMix({ jobId: job.id, state, duration });
+    try {
+      audioPath = await buildAudioMix({ jobId: job.id, state, duration });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      console.warn(`[export][audio] mix failed, continuing without timeline audio: ${message}`);
+      audioPath = null;
+      updateExportJob(job.id, {
+        stage: "Finalizing video (audio fallback)",
+        progress: 0.94,
+      });
+    }
     finalPath = videoPath;
 
     if (audioPath) {
@@ -990,6 +1203,7 @@ const runEditorExportJob = async (job) => {
       browser.off("disconnected", browserDisconnectHandler);
     }
     if (page) {
+      closingPage = true;
       await page.close().catch(() => {});
     }
     if (context) {
@@ -1023,9 +1237,32 @@ const processExportQueue = () => {
       }
       activeExports += 1;
       runEditorExportJob(job)
-        .catch((error) => {
+        .catch(async (error) => {
           const message =
             error instanceof Error ? error.message : "Export failed.";
+          const retryCount =
+            typeof job.retryCount === "number" && Number.isFinite(job.retryCount)
+              ? job.retryCount
+              : 0;
+          if (
+            isRetryableRendererError(message) &&
+            retryCount < EXPORT_BROWSER_DISCONNECT_RETRY_LIMIT
+          ) {
+            await resetSharedExportBrowser();
+            const nextRetry = retryCount + 1;
+            updateExportJob(job.id, {
+              status: "queued",
+              stage: `Recovering renderer (${nextRetry}/${EXPORT_BROWSER_DISCONNECT_RETRY_LIMIT})`,
+              progress: 0,
+              error: null,
+              retryCount: nextRetry,
+            });
+            exportQueue.unshift(job.id);
+            console.warn(
+              `[export][retry] ${job.id} retry ${nextRetry}/${EXPORT_BROWSER_DISCONNECT_RETRY_LIMIT} after renderer error: ${message}`
+            );
+            return;
+          }
           updateExportJob(job.id, {
             status: "error",
             stage: "Export failed",
