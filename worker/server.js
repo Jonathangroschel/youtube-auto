@@ -238,6 +238,12 @@ const exportJobs = new Map();
 let exportQueueRunning = false;
 let sharedExportBrowser = null;
 let sharedExportBrowserLaunch = null;
+const EXPORT_BROWSER_ARGS = [
+  "--disable-dev-shm-usage",
+  "--no-sandbox",
+  // Force HTTP/1.1 or HTTP/2 for media fetches; avoids flaky QUIC/HTTP3 paths.
+  "--disable-quic",
+];
 
 // Supabase client
 const supabase = createClient(
@@ -351,7 +357,7 @@ const getOrCreateSharedExportBrowser = async () => {
   if (!sharedExportBrowserLaunch) {
     sharedExportBrowserLaunch = chromium
       .launch({
-        args: ["--disable-dev-shm-usage", "--no-sandbox"],
+        args: EXPORT_BROWSER_ARGS,
       })
       .then((browser) => {
         sharedExportBrowser = browser;
@@ -688,10 +694,11 @@ const runEditorExportJob = async (job) => {
     });
     page.on("requestfailed", (request) => {
       const errorText = request.failure()?.errorText || "";
-      const isBenignMediaAbort =
-        errorText === "net::ERR_ABORTED" &&
+      const isBenignMediaFailure =
+        (errorText === "net::ERR_ABORTED" ||
+          errorText === "net::ERR_QUIC_PROTOCOL_ERROR") &&
         (request.resourceType() === "media" || request.resourceType() === "other");
-      if (isBenignMediaAbort) {
+      if (isBenignMediaFailure) {
         if (EXPORT_LOG_ABORTED_MEDIA) {
           const url = request.url();
           if (!loggedAbortedMediaUrls.has(url)) {
