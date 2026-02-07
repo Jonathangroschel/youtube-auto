@@ -159,6 +159,10 @@ const EXPORT_VIDEO_CRF = Math.min(
 );
 const EXPORT_VIDEO_TUNE = (process.env.EDITOR_EXPORT_TUNE || "").trim();
 const EXPORT_AUDIO_BITRATE = process.env.EDITOR_EXPORT_AUDIO_BITRATE || "320k";
+const EXPORT_LOG_ABORTED_MEDIA = toBoolean(
+  process.env.EDITOR_EXPORT_LOG_ABORTED_MEDIA,
+  false
+);
 const EXPORT_FRAME_TIMEOUT_MS = toPositiveInt(
   process.env.EDITOR_EXPORT_FRAME_TIMEOUT_MS,
   20000
@@ -688,10 +692,12 @@ const runEditorExportJob = async (job) => {
         errorText === "net::ERR_ABORTED" &&
         (request.resourceType() === "media" || request.resourceType() === "other");
       if (isBenignMediaAbort) {
-        const url = request.url();
-        if (!loggedAbortedMediaUrls.has(url)) {
-          loggedAbortedMediaUrls.add(url);
-          console.warn("[export][requestaborted]", url, errorText);
+        if (EXPORT_LOG_ABORTED_MEDIA) {
+          const url = request.url();
+          if (!loggedAbortedMediaUrls.has(url)) {
+            loggedAbortedMediaUrls.add(url);
+            console.warn("[export][requestaborted]", url, errorText);
+          }
         }
         return;
       }
@@ -838,10 +844,6 @@ const runEditorExportJob = async (job) => {
       progress: 0.86,
     });
 
-    const needsScaleFilter =
-      renderScaleMode === "device" ||
-      viewportWidth !== width ||
-      viewportHeight !== height;
     const ffmpegArgs = [
       "-hide_banner", "-loglevel", "error",
       "-y",
@@ -849,9 +851,9 @@ const runEditorExportJob = async (job) => {
       "-i", path.join(framesDir, `frame_%06d.${frameExtension}`),
       "-an",
     ];
-    if (needsScaleFilter) {
-      ffmpegArgs.push("-vf", `scale=${width}:${height}:flags=${EXPORT_SCALE_FLAGS}`);
-    }
+    // Always scale to the requested export size so odd-sized stage captures
+    // (e.g. 699px height) never fail H.264 yuv420p requirements.
+    ffmpegArgs.push("-vf", `scale=${width}:${height}:flags=${EXPORT_SCALE_FLAGS}`);
     ffmpegArgs.push(
       "-c:v", "libx264",
       "-preset", EXPORT_VIDEO_PRESET,
