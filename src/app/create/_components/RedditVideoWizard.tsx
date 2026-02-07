@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { uploadAssetFile } from "@/lib/assets/library";
+import { captureVideoPoster } from "@/lib/media/video-poster";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -37,7 +38,6 @@ const DEFAULT_INTRO_SECONDS = 3;
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
-const GAMEPLAY_PROBE_CONCURRENCY = 6;
 const SQUARE_TOLERANCE_PX = 2;
 
 const DEFAULT_REDDIT_PFPS = [
@@ -550,7 +550,12 @@ export default function RedditVideoWizard() {
   const [gameplayUploading, setGameplayUploading] = useState(false);
   const [gameplayItems, setGameplayItems] = useState<GameplayItem[]>([]);
   const [gameplaySelected, setGameplaySelected] = useState<GameplayItem | null>(null);
-  const gameplayOrientationCacheRef = useRef<Map<string, boolean>>(new Map());
+  const [gameplayPosterByPath, setGameplayPosterByPath] = useState<Record<string, string>>(
+    {}
+  );
+  const [activeGameplayPreviewPath, setActiveGameplayPreviewPath] = useState<string | null>(
+    null
+  );
 
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -627,57 +632,6 @@ export default function RedditVideoWizard() {
       video.src = url;
     });
   }, [isClearlyNonVertical]);
-
-  const ensureVerticalGameplayItem = useCallback(
-    async (item: GameplayItem) => {
-      if (typeof item.width === "number" && typeof item.height === "number") {
-        if (Number.isFinite(item.width) && Number.isFinite(item.height)) {
-          return !isClearlyNonVertical(item.width, item.height);
-        }
-      }
-      const cached = gameplayOrientationCacheRef.current.get(item.path);
-      if (typeof cached === "boolean") {
-        return cached;
-      }
-      const isVertical = await probeVideoIsVertical(item.publicUrl);
-      gameplayOrientationCacheRef.current.set(item.path, isVertical);
-      return isVertical;
-    },
-    [isClearlyNonVertical, probeVideoIsVertical]
-  );
-
-  const filterVerticalGameplayItems = useCallback(
-    async (items: GameplayItem[]) => {
-      if (items.length === 0) {
-        return [];
-      }
-      const verdictByPath = new Map<string, boolean>();
-      let cursor = 0;
-      const workerCount = Math.max(
-        1,
-        Math.min(GAMEPLAY_PROBE_CONCURRENCY, items.length)
-      );
-      await Promise.all(
-        Array.from({ length: workerCount }, async () => {
-          while (true) {
-            const index = cursor;
-            cursor += 1;
-            if (index >= items.length) {
-              return;
-            }
-            const item = items[index];
-            if (!item) {
-              return;
-            }
-            const isVertical = await ensureVerticalGameplayItem(item);
-            verdictByPath.set(item.path, isVertical);
-          }
-        })
-      );
-      return items.filter((item) => verdictByPath.get(item.path) ?? true);
-    },
-    [ensureVerticalGameplayItem]
-  );
 
   const handleGameplayUpload = useCallback(
     async (file: File) => {
@@ -771,7 +725,6 @@ export default function RedditVideoWizard() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        gameplayOrientationCacheRef.current.set(uploadedItem.path, true);
 
         setGameplayItems((prev) => [
           uploadedItem,
@@ -811,7 +764,7 @@ export default function RedditVideoWizard() {
 
     try {
       const response = await fetch(
-        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}&orientation=vertical&t=${Date.now()}`,
+        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}&t=${Date.now()}`,
         {
           method: "GET",
           cache: "no-store",
@@ -823,16 +776,10 @@ export default function RedditVideoWizard() {
         throw new Error(data?.error || "Failed to load gameplay footage.");
       }
       const items = Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
-      const verticalItems = await filterVerticalGameplayItems(items);
-      setGameplayItems(verticalItems);
+      setGameplayItems(items);
       setGameplaySelected((prev) =>
-        prev && verticalItems.some((item) => item.path === prev.path) ? prev : null
+        prev && items.some((item) => item.path === prev.path) ? prev : null
       );
-      if (items.length > 0 && verticalItems.length === 0) {
-        setGameplayError(
-          "No suitable gameplay footage found. Upload a portrait (9:16) clip to continue."
-        );
-      }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         setGameplayError(
@@ -847,7 +794,57 @@ export default function RedditVideoWizard() {
       window.clearTimeout(timeoutId);
       setGameplayLoading(false);
     }
-  }, [filterVerticalGameplayItems]);
+  }, []);
+
+  useEffect(() => {
+    const activePaths = new Set(gameplayItems.map((item) => item.path));
+
+    setGameplayPosterByPath((prev) => {
+      const nextEntries = Object.entries(prev).filter(([path]) => activePaths.has(path));
+      if (nextEntries.length === Object.keys(prev).length) {
+        return prev;
+      }
+      return Object.fromEntries(nextEntries);
+    });
+
+    if (activeGameplayPreviewPath && !activePaths.has(activeGameplayPreviewPath)) {
+      setActiveGameplayPreviewPath(null);
+    }
+
+    const missingPosters = gameplayItems.filter((item) => !gameplayPosterByPath[item.path]);
+    if (missingPosters.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const buildPosters = async () => {
+      for (const item of missingPosters) {
+        if (cancelled) {
+          return;
+        }
+        const poster = await captureVideoPoster(item.publicUrl, {
+          seekTimeSeconds: 0.05,
+          maxWidth: 320,
+        });
+        if (!poster || cancelled) {
+          continue;
+        }
+        setGameplayPosterByPath((prev) => {
+          if (prev[item.path]) {
+            return prev;
+          }
+          return { ...prev, [item.path]: poster };
+        });
+      }
+    };
+
+    void buildPosters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGameplayPreviewPath, gameplayItems, gameplayPosterByPath]);
 
   const loadVoices = useCallback(async () => {
     setVoiceLoading(true);
@@ -1762,6 +1759,8 @@ export default function RedditVideoWizard() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                   {gameplayItems.map((item) => {
                     const selected = gameplaySelected?.path === item.path;
+                    const isPreviewActive = activeGameplayPreviewPath === item.path;
+                    const posterUrl = gameplayPosterByPath[item.path];
                     return (
                       <button
                         key={item.path}
@@ -1773,6 +1772,18 @@ export default function RedditVideoWizard() {
                             : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.15)]"
                         )}
                         onClick={() => setGameplaySelected(item)}
+                        onMouseEnter={() => setActiveGameplayPreviewPath(item.path)}
+                        onMouseLeave={() =>
+                          setActiveGameplayPreviewPath((prev) =>
+                            prev === item.path ? null : prev
+                          )
+                        }
+                        onFocus={() => setActiveGameplayPreviewPath(item.path)}
+                        onBlur={() =>
+                          setActiveGameplayPreviewPath((prev) =>
+                            prev === item.path ? null : prev
+                          )
+                        }
                       >
                         <div
                           className={cn(
@@ -1796,21 +1807,29 @@ export default function RedditVideoWizard() {
                           ) : null}
                         </div>
                         <div className="relative aspect-[9/16] w-full overflow-hidden bg-black">
-                          <video
-                            src={item.publicUrl}
-                            className="h-full w-full object-cover"
-                            muted
-                            playsInline
-                            loop
-                            preload="none"
-                            onMouseEnter={(e) => {
-                              e.currentTarget.play().catch(() => {});
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.pause();
-                              e.currentTarget.currentTime = 0;
-                            }}
-                          />
+                          {isPreviewActive ? (
+                            <video
+                              src={item.publicUrl}
+                              className="h-full w-full object-cover"
+                              muted
+                              playsInline
+                              loop
+                              autoPlay
+                              preload="metadata"
+                            />
+                          ) : posterUrl ? (
+                            <img
+                              src={posterUrl}
+                              alt={`${item.name} first frame`}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center px-4 text-center text-xs text-[#898a8b]">
+                              Hover to preview
+                            </div>
+                          )}
                         </div>
                       </button>
                     );

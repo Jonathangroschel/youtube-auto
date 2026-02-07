@@ -101,13 +101,18 @@ export async function POST(request: Request) {
   const target = lengthTargets[length];
 
   const systemPrompt = [
-    "You write scripts for short-form 'Reddit story' videos (voiceover + subtitles over gameplay).",
-    "Write in a natural, spoken, highly engaging style with tight pacing.",
-    "Use short sentences. Vary sentence length. Keep momentum. Avoid filler.",
-    "No headings, no bullet lists, no stage directions, no emojis.",
-    "No 'like and subscribe' cliché. Keep a subtle, modern CTA if provided.",
+    "You are an expert YouTube Shorts script writer for Reddit story videos.",
+    "Your scripts are built for retention, curiosity, and shareability.",
+    "Sound human and conversational, never robotic or generic.",
+    "Use natural spoken cadence, contractions, and sentence fragments when they improve rhythm.",
+    "Keep pacing tight: short punchy lines, varied sentence length, no filler.",
+    "The opening must stop the scroll immediately and create an open loop.",
+    "Every few lines should either escalate stakes, add a specific detail, or deepen curiosity.",
+    "Avoid AI-sounding phrasing, motivational fluff, and predictable clichés.",
+    "No headings, no bullet lists, no stage directions, no emojis, no hashtags.",
+    "If CTA is provided, keep it subtle, modern, and under one short sentence.",
     "Return ONLY the script text.",
-  ].join(" ");
+  ].join("\n");
 
   const userPrompt = [
     `Topic: ${topic}`,
@@ -118,8 +123,11 @@ export async function POST(request: Request) {
     "",
     "Constraints:",
     "- Make the first 1-2 sentences extremely scroll-stopping.",
-    "- Build curiosity, then reveal details in escalating beats.",
-    "- End with a satisfying twist or takeaway (unless the topic doesn't allow it).",
+    "- Use a clear arc: hook -> setup -> escalation -> payoff/twist.",
+    "- Reveal information progressively to sustain curiosity.",
+    "- Use specific concrete details over vague language.",
+    "- End with a satisfying takeaway or twist (unless the topic truly doesn't allow it).",
+    "- Keep it voiceover-friendly and easy to read aloud.",
   ]
     .filter(Boolean)
     .join("\n");

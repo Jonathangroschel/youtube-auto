@@ -8,6 +8,7 @@ import {
   uploadAssetFile,
   type AssetLibraryItem,
 } from "@/lib/assets/library";
+import { captureVideoPoster } from "@/lib/media/video-poster";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -109,6 +110,12 @@ export default function SplitScreenWizard({
   const [gameplaySelected, setGameplaySelected] = useState<GameplayItem | null>(
     null
   );
+  const [gameplayPosterByPath, setGameplayPosterByPath] = useState<
+    Record<string, string>
+  >({});
+  const [activeGameplayPreviewPath, setActiveGameplayPreviewPath] = useState<
+    string | null
+  >(null);
 
   const [subtitleMode, setSubtitleMode] = useState<"one-word" | "lines">(
     "lines"
@@ -432,6 +439,60 @@ export default function SplitScreenWizard({
       setGameplayLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    const activePaths = new Set(gameplayItems.map((item) => item.path));
+
+    setGameplayPosterByPath((prev) => {
+      const nextEntries = Object.entries(prev).filter(([path]) =>
+        activePaths.has(path)
+      );
+      if (nextEntries.length === Object.keys(prev).length) {
+        return prev;
+      }
+      return Object.fromEntries(nextEntries);
+    });
+
+    if (activeGameplayPreviewPath && !activePaths.has(activeGameplayPreviewPath)) {
+      setActiveGameplayPreviewPath(null);
+    }
+
+    const missingPosters = gameplayItems.filter(
+      (item) => !gameplayPosterByPath[item.path]
+    );
+    if (missingPosters.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const buildPosters = async () => {
+      for (const item of missingPosters) {
+        if (cancelled) {
+          return;
+        }
+        const poster = await captureVideoPoster(item.publicUrl, {
+          seekTimeSeconds: 0.05,
+          maxWidth: 320,
+        });
+        if (!poster || cancelled) {
+          continue;
+        }
+        setGameplayPosterByPath((prev) => {
+          if (prev[item.path]) {
+            return prev;
+          }
+          return { ...prev, [item.path]: poster };
+        });
+      }
+    };
+
+    void buildPosters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGameplayPreviewPath, gameplayItems, gameplayPosterByPath]);
 
   useEffect(() => {
     if (step !== 2) {
@@ -880,6 +941,8 @@ export default function SplitScreenWizard({
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                   {gameplayItems.map((item) => {
                     const isSelected = gameplaySelected?.path === item.path;
+                    const isPreviewActive = activeGameplayPreviewPath === item.path;
+                    const posterUrl = gameplayPosterByPath[item.path];
                     return (
                       <button
                         key={item.path}
@@ -889,6 +952,18 @@ export default function SplitScreenWizard({
                           isSelected ? "border-[#9aed00] shadow-lg shadow-[#9aed00]/10" : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.12)]"
                         )}
                         onClick={() => setGameplaySelected(item)}
+                        onMouseEnter={() => setActiveGameplayPreviewPath(item.path)}
+                        onMouseLeave={() =>
+                          setActiveGameplayPreviewPath((prev) =>
+                            prev === item.path ? null : prev
+                          )
+                        }
+                        onFocus={() => setActiveGameplayPreviewPath(item.path)}
+                        onBlur={() =>
+                          setActiveGameplayPreviewPath((prev) =>
+                            prev === item.path ? null : prev
+                          )
+                        }
                       >
                         {isSelected && (
                           <div className="absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[#9aed00] text-black">
@@ -907,21 +982,29 @@ export default function SplitScreenWizard({
                           </div>
                         )}
                         <div className="relative aspect-[9/16] w-full overflow-hidden bg-black">
-                          <video
-                            src={item.publicUrl}
-                            className="h-full w-full object-cover"
-                            muted
-                            playsInline
-                            loop
-                            preload="none"
-                            onMouseEnter={(e) => {
-                              e.currentTarget.play().catch(() => {});
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.pause();
-                              e.currentTarget.currentTime = 0;
-                            }}
-                          />
+                          {isPreviewActive ? (
+                            <video
+                              src={item.publicUrl}
+                              className="h-full w-full object-cover"
+                              muted
+                              playsInline
+                              loop
+                              autoPlay
+                              preload="metadata"
+                            />
+                          ) : posterUrl ? (
+                            <img
+                              src={posterUrl}
+                              alt={`${item.name} first frame`}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center px-4 text-center text-xs text-[#898a8b]">
+                              Hover to preview
+                            </div>
+                          )}
                         </div>
                       </button>
                     );
