@@ -7830,6 +7830,57 @@ function AdvancedEditorContent() {
   ]);
 
   useEffect(() => {
+    if (isExportMode || editorProfile !== "split" || timelineClips.length === 0) {
+      return;
+    }
+    const splitVideoLanes = lanes.filter((lane) => lane.type === "video");
+    if (splitVideoLanes.length < 2) {
+      return;
+    }
+    const topLaneId = splitVideoLanes[0]?.id;
+    const bottomLaneId = splitVideoLanes[1]?.id;
+    if (!topLaneId || !bottomLaneId) {
+      return;
+    }
+    setClipTransforms((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      timelineClips.forEach(({ clip, asset }) => {
+        if (asset.kind !== "video") {
+          return;
+        }
+        const desiredTransform: ClipTransform | null =
+          clip.laneId === topLaneId
+            ? { x: 0, y: 0, width: 1, height: 0.5 }
+            : clip.laneId === bottomLaneId
+              ? { x: 0, y: 0.5, width: 1, height: 0.5 }
+              : null;
+        if (!desiredTransform) {
+          return;
+        }
+        const current = prev[clip.id];
+        const defaultTransform = createDefaultTransform(
+          asset.aspectRatio,
+          stageAspectRatio
+        );
+        const shouldApplyDefaultFix =
+          !current || areTransformsClose(current, defaultTransform, 0.02);
+        if (!shouldApplyDefaultFix) {
+          return;
+        }
+        if (current && areTransformsClose(current, desiredTransform, 0.002)) {
+          clipTransformTouchedRef.current.add(clip.id);
+          return;
+        }
+        next[clip.id] = desiredTransform;
+        clipTransformTouchedRef.current.add(clip.id);
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [editorProfile, isExportMode, lanes, stageAspectRatio, timelineClips]);
+
+  useEffect(() => {
     if (isExportMode || editorProfile !== "reddit" || timelineClips.length === 0) {
       return;
     }
@@ -12819,7 +12870,14 @@ function AdvancedEditorContent() {
 	        width?: number;
 	        height?: number;
 	        aspectRatio?: number;
-	      } | null = null;
+	      } | null = {
+	        duration:
+	          typeof payload.mainVideo.durationSeconds === "number" &&
+	          Number.isFinite(payload.mainVideo.durationSeconds) &&
+	          payload.mainVideo.durationSeconds > 0
+	            ? payload.mainVideo.durationSeconds
+	            : undefined,
+	      };
 
 	      const resolveUserAssetUrl = async (assetId: string) => {
 	        const supabase = await getSupabaseClient();
@@ -13218,16 +13276,20 @@ function AdvancedEditorContent() {
       const bgLaneId = createLaneId("video", nextLanes, { placement: "top" });
       const mainLaneId = createLaneId("video", nextLanes);
 
-      const mainClip: TimelineClip = {
-        id: crypto.randomUUID(),
-        assetId: resolvedMainAsset.id,
-        duration: Math.max(0.01, getAssetDurationSeconds(resolvedMainAsset)),
-        startOffset: 0,
-        startTime: 0,
-        laneId: mainLaneId,
-      };
+	      const resolvedMainDuration = Math.max(
+	        0.01,
+	        mainDuration ?? getAssetDurationSeconds(resolvedMainAsset)
+	      );
+	      const mainClip: TimelineClip = {
+	        id: crypto.randomUUID(),
+	        assetId: resolvedMainAsset.id,
+	        duration: resolvedMainDuration,
+	        startOffset: 0,
+	        startTime: 0,
+	        laneId: mainLaneId,
+	      };
 
-      const targetDuration = mainClip.duration;
+	      const targetDuration = resolvedMainDuration;
       const bgBaseDuration = Math.max(
         0.01,
         bgDuration ?? getAssetDurationSeconds(resolvedBgAsset) ?? targetDuration

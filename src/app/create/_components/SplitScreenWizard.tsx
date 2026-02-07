@@ -23,6 +23,7 @@ type SelectedVideo = {
   url: string;
   name: string;
   assetId?: string | null;
+  durationSeconds?: number;
 };
 
 type GameplayItem = {
@@ -171,6 +172,10 @@ export default function SplitScreenWizard({
       assetId: asset.id,
       url: asset.url,
       name: asset.name,
+      durationSeconds:
+        typeof asset.duration === "number" && Number.isFinite(asset.duration)
+          ? asset.duration
+          : undefined,
     });
     setSourceError(null);
   }, []);
@@ -363,6 +368,13 @@ export default function SplitScreenWizard({
         typeof data?.title === "string" && data.title.trim().length > 0
           ? data.title.trim()
           : "Downloaded video";
+      const durationSeconds =
+        typeof data?.duration === "number" && Number.isFinite(data.duration)
+          ? data.duration
+          : typeof data?.durationSeconds === "number" &&
+              Number.isFinite(data.durationSeconds)
+            ? data.durationSeconds
+            : undefined;
       if (!assetUrl || !assetId) {
         throw new Error(
           "Download completed but saving to your library failed. Please try again."
@@ -372,6 +384,7 @@ export default function SplitScreenWizard({
         url: assetUrl,
         assetId,
         name,
+        durationSeconds,
       });
       setSourceError(null);
     } catch (error) {
@@ -457,6 +470,11 @@ export default function SplitScreenWizard({
         url: sourceVideo.url,
         name: sourceVideo.name,
         assetId: sourceVideo.assetId ?? null,
+        durationSeconds:
+          typeof sourceVideo.durationSeconds === "number" &&
+          Number.isFinite(sourceVideo.durationSeconds)
+            ? sourceVideo.durationSeconds
+            : null,
       },
       backgroundVideo: {
         url: gameplaySelected.publicUrl,

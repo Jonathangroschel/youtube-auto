@@ -7,6 +7,7 @@ export type SplitScreenImportPayloadV1 = {
     url: string;
     name: string;
     assetId?: string | null;
+    durationSeconds?: number | null;
   };
   backgroundVideo: {
     url: string;
@@ -117,6 +118,12 @@ export const parseSplitScreenImportPayload = (
       typeof mainVideo.assetId === "string" && mainVideo.assetId.trim().length > 0
         ? mainVideo.assetId.trim()
         : null;
+    const durationSeconds =
+      typeof mainVideo.durationSeconds === "number" &&
+      Number.isFinite(mainVideo.durationSeconds) &&
+      mainVideo.durationSeconds > 0
+        ? mainVideo.durationSeconds
+        : null;
     const styleId =
       typeof subtitles.styleId === "string" && subtitles.styleId.trim().length > 0
         ? subtitles.styleId.trim()
@@ -129,6 +136,7 @@ export const parseSplitScreenImportPayload = (
         url: mainUrl,
         name: mainName,
         assetId,
+        durationSeconds,
       },
       backgroundVideo: {
         url: backgroundUrl,
