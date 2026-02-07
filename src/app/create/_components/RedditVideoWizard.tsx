@@ -38,6 +38,7 @@ const DEFAULT_INTRO_SECONDS = 3;
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
+const GAMEPLAY_POSTER_CONCURRENCY = 8;
 const SQUARE_TOLERANCE_PX = 2;
 
 const DEFAULT_REDDIT_PFPS = [
@@ -556,6 +557,7 @@ export default function RedditVideoWizard() {
   const [activeGameplayPreviewPath, setActiveGameplayPreviewPath] = useState<string | null>(
     null
   );
+  const gameplayPrefetchStartedRef = useRef(false);
 
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -819,24 +821,55 @@ export default function RedditVideoWizard() {
     let cancelled = false;
 
     const buildPosters = async () => {
-      for (const item of missingPosters) {
-        if (cancelled) {
-          return;
-        }
-        const poster = await captureVideoPoster(item.publicUrl, {
-          seekTimeSeconds: 0.05,
-          maxWidth: 320,
-        });
-        if (!poster || cancelled) {
-          continue;
-        }
-        setGameplayPosterByPath((prev) => {
-          if (prev[item.path]) {
-            return prev;
+      const updates: Record<string, string> = {};
+      let cursor = 0;
+      const workerCount = Math.max(
+        1,
+        Math.min(GAMEPLAY_POSTER_CONCURRENCY, missingPosters.length)
+      );
+
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (true) {
+            if (cancelled) {
+              return;
+            }
+            const index = cursor;
+            cursor += 1;
+            if (index >= missingPosters.length) {
+              return;
+            }
+            const item = missingPosters[index];
+            if (!item) {
+              return;
+            }
+            const poster = await captureVideoPoster(item.publicUrl, {
+              seekTimeSeconds: 0.05,
+              maxWidth: 320,
+            });
+            if (!poster || cancelled) {
+              continue;
+            }
+            updates[item.path] = poster;
           }
-          return { ...prev, [item.path]: poster };
-        });
+        })
+      );
+
+      if (cancelled || Object.keys(updates).length === 0) {
+        return;
       }
+
+      setGameplayPosterByPath((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        Object.entries(updates).forEach(([path, poster]) => {
+          if (!next[path]) {
+            next[path] = poster;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
     };
 
     void buildPosters();
@@ -888,14 +921,12 @@ export default function RedditVideoWizard() {
   }, []);
 
   useEffect(() => {
-    if (step !== 3) {
+    if (gameplayPrefetchStartedRef.current) {
       return;
     }
-    if (gameplayItems.length > 0 || gameplayLoading) {
-      return;
-    }
+    gameplayPrefetchStartedRef.current = true;
     loadGameplay().catch(() => {});
-  }, [gameplayItems.length, gameplayLoading, loadGameplay, step]);
+  }, [loadGameplay]);
 
   useEffect(() => {
     if (step !== 4) {
@@ -923,6 +954,14 @@ export default function RedditVideoWizard() {
     postAvatarUrl.trim().length > 0 &&
     postTitle.trim().length > 0 &&
     script.trim().length > 0;
+  const gameplayPreviewItems = useMemo(
+    () => gameplayItems.filter((item) => Boolean(gameplayPosterByPath[item.path])),
+    [gameplayItems, gameplayPosterByPath]
+  );
+  const gameplayPreviewPendingCount = Math.max(
+    0,
+    gameplayItems.length - gameplayPreviewItems.length
+  );
   const canContinueFromStyle = Boolean(subtitleStyleId);
   const canContinueFromVideo = Boolean(gameplaySelected);
   const canGenerate = Boolean(
@@ -1755,12 +1794,18 @@ export default function RedditVideoWizard() {
                 </div>
               ) : null}
 
-              {gameplayItems.length > 0 ? (
+              {gameplayItems.length > 0 && gameplayPreviewItems.length === 0 ? (
+                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
+                  Preparing preview images...
+                </div>
+              ) : null}
+
+              {gameplayPreviewItems.length > 0 ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {gameplayItems.map((item) => {
+                  {gameplayPreviewItems.map((item) => {
                     const selected = gameplaySelected?.path === item.path;
                     const isPreviewActive = activeGameplayPreviewPath === item.path;
-                    const posterUrl = gameplayPosterByPath[item.path];
+                    const posterUrl = gameplayPosterByPath[item.path] ?? "";
                     return (
                       <button
                         key={item.path}
@@ -1817,7 +1862,7 @@ export default function RedditVideoWizard() {
                               autoPlay
                               preload="metadata"
                             />
-                          ) : posterUrl ? (
+                          ) : (
                             <img
                               src={posterUrl}
                               alt={`${item.name} first frame`}
@@ -1825,16 +1870,19 @@ export default function RedditVideoWizard() {
                               loading="lazy"
                               draggable={false}
                             />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center px-4 text-center text-xs text-[#898a8b]">
-                              Hover to preview
-                            </div>
                           )}
                         </div>
                       </button>
                     );
                   })}
                 </div>
+              ) : null}
+
+              {gameplayPreviewPendingCount > 0 ? (
+                <p className="text-xs text-[#898a8b]">
+                  Loading {gameplayPreviewPendingCount} more preview
+                  {gameplayPreviewPendingCount === 1 ? "" : "s"}...
+                </p>
               ) : null}
             </div>
           )}
