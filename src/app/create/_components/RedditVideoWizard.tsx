@@ -20,6 +20,7 @@ type GameplayItem = {
   name: string;
   path: string;
   publicUrl: string;
+  thumbnailUrl?: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   width?: number | null;
@@ -35,11 +36,16 @@ type PublicAudioItem = {
 };
 
 const DEFAULT_INTRO_SECONDS = 3;
+const GAMEPLAY_BUCKET = "gameplay-footage";
+const GAMEPLAY_THUMBNAIL_PREFIX = "thumbnails";
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
 const GAMEPLAY_POSTER_CONCURRENCY = 8;
 const SQUARE_TOLERANCE_PX = 2;
+
+const toGameplayThumbnailPath = (videoPath: string) =>
+  `${GAMEPLAY_THUMBNAIL_PREFIX}/${videoPath.replace(/^\/+/, "").replace(/\.[^/.]+$/, ".jpg")}`;
 
 const DEFAULT_REDDIT_PFPS = [
   "/reddit-default-pfp/0qoqln2f5bu71.webp",
@@ -558,6 +564,7 @@ export default function RedditVideoWizard() {
     null
   );
   const gameplayPrefetchStartedRef = useRef(false);
+  const gameplayThumbnailUploadAttemptedRef = useRef<Set<string>>(new Set());
 
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -583,6 +590,31 @@ export default function RedditVideoWizard() {
   const triggerGameplayUploadPicker = useCallback(() => {
     gameplayUploadInputRef.current?.click();
   }, []);
+
+  const uploadGeneratedGameplayThumbnail = useCallback(
+    async (item: GameplayItem, dataUrl: string) => {
+      const thumbnailPath = toGameplayThumbnailPath(item.path);
+      if (gameplayThumbnailUploadAttemptedRef.current.has(thumbnailPath)) {
+        return;
+      }
+      gameplayThumbnailUploadAttemptedRef.current.add(thumbnailPath);
+      try {
+        const dataUrlResponse = await fetch(dataUrl);
+        const blob = await dataUrlResponse.blob();
+        if (!blob.size) {
+          return;
+        }
+        await gameplaySupabase.storage.from(GAMEPLAY_BUCKET).upload(thumbnailPath, blob, {
+          contentType: "image/jpeg",
+          cacheControl: "31536000",
+          upsert: true,
+        });
+      } catch {
+        // Best-effort cache write.
+      }
+    },
+    [gameplaySupabase]
+  );
 
   const isClearlyNonVertical = useCallback((width: number, height: number) => {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -813,7 +845,11 @@ export default function RedditVideoWizard() {
       setActiveGameplayPreviewPath(null);
     }
 
-    const missingPosters = gameplayItems.filter((item) => !gameplayPosterByPath[item.path]);
+    const missingPosters = gameplayItems.filter((item) => {
+      const providedThumbnail =
+        typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
+      return !gameplayPosterByPath[item.path] && !providedThumbnail;
+    });
     if (missingPosters.length === 0) {
       return;
     }
@@ -845,12 +881,13 @@ export default function RedditVideoWizard() {
             }
             const poster = await captureVideoPoster(item.publicUrl, {
               seekTimeSeconds: 0.05,
-              maxWidth: 320,
+              maxWidth: 480,
             });
             if (!poster || cancelled) {
               continue;
             }
             updates[item.path] = poster;
+            void uploadGeneratedGameplayThumbnail(item, poster);
           }
         })
       );
@@ -877,7 +914,12 @@ export default function RedditVideoWizard() {
     return () => {
       cancelled = true;
     };
-  }, [activeGameplayPreviewPath, gameplayItems, gameplayPosterByPath]);
+  }, [
+    activeGameplayPreviewPath,
+    gameplayItems,
+    gameplayPosterByPath,
+    uploadGeneratedGameplayThumbnail,
+  ]);
 
   const loadVoices = useCallback(async () => {
     setVoiceLoading(true);
@@ -955,7 +997,12 @@ export default function RedditVideoWizard() {
     postTitle.trim().length > 0 &&
     script.trim().length > 0;
   const gameplayPreviewItems = useMemo(
-    () => gameplayItems.filter((item) => Boolean(gameplayPosterByPath[item.path])),
+    () =>
+      gameplayItems.filter((item) => {
+        const providedThumbnail =
+          typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
+        return Boolean(gameplayPosterByPath[item.path] || providedThumbnail);
+      }),
     [gameplayItems, gameplayPosterByPath]
   );
   const gameplayPreviewPendingCount = Math.max(
@@ -1805,7 +1852,11 @@ export default function RedditVideoWizard() {
                   {gameplayPreviewItems.map((item) => {
                     const selected = gameplaySelected?.path === item.path;
                     const isPreviewActive = activeGameplayPreviewPath === item.path;
-                    const posterUrl = gameplayPosterByPath[item.path] ?? "";
+                    const posterUrl =
+                      gameplayPosterByPath[item.path] ??
+                      (typeof item.thumbnailUrl === "string"
+                        ? item.thumbnailUrl.trim()
+                        : "");
                     return (
                       <button
                         key={item.path}

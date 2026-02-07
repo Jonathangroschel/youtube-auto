@@ -31,6 +31,7 @@ type GameplayItem = {
   name: string;
   path: string;
   publicUrl: string;
+  thumbnailUrl?: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -42,9 +43,14 @@ const isYouTubeUrl = (value: string) => {
 
 const isTikTokUrl = (value: string) => value.toLowerCase().includes("tiktok.com/");
 
+const GAMEPLAY_BUCKET = "gameplay-footage";
+const GAMEPLAY_THUMBNAIL_PREFIX = "thumbnails";
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_POSTER_CONCURRENCY = 8;
+
+const toGameplayThumbnailPath = (videoPath: string) =>
+  `${GAMEPLAY_THUMBNAIL_PREFIX}/${videoPath.replace(/^\/+/, "").replace(/\.[^/.]+$/, ".jpg")}`;
 
 const SubtitleModeToggle = ({
   value,
@@ -118,6 +124,7 @@ export default function SplitScreenWizard({
     string | null
   >(null);
   const gameplayPrefetchStartedRef = useRef(false);
+  const gameplayThumbnailUploadAttemptedRef = useRef<Set<string>>(new Set());
 
   const [subtitleMode, setSubtitleMode] = useState<"one-word" | "lines">(
     "lines"
@@ -166,7 +173,12 @@ export default function SplitScreenWizard({
 
   const canContinueToBackground = Boolean(sourceVideo);
   const gameplayPreviewItems = useMemo(
-    () => gameplayItems.filter((item) => Boolean(gameplayPosterByPath[item.path])),
+    () =>
+      gameplayItems.filter((item) => {
+        const providedThumbnail =
+          typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
+        return Boolean(gameplayPosterByPath[item.path] || providedThumbnail);
+      }),
     [gameplayItems, gameplayPosterByPath]
   );
   const gameplayPreviewPendingCount = Math.max(
@@ -245,6 +257,31 @@ export default function SplitScreenWizard({
   const triggerGameplayUploadPicker = useCallback(() => {
     gameplayUploadInputRef.current?.click();
   }, []);
+
+  const uploadGeneratedGameplayThumbnail = useCallback(
+    async (item: GameplayItem, dataUrl: string) => {
+      const thumbnailPath = toGameplayThumbnailPath(item.path);
+      if (gameplayThumbnailUploadAttemptedRef.current.has(thumbnailPath)) {
+        return;
+      }
+      gameplayThumbnailUploadAttemptedRef.current.add(thumbnailPath);
+      try {
+        const dataUrlResponse = await fetch(dataUrl);
+        const blob = await dataUrlResponse.blob();
+        if (!blob.size) {
+          return;
+        }
+        await gameplaySupabase.storage.from(GAMEPLAY_BUCKET).upload(thumbnailPath, blob, {
+          contentType: "image/jpeg",
+          cacheControl: "31536000",
+          upsert: true,
+        });
+      } catch {
+        // Best-effort cache write.
+      }
+    },
+    [gameplaySupabase]
+  );
 
   const handleGameplayUpload = useCallback(
     async (file: File) => {
@@ -467,9 +504,11 @@ export default function SplitScreenWizard({
       setActiveGameplayPreviewPath(null);
     }
 
-    const missingPosters = gameplayItems.filter(
-      (item) => !gameplayPosterByPath[item.path]
-    );
+    const missingPosters = gameplayItems.filter((item) => {
+      const providedThumbnail =
+        typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
+      return !gameplayPosterByPath[item.path] && !providedThumbnail;
+    });
     if (missingPosters.length === 0) {
       return;
     }
@@ -501,12 +540,13 @@ export default function SplitScreenWizard({
             }
             const poster = await captureVideoPoster(item.publicUrl, {
               seekTimeSeconds: 0.05,
-              maxWidth: 320,
+              maxWidth: 480,
             });
             if (!poster || cancelled) {
               continue;
             }
             updates[item.path] = poster;
+            void uploadGeneratedGameplayThumbnail(item, poster);
           }
         })
       );
@@ -533,7 +573,12 @@ export default function SplitScreenWizard({
     return () => {
       cancelled = true;
     };
-  }, [activeGameplayPreviewPath, gameplayItems, gameplayPosterByPath]);
+  }, [
+    activeGameplayPreviewPath,
+    gameplayItems,
+    gameplayPosterByPath,
+    uploadGeneratedGameplayThumbnail,
+  ]);
 
   useEffect(() => {
     if (gameplayPrefetchStartedRef.current) {
@@ -987,7 +1032,11 @@ export default function SplitScreenWizard({
                   {gameplayPreviewItems.map((item) => {
                     const isSelected = gameplaySelected?.path === item.path;
                     const isPreviewActive = activeGameplayPreviewPath === item.path;
-                    const posterUrl = gameplayPosterByPath[item.path] ?? "";
+                    const posterUrl =
+                      gameplayPosterByPath[item.path] ??
+                      (typeof item.thumbnailUrl === "string"
+                        ? item.thumbnailUrl.trim()
+                        : "");
                     return (
                       <button
                         key={item.path}

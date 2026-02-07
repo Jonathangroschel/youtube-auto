@@ -6,6 +6,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 const GAMEPLAY_BUCKET = "gameplay-footage";
+const THUMBNAIL_FOLDER_PREFIX = "thumbnails";
 const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 5000;
 const PAGE_SIZE = 1000;
@@ -20,6 +21,18 @@ const isVideoPath = (value: string) => {
     lower.endsWith(".m4v") ||
     lower.endsWith(".webm")
   );
+};
+
+const stripFileExtension = (value: string) => value.replace(/\.[^./]+$/, "");
+
+const thumbnailPathCandidatesForVideo = (videoPath: string) => {
+  const stem = stripFileExtension(videoPath).replace(/^\/+/, "");
+  return [
+    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.jpg`,
+    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.jpeg`,
+    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.webp`,
+    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.png`,
+  ];
 };
 
 const parseFiniteNumber = (value: unknown): number | null => {
@@ -214,9 +227,56 @@ export async function GET(request: Request) {
     });
   }
 
+  const thumbnailCandidatesByVideoPath = new Map<string, string[]>();
+  const allThumbnailCandidatePaths: string[] = [];
+  const seenThumbnailCandidatePaths = new Set<string>();
+  items.forEach((entry) => {
+    const candidates = thumbnailPathCandidatesForVideo(entry.path);
+    thumbnailCandidatesByVideoPath.set(entry.path, candidates);
+    candidates.forEach((candidatePath) => {
+      if (seenThumbnailCandidatePaths.has(candidatePath)) {
+        return;
+      }
+      seenThumbnailCandidatePaths.add(candidatePath);
+      allThumbnailCandidatePaths.push(candidatePath);
+    });
+  });
+
+  const thumbnailUrlByPath = new Map<string, string>();
+  for (let offset = 0; offset < allThumbnailCandidatePaths.length; offset += PAGE_SIZE) {
+    const batch = allThumbnailCandidatePaths.slice(offset, offset + PAGE_SIZE);
+    const { data, error } = await supabaseServer.storage
+      .from(GAMEPLAY_BUCKET)
+      .createSignedUrls(batch, SIGNED_URL_TTL_SECONDS);
+    if (error) {
+      return NextResponse.json(
+        { error: "Failed to sign gameplay thumbnail URLs." },
+        { status: 502 }
+      );
+    }
+    (data ?? []).forEach((entry) => {
+      if (
+        entry?.path &&
+        typeof entry.signedUrl === "string" &&
+        entry.signedUrl.length > 0
+      ) {
+        thumbnailUrlByPath.set(entry.path, entry.signedUrl);
+      }
+    });
+  }
+
   const resolvedItems = items
     .map((entry) => {
       const signedUrl = urlByPath.get(entry.path) ?? "";
+      const thumbnailCandidates = thumbnailCandidatesByVideoPath.get(entry.path) ?? [];
+      let thumbnailUrl: string | null = null;
+      for (const thumbnailPath of thumbnailCandidates) {
+        const resolved = thumbnailUrlByPath.get(thumbnailPath);
+        if (typeof resolved === "string" && resolved.length > 0) {
+          thumbnailUrl = resolved;
+          break;
+        }
+      }
       const { data: publicData } = supabaseServer.storage
         .from(GAMEPLAY_BUCKET)
         .getPublicUrl(entry.path);
@@ -224,6 +284,7 @@ export async function GET(request: Request) {
       return {
         ...entry,
         publicUrl: signedUrl || fallbackUrl,
+        thumbnailUrl,
       };
     })
     .sort((a, b) => a.path.localeCompare(b.path));
