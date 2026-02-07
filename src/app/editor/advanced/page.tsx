@@ -3595,8 +3595,83 @@ function AdvancedEditorContent() {
         }
         return "default";
       };
-      const queryProjectId = searchParams.get("projectId");
-      if (!queryProjectId) {
+	      const queryProjectId = searchParams.get("projectId");
+	      const forceNewProject = searchParams.get("new") === "1";
+	      if (forceNewProject) {
+	        clearEditorReloadSessionState();
+	        projectIdRef.current = null;
+	        setProjectId(null);
+	        setProjectName("Untitled Project");
+	        setProjectSizeId("original");
+	        setProjectDurationMode("automatic");
+	        setProjectDurationSeconds(10);
+	        setProjectBackgroundMode("color");
+	        setProjectBackgroundImage(null);
+	        setCanvasBackground("#f2f3fa");
+	        setVideoBackground("#000000");
+	        setEditorProfile("default");
+	        exportPersistedRef.current = null;
+	        setExportUi({
+	          open: false,
+	          status: "idle",
+	          stage: "",
+	          progress: 0,
+	          jobId: null,
+	          downloadUrl: null,
+	          error: null,
+	        });
+	        setProjectSaveState("idle");
+	        setShowSaveIndicator(false);
+	        setProjectStarted(false);
+	        clipDurationLocksRef.current = new Set();
+	        pendingSplitScreenSubtitleRef.current = null;
+	        pendingStreamerVideoSubtitleRef.current = null;
+	        pendingRedditVideoSubtitleRef.current = null;
+	        redditMusicClipDefaultsRef.current = new Map();
+	        subtitleGenerationRunIdRef.current += 1;
+	        splitImportRunIdRef.current += 1;
+	        redditImportRunIdRef.current += 1;
+	        subtitleLaneIdRef.current = null;
+	        setLanes([]);
+	        setTimeline([]);
+	        setClipTransforms({});
+	        setBackgroundTransforms({});
+	        setClipSettings({});
+	        setTextSettings({});
+	        setSubtitleSegments([]);
+	        setDetachedSubtitleIds(new Set());
+	        setSubtitleStatus("idle");
+	        setSubtitleError(null);
+	        setTranscriptSegments([]);
+	        setTranscriptStatus("idle");
+	        setTranscriptError(null);
+	        setTimelineThumbnails({});
+	        setAudioWaveforms({});
+	        setClipOrder({});
+	        setCurrentTime(0);
+	        setActiveAssetId(null);
+	        setActiveCanvasClipId(null);
+	        setSelectedClipId(null);
+	        setSelectedClipIds([]);
+	        historyRef.current = { past: [], future: [], locked: false };
+	        syncHistoryState();
+	        if (typeof window !== "undefined") {
+	          try {
+	            const url = new URL(window.location.href);
+	            url.searchParams.delete("new");
+	            const query = url.searchParams.toString();
+	            const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
+	            window.history.replaceState({}, "", nextUrl);
+	          } catch {
+	            // Ignore URL cleanup failures.
+	          }
+	        }
+	        if (!cancelled) {
+	          setProjectReady(true);
+	        }
+	        return;
+	      }
+	      if (!queryProjectId) {
         if (isReloadNavigation()) {
           const reloadSession = readEditorReloadSessionState();
           if (!cancelled && reloadSession?.state) {
@@ -3719,7 +3794,7 @@ function AdvancedEditorContent() {
     return () => {
       cancelled = true;
     };
-  }, [applyProjectState, isExportMode, searchParams]);
+  }, [applyProjectState, isExportMode, searchParams, syncHistoryState]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
