@@ -1098,6 +1098,15 @@ const TRANSCRIPTION_REQUEST_TIMEOUT_MS = 280_000;
 const TRANSCRIPTION_REQUEST_MAX_ATTEMPTS = 3;
 const REDDIT_IMAGE_FETCH_TIMEOUT_MS = 10_000;
 const IMPORT_SUBTITLE_TIMEOUT_MS = 300_000;
+const EXPORT_RESUME_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+const parseExportUpdatedAtMs = (value: unknown) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -2696,29 +2705,44 @@ function AdvancedEditorContent() {
           typeof exportState.progress === "number"
             ? clamp(exportState.progress, 0, 1)
             : null;
+        const updatedAtMs = parseExportUpdatedAtMs(exportState.updatedAt);
+        const hasFreshUpdate =
+          updatedAtMs == null ||
+          Date.now() - updatedAtMs <= EXPORT_RESUME_MAX_AGE_MS;
         const hasSignal =
           Boolean(nextJobId) ||
-          (typeof exportState.status === "string" && exportState.status !== "idle") ||
           (typeof progressRaw === "number" && progressRaw > 0) ||
-          (typeof stageRaw === "string" && stageRaw.trim().length > 0);
+          (typeof exportState.downloadUrl === "string" &&
+            exportState.downloadUrl.trim().length > 0);
         const nextStatus = normalizeExportStatus({
           value: exportState.status,
           hasSignal,
         });
+        const shouldResumeInFlight =
+          Boolean(nextJobId) &&
+          isExportInFlightStatus(nextStatus) &&
+          hasFreshUpdate;
+        const resolvedStatus = shouldResumeInFlight
+          ? nextStatus
+          : isExportInFlightStatus(nextStatus)
+            ? "idle"
+            : nextStatus;
         const nextProgress =
           typeof progressRaw === "number"
             ? progressRaw
-            : nextStatus === "complete"
+            : resolvedStatus === "complete"
               ? 1
               : 0;
         const nextStage =
-          stageRaw.trim().length > 0
+          resolvedStatus === "idle"
+            ? ""
+            : stageRaw.trim().length > 0
             ? stageRaw
-            : nextStatus === "complete"
+            : resolvedStatus === "complete"
               ? "Export ready"
-              : nextStatus === "error"
+              : resolvedStatus === "error"
                 ? "Export failed"
-                : hasSignal
+                : shouldResumeInFlight
                   ? "Exporting"
                   : "";
         const nextDownloadUrl =
@@ -2727,7 +2751,7 @@ function AdvancedEditorContent() {
             : null;
         const nextExportState: ProjectExportState = {
           jobId: nextJobId,
-          status: nextStatus,
+          status: resolvedStatus,
           stage: nextStage,
           progress: nextProgress,
           downloadUrl: nextDownloadUrl,
@@ -2744,7 +2768,8 @@ function AdvancedEditorContent() {
           status: nextExportState.status,
           stage: nextExportState.stage,
           progress: nextExportState.progress,
-          jobId: nextExportState.jobId,
+          jobId:
+            nextExportState.status === "idle" ? null : nextExportState.jobId,
           downloadUrl: nextExportState.downloadUrl,
           error:
             nextExportState.status === "error"
@@ -8462,7 +8487,14 @@ function AdvancedEditorContent() {
       return "error";
     }
     if (EXPORT_STATUS_SET.has(normalized as ExportStatus)) {
-      return normalized as ExportStatus;
+      const resolved = normalized as ExportStatus;
+      if (resolved === "idle") {
+        return hasSignal ? "rendering" : "idle";
+      }
+      if (isExportInFlightStatus(resolved) && !hasSignal) {
+        return "idle";
+      }
+      return resolved;
     }
     if (normalized === "idle") {
       return hasSignal ? "rendering" : "idle";
@@ -8482,7 +8514,9 @@ function AdvancedEditorContent() {
     if (status === "complete") return "rendered";
     if (status === "error") return "error";
     if (status === "idle") return hasSignal ? "rendering" : "draft";
-    if (status && isExportInFlightStatus(status)) return "rendering";
+    if (status && isExportInFlightStatus(status)) {
+      return hasSignal ? "rendering" : "draft";
+    }
     return hasSignal ? "rendering" : "draft";
   };
 
@@ -8515,6 +8549,9 @@ function AdvancedEditorContent() {
       };
     }
     if (status === "rendering") {
+      if (!jobId) {
+        return null;
+      }
       return {
         jobId,
         status: "rendering",
@@ -8541,9 +8578,14 @@ function AdvancedEditorContent() {
     const jobId = typeof next.jobId === "string" && next.jobId.trim().length > 0
       ? next.jobId
       : null;
+    const rawStatus =
+      typeof next.status === "string" ? next.status.toLowerCase() : "";
+    const isTerminalStatus =
+      COMPLETE_EXPORT_STATUSES.has(rawStatus) ||
+      ERROR_EXPORT_STATUSES.has(rawStatus);
     const hasSignal =
       Boolean(jobId) ||
-      (typeof next.status === "string" && next.status !== "idle");
+      isTerminalStatus;
     const status = normalizeExportStatus({ value: next.status, hasSignal });
     if (!jobId && status === "idle") {
       exportPersistedRef.current = null;
