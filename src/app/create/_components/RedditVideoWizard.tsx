@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { uploadAssetFile } from "@/lib/assets/library";
-import { captureVideoPoster } from "@/lib/media/video-poster";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -37,19 +36,13 @@ type PublicAudioItem = {
 
 const DEFAULT_INTRO_SECONDS = 3;
 const GAMEPLAY_BUCKET = "gameplay-footage";
-const GAMEPLAY_THUMBNAIL_PREFIX = "thumbnails";
-const GAMEPLAY_LIST_LIMIT = 120;
+const GAMEPLAY_INITIAL_FETCH_LIMIT = 4;
+const GAMEPLAY_PAGE_FETCH_LIMIT = 24;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
-const GAMEPLAY_POSTER_CONCURRENCY = 8;
-const GAMEPLAY_INITIAL_FETCH_LIMIT = 4;
 const GAMEPLAY_INITIAL_VISIBLE_COUNT = 4;
-const GAMEPLAY_VISIBLE_BATCH_SIZE = 8;
 const GAMEPLAY_LOAD_MORE_ROOT_MARGIN = "300px 0px";
 const SQUARE_TOLERANCE_PX = 2;
-
-const toGameplayThumbnailPath = (videoPath: string) =>
-  `${GAMEPLAY_THUMBNAIL_PREFIX}/${videoPath.replace(/^\/+/, "").replace(/\.[^/.]+$/, ".jpg")}`;
 
 const DEFAULT_REDDIT_PFPS = [
   "/reddit-default-pfp/0qoqln2f5bu71.webp",
@@ -562,17 +555,14 @@ export default function RedditVideoWizard() {
   const [gameplayUploading, setGameplayUploading] = useState(false);
   const [gameplayItems, setGameplayItems] = useState<GameplayItem[]>([]);
   const [gameplaySelected, setGameplaySelected] = useState<GameplayItem | null>(null);
-  const [gameplayPosterByPath, setGameplayPosterByPath] = useState<Record<string, string>>(
-    {}
+  const [gameplayHasMore, setGameplayHasMore] = useState(false);
+  const [gameplayNextOffset, setGameplayNextOffset] = useState<number | null>(
+    null
   );
   const [activeGameplayPreviewPath, setActiveGameplayPreviewPath] = useState<string | null>(
     null
   );
-  const [gameplayVisibleCount, setGameplayVisibleCount] = useState(
-    GAMEPLAY_INITIAL_VISIBLE_COUNT
-  );
   const gameplayPrefetchStartedRef = useRef(false);
-  const gameplayThumbnailUploadAttemptedRef = useRef<Set<string>>(new Set());
   const gameplayLoadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const [voiceLoading, setVoiceLoading] = useState(false);
@@ -599,31 +589,6 @@ export default function RedditVideoWizard() {
   const triggerGameplayUploadPicker = useCallback(() => {
     gameplayUploadInputRef.current?.click();
   }, []);
-
-  const uploadGeneratedGameplayThumbnail = useCallback(
-    async (item: GameplayItem, dataUrl: string) => {
-      const thumbnailPath = toGameplayThumbnailPath(item.path);
-      if (gameplayThumbnailUploadAttemptedRef.current.has(thumbnailPath)) {
-        return;
-      }
-      gameplayThumbnailUploadAttemptedRef.current.add(thumbnailPath);
-      try {
-        const dataUrlResponse = await fetch(dataUrl);
-        const blob = await dataUrlResponse.blob();
-        if (!blob.size) {
-          return;
-        }
-        await gameplaySupabase.storage.from(GAMEPLAY_BUCKET).upload(thumbnailPath, blob, {
-          contentType: "image/jpeg",
-          cacheControl: "31536000",
-          upsert: true,
-        });
-      } catch {
-        // Best-effort cache write.
-      }
-    },
-    [gameplaySupabase]
-  );
 
   const isClearlyNonVertical = useCallback((width: number, height: number) => {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -733,7 +698,7 @@ export default function RedditVideoWizard() {
         }
 
         const { error: uploadError } = await gameplaySupabase.storage
-          .from("gameplay-footage")
+          .from(GAMEPLAY_BUCKET)
           .uploadToSignedUrl(storagePath, uploadToken, file, {
             contentType,
             upsert: false,
@@ -797,13 +762,13 @@ export default function RedditVideoWizard() {
     [handleGameplayUpload]
   );
 
-  const loadGameplay = useCallback(async () => {
-    const fetchGameplayItems = async (limit: number, signal?: AbortSignal) => {
+  const fetchGameplayPage = useCallback(
+    async (limit: number, offset: number, signal?: AbortSignal) => {
       const response = await fetch(
         `/api/gameplay-footage/list?limit=${Math.max(
           1,
           Math.floor(limit)
-        )}&t=${Date.now()}`,
+        )}&offset=${Math.max(0, Math.floor(offset))}&t=${Date.now()}`,
         {
           method: "GET",
           cache: "no-store",
@@ -814,49 +779,39 @@ export default function RedditVideoWizard() {
       if (!response.ok) {
         throw new Error(data?.error || "Failed to load gameplay footage.");
       }
-      return Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
-    };
+      const items = Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
+      const nextOffset =
+        typeof data?.nextOffset === "number" && Number.isFinite(data.nextOffset)
+          ? data.nextOffset
+          : null;
+      return { items, nextOffset };
+    },
+    []
+  );
 
+  const loadGameplay = useCallback(async () => {
     setGameplayLoading(true);
     setGameplayLoadingMore(false);
     setGameplayError(null);
+    setGameplayHasMore(false);
+    setGameplayNextOffset(null);
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       controller.abort();
     }, GAMEPLAY_FETCH_TIMEOUT_MS);
 
     try {
-      const initialLimit = Math.min(
-        GAMEPLAY_LIST_LIMIT,
-        GAMEPLAY_INITIAL_FETCH_LIMIT
+      const { items, nextOffset } = await fetchGameplayPage(
+        GAMEPLAY_INITIAL_FETCH_LIMIT,
+        0,
+        controller.signal
       );
-      const initialItems = await fetchGameplayItems(initialLimit, controller.signal);
-      setGameplayItems(initialItems);
-      setGameplayVisibleCount(GAMEPLAY_INITIAL_VISIBLE_COUNT);
+      setGameplayItems(items);
       setGameplaySelected((prev) =>
-        prev && initialItems.some((item) => item.path === prev.path) ? prev : null
+        prev && items.some((item) => item.path === prev.path) ? prev : null
       );
-
-      if (GAMEPLAY_LIST_LIMIT <= initialLimit) {
-        return;
-      }
-
-      setGameplayLoading(false);
-      setGameplayLoadingMore(true);
-      try {
-        const fullItems = await fetchGameplayItems(GAMEPLAY_LIST_LIMIT);
-        setGameplayItems(fullItems);
-        setGameplaySelected((prev) =>
-          prev && fullItems.some((item) => item.path === prev.path) ? prev : null
-        );
-      } catch (error) {
-        console.warn(
-          "[reddit-video][wizard] Failed to load full gameplay list",
-          error
-        );
-      } finally {
-        setGameplayLoadingMore(false);
-      }
+      setGameplayNextOffset(nextOffset);
+      setGameplayHasMore(nextOffset != null);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         setGameplayError(
@@ -871,103 +826,57 @@ export default function RedditVideoWizard() {
       window.clearTimeout(timeoutId);
       setGameplayLoading(false);
     }
-  }, []);
+  }, [fetchGameplayPage]);
 
-  useEffect(() => {
-    const activePaths = new Set(gameplayItems.map((item) => item.path));
-
-    setGameplayPosterByPath((prev) => {
-      const nextEntries = Object.entries(prev).filter(([path]) => activePaths.has(path));
-      if (nextEntries.length === Object.keys(prev).length) {
-        return prev;
-      }
-      return Object.fromEntries(nextEntries);
-    });
-
-    if (activeGameplayPreviewPath && !activePaths.has(activeGameplayPreviewPath)) {
-      setActiveGameplayPreviewPath(null);
-    }
-
-    const posterQueueItems = gameplayItems.slice(0, gameplayVisibleCount);
-    const missingPosters = posterQueueItems.filter((item) => {
-      const providedThumbnail =
-        typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
-      return !gameplayPosterByPath[item.path] && !providedThumbnail;
-    });
-    if (missingPosters.length === 0) {
+  const loadMoreGameplay = useCallback(async () => {
+    if (gameplayLoadingMore || !gameplayHasMore || gameplayNextOffset == null) {
       return;
     }
-
-    let cancelled = false;
-
-    const buildPosters = async () => {
-      const updates: Record<string, string> = {};
-      let cursor = 0;
-      const workerCount = Math.max(
-        1,
-        Math.min(GAMEPLAY_POSTER_CONCURRENCY, missingPosters.length)
+    setGameplayLoadingMore(true);
+    try {
+      const { items, nextOffset } = await fetchGameplayPage(
+        GAMEPLAY_PAGE_FETCH_LIMIT,
+        gameplayNextOffset
       );
-
-      await Promise.all(
-        Array.from({ length: workerCount }, async () => {
-          while (true) {
-            if (cancelled) {
-              return;
-            }
-            const index = cursor;
-            cursor += 1;
-            if (index >= missingPosters.length) {
-              return;
-            }
-            const item = missingPosters[index];
-            if (!item) {
-              return;
-            }
-            const poster = await captureVideoPoster(item.publicUrl, {
-              seekTimeSeconds: 0.05,
-              maxWidth: 480,
-            });
-            if (!poster || cancelled) {
-              continue;
-            }
-            updates[item.path] = poster;
-            void uploadGeneratedGameplayThumbnail(item, poster);
-          }
-        })
-      );
-
-      if (cancelled || Object.keys(updates).length === 0) {
-        return;
-      }
-
-      setGameplayPosterByPath((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        Object.entries(updates).forEach(([path, poster]) => {
-          if (!next[path]) {
-            next[path] = poster;
-            changed = true;
-          }
-        });
-        return changed ? next : prev;
+      setGameplayItems((prev) => {
+        if (items.length === 0) {
+          return prev;
+        }
+        const seen = new Set(prev.map((item) => item.path));
+        const appended = items.filter((item) => !seen.has(item.path));
+        if (appended.length === 0) {
+          return prev;
+        }
+        return [...prev, ...appended];
       });
-    };
-
-    void buildPosters();
-
-    return () => {
-      cancelled = true;
-    };
+      setGameplayNextOffset(nextOffset);
+      setGameplayHasMore(nextOffset != null && items.length > 0);
+    } catch (error) {
+      setGameplayError(
+        error instanceof Error ? error.message : "Failed to load more gameplay footage."
+      );
+    } finally {
+      setGameplayLoadingMore(false);
+    }
   }, [
-    activeGameplayPreviewPath,
-    gameplayItems,
-    gameplayPosterByPath,
-    gameplayVisibleCount,
-    uploadGeneratedGameplayThumbnail,
+    fetchGameplayPage,
+    gameplayHasMore,
+    gameplayLoadingMore,
+    gameplayNextOffset,
   ]);
 
   useEffect(() => {
-    if (gameplayVisibleCount >= gameplayItems.length || gameplayItems.length === 0) {
+    if (!activeGameplayPreviewPath) {
+      return;
+    }
+    if (gameplayItems.some((item) => item.path === activeGameplayPreviewPath)) {
+      return;
+    }
+    setActiveGameplayPreviewPath(null);
+  }, [activeGameplayPreviewPath, gameplayItems]);
+
+  useEffect(() => {
+    if (!gameplayHasMore || gameplayItems.length === 0) {
       return;
     }
     const node = gameplayLoadMoreRef.current;
@@ -980,9 +889,7 @@ export default function RedditVideoWizard() {
         if (!entry?.isIntersecting) {
           return;
         }
-        setGameplayVisibleCount((prev) =>
-          Math.min(gameplayItems.length, prev + GAMEPLAY_VISIBLE_BATCH_SIZE)
-        );
+        void loadMoreGameplay();
       },
       {
         root: null,
@@ -994,10 +901,7 @@ export default function RedditVideoWizard() {
     return () => {
       observer.disconnect();
     };
-  }, [
-    gameplayItems.length,
-    gameplayVisibleCount,
-  ]);
+  }, [gameplayHasMore, gameplayItems.length, loadMoreGameplay]);
 
   const loadVoices = useCallback(async () => {
     setVoiceLoading(true);
@@ -1074,20 +978,6 @@ export default function RedditVideoWizard() {
     postAvatarUrl.trim().length > 0 &&
     postTitle.trim().length > 0 &&
     script.trim().length > 0;
-  const gameplayVisibleItems = useMemo(
-    () => gameplayItems.slice(0, gameplayVisibleCount),
-    [gameplayItems, gameplayVisibleCount]
-  );
-  const gameplayPreviewPendingCount = useMemo(
-    () =>
-      gameplayVisibleItems.filter((item) => {
-        const providedThumbnail =
-          typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
-        return !gameplayPosterByPath[item.path] && !providedThumbnail;
-      }).length,
-    [gameplayPosterByPath, gameplayVisibleItems]
-  );
-  const hasMoreGameplayToReveal = gameplayVisibleCount < gameplayItems.length;
   const canContinueFromStyle = Boolean(subtitleStyleId);
   const canContinueFromVideo = Boolean(gameplaySelected);
   const canGenerate = Boolean(
@@ -1920,16 +1810,19 @@ export default function RedditVideoWizard() {
                 </div>
               ) : null}
 
-              {gameplayVisibleItems.length > 0 ? (
+              {gameplayItems.length > 0 ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {gameplayVisibleItems.map((item, index) => {
+                  {gameplayItems.map((item, index) => {
                     const selected = gameplaySelected?.path === item.path;
                     const isPreviewActive = activeGameplayPreviewPath === item.path;
+                    const shouldAutoPlay =
+                      selected ||
+                      isPreviewActive ||
+                      index < GAMEPLAY_INITIAL_VISIBLE_COUNT;
                     const posterUrl =
-                      gameplayPosterByPath[item.path] ??
-                      (typeof item.thumbnailUrl === "string"
+                      typeof item.thumbnailUrl === "string"
                         ? item.thumbnailUrl.trim()
-                        : "");
+                        : "";
                     return (
                       <button
                         key={item.path}
@@ -1976,29 +1869,20 @@ export default function RedditVideoWizard() {
                           ) : null}
                         </div>
                         <div className="relative aspect-[9/16] w-full overflow-hidden bg-black">
-                          {isPreviewActive ? (
-                            <video
-                              src={item.publicUrl}
-                              className="h-full w-full object-cover"
-                              muted
-                              playsInline
-                              loop
-                              autoPlay
-                              preload="metadata"
-                            />
-                          ) : posterUrl ? (
-                            <img
-                              src={posterUrl}
-                              alt={`${item.name} first frame`}
-                              className="h-full w-full object-cover"
-                              loading={index < GAMEPLAY_INITIAL_VISIBLE_COUNT ? "eager" : "lazy"}
-                              draggable={false}
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-[#111315] px-3 text-center text-xs text-[#898a8b]">
-                              Preparing preview...
-                            </div>
-                          )}
+                          <video
+                            src={item.publicUrl}
+                            poster={posterUrl || undefined}
+                            className="h-full w-full object-cover"
+                            muted
+                            playsInline
+                            loop
+                            autoPlay={shouldAutoPlay}
+                            preload={
+                              shouldAutoPlay || index < GAMEPLAY_INITIAL_VISIBLE_COUNT
+                                ? "metadata"
+                                : "none"
+                            }
+                          />
                         </div>
                       </button>
                     );
@@ -2006,18 +1890,11 @@ export default function RedditVideoWizard() {
                 </div>
               ) : null}
 
-              {gameplayPreviewPendingCount > 0 ? (
-                <p className="text-xs text-[#898a8b]">
-                  Loading {gameplayPreviewPendingCount} more preview
-                  {gameplayPreviewPendingCount === 1 ? "" : "s"}...
-                </p>
-              ) : null}
-
-              {gameplayLoadingMore && gameplayVisibleItems.length > 0 ? (
+              {gameplayLoadingMore && gameplayItems.length > 0 ? (
                 <p className="text-xs text-[#898a8b]">Loading more gameplay videos...</p>
               ) : null}
 
-              {gameplayVisibleItems.length > 0 && hasMoreGameplayToReveal ? (
+              {gameplayItems.length > 0 && gameplayHasMore ? (
                 <div
                   ref={gameplayLoadMoreRef}
                   className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-3 text-center text-xs text-[#898a8b]"

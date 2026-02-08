@@ -23,18 +23,12 @@ const isVideoPath = (value: string) => {
   );
 };
 
-const stripFileExtension = (value: string) => value.replace(/\.[^./]+$/, "");
 const isThumbnailPath = (value: string) => {
   const normalized = value.replace(/^\/+/, "");
   return (
     normalized === THUMBNAIL_FOLDER_PREFIX ||
     normalized.startsWith(`${THUMBNAIL_FOLDER_PREFIX}/`)
   );
-};
-
-const thumbnailPathCandidatesForVideo = (videoPath: string) => {
-  const stem = stripFileExtension(videoPath).replace(/^\/+/, "");
-  return [`${THUMBNAIL_FOLDER_PREFIX}/${stem}.jpg`];
 };
 
 const parseFiniteNumber = (value: unknown): number | null => {
@@ -107,12 +101,19 @@ export async function GET(request: Request) {
   const limit = rawLimit
     ? Math.max(1, Math.min(MAX_LIMIT, Number(rawLimit)))
     : DEFAULT_LIMIT;
+  const rawOffset = searchParams.get("offset");
+  const offset = rawOffset ? Math.max(0, Number(rawOffset)) : 0;
   const prefix = (searchParams.get("prefix") ?? "").replace(/^\/+|\/+$/g, "");
 
   const safeLimit =
     typeof limit === "number" && Number.isFinite(limit)
       ? Math.floor(limit)
       : DEFAULT_LIMIT;
+  const safeOffset =
+    typeof offset === "number" && Number.isFinite(offset)
+      ? Math.floor(offset)
+      : 0;
+  const targetCount = safeOffset + safeLimit + 1;
   const orientation = (searchParams.get("orientation") ?? "").trim().toLowerCase();
   const verticalOnly = orientation === "vertical" || orientation === "portrait";
 
@@ -129,7 +130,7 @@ export async function GET(request: Request) {
   const folderQueue: string[] = [prefix];
   const seenPrefixes = new Set<string>();
 
-  while (folderQueue.length > 0 && items.length < safeLimit) {
+  while (folderQueue.length > 0 && items.length < targetCount) {
     const currentPrefix = folderQueue.shift() ?? "";
     if (seenPrefixes.has(currentPrefix)) {
       continue;
@@ -137,7 +138,7 @@ export async function GET(request: Request) {
     seenPrefixes.add(currentPrefix);
 
     let offset = 0;
-    while (items.length < safeLimit) {
+    while (items.length < targetCount) {
       const { data, error } = await supabaseServer.storage
         .from(GAMEPLAY_BUCKET)
         .list(currentPrefix, {
@@ -161,7 +162,7 @@ export async function GET(request: Request) {
       }
 
       for (const entry of entries) {
-        if (items.length >= safeLimit) {
+        if (items.length >= targetCount) {
           break;
         }
         const name = typeof entry.name === "string" ? entry.name : "";
@@ -209,10 +210,12 @@ export async function GET(request: Request) {
     }
   }
 
-  const itemsWithPublicUrl = items.map((entry) => {
-    return entry.path;
-  });
+  const sortedItems = items.sort((a, b) => a.path.localeCompare(b.path));
+  const pageWithProbe = sortedItems.slice(safeOffset, safeOffset + safeLimit + 1);
+  const hasMore = pageWithProbe.length > safeLimit;
+  const pageItems = hasMore ? pageWithProbe.slice(0, safeLimit) : pageWithProbe;
 
+  const itemsWithPublicUrl = pageItems.map((entry) => entry.path);
   const urlByPath = new Map<string, string>();
   for (let offset = 0; offset < itemsWithPublicUrl.length; offset += PAGE_SIZE) {
     const batch = itemsWithPublicUrl.slice(offset, offset + PAGE_SIZE);
@@ -232,56 +235,9 @@ export async function GET(request: Request) {
     });
   }
 
-  const thumbnailCandidatesByVideoPath = new Map<string, string[]>();
-  const allThumbnailCandidatePaths: string[] = [];
-  const seenThumbnailCandidatePaths = new Set<string>();
-  items.forEach((entry) => {
-    const candidates = thumbnailPathCandidatesForVideo(entry.path);
-    thumbnailCandidatesByVideoPath.set(entry.path, candidates);
-    candidates.forEach((candidatePath) => {
-      if (seenThumbnailCandidatePaths.has(candidatePath)) {
-        return;
-      }
-      seenThumbnailCandidatePaths.add(candidatePath);
-      allThumbnailCandidatePaths.push(candidatePath);
-    });
-  });
-
-  const thumbnailUrlByPath = new Map<string, string>();
-  for (let offset = 0; offset < allThumbnailCandidatePaths.length; offset += PAGE_SIZE) {
-    const batch = allThumbnailCandidatePaths.slice(offset, offset + PAGE_SIZE);
-    const { data, error } = await supabaseServer.storage
-      .from(GAMEPLAY_BUCKET)
-      .createSignedUrls(batch, SIGNED_URL_TTL_SECONDS);
-    if (error) {
-      return NextResponse.json(
-        { error: "Failed to sign gameplay thumbnail URLs." },
-        { status: 502 }
-      );
-    }
-    (data ?? []).forEach((entry) => {
-      if (
-        entry?.path &&
-        typeof entry.signedUrl === "string" &&
-        entry.signedUrl.length > 0
-      ) {
-        thumbnailUrlByPath.set(entry.path, entry.signedUrl);
-      }
-    });
-  }
-
-  const resolvedItems = items
+  const resolvedItems = pageItems
     .map((entry) => {
       const signedUrl = urlByPath.get(entry.path) ?? "";
-      const thumbnailCandidates = thumbnailCandidatesByVideoPath.get(entry.path) ?? [];
-      let thumbnailUrl: string | null = null;
-      for (const thumbnailPath of thumbnailCandidates) {
-        const resolved = thumbnailUrlByPath.get(thumbnailPath);
-        if (typeof resolved === "string" && resolved.length > 0) {
-          thumbnailUrl = resolved;
-          break;
-        }
-      }
       const { data: publicData } = supabaseServer.storage
         .from(GAMEPLAY_BUCKET)
         .getPublicUrl(entry.path);
@@ -289,13 +245,15 @@ export async function GET(request: Request) {
       return {
         ...entry,
         publicUrl: signedUrl || fallbackUrl,
-        thumbnailUrl,
+        thumbnailUrl: null,
       };
-    })
-    .sort((a, b) => a.path.localeCompare(b.path));
+    });
 
   return NextResponse.json(
-    { items: resolvedItems },
+    {
+      items: resolvedItems,
+      nextOffset: hasMore ? safeOffset + pageItems.length : null,
+    },
     {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate",
