@@ -967,7 +967,7 @@ export default function RedditVideoWizard() {
   ]);
 
   useEffect(() => {
-    if (gameplayVisibleCount >= gameplayItems.length || gameplayVisibleItems.length === 0) {
+    if (gameplayVisibleCount >= gameplayItems.length || gameplayItems.length === 0) {
       return;
     }
     const node = gameplayLoadMoreRef.current;
@@ -997,7 +997,6 @@ export default function RedditVideoWizard() {
   }, [
     gameplayItems.length,
     gameplayVisibleCount,
-    gameplayVisibleItems.length,
   ]);
 
   const loadVoices = useCallback(async () => {
