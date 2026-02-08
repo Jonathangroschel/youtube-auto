@@ -55,6 +55,70 @@ const DEFAULT_REDDIT_PFPS = [
   "/reddit-default-pfp/j6n0dp5c5bu71.webp",
 ];
 
+const decodeLooseJsonEscapes = (value: string) =>
+  value
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, "\"")
+    .replace(/\\\\/g, "\\");
+
+const extractLooseJsonStringField = (source: string, field: "postTitle" | "script") => {
+  const keyToken = `"${field}"`;
+  const keyIndex = source.indexOf(keyToken);
+  if (keyIndex === -1) {
+    return "";
+  }
+  const colonIndex = source.indexOf(":", keyIndex + keyToken.length);
+  if (colonIndex === -1) {
+    return "";
+  }
+  const afterColon = source.slice(colonIndex + 1).trimStart();
+  if (!afterColon.startsWith("\"")) {
+    return "";
+  }
+  let escaped = false;
+  let value = "";
+  for (let index = 1; index < afterColon.length; index += 1) {
+    const char = afterColon[index]!;
+    if (escaped) {
+      value += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      value += char;
+      escaped = true;
+      continue;
+    }
+    if (char === "\"") {
+      return value;
+    }
+    value += char;
+  }
+  return "";
+};
+
+const looksLikeScriptJsonEnvelope = (value: string) => {
+  const trimmed = value.trimStart();
+  return (
+    trimmed.startsWith("{") &&
+    trimmed.includes("\"script\"") &&
+    trimmed.includes("\"postTitle\"")
+  );
+};
+
+const stripScriptJsonEnvelope = (value: string) => {
+  if (!value || !looksLikeScriptJsonEnvelope(value)) {
+    return value;
+  }
+  const rawScript = extractLooseJsonStringField(value, "script");
+  if (!rawScript) {
+    return value;
+  }
+  return decodeLooseJsonEscapes(rawScript).trim();
+};
+
 const SubtitleModeToggle = ({
   value,
   onChange,
@@ -296,12 +360,20 @@ function ScriptGeneratorModal({
         );
       }
       const script =
-        typeof data?.script === "string" ? data.script.trim() : "";
+        typeof data?.script === "string"
+          ? stripScriptJsonEnvelope(data.script).trim()
+          : "";
       if (!script) {
         throw new Error("Script generation returned empty output.");
       }
       const postTitle =
-        typeof data?.postTitle === "string" ? data.postTitle.trim() : "";
+        typeof data?.postTitle === "string" && data.postTitle.trim().length > 0
+          ? data.postTitle.trim()
+          : typeof data?.script === "string"
+            ? decodeLooseJsonEscapes(
+                extractLooseJsonStringField(data.script, "postTitle")
+              ).trim()
+            : "";
       onApply({ postTitle, script });
       onClose();
     } catch (err) {
@@ -484,6 +556,7 @@ export default function RedditVideoWizard() {
   const [postDarkMode, setPostDarkMode] = useState(false);
   const [postShowIntroCard, setPostShowIntroCard] = useState(true);
   const [script, setScript] = useState("");
+  const scriptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileSelected, setProfileSelected] = useState<string | null>(null);
@@ -587,6 +660,38 @@ export default function RedditVideoWizard() {
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+
+  const normalizeScriptForUse = useCallback((value: string) => {
+    const stripped = stripScriptJsonEnvelope(value);
+    return stripped.trim();
+  }, []);
+
+  const resizeScriptTextarea = useCallback(() => {
+    const node = scriptTextareaRef.current;
+    if (!node) {
+      return;
+    }
+    node.style.height = "0px";
+    node.style.height = `${Math.max(300, node.scrollHeight)}px`;
+  }, []);
+
+  useEffect(() => {
+    if (step !== 1) {
+      return;
+    }
+    resizeScriptTextarea();
+  }, [resizeScriptTextarea, script, step]);
+
+  useEffect(() => {
+    if (!looksLikeScriptJsonEnvelope(script)) {
+      return;
+    }
+    const stripped = stripScriptJsonEnvelope(script);
+    if (!stripped || stripped === script) {
+      return;
+    }
+    setScript(stripped);
+  }, [script]);
 
   const triggerGameplayUploadPicker = useCallback(() => {
     gameplayUploadInputRef.current?.click();
@@ -1002,10 +1107,15 @@ export default function RedditVideoWizard() {
     voices.length,
   ]);
 
+  const normalizedScript = useMemo(
+    () => normalizeScriptForUse(script),
+    [normalizeScriptForUse, script]
+  );
+
   const canContinueFromScript =
     postAvatarUrl.trim().length > 0 &&
     postTitle.trim().length > 0 &&
-    script.trim().length > 0;
+    normalizedScript.length > 0;
   const canContinueFromStyle = Boolean(subtitleStyleId);
   const canContinueFromVideo = Boolean(gameplaySelected);
   const canGenerate = Boolean(
@@ -1041,7 +1151,7 @@ export default function RedditVideoWizard() {
         darkMode: postDarkMode,
         showIntroCard: postShowIntroCard,
       },
-      script: script.trim(),
+      script: normalizedScript,
       gameplay: {
         url: gameplaySelected.publicUrl,
         name: gameplaySelected.name,
@@ -1113,7 +1223,7 @@ export default function RedditVideoWizard() {
     postTitle,
     postUsername,
     router,
-    script,
+    normalizedScript,
     scriptVoice,
     selectedMusic,
     subtitleMode,
@@ -1355,7 +1465,7 @@ export default function RedditVideoWizard() {
         <div className="flex-1 overflow-y-auto bg-[#0e1012] p-3 md:p-6">
           {step === 1 && (
             <div className="flex h-full flex-col gap-4 md:flex-row md:gap-6">
-              <div className="flex w-full flex-col space-y-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:h-full md:space-y-4 md:p-4">
+              <div className="flex w-full flex-col space-y-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:space-y-4 md:p-4">
                 <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
                   <h2 className="text-base font-medium text-[#f7f7f8] md:text-lg">
                     Generate Reddit Video
@@ -1478,7 +1588,8 @@ export default function RedditVideoWizard() {
                       Video Script
                     </label>
                     <textarea
-                      className="min-h-[300px] w-full rounded-md border border-[rgba(255,255,255,0.08)] bg-transparent px-3 py-4 text-sm text-[#f7f7f8] shadow-sm focus:border-[#9aed00]/30 focus:outline-none focus:ring-[#9aed00]/20"
+                      ref={scriptTextareaRef}
+                      className="min-h-[300px] w-full resize-none overflow-hidden rounded-md border border-[rgba(255,255,255,0.08)] bg-transparent px-3 py-4 text-sm text-[#f7f7f8] shadow-sm focus:border-[#9aed00]/30 focus:outline-none focus:ring-[#9aed00]/20"
                       placeholder="Enter video script content..."
                       value={script}
                       onChange={(e) => setScript(e.target.value)}
@@ -1516,7 +1627,7 @@ export default function RedditVideoWizard() {
                   <h3 className="text-lg font-medium text-[#f7f7f8]">Script Preview</h3>
                   <div className="min-h-40 flex-1 overflow-y-auto rounded-md border border-[rgba(255,255,255,0.08)] bg-[#0e1012] p-3">
                     <p className="whitespace-pre-wrap text-sm text-[#898a8b]">
-                      {script || "Your script will appear here..."}
+                      {normalizedScript || "Your script will appear here..."}
                     </p>
                   </div>
                 </div>
@@ -1685,7 +1796,7 @@ export default function RedditVideoWizard() {
                 onClose={() => setScriptModalOpen(false)}
                 titleHint={postTitle}
                 onApply={(value) => {
-                  setScript(value.script);
+                  setScript(stripScriptJsonEnvelope(value.script));
                   if (value.postTitle) {
                     setPostTitle(value.postTitle);
                   }

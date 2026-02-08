@@ -82,6 +82,100 @@ const unwrapJsonBlock = (value: string) => {
     .trim();
 };
 
+const extractLikelyJsonObject = (value: string) => {
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    return "";
+  }
+  return value.slice(start, end + 1).trim();
+};
+
+const decodeLooseJsonEscapes = (value: string) =>
+  value
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, "\"")
+    .replace(/\\\\/g, "\\");
+
+const extractLooseJsonStringField = (
+  source: string,
+  field: "postTitle" | "script"
+) => {
+  const keyToken = `"${field}"`;
+  const keyIndex = source.indexOf(keyToken);
+  if (keyIndex === -1) {
+    return "";
+  }
+  const colonIndex = source.indexOf(":", keyIndex + keyToken.length);
+  if (colonIndex === -1) {
+    return "";
+  }
+  const afterColon = source.slice(colonIndex + 1).trimStart();
+  if (!afterColon.startsWith("\"")) {
+    return "";
+  }
+  let escaped = false;
+  let value = "";
+  for (let index = 1; index < afterColon.length; index += 1) {
+    const char = afterColon[index]!;
+    if (escaped) {
+      value += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      value += char;
+      escaped = true;
+      continue;
+    }
+    if (char === "\"") {
+      return value;
+    }
+    value += char;
+  }
+  return "";
+};
+
+const parseGeneratedScriptPayload = (
+  value: string,
+  fallbackTopic: string
+): GeneratedScriptPayload | null => {
+  try {
+    const parsed = JSON.parse(value);
+    if (!isRecord(parsed)) {
+      return null;
+    }
+    const parsedTitle =
+      typeof parsed.postTitle === "string"
+        ? sanitizeGeneratedLine(parsed.postTitle)
+        : "";
+    const parsedScriptRaw =
+      typeof parsed.script === "string" ? parsed.script : "";
+    if (!parsedScriptRaw) {
+      return null;
+    }
+    const nestedScriptCandidate = extractLooseJsonStringField(
+      parsedScriptRaw,
+      "script"
+    );
+    const parsedScript = nestedScriptCandidate
+      ? decodeLooseJsonEscapes(nestedScriptCandidate)
+      : parsedScriptRaw;
+    const normalizedScript = sanitizeGeneratedScript(parsedScript);
+    if (!normalizedScript) {
+      return null;
+    }
+    return {
+      postTitle: parsedTitle || sanitizeGeneratedLine(fallbackTopic),
+      script: normalizedScript,
+    };
+  } catch {
+    return null;
+  }
+};
+
 const extractGeneratedScriptPayload = (
   rawText: string,
   fallbackTopic: string
@@ -91,26 +185,33 @@ const extractGeneratedScriptPayload = (
     return null;
   }
 
-  try {
-    const parsed = JSON.parse(normalized);
-    if (isRecord(parsed)) {
-      const parsedTitle =
-        typeof parsed.postTitle === "string"
-          ? sanitizeGeneratedLine(parsed.postTitle)
-          : "";
-      const parsedScript =
-        typeof parsed.script === "string"
-          ? sanitizeGeneratedScript(parsed.script)
-          : "";
-      if (parsedScript) {
-        return {
-          postTitle: parsedTitle || sanitizeGeneratedLine(fallbackTopic),
-          script: parsedScript,
-        };
-      }
+  const parsedDirect = parseGeneratedScriptPayload(normalized, fallbackTopic);
+  if (parsedDirect) {
+    return parsedDirect;
+  }
+
+  const objectCandidate = extractLikelyJsonObject(normalized);
+  if (objectCandidate && objectCandidate !== normalized) {
+    const parsedFromObject = parseGeneratedScriptPayload(
+      objectCandidate,
+      fallbackTopic
+    );
+    if (parsedFromObject) {
+      return parsedFromObject;
     }
-  } catch {
-    // Fall through to a text fallback.
+  }
+
+  const looseScript = sanitizeGeneratedScript(
+    decodeLooseJsonEscapes(extractLooseJsonStringField(normalized, "script"))
+  );
+  if (looseScript) {
+    const looseTitle = sanitizeGeneratedLine(
+      decodeLooseJsonEscapes(extractLooseJsonStringField(normalized, "postTitle"))
+    );
+    return {
+      postTitle: looseTitle || sanitizeGeneratedLine(fallbackTopic),
+      script: looseScript,
+    };
   }
 
   const fallbackScript = sanitizeGeneratedScript(normalized);
