@@ -3621,7 +3621,22 @@ function AdvancedEditorContent() {
         return "default";
       };
 	      const queryProjectId = searchParams.get("projectId");
+	      const importMode = searchParams.get("import");
+	      const isTemplateImportMode =
+	        importMode === "splitscreen" ||
+	        importMode === "streamer-video" ||
+	        importMode === "reddit-video";
 	      const forceNewProject = searchParams.get("new") === "1";
+	      if (isTemplateImportMode) {
+	        clearEditorReloadSessionState();
+	        projectIdRef.current = null;
+	        setProjectId(null);
+	        setProjectStarted(false);
+	        if (!cancelled) {
+	          setProjectReady(true);
+	        }
+	        return;
+	      }
 	      if (forceNewProject) {
 	        clearEditorReloadSessionState();
 	        projectIdRef.current = null;
@@ -12974,6 +12989,23 @@ function AdvancedEditorContent() {
 		      redditMusicClipDefaultsRef.current = new Map();
 		      subtitleGenerationRunIdRef.current += 1;
 		      subtitleLaneIdRef.current = null;
+	      // Force imports to save into a brand-new project (never the currently open one).
+	      clearEditorReloadSessionState();
+	      projectIdRef.current = null;
+	      setProjectId(null);
+	      exportPersistedRef.current = null;
+	      setExportUi({
+	        open: false,
+	        status: "idle",
+	        stage: "",
+	        progress: 0,
+	        jobId: null,
+	        downloadUrl: null,
+	        error: null,
+	      });
+	      setProjectStarted(false);
+	      setProjectSaveState("idle");
+	      setShowSaveIndicator(false);
 
 	      let resolvedMainUrl = payload.mainVideo.url;
 	      let resolvedMainName =
@@ -13576,6 +13608,23 @@ function AdvancedEditorContent() {
 		      redditMusicClipDefaultsRef.current = new Map();
 		      subtitleGenerationRunIdRef.current += 1;
 		      subtitleLaneIdRef.current = null;
+      // Force imports to save into a brand-new project (never the currently open one).
+      clearEditorReloadSessionState();
+      projectIdRef.current = null;
+      setProjectId(null);
+      exportPersistedRef.current = null;
+      setExportUi({
+        open: false,
+        status: "idle",
+        stage: "",
+        progress: 0,
+        jobId: null,
+        downloadUrl: null,
+        error: null,
+      });
+      setProjectStarted(false);
+      setProjectSaveState("idle");
+      setShowSaveIndicator(false);
 
       let resolvedMainUrl =
         typeof payload.mainVideo.url === "string" ? payload.mainVideo.url.trim() : "";
@@ -13999,6 +14048,23 @@ function AdvancedEditorContent() {
 		      redditMusicClipDefaultsRef.current = new Map();
 		      subtitleGenerationRunIdRef.current += 1;
 		      subtitleLaneIdRef.current = null;
+      // Force imports to save into a brand-new project (never the currently open one).
+      clearEditorReloadSessionState();
+      projectIdRef.current = null;
+      setProjectId(null);
+      exportPersistedRef.current = null;
+      setExportUi({
+        open: false,
+        status: "idle",
+        stage: "",
+        progress: 0,
+        jobId: null,
+        downloadUrl: null,
+        error: null,
+      });
+      setProjectStarted(false);
+      setProjectSaveState("idle");
+      setShowSaveIndicator(false);
 
       const safeTitle =
         typeof payload.post?.title === "string" && payload.post.title.trim().length > 0
@@ -15389,6 +15455,7 @@ function AdvancedEditorContent() {
         url.searchParams.delete("import");
         url.searchParams.delete("ts");
         url.searchParams.delete("payloadId");
+        url.searchParams.delete("projectId");
         const query = url.searchParams.toString();
         const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
         window.history.replaceState({}, "", nextUrl);
@@ -15617,6 +15684,7 @@ function AdvancedEditorContent() {
         url.searchParams.delete("titleText");
         url.searchParams.delete("subtitleStyleId");
         url.searchParams.delete("autoSubtitles");
+        url.searchParams.delete("projectId");
         const query = url.searchParams.toString();
         const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
         window.history.replaceState({}, "", nextUrl);
@@ -15722,6 +15790,7 @@ function AdvancedEditorContent() {
         url.searchParams.delete("import");
         url.searchParams.delete("ts");
         url.searchParams.delete("payloadId");
+        url.searchParams.delete("projectId");
         const query = url.searchParams.toString();
         const nextUrl = `${url.pathname}${query ? `?${query}` : ""}${url.hash}`;
         window.history.replaceState({}, "", nextUrl);
