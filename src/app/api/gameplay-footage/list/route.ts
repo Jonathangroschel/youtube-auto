@@ -24,15 +24,17 @@ const isVideoPath = (value: string) => {
 };
 
 const stripFileExtension = (value: string) => value.replace(/\.[^./]+$/, "");
+const isThumbnailPath = (value: string) => {
+  const normalized = value.replace(/^\/+/, "");
+  return (
+    normalized === THUMBNAIL_FOLDER_PREFIX ||
+    normalized.startsWith(`${THUMBNAIL_FOLDER_PREFIX}/`)
+  );
+};
 
 const thumbnailPathCandidatesForVideo = (videoPath: string) => {
   const stem = stripFileExtension(videoPath).replace(/^\/+/, "");
-  return [
-    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.jpg`,
-    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.jpeg`,
-    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.webp`,
-    `${THUMBNAIL_FOLDER_PREFIX}/${stem}.png`,
-  ];
+  return [`${THUMBNAIL_FOLDER_PREFIX}/${stem}.jpg`];
 };
 
 const parseFiniteNumber = (value: unknown): number | null => {
@@ -168,6 +170,9 @@ export async function GET(request: Request) {
         }
 
         const path = currentPrefix ? `${currentPrefix}/${name}` : name;
+        if (isThumbnailPath(path)) {
+          continue;
+        }
         if (isVideoPath(path)) {
           const metadata = entry.metadata ?? null;
           const dimensions = extractVideoDimensions(metadata);

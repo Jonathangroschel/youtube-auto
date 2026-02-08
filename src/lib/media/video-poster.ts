@@ -21,7 +21,7 @@ const captureWithOptions = (
     const timeoutId = window.setTimeout(() => {
       cleanup();
       resolve(null);
-    }, 8000);
+    }, 5000);
 
     let settled = false;
 
@@ -100,7 +100,7 @@ const captureWithOptions = (
     }
     video.muted = true;
     video.playsInline = true;
-    video.preload = "auto";
+    video.preload = "metadata";
     video.addEventListener("loadeddata", handleLoadedData, { once: true });
     video.addEventListener("seeked", handleSeeked, { once: true });
     video.addEventListener("error", handleError, { once: true });

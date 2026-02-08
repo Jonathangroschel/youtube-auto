@@ -48,6 +48,7 @@ const GAMEPLAY_THUMBNAIL_PREFIX = "thumbnails";
 const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_POSTER_CONCURRENCY = 8;
+const GAMEPLAY_INITIAL_FETCH_LIMIT = 4;
 const GAMEPLAY_INITIAL_VISIBLE_COUNT = 4;
 const GAMEPLAY_VISIBLE_BATCH_SIZE = 8;
 const GAMEPLAY_LOAD_MORE_ROOT_MARGIN = "300px 0px";
@@ -111,6 +112,7 @@ export default function SplitScreenWizard({
   const [generateBusy, setGenerateBusy] = useState(false);
 
   const [gameplayLoading, setGameplayLoading] = useState(false);
+  const [gameplayLoadingMore, setGameplayLoadingMore] = useState(false);
   const [gameplayError, setGameplayError] = useState<string | null>(null);
   const [gameplayUploadError, setGameplayUploadError] = useState<string | null>(
     null
@@ -179,23 +181,18 @@ export default function SplitScreenWizard({
   }, [subtitleStyleId, subtitleStyleOptions]);
 
   const canContinueToBackground = Boolean(sourceVideo);
-  const gameplayPreviewItems = useMemo(
+  const gameplayVisibleItems = useMemo(
+    () => gameplayItems.slice(0, gameplayVisibleCount),
+    [gameplayItems, gameplayVisibleCount]
+  );
+  const gameplayPreviewPendingCount = useMemo(
     () =>
-      gameplayItems.filter((item) => {
+      gameplayVisibleItems.filter((item) => {
         const providedThumbnail =
           typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
-        return Boolean(gameplayPosterByPath[item.path] || providedThumbnail);
-      }),
-    [gameplayItems, gameplayPosterByPath]
-  );
-  const gameplayVisiblePreviewItems = useMemo(
-    () => gameplayPreviewItems.slice(0, gameplayVisibleCount),
-    [gameplayPreviewItems, gameplayVisibleCount]
-  );
-  const gameplayPreviewPendingCount = Math.max(
-    0,
-    Math.min(gameplayVisibleCount, gameplayItems.length) -
-      gameplayVisiblePreviewItems.length
+        return !gameplayPosterByPath[item.path] && !providedThumbnail;
+      }).length,
+    [gameplayPosterByPath, gameplayVisibleItems]
   );
   const hasMoreGameplayToReveal = gameplayVisibleCount < gameplayItems.length;
   const canContinueToSubtitles = Boolean(sourceVideo && gameplaySelected);
@@ -462,7 +459,24 @@ export default function SplitScreenWizard({
   }, [sourceLink]);
 
   const loadGameplay = useCallback(async () => {
+    const fetchGameplayItems = async (limit: number, signal?: AbortSignal) => {
+      const response = await fetch(
+        `/api/gameplay-footage/list?limit=${Math.max(1, Math.floor(limit))}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal,
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to load gameplay footage.");
+      }
+      return Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
+    };
+
     setGameplayLoading(true);
+    setGameplayLoadingMore(false);
     setGameplayError(null);
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
@@ -470,21 +484,31 @@ export default function SplitScreenWizard({
     }, GAMEPLAY_FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(
-        `/api/gameplay-footage/list?limit=${GAMEPLAY_LIST_LIMIT}`,
-        {
-        method: "GET",
-        cache: "no-store",
-        signal: controller.signal,
-      }
+      const initialLimit = Math.min(
+        GAMEPLAY_LIST_LIMIT,
+        GAMEPLAY_INITIAL_FETCH_LIMIT
       );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.error || "Failed to load gameplay footage.");
-      }
-      const items = Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
-      setGameplayItems(items);
+      const initialItems = await fetchGameplayItems(initialLimit, controller.signal);
+      setGameplayItems(initialItems);
       setGameplayVisibleCount(GAMEPLAY_INITIAL_VISIBLE_COUNT);
+
+      if (GAMEPLAY_LIST_LIMIT <= initialLimit) {
+        return;
+      }
+
+      setGameplayLoading(false);
+      setGameplayLoadingMore(true);
+      try {
+        const fullItems = await fetchGameplayItems(GAMEPLAY_LIST_LIMIT);
+        setGameplayItems(fullItems);
+      } catch (error) {
+        console.warn(
+          "[split-screen][wizard] Failed to load full gameplay list",
+          error
+        );
+      } finally {
+        setGameplayLoadingMore(false);
+      }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         setGameplayError(
@@ -597,7 +621,7 @@ export default function SplitScreenWizard({
   ]);
 
   useEffect(() => {
-    if (!hasMoreGameplayToReveal || gameplayVisiblePreviewItems.length === 0) {
+    if (!hasMoreGameplayToReveal || gameplayVisibleItems.length === 0) {
       return;
     }
     const node = gameplayLoadMoreRef.current;
@@ -627,7 +651,7 @@ export default function SplitScreenWizard({
   }, [
     gameplayItems.length,
     gameplayVisibleCount,
-    gameplayVisiblePreviewItems.length,
+    gameplayVisibleItems.length,
     hasMoreGameplayToReveal,
   ]);
 
@@ -1072,15 +1096,9 @@ export default function SplitScreenWizard({
                 </div>
               )}
 
-              {gameplayItems.length > 0 && gameplayVisiblePreviewItems.length === 0 && (
-                <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
-                  Preparing preview images...
-                </div>
-              )}
-
-              {gameplayVisiblePreviewItems.length > 0 && (
+              {gameplayVisibleItems.length > 0 && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {gameplayVisiblePreviewItems.map((item) => {
+                  {gameplayVisibleItems.map((item, index) => {
                     const isSelected = gameplaySelected?.path === item.path;
                     const isPreviewActive = activeGameplayPreviewPath === item.path;
                     const posterUrl =
@@ -1137,14 +1155,18 @@ export default function SplitScreenWizard({
                               autoPlay
                               preload="metadata"
                             />
-                          ) : (
+                          ) : posterUrl ? (
                             <img
                               src={posterUrl}
                               alt={`${item.name} first frame`}
                               className="h-full w-full object-cover"
-                              loading="lazy"
+                              loading={index < GAMEPLAY_INITIAL_VISIBLE_COUNT ? "eager" : "lazy"}
                               draggable={false}
                             />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-[#111315] px-3 text-center text-xs text-[#898a8b]">
+                              Preparing preview...
+                            </div>
                           )}
                         </div>
                       </button>
@@ -1160,7 +1182,11 @@ export default function SplitScreenWizard({
                 </p>
               )}
 
-              {gameplayVisiblePreviewItems.length > 0 && hasMoreGameplayToReveal && (
+              {gameplayLoadingMore && gameplayVisibleItems.length > 0 && (
+                <p className="text-xs text-[#898a8b]">Loading more gameplay videos...</p>
+              )}
+
+              {gameplayVisibleItems.length > 0 && hasMoreGameplayToReveal && (
                 <div
                   ref={gameplayLoadMoreRef}
                   className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-3 text-center text-xs text-[#898a8b]"
