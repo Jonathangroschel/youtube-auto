@@ -42,6 +42,9 @@ const GAMEPLAY_LIST_LIMIT = 120;
 const GAMEPLAY_FETCH_TIMEOUT_MS = 15000;
 const GAMEPLAY_PROBE_TIMEOUT_MS = 8000;
 const GAMEPLAY_POSTER_CONCURRENCY = 8;
+const GAMEPLAY_INITIAL_VISIBLE_COUNT = 4;
+const GAMEPLAY_VISIBLE_BATCH_SIZE = 8;
+const GAMEPLAY_LOAD_MORE_ROOT_MARGIN = "300px 0px";
 const SQUARE_TOLERANCE_PX = 2;
 
 const toGameplayThumbnailPath = (videoPath: string) =>
@@ -563,8 +566,12 @@ export default function RedditVideoWizard() {
   const [activeGameplayPreviewPath, setActiveGameplayPreviewPath] = useState<string | null>(
     null
   );
+  const [gameplayVisibleCount, setGameplayVisibleCount] = useState(
+    GAMEPLAY_INITIAL_VISIBLE_COUNT
+  );
   const gameplayPrefetchStartedRef = useRef(false);
   const gameplayThumbnailUploadAttemptedRef = useRef<Set<string>>(new Set());
+  const gameplayLoadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -811,6 +818,7 @@ export default function RedditVideoWizard() {
       }
       const items = Array.isArray(data?.items) ? (data.items as GameplayItem[]) : [];
       setGameplayItems(items);
+      setGameplayVisibleCount(GAMEPLAY_INITIAL_VISIBLE_COUNT);
       setGameplaySelected((prev) =>
         prev && items.some((item) => item.path === prev.path) ? prev : null
       );
@@ -845,7 +853,8 @@ export default function RedditVideoWizard() {
       setActiveGameplayPreviewPath(null);
     }
 
-    const missingPosters = gameplayItems.filter((item) => {
+    const posterQueueItems = gameplayItems.slice(0, gameplayVisibleCount);
+    const missingPosters = posterQueueItems.filter((item) => {
       const providedThumbnail =
         typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
       return !gameplayPosterByPath[item.path] && !providedThumbnail;
@@ -918,7 +927,53 @@ export default function RedditVideoWizard() {
     activeGameplayPreviewPath,
     gameplayItems,
     gameplayPosterByPath,
+    gameplayVisibleCount,
     uploadGeneratedGameplayThumbnail,
+  ]);
+
+  useEffect(() => {
+    if (gameplayVisibleCount >= gameplayItems.length) {
+      return;
+    }
+    const hasAnyVisiblePreview = gameplayItems
+      .slice(0, gameplayVisibleCount)
+      .some((item) => {
+        const providedThumbnail =
+          typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() : "";
+        return Boolean(gameplayPosterByPath[item.path] || providedThumbnail);
+      });
+    if (!hasAnyVisiblePreview) {
+      return;
+    }
+    const node = gameplayLoadMoreRef.current;
+    if (!node) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) {
+          return;
+        }
+        setGameplayVisibleCount((prev) =>
+          Math.min(gameplayItems.length, prev + GAMEPLAY_VISIBLE_BATCH_SIZE)
+        );
+      },
+      {
+        root: null,
+        rootMargin: GAMEPLAY_LOAD_MORE_ROOT_MARGIN,
+        threshold: 0.01,
+      }
+    );
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    gameplayItems.length,
+    gameplayItems,
+    gameplayPosterByPath,
+    gameplayVisibleCount,
   ]);
 
   const loadVoices = useCallback(async () => {
@@ -1005,10 +1060,16 @@ export default function RedditVideoWizard() {
       }),
     [gameplayItems, gameplayPosterByPath]
   );
+  const gameplayVisiblePreviewItems = useMemo(
+    () => gameplayPreviewItems.slice(0, gameplayVisibleCount),
+    [gameplayPreviewItems, gameplayVisibleCount]
+  );
   const gameplayPreviewPendingCount = Math.max(
     0,
-    gameplayItems.length - gameplayPreviewItems.length
+    Math.min(gameplayVisibleCount, gameplayItems.length) -
+      gameplayVisiblePreviewItems.length
   );
+  const hasMoreGameplayToReveal = gameplayVisibleCount < gameplayItems.length;
   const canContinueFromStyle = Boolean(subtitleStyleId);
   const canContinueFromVideo = Boolean(gameplaySelected);
   const canGenerate = Boolean(
@@ -1841,15 +1902,15 @@ export default function RedditVideoWizard() {
                 </div>
               ) : null}
 
-              {gameplayItems.length > 0 && gameplayPreviewItems.length === 0 ? (
+              {gameplayItems.length > 0 && gameplayVisiblePreviewItems.length === 0 ? (
                 <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 text-sm text-[#898a8b]">
                   Preparing preview images...
                 </div>
               ) : null}
 
-              {gameplayPreviewItems.length > 0 ? (
+              {gameplayVisiblePreviewItems.length > 0 ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {gameplayPreviewItems.map((item) => {
+                  {gameplayVisiblePreviewItems.map((item) => {
                     const selected = gameplaySelected?.path === item.path;
                     const isPreviewActive = activeGameplayPreviewPath === item.path;
                     const posterUrl =
@@ -1934,6 +1995,15 @@ export default function RedditVideoWizard() {
                   Loading {gameplayPreviewPendingCount} more preview
                   {gameplayPreviewPendingCount === 1 ? "" : "s"}...
                 </p>
+              ) : null}
+
+              {gameplayVisiblePreviewItems.length > 0 && hasMoreGameplayToReveal ? (
+                <div
+                  ref={gameplayLoadMoreRef}
+                  className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-3 text-center text-xs text-[#898a8b]"
+                >
+                  Scroll to load more gameplay videos...
+                </div>
               ) : null}
             </div>
           )}
