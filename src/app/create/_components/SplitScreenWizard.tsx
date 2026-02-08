@@ -536,7 +536,7 @@ export default function SplitScreenWizard({
       {
         root: null,
         rootMargin: GAMEPLAY_LOAD_MORE_ROOT_MARGIN,
-        threshold: 0.01,
+        threshold: 0,
       }
     );
     observer.observe(node);
@@ -544,6 +544,32 @@ export default function SplitScreenWizard({
       observer.disconnect();
     };
   }, [gameplayHasMore, gameplayItems.length, loadMoreGameplay]);
+
+  useEffect(() => {
+    if (!gameplayHasMore || gameplayLoadingMore || gameplayItems.length === 0) {
+      return;
+    }
+    const maybeLoadMore = () => {
+      const node = gameplayLoadMoreRef.current;
+      if (!node) {
+        return;
+      }
+      const rect = node.getBoundingClientRect();
+      const viewportHeight =
+        window.innerHeight || document.documentElement.clientHeight;
+      if (rect.top <= viewportHeight + 400) {
+        void loadMoreGameplay();
+      }
+    };
+    const rafId = window.requestAnimationFrame(maybeLoadMore);
+    window.addEventListener("scroll", maybeLoadMore, { passive: true });
+    window.addEventListener("resize", maybeLoadMore);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", maybeLoadMore);
+      window.removeEventListener("resize", maybeLoadMore);
+    };
+  }, [gameplayHasMore, gameplayItems.length, gameplayLoadingMore, loadMoreGameplay]);
 
   useEffect(() => {
     if (gameplayPrefetchStartedRef.current) {
@@ -1069,6 +1095,16 @@ export default function SplitScreenWizard({
                   className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-3 text-center text-xs text-[#898a8b]"
                 >
                   Scroll to load more gameplay videos...
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadMoreGameplay()}
+                      disabled={gameplayLoadingMore}
+                      className="rounded-md border border-[rgba(255,255,255,0.12)] px-3 py-1 text-xs text-[#f7f7f8] transition hover:border-[rgba(255,255,255,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {gameplayLoadingMore ? "Loading..." : "Load now"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

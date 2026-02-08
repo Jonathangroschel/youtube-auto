@@ -250,7 +250,7 @@ function ScriptGeneratorModal({
   open: boolean;
   onClose: () => void;
   titleHint: string;
-  onApply: (script: string) => void;
+  onApply: (value: { postTitle: string; script: string }) => void;
 }) {
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState("");
@@ -300,7 +300,9 @@ function ScriptGeneratorModal({
       if (!script) {
         throw new Error("Script generation returned empty output.");
       }
-      onApply(script);
+      const postTitle =
+        typeof data?.postTitle === "string" ? data.postTitle.trim() : "";
+      onApply({ postTitle, script });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Script generation failed.");
@@ -894,7 +896,7 @@ export default function RedditVideoWizard() {
       {
         root: null,
         rootMargin: GAMEPLAY_LOAD_MORE_ROOT_MARGIN,
-        threshold: 0.01,
+        threshold: 0,
       }
     );
     observer.observe(node);
@@ -902,6 +904,32 @@ export default function RedditVideoWizard() {
       observer.disconnect();
     };
   }, [gameplayHasMore, gameplayItems.length, loadMoreGameplay]);
+
+  useEffect(() => {
+    if (!gameplayHasMore || gameplayLoadingMore || gameplayItems.length === 0) {
+      return;
+    }
+    const maybeLoadMore = () => {
+      const node = gameplayLoadMoreRef.current;
+      if (!node) {
+        return;
+      }
+      const rect = node.getBoundingClientRect();
+      const viewportHeight =
+        window.innerHeight || document.documentElement.clientHeight;
+      if (rect.top <= viewportHeight + 400) {
+        void loadMoreGameplay();
+      }
+    };
+    const rafId = window.requestAnimationFrame(maybeLoadMore);
+    window.addEventListener("scroll", maybeLoadMore, { passive: true });
+    window.addEventListener("resize", maybeLoadMore);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", maybeLoadMore);
+      window.removeEventListener("resize", maybeLoadMore);
+    };
+  }, [gameplayHasMore, gameplayItems.length, gameplayLoadingMore, loadMoreGameplay]);
 
   const loadVoices = useCallback(async () => {
     setVoiceLoading(true);
@@ -1656,7 +1684,12 @@ export default function RedditVideoWizard() {
                 open={scriptModalOpen}
                 onClose={() => setScriptModalOpen(false)}
                 titleHint={postTitle}
-                onApply={(value) => setScript(value)}
+                onApply={(value) => {
+                  setScript(value.script);
+                  if (value.postTitle) {
+                    setPostTitle(value.postTitle);
+                  }
+                }}
               />
             </div>
           )}
@@ -1900,6 +1933,16 @@ export default function RedditVideoWizard() {
                   className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] px-4 py-3 text-center text-xs text-[#898a8b]"
                 >
                   Scroll to load more gameplay videos...
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadMoreGameplay()}
+                      disabled={gameplayLoadingMore}
+                      className="rounded-md border border-[rgba(255,255,255,0.12)] px-3 py-1 text-xs text-[#f7f7f8] transition hover:border-[rgba(255,255,255,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {gameplayLoadingMore ? "Loading..." : "Load now"}
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
