@@ -63,7 +63,11 @@ const decodeLooseJsonEscapes = (value: string) =>
     .replace(/\\"/g, "\"")
     .replace(/\\\\/g, "\\");
 
-const extractLooseJsonStringField = (source: string, field: "postTitle" | "script") => {
+const extractLooseJsonStringField = (
+  source: string,
+  field: "postTitle" | "script",
+  allowUnterminated = false
+) => {
   const keyToken = `"${field}"`;
   const keyIndex = source.indexOf(keyToken);
   if (keyIndex === -1) {
@@ -95,6 +99,9 @@ const extractLooseJsonStringField = (source: string, field: "postTitle" | "scrip
       return value;
     }
     value += char;
+  }
+  if (allowUnterminated && value.trim().length > 0) {
+    return value;
   }
   return "";
 };
@@ -139,7 +146,7 @@ const stripScriptJsonEnvelope = (value: string) => {
       // continue to loose extraction fallback
     }
 
-    const rawScript = extractLooseJsonStringField(candidate, "script");
+    const rawScript = extractLooseJsonStringField(candidate, "script", true);
     if (rawScript) {
       candidate = decodeLooseJsonEscapes(rawScript).trim();
       continue;

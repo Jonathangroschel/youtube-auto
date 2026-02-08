@@ -101,7 +101,8 @@ const decodeLooseJsonEscapes = (value: string) =>
 
 const extractLooseJsonStringField = (
   source: string,
-  field: "postTitle" | "script"
+  field: "postTitle" | "script",
+  allowUnterminated = false
 ) => {
   const keyToken = `"${field}"`;
   const keyIndex = source.indexOf(keyToken);
@@ -135,7 +136,59 @@ const extractLooseJsonStringField = (
     }
     value += char;
   }
+  if (allowUnterminated && value.trim().length > 0) {
+    return value;
+  }
   return "";
+};
+
+const looksLikeScriptJsonEnvelope = (value: string) => {
+  const trimmed = value.trimStart();
+  const hasScriptField =
+    trimmed.includes("\"script\"") || trimmed.includes("\\\"script\\\"");
+  const hasPostTitleField =
+    trimmed.includes("\"postTitle\"") || trimmed.includes("\\\"postTitle\\\"");
+  return trimmed.startsWith("{") && hasScriptField && hasPostTitleField;
+};
+
+const stripScriptJsonEnvelope = (value: string) => {
+  if (!value) {
+    return value;
+  }
+  let candidate = value.trim();
+  for (let index = 0; index < 4; index += 1) {
+    if (!candidate) {
+      break;
+    }
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (typeof parsed === "string") {
+        candidate = parsed.trim();
+        continue;
+      }
+      if (isRecord(parsed)) {
+        const parsedScript = typeof parsed.script === "string" ? parsed.script : "";
+        if (parsedScript) {
+          candidate = parsedScript.trim();
+          continue;
+        }
+      }
+    } catch {
+      // continue to loose extraction fallback
+    }
+    const rawScript = extractLooseJsonStringField(candidate, "script", true);
+    if (rawScript) {
+      candidate = decodeLooseJsonEscapes(rawScript).trim();
+      continue;
+    }
+    const decodedCandidate = decodeLooseJsonEscapes(candidate).trim();
+    if (decodedCandidate !== candidate) {
+      candidate = decodedCandidate;
+      continue;
+    }
+    break;
+  }
+  return candidate;
 };
 
 const parseGeneratedScriptPayload = (
@@ -156,15 +209,9 @@ const parseGeneratedScriptPayload = (
     if (!parsedScriptRaw) {
       return null;
     }
-    const nestedScriptCandidate = extractLooseJsonStringField(
-      parsedScriptRaw,
-      "script"
-    );
-    const parsedScript = nestedScriptCandidate
-      ? decodeLooseJsonEscapes(nestedScriptCandidate)
-      : parsedScriptRaw;
+    const parsedScript = stripScriptJsonEnvelope(parsedScriptRaw);
     const normalizedScript = sanitizeGeneratedScript(parsedScript);
-    if (!normalizedScript) {
+    if (!normalizedScript || looksLikeScriptJsonEnvelope(normalizedScript)) {
       return null;
     }
     return {
@@ -202,9 +249,9 @@ const extractGeneratedScriptPayload = (
   }
 
   const looseScript = sanitizeGeneratedScript(
-    decodeLooseJsonEscapes(extractLooseJsonStringField(normalized, "script"))
+    decodeLooseJsonEscapes(extractLooseJsonStringField(normalized, "script", true))
   );
-  if (looseScript) {
+  if (looseScript && !looksLikeScriptJsonEnvelope(looseScript)) {
     const looseTitle = sanitizeGeneratedLine(
       decodeLooseJsonEscapes(extractLooseJsonStringField(normalized, "postTitle"))
     );
@@ -214,8 +261,8 @@ const extractGeneratedScriptPayload = (
     };
   }
 
-  const fallbackScript = sanitizeGeneratedScript(normalized);
-  if (!fallbackScript) {
+  const fallbackScript = sanitizeGeneratedScript(stripScriptJsonEnvelope(normalized));
+  if (!fallbackScript || looksLikeScriptJsonEnvelope(fallbackScript)) {
     return null;
   }
   return {
