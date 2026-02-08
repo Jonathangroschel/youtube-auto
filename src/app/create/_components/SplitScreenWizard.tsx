@@ -177,33 +177,105 @@ export default function SplitScreenWizard({
     fileInputRef.current?.click();
   }, []);
 
-  const handleUploadedAsset = useCallback((asset: AssetLibraryItem | null) => {
-    if (!asset) {
-      setSourceError("Upload failed. Please try again.");
-      return;
+  const readVideoFileMeta = useCallback(async (file: File) => {
+    if (typeof window === "undefined") {
+      return {};
     }
-    setSourceVideo({
-      assetId: asset.id,
-      url: asset.url,
-      name: asset.name,
-      durationSeconds:
+    return await new Promise<{
+      duration?: number;
+      width?: number;
+      height?: number;
+      aspectRatio?: number;
+    }>((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      let settled = false;
+      const finish = (value: {
+        duration?: number;
+        width?: number;
+        height?: number;
+        aspectRatio?: number;
+      }) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        video.onloadedmetadata = null;
+        video.onerror = null;
+        video.onabort = null;
+        window.clearTimeout(timeoutId);
+        URL.revokeObjectURL(objectUrl);
+        resolve(value);
+      };
+      const timeoutId = window.setTimeout(() => finish({}), 8000);
+      video.onloadedmetadata = () => {
+        const duration =
+          Number.isFinite(video.duration) && video.duration > 0
+            ? video.duration
+            : undefined;
+        const width = video.videoWidth > 0 ? video.videoWidth : undefined;
+        const height = video.videoHeight > 0 ? video.videoHeight : undefined;
+        finish({
+          duration,
+          width,
+          height,
+          aspectRatio: width && height ? width / height : undefined,
+        });
+      };
+      video.onerror = () => finish({});
+      video.onabort = () => finish({});
+      video.src = objectUrl;
+      video.load();
+    });
+  }, []);
+
+  const handleUploadedAsset = useCallback(
+    (
+      asset: AssetLibraryItem | null,
+      fallbackMeta?: {
+        duration?: number;
+      }
+    ) => {
+      if (!asset) {
+        setSourceError("Upload failed. Please try again.");
+        return;
+      }
+      const assetDuration =
         typeof asset.duration === "number" && Number.isFinite(asset.duration)
           ? asset.duration
-          : undefined,
-    });
-    setSourceError(null);
-  }, []);
+          : typeof fallbackMeta?.duration === "number" &&
+              Number.isFinite(fallbackMeta.duration)
+            ? fallbackMeta.duration
+            : undefined;
+      setSourceVideo({
+        assetId: asset.id,
+        url: asset.url,
+        name: asset.name,
+        durationSeconds: assetDuration,
+      });
+      setSourceError(null);
+    },
+    []
+  );
 
   const handleUploadFile = useCallback(
     async (file: File) => {
       setSourceBusy(true);
       setSourceError(null);
       try {
+        const meta = await readVideoFileMeta(file);
         const asset = await uploadAssetFile(file, {
           name: file.name || "Uploaded video",
           source: "upload",
+          duration: meta.duration,
+          width: meta.width,
+          height: meta.height,
+          aspectRatio: meta.aspectRatio,
         });
-        handleUploadedAsset(asset);
+        handleUploadedAsset(asset, {
+          duration: meta.duration,
+        });
       } catch (error) {
         setSourceError(
           error instanceof Error ? error.message : "Upload failed."
@@ -212,7 +284,7 @@ export default function SplitScreenWizard({
         setSourceBusy(false);
       }
     },
-    [handleUploadedAsset]
+    [handleUploadedAsset, readVideoFileMeta]
   );
 
   const handleFileInputChange = useCallback(

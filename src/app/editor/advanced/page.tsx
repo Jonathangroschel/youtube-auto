@@ -13344,14 +13344,28 @@ function AdvancedEditorContent() {
           ? mainMeta.height
           : mainMetaHint?.height;
       const mainDuration =
-        typeof mainMeta.duration === "number" && Number.isFinite(mainMeta.duration)
+        typeof mainMeta.duration === "number" &&
+        Number.isFinite(mainMeta.duration) &&
+        mainMeta.duration > 0
           ? mainMeta.duration
-          : mainMetaHint?.duration;
+          : typeof mainMetaHint?.duration === "number" &&
+              Number.isFinite(mainMetaHint.duration) &&
+              mainMetaHint.duration > 0
+            ? mainMetaHint.duration
+            : undefined;
       const mainAspectRatio =
         typeof mainMeta.aspectRatio === "number" && Number.isFinite(mainMeta.aspectRatio)
           ? mainMeta.aspectRatio
           : mainMetaHint?.aspectRatio ??
             (mainWidth && mainHeight ? mainWidth / mainHeight : undefined);
+      const resolveFiniteDuration = (...values: Array<number | null | undefined>) => {
+        for (const value of values) {
+          if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+            return value;
+          }
+        }
+        return null;
+      };
 
 	      const mainAssetId = resolvedMainAssetId ?? crypto.randomUUID();
 
@@ -13422,27 +13436,37 @@ function AdvancedEditorContent() {
 
       const existingMain = assetsRef.current.find((asset) => asset.id === mainAsset.id);
       const existingBg = assetsRef.current.find((asset) => asset.id === backgroundAsset.id);
-      const resolvedMainAsset = existingMain ?? mainAsset;
+      const resolvedMainDuration = resolveFiniteDuration(
+        mainDuration,
+        mainAsset.duration
+      );
+      if (!resolvedMainDuration) {
+        throw new Error(
+          "Unable to read your source video duration. Please re-upload the video and try again."
+        );
+      }
+      const resolvedMainAsset: MediaAsset = {
+        ...(existingMain ?? mainAsset),
+        ...mainAsset,
+        duration: resolvedMainDuration,
+      };
       const resolvedBgAsset = existingBg ?? backgroundAsset;
 
       const nextLanes: TimelineLane[] = [];
       const bgLaneId = createLaneId("video", nextLanes, { placement: "top" });
       const mainLaneId = createLaneId("video", nextLanes);
 
-	      const resolvedMainDuration = Math.max(
-	        0.01,
-	        mainDuration ?? getAssetDurationSeconds(resolvedMainAsset)
-	      );
-	      const mainClip: TimelineClip = {
-	        id: crypto.randomUUID(),
-	        assetId: resolvedMainAsset.id,
-	        duration: resolvedMainDuration,
-	        startOffset: 0,
-	        startTime: 0,
-	        laneId: mainLaneId,
-	      };
+      const resolvedMainClipDuration = Math.max(0.01, resolvedMainDuration);
+      const mainClip: TimelineClip = {
+        id: crypto.randomUUID(),
+        assetId: resolvedMainAsset.id,
+        duration: resolvedMainClipDuration,
+        startOffset: 0,
+        startTime: 0,
+        laneId: mainLaneId,
+      };
 
-	      const targetDuration = resolvedMainDuration;
+      const targetDuration = resolvedMainClipDuration;
       const bgBaseDuration = Math.max(
         0.01,
         bgDuration ?? getAssetDurationSeconds(resolvedBgAsset) ?? targetDuration
@@ -13490,14 +13514,37 @@ function AdvancedEditorContent() {
 	      // Treat as a fresh editor composition (do not append to an existing timeline).
 	      setLanes(nextLanes);
       setAssets((prev) => {
-        const next = [...prev];
+        let changed = false;
+        const next = prev.map((asset) => {
+          if (asset.id === resolvedMainAsset.id) {
+            changed = true;
+            return {
+              ...asset,
+              ...resolvedMainAsset,
+              duration: resolvedMainDuration,
+            };
+          }
+          if (asset.id === resolvedBgAsset.id) {
+            changed = true;
+            return {
+              ...asset,
+              ...resolvedBgAsset,
+            };
+          }
+          return asset;
+        });
         if (!next.some((asset) => asset.id === resolvedBgAsset.id)) {
           next.unshift(resolvedBgAsset);
+          changed = true;
         }
         if (!next.some((asset) => asset.id === resolvedMainAsset.id)) {
-          next.unshift(resolvedMainAsset);
+          next.unshift({
+            ...resolvedMainAsset,
+            duration: resolvedMainDuration,
+          });
+          changed = true;
         }
-        return next;
+        return changed ? next : prev;
       });
       setTimeline(orderTimelineByLane([...bgClips, mainClip], nextLanes));
       setClipTransforms(() => {
@@ -24370,8 +24417,8 @@ function AdvancedEditorContent() {
 	        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#1a1c1e]/70 px-4 backdrop-blur-sm">
 	          <div className="w-full max-w-md rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
 	            <div className="flex items-start gap-4">
-	              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E7EDFF] text-[#9aed00]">
-	                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+		              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+		                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 	              </div>
 	              <div className="min-w-0 flex-1">
 	                <h3 className="text-lg font-semibold text-[#f7f7f8]">
@@ -24392,10 +24439,10 @@ function AdvancedEditorContent() {
 	            </div>
 	            <div className="mt-6 space-y-3 text-sm">
 	              <div className="flex items-center gap-3">
-	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
+		                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)]">
 		                  {splitScreenImportOverlayStage === "preparing" ||
 		                  splitScreenImportOverlayStage === "uploading" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+			                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 		                  ) : (
 	                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 	                      <path
@@ -24415,7 +24462,7 @@ function AdvancedEditorContent() {
 		                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
 		                    subtitleStatus === "error"
 		                      ? "bg-[rgba(231,41,48,0.1)] text-[#e72930]"
-		                      : "bg-[#E7EDFF] text-[#9aed00]"
+			                      : "bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)]"
 		                  }`}
 		                >
 		                  {subtitleStatus === "error" ? (
@@ -24429,7 +24476,7 @@ function AdvancedEditorContent() {
 		                      />
 		                    </svg>
 		                  ) : splitScreenImportOverlayStage === "subtitles" ? (
-		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+			                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 		                  ) : splitScreenImportOverlayStage === "finalizing" ? (
 		                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
 		                      <path
@@ -24441,17 +24488,17 @@ function AdvancedEditorContent() {
 	                      />
 	                    </svg>
 	                  ) : (
-	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.55)]" />
 	                  )}
 	                </div>
 	                <span className="text-[#f7f7f8]">Generate subtitles</span>
 	              </div>
 	              <div className="flex items-center gap-3">
-	                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E7EDFF] text-[#9aed00]">
+		                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(154,237,0,0.14)] text-[#c9ff7a] ring-1 ring-[rgba(154,237,0,0.38)]">
 	                  {splitScreenImportOverlayStage === "finalizing" ? (
-	                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.25)] border-t-[#9aed00]" />
+		                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[rgba(154,237,0,0.45)] border-t-[#d6ff9a]" />
 	                  ) : (
-	                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.25)]" />
+		                    <div className="h-3.5 w-3.5 rounded-full border-2 border-[rgba(154,237,0,0.55)]" />
 	                  )}
 	                </div>
 	                <span className="text-[#f7f7f8]">Finalize timeline</span>
