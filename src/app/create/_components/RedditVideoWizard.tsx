@@ -101,22 +101,57 @@ const extractLooseJsonStringField = (source: string, field: "postTitle" | "scrip
 
 const looksLikeScriptJsonEnvelope = (value: string) => {
   const trimmed = value.trimStart();
+  const hasScriptField =
+    trimmed.includes("\"script\"") || trimmed.includes("\\\"script\\\"");
+  const hasPostTitleField =
+    trimmed.includes("\"postTitle\"") || trimmed.includes("\\\"postTitle\\\"");
   return (
     trimmed.startsWith("{") &&
-    trimmed.includes("\"script\"") &&
-    trimmed.includes("\"postTitle\"")
+    hasScriptField &&
+    hasPostTitleField
   );
 };
 
 const stripScriptJsonEnvelope = (value: string) => {
-  if (!value || !looksLikeScriptJsonEnvelope(value)) {
+  if (!value) {
     return value;
   }
-  const rawScript = extractLooseJsonStringField(value, "script");
-  if (!rawScript) {
-    return value;
+  let candidate = value.trim();
+  for (let index = 0; index < 4; index += 1) {
+    if (!candidate) {
+      break;
+    }
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (typeof parsed === "string") {
+        candidate = parsed.trim();
+        continue;
+      }
+      if (parsed && typeof parsed === "object") {
+        const record = parsed as Record<string, unknown>;
+        const parsedScript = typeof record.script === "string" ? record.script : "";
+        if (parsedScript) {
+          candidate = parsedScript.trim();
+          continue;
+        }
+      }
+    } catch {
+      // continue to loose extraction fallback
+    }
+
+    const rawScript = extractLooseJsonStringField(candidate, "script");
+    if (rawScript) {
+      candidate = decodeLooseJsonEscapes(rawScript).trim();
+      continue;
+    }
+    const decodedCandidate = decodeLooseJsonEscapes(candidate).trim();
+    if (decodedCandidate !== candidate) {
+      candidate = decodedCandidate;
+      continue;
+    }
+    break;
   }
-  return decodeLooseJsonEscapes(rawScript).trim();
+  return candidate;
 };
 
 const SubtitleModeToggle = ({
@@ -1464,7 +1499,7 @@ export default function RedditVideoWizard() {
 
         <div className="flex-1 overflow-y-auto bg-[#0e1012] p-3 md:p-6">
           {step === 1 && (
-            <div className="flex h-full flex-col gap-4 md:flex-row md:gap-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
               <div className="flex w-full flex-col space-y-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:space-y-4 md:p-4">
                 <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
                   <h2 className="text-base font-medium text-[#f7f7f8] md:text-lg">
@@ -1603,7 +1638,7 @@ export default function RedditVideoWizard() {
                 </div>
               </div>
 
-              <div className="h-fit w-full space-y-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:h-full md:w-3/4 md:overflow-hidden md:p-4">
+              <div className="h-fit w-full space-y-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1a1c1e] p-3 md:w-3/4 md:p-4">
                 <div className="flex flex-col space-y-1.5">
                   <h3 className="text-lg font-medium text-[#f7f7f8]">Intro Preview</h3>
                   <div className="max-w-lg">
